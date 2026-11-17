@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generatedDir = join(projectRoot, "generated", "paraglide");
@@ -36,6 +37,7 @@ export function getInputFiles(root = projectRoot) {
   const messagesDir = join(root, "messages");
   return [
     ...listFiles(messagesDir),
+    ...listFiles(join(root, "tools", "inlang-plugins")),
     join(root, "project.inlang", "settings.json"),
     join(root, "package.json"),
     join(root, "package-lock.json"),
@@ -71,12 +73,33 @@ function readCachedFingerprint() {
   }
 }
 
+const paraglideCli = join(projectRoot, "node_modules", "@inlang", "paraglide-js", "bin", "run.js");
+
 function compileParaglide() {
-  const cli = join(projectRoot, "node_modules", "@inlang", "paraglide-js", "bin", "run.js");
-  execFileSync(process.execPath, [cli, ...compileArgs], {
+  execFileSync(process.execPath, [paraglideCli, ...compileArgs], {
     cwd: projectRoot,
     stdio: "inherit",
   });
+}
+
+function writeMarker(fingerprint) {
+  mkdirSync(dirname(cacheFile), { recursive: true });
+  writeFileSync(cacheFile, `${JSON.stringify({ fingerprint }, null, 2)}
+`);
+}
+
+/** Whether a changed file feeds the Paraglide compile and so needs a recompile while the dev
+ * server runs. */
+export function isParaglideSource(file, root = projectRoot) {
+  const path = relative(root, file).replaceAll("\\", "/");
+  return (path.startsWith("messages/") && path.endsWith(".json")) || path === "project.inlang/settings.json";
+}
+
+/** Recompiles without touching the Vite cache: the dev server is running and picks up the
+ * regenerated files itself. */
+export async function recompileParaglide() {
+  await promisify(execFile)(process.execPath, [paraglideCli, ...compileArgs], { cwd: projectRoot });
+  writeMarker(getInputFingerprint());
 }
 
 export function prepareParaglide() {

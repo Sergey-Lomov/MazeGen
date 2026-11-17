@@ -2,7 +2,7 @@ use super::teleport_count_core::{
     distinct_teleport_representatives, distinct_teleport_representatives_per_floor,
 };
 use crate::Maze;
-use crate::graph::cycles::density_per_100;
+use crate::graph::cycles::rounded_excess_over_density;
 use crate::ids::EdgeId;
 use crate::quality_control::check::Check;
 use crate::quality_control::floor_group::floor_point_count;
@@ -132,15 +132,8 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for MaxTeleportDensity
 }
 
 impl MaxTeleportDensityCheck {
-    /// Excess portal count for one region (whole maze or one floor) given its own portal/cell
-    /// counts — shared by both `floor_scope` branches so the round-to-nearest `target_count` logic
-    /// stays identical either way. Mirrors `MaxSplitDensityCheck::to_remove_for` exactly.
     fn to_remove_for(count: usize, field_cells: usize, max_density: f64) -> u32 {
-        if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
-            return 0;
-        }
-        let target_count = (max_density * field_cells as f64 / 100.0).round() as usize;
-        count.saturating_sub(target_count) as u32
+        rounded_excess_over_density(count, field_cells, max_density)
     }
 }
 

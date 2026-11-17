@@ -6,20 +6,23 @@ mod types;
 pub use types::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload,
+    IssueSplitTilePayload, IssueUndecidedPairPayload,
 };
 
+use super::distance_diagnostics::IndeterminateReason;
 use super::issue::Issue;
 use super::issue_kinds::{
     AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-    InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
-    InvalidElevatorStopIssue, InvalidLoopGroupIssue, InvalidLoopIssue, InvalidOneWayGroupIssue,
-    InvalidOneWayIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue,
-    InvalidSplitNodeIssue, InvalidSplitRouteIssue, InvalidSplitTileGroupIssue,
-    InvalidSplitTileIssue, InvalidTeleportGroupIssue, InvalidTeleportIssue,
-    InvalidVerticalPassageGroupIssue, InvalidVerticalPassageIssue, MissingElevatorHeightIssue,
-    MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingTeleportsIssue,
-    MissingVerticalPassagesIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
+    InvalidDeadEndGroupIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
+    InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidLoopGroupIssue,
+    InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+    InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
+    InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
+    InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
+    InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
+    MissingElevatorsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingSplitTilesIssue,
+    MissingTeleportsIssue, MissingVerticalPassagesIssue,
+    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
 };
 use super::issue_kinds::{InvalidCrossElementGroupIssue, InvalidCrossElementIssue};
 use crate::generation::PresetState;
@@ -29,7 +32,8 @@ use crate::space::{MultiLevelField, Tessellation};
 use resolvers::{
     excessive_scc_count_preset_locked, region_preset_locked_for_expansion,
     region_preset_locked_for_shrink, resolve_area_deficit_map, resolve_cross_element_group_payload,
-    resolve_cross_element_payload, resolve_cycle_payload, resolve_edge_group_map,
+    resolve_cross_element_payload, resolve_cycle_payload, resolve_dead_end_group_map,
+    resolve_edge_group_map,
     resolve_elevator_group_map, resolve_elevator_stop_group_map,
     resolve_excessive_elevator_stop_gap_payload, resolve_invalid_elevator_payload,
     resolve_invalid_elevator_stop_payload, resolve_invalid_split_node_group_payload,
@@ -319,10 +323,44 @@ pub fn resolve_issue_payload<T: Tessellation>(
         return payload;
     }
 
+    if let Some(InvalidDeadEndGroupIssue {
+        groups,
+        invalid_sources,
+        ..
+    }) = issue.as_any().downcast_ref::<InvalidDeadEndGroupIssue>()
+        && let Some(payload) = resolve_dead_end_group_map(groups, invalid_sources)
+    {
+        return payload;
+    }
+
     if let Some(deficit_issue) = issue
         .as_any()
         .downcast_ref::<MissingVerticalPassagesIssue>()
     {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingLoopsIssue>() {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingOneWaysIssue>() {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingSplitTilesIssue>() {
         let areas =
             resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
         if !areas.is_empty() {
@@ -432,6 +470,25 @@ pub fn resolve_issue_payload<T: Tessellation>(
         )
     {
         return payload;
+    }
+
+    if let Some(indeterminate) = issue
+        .as_any()
+        .downcast_ref::<super::issue_kinds::IndeterminateDistanceIssue>()
+    {
+        let pairs: Vec<_> = indeterminate
+            .pairs
+            .iter()
+            .filter_map(|p| {
+                Some(IssueUndecidedPairPayload {
+                    nodes: [u32::try_from(p.a).ok()?, u32::try_from(p.b).ok()?],
+                    unsupported: p.reason == IndeterminateReason::UnsupportedTopology,
+                })
+            })
+            .collect();
+        if !pairs.is_empty() {
+            return IssuePayload::IndeterminateDistance { pairs };
+        }
     }
 
     IssuePayload::None

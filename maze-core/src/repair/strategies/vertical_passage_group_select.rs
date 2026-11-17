@@ -89,19 +89,22 @@ impl<T: Tessellation> RepairStrategy<T, InvalidVerticalPassageGroupIssue>
         let element_allowed = |_edge: &EdgeId| true;
         let build_nested_issue = |source_check: &str,
                                   target: &EdgeId,
-                                  _others: &[EdgeId]|
+                                  _others: &[&EdgeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidVerticalPassageIssue::new_from_check(
                 source_check,
                 vec![*target],
             ))
         };
+        let prepare_invalidation = |nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+            crate::repair::removed_edge_ids(nested_commands)
+                .into_iter()
+                .collect::<std::collections::HashSet<EdgeId>>()
+        };
         let element_invalidated =
-            |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
-                crate::repair::removed_edge_ids(nested_commands).contains(edge)
-            };
+            |removed: &std::collections::HashSet<EdgeId>, edge: &EdgeId| removed.contains(edge);
 
-        group_select_apply::<T, VerticalPassageGroupKind>(
+        group_select_apply::<T, VerticalPassageGroupKind, _>(
             issue,
             maze,
             rng,
@@ -109,6 +112,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidVerticalPassageGroupIssue>
             fix_target,
             element_allowed,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )
@@ -213,6 +217,44 @@ mod tests {
             1,
             "exactly one edge from the group of 2 must be removed"
         );
+    }
+
+    #[test]
+    fn shared_edge_is_removed_once_and_retires_both_groups() {
+        // `b` is in both groups (highest membership, so `problematic` visits it first). One removal
+        // of `b` must retire the budget of both groups: `a` survives.
+        let (_, a, b) = maze_with_two_vertical_passages();
+        let issue = InvalidVerticalPassageGroupIssue::new_from_check(
+            "max_vertical_passage_count",
+            vec![(vec![a, b], 1), (vec![b], 1)],
+        );
+        let params = no_params();
+        let nested = nested_config(&params);
+        for seed in 0..8 {
+            let (mut maze, ..) = maze_with_two_vertical_passages();
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(
+                &VerticalPassageGroupSelectStrategy,
+                &issue,
+                &mut maze,
+                &mut rng,
+                &params,
+                &PresetState::empty(),
+                std::slice::from_ref(&nested),
+            );
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            let left: Vec<EdgeId> = maze
+                .graph
+                .edges()
+                .filter(|e| e.kind == EdgeKind::VerticalPassage)
+                .map(|e| e.id)
+                .collect();
+            assert_eq!(
+                left,
+                vec![a],
+                "seed {seed}: only the shared edge may be removed"
+            );
+        }
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -37,7 +38,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -48,21 +49,22 @@ beforeEach(() => {
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
       oneWayGapWidth: 3,
-      oneWaySize: 0.3,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.3 }, chevron: { size: 0.3, thickness: 4 }, arrow: { length: 0.3, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
+      markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
-      teleportAvoidFieldExit: false,
+      teleportAvoidFieldExit: false, teleportMergeMode: true,
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -121,7 +123,7 @@ describe("mazeStore image export", () => {
     expect(printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
   });
 
-  it("does not rescale the auto-fit print scale when density changes", () => {
+  it("rescales a legacy auto-fit print scale when density changes", () => {
     const scale = 12.5;
     useMazeStore.setState({
       pngExportSettings: {
@@ -132,7 +134,7 @@ describe("mazeStore image export", () => {
 
     useMazeStore.getState().setPrintDensity("high_600");
 
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(scale);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(scale * DPI_BY_DENSITY.high_600 / DPI_BY_DENSITY.print_300);
   });
 
   it("starts with no active render mode and no open settings panel", () => {
@@ -172,7 +174,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -183,21 +185,22 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
       oneWayGapWidth: 3,
-      oneWaySize: 0.3,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.3 }, chevron: { size: 0.3, thickness: 4 }, arrow: { length: 0.3, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
+      markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
-      teleportAvoidFieldExit: false,
+      teleportAvoidFieldExit: false, teleportMergeMode: true,
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -222,6 +225,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(0x123456);
     expect(settings.showGrid).toBe(true);
     expect(settings.gridColor).toBe(canvas.grid.line);
+  });
+
+  it("glue tab fill and outline follow the background and the grid until edited", () => {
+    const { setVectorByWallsBackground, setVectorByWallsGridColor, setVectorByWallsGlueTabs } = useMazeStore.getState();
+    setVectorByWallsBackground(0x123456);
+    setVectorByWallsGridColor(0xabcdef);
+    expect(useMazeStore.getState().vectorByWallsSettings.glueTabs).toMatchObject({ fillColor: 0x123456, lineColor: 0xabcdef });
+    setVectorByWallsGlueTabs({ fillColor: 0x111111 });
+    setVectorByWallsBackground(0x222222);
+    expect(useMazeStore.getState().vectorByWallsSettings.glueTabs).toMatchObject({ fillColor: 0x111111, lineColor: 0xabcdef });
   });
 
   it("setVectorByWallsShowGrid toggles grid visibility", () => {
@@ -284,6 +297,18 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.sizeAdaptation).toBe(0.9);
   });
 
+  it("angled teleport connector corners follow the shared style until individually overridden in both modes", () => {
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ cornerStyle: "round" });
+    useMazeStore.getState().patchVectorByCorridorsSharedStyle({ cornerStyle: "round" });
+    expect(useMazeStore.getState().vectorByWallsSettings.teleportConnectorCornerStyle).toBe("round");
+    expect(useMazeStore.getState().vectorByCorridorsSettings.teleportConnectorCornerStyle).toBe("round");
+
+    useMazeStore.getState().patchVectorByWallsTeleportSettings({ teleportConnectorCornerStyle: "miter" });
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ cornerStyle: "round" });
+    expect(useMazeStore.getState().vectorByWallsSettings.teleportConnectorCornerStyle).toBe("miter");
+    expect(useMazeStore.getState().vectorByCorridorsSettings.teleportConnectorCornerStyle).toBe("round");
+  });
+
   it("patchVectorByWallsSharedStyle updates only the shared marker adaptation field", () => {
     useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSizeAdaptation: 0.6 });
     const settings = useMazeStore.getState().vectorByWallsSettings;
@@ -298,17 +323,17 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(canvas.stage.background);
   });
 
-  it("setVectorByWallsOneWayColor/BorderWidth/Size/Thickness/Join update only the one-way fields", () => {
+  it("setVectorByWallsOneWayColor/GapWidth/Geometry/Join update only the one-way fields", () => {
     useMazeStore.getState().setVectorByWallsOneWayColor(0x555555);
     useMazeStore.getState().setVectorByWallsOneWayGapWidth(3);
-    useMazeStore.getState().setVectorByWallsOneWaySize(0.3);
-    useMazeStore.getState().setVectorByWallsOneWayThickness(6);
+    useMazeStore.getState().setVectorByWallsOneWayGeometry("triangle.size", 0.3);
+    useMazeStore.getState().setVectorByWallsOneWayGeometry("chevron.thickness", 6);
     useMazeStore.getState().setVectorByWallsOneWayJoin("miter");
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.oneWayColor).toBe(0x555555);
     expect(settings.oneWayGapWidth).toBe(3);
-    expect(settings.oneWaySize).toBe(0.3);
-    expect(settings.oneWayThickness).toBe(6);
+    expect(settings.oneWayGeometry.triangle.size).toBe(0.3);
+    expect(settings.oneWayGeometry.chevron.thickness).toBe(6);
     expect(settings.oneWayJoin).toBe("miter");
     expect(settings.background).toBe(canvas.stage.background);
   });
@@ -671,4 +696,5 @@ describe("patchVectorBy{Walls,Corridors}SharedStyle (GitHub issue #701)", () => 
       expect(l?.enabled, target).toBe(false);
     }
   });
+
 });

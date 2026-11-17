@@ -1,8 +1,6 @@
 import { presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
-import {
-  allNodesAt, canonicalizePresetPair, presetEdgeKey,
-  type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
-} from "./fieldEditUtils";
+import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "./fieldEditUtils";
+import { allNodesAt, canonicalizePresetPair, presetEdgeKey } from "./presetSplitResolve";
 import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "./presetSplitLabels";
 import { formatTargetLabel } from "./targetLabel";
 import type { NodeLockKind } from "../wasm/types";
@@ -37,7 +35,7 @@ export type PresetPointEntityScope =
   | { kind: "point_all" }
   | { kind: "vertex_markers"; endpoints: PresetEndpoint[] };
 
-function formatLockKind(kind: NodeLockKind): string {
+export function formatLockKind(kind: NodeLockKind): string {
   switch (kind) {
     case "in": return m["status.cell_lock_in"]();
     case "out": return m["status.cell_lock_out"]();

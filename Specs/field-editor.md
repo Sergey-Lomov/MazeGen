@@ -10,7 +10,7 @@ Two parallel mechanisms for custom fields exist:
 The custom field is entered through the field edit mode (`setFieldEditMode("custom")`), which sets `isEditingField = true` and exposes `freeFieldPoints[kind]` as `fieldPoints`. Points are drawn directly on the canvas at any time. The preset shape selection (`selectedShape`) is kept while editing and applies again in default mode.
 
 ### Card-based editing (FieldSetupFeature)
-Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be confirmed first.
+Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be confirmed first. A "Floors" button at the bottom of the card opens the floor list side panel (`Specs/floors.md`).
 
 Two sub-modes toggled inside the card:
 
@@ -26,7 +26,7 @@ tessellation does not support translation, so triangle parity and mixed-cell tes
 
 The mode and tool buttons use accessible tooltips. A mode tooltip renders its selection hotkey
 right-aligned as a muted keycap badge (for example, `Add` with `+`). A separate tertiary-colored line explains any
-keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Symmetry alone adds
+keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Mirror alone adds
 `Unavailable in Select mode.` while Select is active, because that operation cannot reflect cells.
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
@@ -40,10 +40,14 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 | Shape | Parameters |
 |---|---|
 | `rect` | `cols`, `rows` (square: width/height in cells; tri: pairs of opposite triangles per column; Cairo: fundamental 4×4 squares) |
+| `cylinder` | `cols`, `rows`, `axis` (select: glued left and right, or top and bottom); a rectangle with one pair of opposite sides glued. Every tessellation with a translation lattice that has axis-aligned vectors offers it (all but radial and Voronoi; the snub square one is turned with its lattice); on snub square, snub hexagonal, rhombitrihexagonal, truncated hexagonal and truncated trihexagonal `cols`/`rows` count lattice periods (not cell pitches as `rect` does) (`Specs/topology.md`, "Rectangle gluing"). Only sizes that close up are allowed: a typed size is moved to the nearest one that does. |
+| `torus` | `cols`, `rows`; both pairs of opposite sides glued, same size rule as `cylinder`. |
 | `parallelogram` | `cols`, `rows` |
 | `circle` | `radius` |
 | `triangle` | `side` |
 | `hexagon` | `radius` |
+| `tetrahedron`, `octahedron`, `icosahedron` | `side` (the edge length in cells, one size input), `net` (a select: tetrahedron star / strip, octahedron band with caps apart / close, icosahedron band with caps; the last value is always the compact print layout), `mode` (0 net, 1 by faces: separate triangles); the compact net forces mode to by faces and locks that select; print sizing grows `side` as for a radial shape and, for the compact net, sets the hidden `aspect` to the width to height of the printable area |
+| `box` | `width`, `height`, `depth` (cells, default 10 each; a "Dimensions" heading above three inputs), `net` (0 cross, 1 T-shaped lying on its side, 2 compact: the faces packed tightly, possibly turned), `mode` (0 net, 1 by faces: six separate rectangles); `net` ("Shape") and `mode` ("Mode") are selects in that order; the compact shape forces mode to by faces and locks that select; print sizing keeps the proportions of the three sides and, for the compact shape, sets the hidden `aspect` to the width to height of the printable area so the faces are packed for that sheet |
 | `custom` | `points` (the free-drawn cell list) |
 
 Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #762):
@@ -51,14 +55,14 @@ Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #
 operations (`translate`, `reflect`) it supports. `pixi/fieldOps.ts` caches the capabilities per
 tessellation. The shape selector lists exactly the offered presets; each preset's parameter form is
 built from its schema (one input per param, lower bound `min`). A tool whose operation is not
-offered is hidden (the Symmetry tool needs `reflect`; moving a selection needs `translate`). The
+offered is hidden (the Mirror tool needs `reflect`; moving a selection needs `translate`). The
 current table, for reference:
 
 | Kind | Preset shapes |
 |---|---|
-| `square` | rect, circle, triangle |
+| `square` | rect, circle, triangle, box (topology preset: `width`, `height`, `depth`; field and gluing together, `Specs/topology.md`, "Topology presets") |
 | `hex` | rect, parallelogram, hexagon, circle, triangle |
-| `tri` | rect, triangle, hexagon, circle |
+| `tri` | rect, triangle, hexagon, circle, tetrahedron, octahedron, icosahedron (topology presets: `side`, `net`, `mode`; field and gluing together, `Specs/topology.md`, "Topology presets") |
 | `cairo` | rect, circle, triangle, hexagon |
 
 Each floor keeps one `selectedShape` (a preset key); the default is the kind's default preset
@@ -82,8 +86,22 @@ does not overwrite another shape's saved dimensions.
 
 Default mode's **Calculate for print** button opens a one-shot dialog. It accepts a paper format
 (A0-A5, Letter, Legal, Tabloid, or custom dimensions), portrait/landscape orientation, desired
-cell measure in millimeters, and horizontal/vertical print margins. For squares the measure is the
-side length; for regular hexagons and triangles it is the diameter of the circumscribed circle.
+cell measure in millimeters, and horizontal/vertical print margins. The cell size is always the
+diameter of the cell's circumscribed circle (GitHub issue #1002), never a side length: for a square
+(also a brick, the curved quadrilateral) it is the diagonal, `cellMeasurePx` in `TESSELLATION_UI`.
+A cell with no single circumcircle (Cairo, radial, Voronoi) keeps a nominal measure. A mode select
+above the size field (labelled "Mode") switches the input between **Cell size** (diameter) and **Minimum side**; the dialog opens in the minimum side mode with 8 mm (`DEFAULT_MIN_SIDE_MM`), whatever the print settings hold (paper and margins are still read from them). Minimum side is the shortest geometric side (`cellSidePx`; for Cairo the short side of the pentagon, the long one is longer);
+the minimum side length is converted to the cell size with `printMeasureFromEntered` (`printFit.ts`)
+before every calculation, so the calculation, the cell sizes section and the applied `print.scale`
+always work with the diameter. Switching the mode keeps the physical size: the field is refilled with
+the same cells' value in the other measure. The mode and the value are local to the dialog and not stored.
+The modes a tessellation offers are `TESSELLATION_UI[kind].editor.sizeModes` (`PrintSizeMode`: `cell_size`,
+`min_side`, `ring_thickness`, `average_size`; the first is the default). The "Mode" select is shown only when there are several;
+with one, that mode's name is the label of the size field. A radial field has the single mode `ring_thickness`
+("Ring thickness"; a ring is `ringThicknessPx` thick and that is the measure of a radial cell), every other
+kind but Voronoi offers `min_side` and `cell_size`. A Voronoi field has the single mode `average_size` ("Average cell size": the cells differ, so no side or diameter exists; the value is the circumscribed circle diameter of the regular hexagon the cells are displaced from, `cellMeasurePx`, and the cell sizes section says so). `printMeasureFromEntered` / `printEnteredFromMeasure` (`printFit.ts`)
+convert between the value of a mode and the measure. The PNG print result lists the same sizes: a mode's size
+line and the small-side warning appear only for a kind that offers that mode (a radial field shows "Ring thickness" and a Voronoi field "Average cell size", neither a minimum side).
 The cell-measure input is a compact control sized for approximately four digits, including its
 native number-input affordances, rather than expanding to the dialog's full row width.
 Standard paper sizes reuse
@@ -111,33 +129,89 @@ single radius cannot match every paper aspect ratio exactly, the dialog displays
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side.
 
-`fieldPrintSizing.ts` selects a sizing strategy by shape family: axis-aligned rectangles,
-general rectangles/parallelograms, radial shapes, and Cairo rectangles. Shared code owns paper
-validation, margins, physical-unit conversion, final polygon-bound measurement, and result
-formatting. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
-pentagon bounds without materializing a complete candidate field during the search.
+The search runs in core, in one wasm call (`field_print_sizing`, GitHub issue #939; `maze-runner`
+`print_sizing`). `fieldPrintSizing.ts` keeps the paper (format, orientation, margins) and sends the
+usable area in millimeters, the physical side of one cell, the display directions and whether the
+lattice is axis-aligned; core answers with the shape params and the size of the result in cell sides,
+or nothing when no size fits. Core selects a strategy by shape family: an axis-aligned rectangle is
+sized by division (no measuring); other rectangles and parallelograms (Cairo's fundamental squares
+included) by the rectangular search; the radial shapes (`circle`, `hexagon`, `triangle`) by a doubling
+and bisecting search over their size; a cylinder or torus is sized as the plane and moved down to a
+size that closes up (GitHub issue #894) and fits the sheet. A `box` is scaled as a radial shape by its
+longest side: the three sides keep their proportions (each at least 1), `net` and `mode` stay as
+chosen, and the cache key includes the full box shape. For the compact net the sheet's usable
+width/height ratio is stored as the hidden `aspect` param (x100) so that core packs the faces to fit
+the sheet (set by `packedForSheet` before the call). A polyhedron (`tetrahedron`, `octahedron`,
+`icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after
+its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf`
+(`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape.
 
-The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
-(`field_preset_extents`), so it keeps the number of measurements small: the widest
-column count and tallest row count are found by galloping from a linear estimate (sizes at 1 and
-3), then the columns are walked from the widest down, each column's row count starting from the
+**Smoothing (GitHub issue #957).** With `Smoothing` on, a Default-mode preset loses its terminal cells
+(see Primitive tools), so the field the editor shows is smaller than the full shape. The dialog sends
+`smooth` (`smoothPrimitives`, part of the input and so of the cache key) and core sizes the shape
+without those cells: `field_print_sizing` and `field_preset_extents` measure the shape through
+`maze_core::space::normalize_cells` (`smooth_preset_cells`), built in full rather than around its
+extremes, since a cell's neighbors decide whether it stays. A box, polyhedron, cylinder or torus is
+built from exact cells and is not smoothed (`preset_requires_exact_cells`, as `requiresExactCells`).
+
+The rectangular search measures candidate blocks (the extent of the cell boundaries, as
+`field_preset_extents`), keeping the number of measurements small: the widest column count and
+tallest row count are found by galloping from a linear estimate (sizes at the smallest block and two
+further), then the columns are walked from the widest down, each column's row count starting from the
 previous one. The walk stops once `cols * maxRows` cannot beat the best cell count; the most cells
 win, then the fullest sheet. The result is exact (checked against a full scan for every
 non-axis-aligned kind). It relies on bounds never shrinking as columns or rows grow. The search starts
-from the smallest block core accepts (3.12.12 refuses a single row), found by probing up to four
-columns/rows. Answers are cached by
+from the smallest block core accepts (3.12.12 refuses a single row, a trihexagonal triangle needs a
+side of 3), found by probing up to four columns/rows. A size core refuses to build (too large) measures
+as not fitting, so a size found is always one the field can have: the largest field is bounded by core's
+candidate limit (`MAX_REGION_CANDIDATES`, the bounding box of the shape), also when it is measured
+through the extent focus (`Specs/space.md`). The search is also capped (1000 per side of a
+rectangle, 500 for a radial size). Answers are cached by
 tessellation, orientation, shape kind and print input (not by the current size), so floors of one
 shape kind are calculated once; each caller receives its own copy. Invalid input or a cell too large for the printable area
 disables confirmation.
 
+**Worker calculation (GitHub issue #949).** The dialog never calls core on the main thread: the field
+size search and the cell size measurement (#948) are one request to the print sizing worker
+(`wasm/printSizingWorker.ts`, a `WorkerPool` in `workerClients.ts`, `startPrintSizing`), whose body is
+`computePrintSizing` (`pixi/printSizingJob.ts`): the size of the current shape and of every standard
+floor, plus the cells measured for all floors together. The dialog opens at once. An
+indeterminate progress bar (no text, `aria-label` "Calculating the field size…") appears in a slot of
+its own above the cell sizes only if a calculation is still running after the delay of `useDelayedIndicator` (200 ms), and
+once shown stays for its minimum duration (750 ms), as the Generate button's spinner does (GitHub issue
+#960, `Specs/generation.md`). The slot keeps its height when the bar is hidden. Until it shows, the results of the previous calculation stay on screen; once it shows, every number (cell sizes, floor dimensions and counts, totals, the result lines) is replaced by a pulsing bar (`ValueSkeleton`) and the warnings wait, while the labels and units of the numbers ("Side … mm", "Diameter … mm", "Field size: … cells", "Cell count: …", "Total: …"), type names and floor titles stay (`withValueNode` in `components/dialogs/valueSlot.tsx` puts the bar or `—` into the message formatted with `VALUE_SLOT`, at every occurrence of the slot). Confirm follows only the current answer, never the stale one.
+
+**Stable layout (GitHub issue #961).** The dialog is centered, so any change of its height moves its
+top edge. The results block therefore has the same rows before, during and after a calculation: before the
+first answer (and after a failed one) the numbers are `—`. What is known on opening gives the rows: one row
+per floor, one row per cell type of the tessellation (`tessellation_cell_types` called with no cells, so
+it is cheap and runs on the main thread; it may list a type the field does not contain, and the answer then
+has fewer rows; while a calculation runs, the rows of the answer on screen stay; a single type is one row,
+and no row at all when the types cannot be read), and the explanation at once when the same call reports `cells_vary_in_size`, core's
+`Tessellation::cells_vary_in_size` (Voronoi, radial): the web side keeps no list of such tessellations. Only the error and the warnings
+(search limit, small side) appear after a calculation and change the height; they get no reserved space.
+
+Any change of the request (paper, margins, cell size, floors)
+cancels the running job and starts a new one; closing the dialog cancels the running job. A cancelled job
+terminates its worker (a synchronous wasm call cannot be interrupted), and the pool starts a fresh one.
+Confirming takes the answer on screen; if a typed cell size is not calculated yet it is calculated by
+its own job first; confirming again while that job runs does nothing, so the result is applied once. An unsuccessful end is explained: a failed worker shows its message; no size shows
+why (unreadable input, margins that leave no printable area, a cell too large for the sheet); a result
+sitting on the search cap (1000 per side of a non-axis-aligned rectangle, 500 for a radial size)
+shows a warning; core reports the cap in the answer (`limit`, `null` when the size is not on a cap), so
+the web side does not repeat the constants that the sheet may hold a larger field.
+
+The cell size input commits on blur, on Enter, or once typing has paused for a second (`CELL_SIZE_IDLE_MS`;
+only a value that already reads as a size of at least the minimum, so a half-typed `1` is left to the blur),
+not on every keystroke, and has a minimum of 3 mm (in minimum side mode, the side that matches that cell size). Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+does not confirm the dialog.
+
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
 its paper format, custom dimensions, orientation, and margins are initialized from the current
-print settings. When `print.scaleAutoFit` is enabled, the cell measure starts at 10 mm; otherwise it
-is derived from `print.scale` and the selected print DPI. On
-confirmation, those values are written back to the print settings, with the requested cell measure
-converted back to `print.scale` using the selected tessellation's geometry and `scaleAutoFit`
-disabled so the panel's automatic-fit effect does not immediately replace the user's physical
-size. The print panel's reported physical cell size uses the same geometry-aware conversion.
+print settings; the size field always starts at a minimum side of 8 mm instead of the size of
+`print.scale`. On confirmation, those values are written back to the print settings, with the requested cell
+measure converted back to `print.scale` using the selected tessellation's geometry. The print
+panel's reported physical cell size uses the same geometry-aware conversion.
 
 When multiple floors exist, the dialog also offers **Apply to all floors with standard shape**, enabled
 by default. The result section lists floors from top to bottom while numbering them with the same
@@ -147,9 +221,39 @@ and cell count (for example, `Rectangle | 11 × 11 | 121 cells`). Custom-mode fl
 their cell count. A total cell count is shown below the rows. With one floor, the result shows
 the calculated field dimensions only.
 
-Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
-enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
-physical size was tied to the old tessellation geometry.
+**Cell sizes (GitHub issue #948).** Below the cell size input, set off by a divider and before the
+result, the dialog lists the side length (several, longest first and separated by `/`, for a cell with
+unequal sides) and the diameter of every cell type of the tessellation that occurs in the calculated
+fields, in millimeters with one decimal for the entered size. The diameter is that of the circle centered at the
+cell's center (its centroid) through its farthest vertex, which for a cyclic polygon is the circumcircle. Mixed tessellations (3.3.3.3.6, 3.6.3.6) therefore show the real size of each
+polygon, whatever the entered measure (a side or a diameter) means for the tessellation. With several
+types the sizes form a headerless table (type, side, diameter) whose cells carry their own prefix
+(`Side 5.0 mm`, `Diameter 7.1 mm`); a single type is a table of one row, named by its polygon (`Square`,
+`Hexagon`, `Triangle`, `Pentagon` (Cairo) for the uniform tilings; `Cell` for the rest). The
+cell counts are not in this section: the total of the result (a single floor's cell count or the
+multi-floor total) is followed by the count of each type in parentheses when the field has several
+types, e.g. `Total: 1000 cells (Triangle 600, Square 300, Dodecagon 100)`; counts are summed over all
+floors, custom-mode floors included. The section is rendered by `CellSizesSection` (`components/dialogs/CellSizesSection.tsx`). Sides and diameter are led by the lucide icons `MoveHorizontal` and `Circle` instead of the words, to fit the narrow PNG print settings panel (GitHub issue #1006); the full wording ("Side 8.0 mm", "Diameter 11.3 mm") is the tooltip and the accessible name. The dialog (`dialogSize.printSizing`, 440–720px) has no fixed width: it is as wide as its data (inputs, tables) plus 30px (15px per side), and running text (warnings, the irregular-cells explanation) is `contain: inline-size`, so it wraps to that width instead of widening the dialog. The small-side warning bubble is `SmallSideWarning` (same file), shared with the PNG print settings, and the cell type keys come from the shared `useTessellationCellTypes` hook. The numbers are measured by core from the real cell geometry
+(`field_cell_sizes`, `maze-runner` `cell_sizes`). A preset floor is sent as its preset name and
+params, which core builds itself, so its cells never cross the wasm boundary; floors of one shape are
+sent once with their number (`times`) and measured once; only the cells of a custom-mode floor are
+sent, and they go from JS to wasm only. Nothing in this dialog gets a list of cells back from wasm:
+core answers with numbers (`CellSizesReport`: the per-type count, sides and diameter, and the cell count
+of each preset), and the dialog takes every floor's cell count and the totals from that answer, never
+from `configAllCells`. Core's answer is cached by tessellation and sources (it does not depend on the entered size), so
+editing the size back and forth does not measure the cells again. Core classifies the cells with
+`Tessellation::cell_type_of` and returns lengths in world units, which `printCellSizes.ts` scales by the
+millimeters per world unit (`cellSizeMm / cellMeasurePx * pixelsPerUnit`). A type whose cells differ in
+size or shape (Voronoi, the rings of a radial field) is irregular. When any type is, the section has no title, table or type rows: below the divider
+it is one explanation in the regular body font, saying that the entered size is the average cell size, the
+circumscribed circle diameter of the regular hexagon the cells are displaced from. A radial field has its own explanation: its cells are ring sectors and the entered size is the
+thickness of a ring. A failing core call leaves the section out (the error is logged and not cached)
+and the per-floor counts of preset floors at 0.
+
+A cell type whose shortest side is under 5 mm (`MIN_COMFORTABLE_CELL_SIDE_MM`, judged on the entered
+size, an irregular type is not judged) is flagged twice: its side value (not the whole row) turns orange
+with a warning icon beside it, and one warning bubble listing every such type with its side closes the
+dialog, set apart from the result by a larger gap, above the buttons. Warnings do not block confirmation.
 
 ### Paper layout in custom mode (GitHub issue #641)
 
@@ -161,8 +265,7 @@ overlay, while remaining in the editor's world coordinate system. It is centered
 origin and follows the editor viewport's pan/zoom. Its paper
 size, orientation, margins, and cell measure are read from the shared `pngExportSettings.print`
 configuration, so changing the layout in this dialog changes the print calculator and PNG Print
-settings as well. With automatic print scale enabled, the guide uses a 10 mm cell measure until
-the user confirms a physical size. The guide is hidden outside custom mode and is not part of the
+settings as well. The cell measure is derived from `print.scale` and the print DPI. The guide is hidden outside custom mode and is not part of the
 generated field or export image.
 
 ### Background image print fitting (GitHub issue #675)
@@ -182,7 +285,8 @@ When the field editor is open in custom mode, the background-image settings pane
 **Auto-fill field** section. The section is not shown in other editors or for predefined fields.
 It contains a background detection mode (transparent pixels or a selected RGB color), the selected
 background color, and a threshold describing the required share of non-background pixels inside a
-cell. When the selected-color mode is entered, its default color is read from the source image's
+cell. The threshold is displayed and edited as a 0.0%-100.0% percentage, while the calculation
+continues to receive its 0.0-1.0 fractional value. When the selected-color mode is entered, its default color is read from the source image's
 top-left pixel. This inferred color is refreshed only when the detection mode changes; changing
 the threshold or manually editing the color does not replace it. The calculation uses the current
 grid geometry and the underlay's current crop, scale, and position, classifying the pixels covered
@@ -220,7 +324,7 @@ image sizing; it does not add cells, change the custom field, or alter any gener
 
 ## Default shape per kind
 
-When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
+When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape. `confirmTessellation` with an unchanged tessellation (same kind, params, hex and triangle orientations) is a no-op for the fields: every floor keeps its field config as is (GitHub issue #881). Any change of the settings (kind, params, or the orientation of the slot the kind uses; `sameTessellationSettings`) gets the same warning (`selectTessellationWouldLoseData`) and the same full reset, presets included (GitHub issue #925). `params` are compared by `tessellationFingerprint` (key order does not matter). Cancelling the warning restores the preview to the confirmed settings (`syncPreviewToConfirmed`).
 
 | Kind | Default shape |
 |---|---|
@@ -252,18 +356,21 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
 | `floorFields[floorId].fieldOperation` | Active primitive operation: `"add"`, `"remove"`, or `"select"`, per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"` \| `"magic_wand"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"mirror"` \| `"magic_wand"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
 | `floorFields[floorId].selectedShape` | The preset shape chosen for that floor (a core preset key); applies in default mode and is remembered while a custom field is edited |
 | `floorFields[floorId].fieldConfig` | That floor's current `FieldConfig`; a preset shape in default mode, `custom` shape in free-draw mode |
 | `floorFields[floorId].savedShapes` | That floor's saved size params per preset shape, restored on shape/mode switch |
-| `fieldOpError` | The last refused symmetry preview/apply (`{kind, message?}`), shown in the symmetry panel status; cleared when the preview succeeds |
+| `floorTopology[floorId]` | That floor's fold groups (GitHub issue #839, `Specs/topology.md`, "Web authoring"); edited in the `TopologyPanel` side panel (opened from a button in the custom-field card; `GlueEditorPanel` adds a glue), kept across field edits (activity recomputed), discarded with the maze whenever its active folds change; a floor's glues are dropped when it leaves custom editing for a standard shape (`setFieldEditMode("default")`, a standard config via `setFieldConfig*`, or a standard field copied onto it), copied with "Copy floor" / "Copy field to other floors" (see `Specs/floors.md`) |
+| `floorCreases[floorId]` | That floor's topological crease lines (GitHub issue #898, `Specs/topology.md`, "Creases"): free segments in world units, edited in the "Creases" mode of the `TopologyPanel`, never part of generation (editing them keeps the maze), cleared by a tessellation change, saved in the project file; a floor on a standard shape holds exactly the creases that shape defines (the `box` and polyhedron nets in net mode), set and dropped together with its topology |
+| `smoothInverted` | Transient: true while the smoothing hotkey (`S`) is held in the custom editor. Primitives are drawn with `smoothPrimitives` inverted, and the toolbar switch shows the inverted state; the persistent `smoothPrimitives` is not changed. Reset on key release, window blur, controller destroy and project load |
+| `fieldOpError` | The last refused mirror preview/apply (`{kind, message?}`), shown in the mirror panel status; cleared when the preview succeeds |
 
 `fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.
 
-A new floor (`addFloor`) starts as a copy of the floor it's stacked on top of — the current topmost floor's own `FloorFieldConfig` at the moment the new floor is created (`floors[floors.length - 1]`, not the *active* floor), not the kind's bare default shape — see `Specs/floors.md`'s `addFloor`. The Field Setup card also offers a manual "Copy floor" action (`copyFloorField`, `CopyFloorDialog.tsx`) — shown only when more than one floor exists — that replaces the active floor's `FloorFieldConfig` with a copy of any other floor's, picked from a list (current floor disabled/unselectable). Removing a floor drops its `floorFields` entry; `selectFloorRemovalLosesFieldData` (`mazeSelectors.ts`) warns when the removed floor's `fieldDirty` is set (see `Specs/floors.md`'s "Loss detection and confirmation"). A `tessellationKind` change (or a kind-changing `confirmTessellation`) rebuilds **every** floor's `FloorFieldConfig` from scratch, since kind/orientation are maze-wide and a stale per-floor config for the old kind would be meaningless.
+A new floor (`addFloor`) starts as a copy of the floor it's stacked on top of — the current topmost floor's own `FloorFieldConfig` at the moment the new floor is created (`floors[floors.length - 1]`, not the *active* floor), not the kind's bare default shape — see `Specs/floors.md`'s `addFloor`. The Field Setup card's "Floors" side panel (`FloorsPanel`, GitHub issue #1010) also offers a manual "Copy floor" action (`copyFloorField`, `CopyFloorDialog.tsx`) — shown only when more than one floor exists — that replaces the active floor's `FloorFieldConfig` with a copy of any other floor's, picked from a list of the other floors (the receiving floor is not listed, it is named in the dialog's text). The dialog's "Include topology" switch (on by default, GitHub issue #865) also replaces the active floor's `floorTopology` entry with the source's (removed when the source has none); with it off the entry is kept, except that a custom floor receiving a standard shape loses its glues. "Copy field to other floors" (`copyFloorFieldToFloors`) has the same switch, applied to every chosen floor. Removing a floor drops its `floorFields` entry; `selectFloorRemovalLosesFieldData` (`mazeSelectors.ts`) warns when the removed floor's `fieldDirty` is set (see `Specs/floors.md`'s "Loss detection and confirmation"). A `tessellationKind` change (or a kind-changing `confirmTessellation`) rebuilds **every** floor's `FloorFieldConfig` from scratch, since kind/orientation are maze-wide and a stale per-floor config for the old kind would be meaningless.
 
 Generation sends `GenerateConfig.level_fields: Vec<Vec<[i32,i32]>>` to core (GitHub issue #338) — one independent point-set per floor, built from every floor's own `FloorFieldConfig` in `floors` order (`buildGenerateConfig`'s `level_fields`, `generateConfigBuilder.ts`). There is no separate level-count field on the wire; the number of levels generated is `level_fields.length`. `tessellation` (kind/orientation) remains the single maze-wide value. Everything downstream of the initial field build (QC/repair/routing, post-edit, analytics) still only ever operates on floor 0 regardless — see `Specs/floors.md`'s Non-goals and GitHub issue #355.
 
@@ -310,6 +417,7 @@ shape variant.
 |---|---|---|
 | square `rect` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
 | square `circle` | cells with `x² + y² < r²` | naturally centered |
+| square `box` | `2 × (w·h + h·d + w·d)` | the bounding box of the faces (cross: `2d + 2w` by `h + 2d`; T: `2d + 2w` by `h + 2w`; one extra cell per neighbouring row and column by faces; compact: the tightest packing, faces four cells apart), centered like a rectangle: offset by `floor(width / 2)`, `floor(height / 2)` of that box |
 | square `triangle` | `side × (side + 1) / 2` | centered by its bounding box |
 | hex `triangle` | cells whose centers fit the configured triangle | naturally centered |
 | hex `rect` | `cols × rows` cells in a screen-aligned rectangle with alternating half-cell offsets | naturally centered |
@@ -318,6 +426,7 @@ shape variant.
 | hex `hexagon` | `3r² + 3r + 1` cells from the axial hex-distance rule | naturally centered on the origin cell |
 | tri `rect` | `(2 × cols) × rows` triangle cells; each configured column supplies the complete opposite-orientation pair | centered complete coordinate block |
 | tri `triangle` | `n²` | bbox center, parity-safe offset |
+| tri `tetrahedron` / `octahedron` / `icosahedron` | `4n²` / `8n²` / `20n²` | the bounding box of the faces, centered like a lattice shape: the shift keeps the parity of `col + row` (rows may be negative) |
 | tri `hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
 | tri `circle` | cells whose complete triangles lie within radius `r` | naturally centered, without isolated edge spikes |
 
@@ -326,8 +435,11 @@ shape variant.
 The Modes section above Tools controls the operation for every primitive. Add inserts the
 primitive's cells, Remove deletes them, and Select previews only the existing field cells without
 changing the field. In Add and Remove modes, the right mouse button performs the opposite
-operation; right mouse input is ignored in Select mode. The Symmetry tool remains visible
-but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
+operation; right mouse input is ignored in Select mode. The Mirror tool remains visible
+but is disabled in Select mode because it only adds or removes reflected cells. Entering Select
+mode from another mode resets the active tool to Rectangle and clears any pending Mirror
+axis/polygon state; re-selecting Select while it is already active keeps the current tool. Paste
+also enters Select mode but keeps the current tool (Rectangle if it was Mirror). The polygon tool is a single tool;
 its operation also comes from the active mode.
 
 Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`.
@@ -366,9 +478,9 @@ candidate set is collapsed to existing field cells and replaced by a filled cont
 the field is not changed and the selection remains visible until another gesture, tool, mode, or
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
-The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
-The tool works with square, hexagonal, triangular, and Cairo tessellations and does not apply
-primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion considers only the valid
+The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Mirror uses `M`. Holding `S` inverts the smoothing setting for the shape being drawn: the preview re-renders at once and the committed cells match it, while the persistent toolbar setting stays unchanged. The hold is dropped when the key is released or the window loses focus.
+The tool works with square, hexagonal, triangular, and Cairo tessellations and normalizes its
+cells with the shared `normalizeCells` routine like every other tool. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.
 
 In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
@@ -387,7 +499,7 @@ While a point selection already exists, holding Shift and dragging creates anoth
 unioned with the current selection; only filled cells are retained when that zone is released. The
 selected-cell hover highlight is hidden while the persistent selection is active. During a move,
 the source cells are hidden and only the temporary translated cells are shown; pointerup restores
-the source until confirmation. The symmetry polygon uses the same white dashed outline and vertex
+the source until confirmation. The mirror polygon uses the same white dashed outline and vertex
 markers.
 
 ### Shape primitives
@@ -397,9 +509,10 @@ markers.
 | `rectangle` | all | rectangular drag area |
 | `circle` | all | ellipse fitted to the drag area, or symmetric ellipse with Shift |
 | `triangle` | all | right triangle formed by the drag rectangle's diagonal, or centered directional triangle with Shift |
-| `equilateral_triangle` | all | equilateral triangle fitted to the drag frame and oriented with the triangle tessellation; on a triangular tessellation its apex softly snaps to one of six normals of the three edge families |
-| `hexagon` | all | hexagon fitted to the drag area in the orientation opposite to the tessellation, or centered hexagon with Shift |
-| `parallelogram` | all | world-space parallelogram fitted to the drag area, with a fixed hex-grid axis angle and the drag start on a frame vertex |
+| `equilateral_triangle` | all | directed drag, see "Directed equilateral shapes" below |
+| `hexagon` | all | directed drag, see "Directed equilateral shapes" below |
+
+`parallelogram` is not a drag primitive; it is built from three clicks (see below).
 
 Without Shift, shapes use `startGrid` and `endGrid` as the shared normalized drag frame. The frame
 is at least one cell wide and high, and the shape is centered in it; the circle is an ellipse when
@@ -425,8 +538,48 @@ Zoom-dependent by design: same pixel drag → same number of cells regardless of
 
 With Ctrl held, the frame's width and height are constrained to the same value. Ctrl therefore
 restores square proportions; Shift+Ctrl makes that square grow symmetrically from the start cell.
-For `parallelogram`, Ctrl uses a primitive-specific constraint instead: the frame is adjusted so
-the parallelogram's adjacent sides are equal while its axis angle remains fixed.
+
+### Directed equilateral shapes
+
+`equilateral_triangle` and `hexagon` do not use the shared drag frame above, and Ctrl has no effect
+on them. Both are measured in world coordinates from the drag start to the pointer, and the
+pointer direction softly snaps (within 6°) to the lattice directions (`equilateralSnap` of the
+tessellation, turned by the display orientation) or stays free otherwise. With no pointer movement
+the triangle points up, and the hexagon uses the orientation of a hexagon of cells.
+
+| Primitive | Without Shift | With Shift |
+|---|---|---|
+| `equilateral_triangle` | the start is the center of the base, the pointer is the apex | the start is the centroid, the pointer is the apex |
+| `hexagon` | the start and the pointer are opposite vertices, so the shape grows to one side | the start is the center, the pointer is a vertex |
+
+The minimum size is one cell (triangle height, hexagon diameter or circumradius respectively).
+Cells are selected by their center.
+
+### Parallelogram tool (GitHub issue #867)
+
+The tool is click-based and works on every tessellation. Click 1 and click 2 define the base
+edge; the third click defines the second side (and thus the angle) and commits. The fourth vertex
+is derived: `a, b, b + s, a + s` with `s` running from `a` to the pointer. The preview follows the
+cursor after each click; Enter commits the current preview, Escape cancels, and switching tool or
+card discards pending points. Cells are the ones whose centers lie inside the outline, normalized
+like every other tool (`normalizeCells`). Select mode shows the dashed outline.
+
+Edge alignment is on by default. `tessellationEdgeDirections` (`pixi/parallelogramGeometry.ts`)
+collects the distinct edge directions of the tessellation's cells (sampled over a 4×4 cell
+block, so Cairo's orientation classes are covered). The base end snaps to the nearest direction
+within 12°, and the second side snaps to the nearest direction other than the base's. Shift
+disables snapping and uses exact pointer positions. Tessellations with more than 12 distinct edge
+directions (curved or irregular ones such as radial or voronoi) have no usable axes, so the angle
+stays free there. Without Shift the clicked points are cell centers. Ctrl makes the second side as long as the base. Degenerate (zero-area) results are
+ignored.
+
+The mouse button of the first click fixes the operation for the whole shape: later clicks of
+either button only place points, so a right-click on the third point of an Add parallelogram still
+adds. The outline is drawn closed with every side in the same style (solid; dashed in Select
+mode). A press-drag-release also works: the press places the first point and the release, if the
+pointer moved at least 3px, places the second. While the base is being dragged, the preview is a
+solid two-point line with both ends marked. The parallelogram reports its size in the status bar
+like the other shape primitives (`Parallelogram: W×H (N)`).
 
 ### Preview overlay
 
@@ -440,14 +593,44 @@ committed cells. Hover highlighting is hidden for the duration of a drag so it c
 primitive preview. Control strokes (solid and dashed frames, including vertex outlines) keep a
 minimum 1.25px screen-space thickness at every zoom level.
 
-Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
-one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
+Every tool normalizes its result with one routine (`normalizeCells`): it removes cells that have
+no edge-adjacent neighbor and, with `Smoothing` enabled, one-edge terminal cells, repeating until no
+cell changes so removing one spike cannot leave a new one. A one-cell-thick strip is peeled from
+its free end down to the anchors (or to nothing), leaving no stubs. A shape of fewer than four cells
+is judged once on the input and is not smoothed. A Default-mode preset that smoothing would remove
+entirely (a one-cell-thick strip) is kept as chosen. When adding, cells already in the field
+count as neighbors but are never removed. For remove and select no existing cells are used: only
+the shape's own cells are normalized, and the result is then intersected with the field, so
+smoothing matches the outline the user sees. Default-mode tessellation normalization has no
+existing cells and runs without anchors.
+The rule also exists in core (`maze_core::space::normalize_cells`), which applies it to preset shapes
+for print sizing. The two implementations are kept equal by `fieldPrintSizing.test.ts` (core's measured
+extent against the extent of the cells `configAllCells` returns, for every tessellation and preset
+shape) and by `normalize` unit tests in core.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
 cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
-updates the displayed field and resets generation and post-edit results.
+updates the displayed field and resets generation and post-edit results. In Default mode the Smoothing toggle sits above "Calculate for print". Its info dialog is one text for both modes, but the line about holding `S` is shown only in Custom mode (the tooltip's hold hint likewise): the hotkey works only in the custom field editor.
+
+When smoothing excludes cells from a shape preview, the excluded cells remain visible with a
+noticeably dimmer fill than the cells that will be applied. After an Add shape is placed, the
+editor shows one informational toast the first time enabled smoothing excludes only part of a
+shape; it does not repeat until the persistent Smoothing switch has been turned off and on again.
+Holding `S` to invert smoothing does not reset that state. If smoothing leaves an Add shape with no
+new cells, the editor shows a warning toast instead.
 
 Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
 RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
+
+### Size readout (GitHub issue #863)
+
+The status bar (`HoverInfoPanel`) shows `Selection: W×H (N)` for the current selection preview
+(including the in-progress point selection and a pending move) and `<Shape name>: W×H (N)` (e.g. `Rectangle: 3×2 (6)`, localized primitive name) while a shape
+primitive or polygon is being built. `W`/`H` are the inclusive spans of the distinct grid x / y values of
+the cells and `N` is the cell count, so on non-square tessellations they are index spans, not
+geometric extents. `FieldEditController` computes it with `measureCells` (`pixi/fieldSizeReadout.ts`)
+and reports changes through `onSizeReadout` -> `MazeScene.setFieldSizeListener`. The polygon
+reports the cells inside its preview outline, including the cursor vertex. Any primitive
+preview clear resets both values; showing a selection resets the shape value.
 
 ### Gesture cancellation
 
@@ -474,6 +657,41 @@ leaves it, keeps the last valid preview, so the selection snaps between valid po
 other refusal does the same. The drag only
 starts when `translate` is offered. `moveFieldPoints` translates the selected cells through core
 and replaces them in the field; a refusal leaves the field unchanged.
+
+### Copy and Paste (GitHub issue #880)
+
+Custom mode has two clipboard tools at the end of the primitive tools row, with the shortcuts Ctrl/Cmd+C and
+Ctrl/Cmd+V. The shortcuts work only while the field setup card is open in custom mode, are ignored
+while a text input has focus and during the background auto-fill preview.
+
+**Copy** stores the selected cells as they are on screen, including an uncommitted pending move, in
+the in-memory clipboard (`fieldClipboard` in the store). It is disabled while nothing is selected
+(`fieldHasSelection`), with a tooltip saying so; the shortcut with no selection shows the
+`field_edit.nothing_selected` notice.
+
+**Paste** is disabled while the clipboard is empty; the shortcut then shows `field_edit.nothing_copied`.
+It never commits to the field directly. It aborts every unfinished tool process (polygon,
+half-placed parallelogram, mirror axis/polygon, topology pick, shape drag), commits an existing
+pending selection move, switches the operation to Select and shows the clipboard as a pending
+selection move (`FieldEditController.pasteMode`). The top-left copied cell (closest to the top-left
+corner of the cells' bounds) is placed under the cursor, or at the center of the canvas when the
+cursor is outside it (for example when pasting from the toolbar). When that exact offset is not a
+translation symmetry of the tessellation, the nearest cell within two cells that is one is used.
+The pasted cells can be dragged like any selection; Enter, Space, a click outside, or switching the
+tool or mode commits them with `addFieldPoints` (so the usual edit confirmation applies); Escape
+cancels the whole paste. Delete during a paste cancels it instead of removing field cells.
+
+Both tools are disabled when the tessellation offers no `translate` operation, with a tooltip
+explaining it (the shortcuts show the `field_edit.clipboard_unavailable` notice); this reason wins over the empty-clipboard and no-selection reasons
+(`fieldClipboardBlock`, `pixi/fieldClipboard.ts`).
+
+The clipboard survives floor switches while the tessellation stays the same. It is cleared when the
+confirmed tessellation kind, params or orientation change (`fieldClipboardSync.ts`) and when a
+project is loaded. Cut and other clipboard formats are out of scope.
+
+Releasing the pointer on a Copy or Paste button does not confirm the selection the way a release
+outside the canvas normally does (`data-preserves-field-selection`), because the button reads the
+selection on `click`, after the pointer release.
 
 ## Grid overlay
 
@@ -555,11 +773,11 @@ Square/hex: rectangular row/column lookup.
 
 Triangle: nearest-centroid among `col0-1, col0, col0+1` candidates. Each centroid position depends on parity:
 
-## Symmetry tool (GitHub issue #654)
+## Mirror tool (GitHub issue #654)
 
-Custom mode includes a Symmetry tool. It collects two snapped or free points for an infinite
-symmetry axis, previews the reflected cells, and changes the field only when the user confirms.
-The right-side symmetry panel uses toggle buttons for Cell centers/Cell corners/Free snapping and
+Custom mode includes a Mirror tool. It collects two snapped or free points for an infinite
+mirror axis, previews the reflected cells, and changes the field only when the user confirms.
+The right-side mirror panel uses toggle buttons for Cell centers/Cell corners/Free snapping and
 Everything/One side/Polygon processing. One side is the default scope. Add/remove is selected in
 the field editor's Modes section.
 Only active cells are used as the source.
@@ -576,10 +794,10 @@ Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
 screen-space thickness at every zoom level. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes
-an unfinished polygon; when the symmetry status is ready, Enter confirms the operation. The
+an unfinished polygon; when the mirror status is ready, Enter confirms the operation. The
 operation applies the selected scope to the active cells in the current custom field, then merges
-or removes the reflected cells according to the active field-editor mode. After confirmation, the symmetry geometry is cleared and the normal
-point tool is restored; the symmetry settings remain unchanged.
+or removes the reflected cells according to the active field-editor mode. After confirmation, the mirror geometry is cleared and the normal
+point tool is restored; the mirror settings remain unchanged.
 
 The reflected cells come from core's `field_reflect_cells` (GitHub issue #762); the axis is passed
 in core world space. Core accepts only axes that are true reflection symmetries of the tessellation.
@@ -589,7 +807,7 @@ A free axis that is not one is not applied: the preview shows no mirrored cells 
 
 ### Field operation errors
 
-The symmetry panel keeps the Apply button with the other action buttons; below them is the status
+The mirror panel keeps the Apply button with the other action buttons; below them is the status
 area, which shows at most one bubble. A ready configuration shows nothing. When the user still has
 to act (build the axis, build or finish the polygon) it shows an info bubble. A refusal of core's
 reflection (`FieldOpError`: `unavailable`, `not_a_symmetry`, `outside_tessellation`) shows a warning bubble with the message (strings `field.op_error.*`), says

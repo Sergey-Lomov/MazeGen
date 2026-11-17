@@ -231,6 +231,12 @@ impl<T: Tessellation> Stage<T> {
             if failed.contains(rule.id()) {
                 continue;
             }
+            // GitHub issue #976: a strategy/check that bailed out on the deadline looks like a
+            // plain `Failed`/no-issue result, so report progress to keep `run_repair` from
+            // returning `Done` — its next `budget.exhausted` check then yields `TimeBudget`.
+            if crate::deadline::expired() {
+                return true;
+            }
             let version_before = maze.graph.version();
             let mut rule_scope = event_log
                 .as_mut()
@@ -274,7 +280,7 @@ impl<T: Tessellation> Stage<T> {
                 failed.clear();
             }
         }
-        found_any
+        found_any || crate::deadline::expired()
     }
 }
 

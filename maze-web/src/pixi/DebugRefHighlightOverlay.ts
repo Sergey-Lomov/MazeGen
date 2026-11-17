@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { seamHopSlots, seamStubHighlights, type SeamHopContext } from "./graphSeams";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
@@ -37,6 +38,8 @@ export interface DebugRefHighlightData {
    *  Analytics' `IssueHighlightOverlay` uses, so an `issue`-kind ref's wall highlight matches its
    *  span exactly. When omitted, a boundary highlight uses the full cell-to-cell distance. */
   oneWayBoundaryWidth?: number;
+  /** Seam hop context (GitHub issue #841): an edge or cycle ref across a glue breaks at its contour. */
+  seam?: SeamHopContext;
 }
 
 /** Directed endpoint pairs represented by an edge/cycle debug ref. A bidirectional edge bubble
@@ -94,7 +97,7 @@ export class DebugRefHighlightOverlay {
   }
 
   render(data: DebugRefHighlightData): void {
-    const { nodes, allNodes, edges, ref, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, oneWayBoundaryWidth } = data;
+    const { nodes, allNodes, edges, ref, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, oneWayBoundaryWidth, seam } = data;
     this.crossFloorEdgesContainer.removeChildren().forEach((child) => child.destroy());
     this.crossFloorNodesContainer.removeChildren().forEach((child) => child.destroy());
     this.wallContainer.removeChildren().forEach((child) => child.destroy());
@@ -129,14 +132,14 @@ export class DebugRefHighlightOverlay {
 
     switch (ref.kind) {
       case "edge": {
-        const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, [ref.bidirectional]);
+        const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, seam, [ref.bidirectional]);
         this.edgeRenderer.render(highlights);
         renderCrossFloorRef(ref, canvas.debug.refHighlight);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         break;
       }
       case "cycle": {
-        const highlights = this.edgeHighlightsFor(ref.edges, posOf);
+        const highlights = this.edgeHighlightsFor(ref.edges, posOf, seam);
         this.edgeRenderer.render(highlights);
         renderCrossFloorRef(ref, canvas.debug.refHighlight);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
@@ -187,7 +190,7 @@ export class DebugRefHighlightOverlay {
           const lineEdges = splitWallAndLineEdges(wallG, wallEdges, cellOf, cfg, canvas.debug.issueHighlight, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset())
             .map(({ from, to }) => [from, to] as [bigint, bigint]);
           this.wallContainer.addChild(wallG);
-          const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
+          const highlights = this.edgeHighlightsFor(lineEdges, posOf, seam, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render(highlights);
           renderCrossFloorRef(ref, canvas.debug.issueHighlight);
         }
@@ -221,6 +224,7 @@ export class DebugRefHighlightOverlay {
   private edgeHighlightsFor(
     edges: [bigint, bigint][],
     posOf: (id: bigint) => Pos | undefined,
+    seam: SeamHopContext | undefined,
     bidirectional?: (boolean | undefined)[],
     color: number = canvas.debug.refHighlight,
   ): NodeEdgeHighlight[] {
@@ -229,11 +233,14 @@ export class DebugRefHighlightOverlay {
       const a = posOf(from);
       const b = posOf(to);
       if (!a || !b) return;
-      highlights.push({
+      const line: NodeEdgeHighlight = {
         from: a, to: b,
         color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, nodeRadius: NODE_RADIUS,
         bidirectional: bidirectional?.[i],
-      });
+      };
+      // A hop across a glue breaks at the glue's contour: two stubs, not a line across the whole field.
+      const slots = seam ? seamHopSlots(Number(from), Number(to), seam) : null;
+      highlights.push(...seamStubHighlights(line, slots));
     });
     return highlights;
   }

@@ -27,6 +27,7 @@ import { PresetEntityPickDialog } from "../dialogs/PresetEntityPickDialog";
 import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSettingsDialog";
 import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
+import { bringSidePanelToFront } from "../SidePanel";
 import * as m from "~/paraglide/messages";
 import { presetToolShortcut } from "../../pixi/toolShortcuts";
 
@@ -117,6 +118,9 @@ export function PresetConnectionsFeature() {
   const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
   const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
   const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
+  const presetEditConfirmation = useMazeStore((s) => s.presetEditConfirmation);
+  const confirmPresetEdit = useMazeStore((s) => s.confirmPresetEdit);
+  const cancelPresetEdit = useMazeStore((s) => s.cancelPresetEdit);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -309,13 +313,24 @@ export function PresetConnectionsFeature() {
         <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
       )}
 
+      {presetEditConfirmation !== null && (
+        <ConfirmModal
+          message={m["preset.reset_generation_warning"]()}
+          onConfirm={confirmPresetEdit}
+          onCancel={cancelPresetEdit}
+        />
+      )}
+
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>
         <Stack gap="itemGap">
           <Button
             variant={presetListOpen ? "toggle-selected" : "toggle"}
             layoutStyle={{ width: "100%" }}
-            onClick={() => setPresetListOpen(!presetListOpen)}
+            onClick={() => {
+              bringSidePanelToFront("preset-list");
+              setPresetListOpen(true);
+            }}
           >
             {m["preset.list_tool"]()}
           </Button>

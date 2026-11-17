@@ -268,7 +268,7 @@ fn add_new_branch_failure_falls_back_to_reuse() {
     let (mut maze, levels) = maze_with_one_elevator_spanning_first_three_floors(4, 3);
     let survivor_point = SquarePoint { x: 0, y: 0 };
     let mut preset_state = PresetState::empty();
-    for level in maze.field.levels_ordered().collect::<Vec<_>>() {
+    for level in maze.field.levels_ordered() {
         for node in maze
             .field
             .field_of(level)

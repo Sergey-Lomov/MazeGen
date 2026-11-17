@@ -82,6 +82,12 @@ pub struct ComputeAnalyticsConfig {
     /// `level_fields.len()`; every `NodeDto.level`/split-point `level` indexes into this. Required
     /// (no `#[serde(default)]`) — every caller as of this issue sends it, one entry per floor.
     pub level_fields: Vec<Vec<[i32; 2]>>,
+    /// Each floor's own topology (GitHub issue #836), in `level_fields` order — mirrors
+    /// `GenerateConfig.topology`. A missing or `null` entry means no folds on that floor.
+    /// `#[serde(default)]` so callers predating this field still deserialize.
+    #[serde(default)]
+    #[dto(ts_type = "(WireTopology | null)[]")]
+    pub topology: Vec<Option<maze_runner::topology_wire::TopologyDto>>,
     /// The client's authoritative node list (real ids from the previous generation/confirm) —
     /// `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_cells`) instead of
     /// re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a

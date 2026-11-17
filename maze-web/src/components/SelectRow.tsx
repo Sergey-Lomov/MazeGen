@@ -15,14 +15,15 @@ export function SelectRow<T extends string>({
   info,
   resetButton,
   selectStyle,
+  testId,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   disabled?: boolean;
-  /** Opens an info popup for this row — renders a small clickable "ℹ" after the select, before
-   *  `resetButton`. */
+  /** Opens an info popup for this row — renders a small clickable "ℹ" immediately before the
+   *  select. */
   info?: () => void;
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
    *  label stays `flex: 1`, so this never shrinks it. */
@@ -31,22 +32,28 @@ export function SelectRow<T extends string>({
    *  to match a sibling control's height exactly (e.g. `ModifierStepDialog`'s op select next to
    *  its value `NumberInput`, GitHub issue #645 follow-up) rather than `selectSm`'s own sizing. */
   selectStyle?: React.CSSProperties;
+  testId?: string;
 }) {
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+      {info && <InfoIconButton onClick={info} />}
       <select
         name={label}
+        data-testid={testId}
         style={{ ...sharedStyles.selectSm, ...selectStyle }}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as T)}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
+          // A disabled option may still be the current persisted value (e.g. print anchor
+          // "Custom"). Native selects render that selected disabled option in a low-contrast
+          // disabled style, so keep the current value readable while it remains unavailable as a
+          // new choice from every other state.
+          <option key={o.value} value={o.value} disabled={o.disabled && o.value !== value}>{o.label}</option>
         ))}
       </select>
-      {info && <InfoIconButton onClick={info} />}
       {resetButton}
     </Inline>
   );

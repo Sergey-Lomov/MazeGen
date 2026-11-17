@@ -43,7 +43,8 @@ instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` 
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
 (`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
 `floor_aware_distance`) take the instance as their first argument; consumers resolve it from
-the field (`maze.field.tessellation()`).
+the field (`maze.field.tessellation()`). `edge_position` takes the `Field` instead, since it must
+see folds.
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
 "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "snub_square" | "rhombitrihexagonal" | "truncated_hexagonal" | "truncated_trihexagonal" | "elongated_triangular" | "curved_quadrilateral" | "radial", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
@@ -61,7 +62,11 @@ decodes them with `CellCodec::decode_valid(&tessellation, points)`, which return
 `Err("invalid cell [x, y]")` for the first point that is not a cell. This covers the per-point
 queries (`tessellation_shapes`, `tessellation_cell_types`), the `scope` of the geometry point and
 region queries, and the geometry snapshot's cells. Field construction (`Field::new`) and the field
-operations reject invalid cells on their own.
+operations reject invalid cells on their own. The fold ends of a floor's `topology` are wire points
+too: `maze-runner::topology_wire::decode_topology` rejects an undecodable or invalid cell naming
+the fold and side (`folds[i].a: invalid cell [x, y]`), see `Specs/topology.md`, "Wire form". The
+canonical config string used as the topology fingerprint is produced by
+`topology_wire::tessellation_fingerprint` (kind plus sorted params).
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
@@ -86,7 +91,7 @@ operations reject invalid cells on their own.
   `neighbor_contract_tests` checks `Field::is_straight` against it for every tessellation.
 - **`face_index_toward(tessellation, cell, other)`** (free function) — position in
   `faces_of(cell)` of the face reaching `other`, or `None` when `other` is not a tessellation
-  neighbor. Used by the per-face split QC check.
+  neighbor. Base adjacency only (geometry, `edge_position`); maze algorithms use the fold-aware `Field::face_index_toward` / `MultiLevelField::face_index_toward`, e.g. the per-face split QC check. `edge_position` takes the `Field` and is fold-aware (see "Folded faces" under "Geometry"); it falls back to the midpoint of the centers only for cells that share neither a face nor an active fold.
 - **`is_valid_cell`** identifies whether a coordinate represents an actual tile. `Field::new` and `Field::from_id_cells` reject invalid points before storing them.
 - **`shape_descriptors`/`shape_of`** — the cell's shape template and allowed transform group (see
   "Shape templates" below). They are the only source of split-pattern variants; the old
@@ -96,7 +101,9 @@ operations reject invalid cells on their own.
   "Geometry" below. `cell_position`/`edge_position` (free functions in `space::mod`) resolve a
   cell's center or an edge's contact point together with its scale; `geometric_distance`,
   `floor_aware_distance` and `floor_aware_xy_distance` measure between them in `cell_scale` units,
-  unrelated to graph/nav distance (tile-hop count along real edges).
+  unrelated to graph/nav distance (tile-hop count along real edges). They are planar and ignore
+  folds (`planar_distance` is their shared core); the fold-aware `SurfaceMetric` and its contract
+  are in `Specs/topology.md`, "Distance contract" and "Surface distance".
 
 ## Field\<T\>
 
@@ -105,12 +112,13 @@ pub struct Field<T: Tessellation> {
     tessellation: Arc<T>,
     cell_to_nodes: HashMap<T::CellId, Vec<NodeId>>,
     node_to_cell: HashMap<NodeId, T::CellId>,
+    topology: Option<ResolvedTopology<T>>, // folds resolved against the cell set, None = no folds
 }
 ```
 
 The single-tessellation building block: a fixed set of cells, each resolving to one or more `NodeId`s (a cell splits into several routing passages via `add_node_at` — GitHub issue #219/epic #218). `Field` has no notion of "groups" or which geometric face belongs to which of a cell's several nodes — deciding that is entirely the caller's job (generation algorithms, QC/repair strategies).
 
-Key methods: `new(tessellation: Arc<T>, cells, &mut IdGenerator) -> Result<_, _>`, `from_id_cells(tessellation: Arc<T>, entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid cells), `add_node_at`/`remove_node_at`/`replace_nodes_at` (cell-based, panic on an unknown cell), `nodes_at(cell)`/`node_at(cell)` (creation-order slice / first node), `neighbors(node)` (iterates `faces_of`, skips faces whose `neighbor` is `None`), `is_straight(from, via, to)` (resolves `via`'s faces toward `from` and `to` in one pass over `faces_of(via)`, then asks `Tessellation::is_straight`; `false` when either is not a tessellation neighbor), `cell_of(node)`, `all_cells()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `cell_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `cell_count()`, GitHub issue #267), `contains(cell)`, `build_nodes(&mut Graph)`.
+Key methods: `new(tessellation: Arc<T>, cells, &mut IdGenerator) -> Result<_, _>`, `from_id_cells(tessellation: Arc<T>, entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid cells), `add_node_at`/`remove_node_at`/`replace_nodes_at` (cell-based, panic on an unknown cell), `nodes_at(cell)`/`node_at(cell)` (creation-order slice / first node), `neighbor_via(cell, face)` (effective adjacency: active fold, else `Tessellation::neighbor`; GitHub issue #832, `Specs/topology.md`), `face_index_toward(cell, other)`, `set_topology`/`clear_topology`/`topology`/`fold_activity`, `neighbors(node)` (iterates `faces_of`, goes through `neighbor_via`, skips faces with no crossing), `is_straight(from, via, to)` (resolves `via`'s faces toward `from` and `to` through `neighbor_via` in one pass over `faces_of(via)`, then asks `Tessellation::is_straight`; `false` when either is not a tessellation neighbor), `cell_of(node)`, `all_cells()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `cell_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `cell_count()`, GitHub issue #267), `contains(cell)`, `build_nodes(&mut Graph)`.
 
 `Field`'s cell set is fixed at construction — `add_node_at`/`remove_node_at` only add/remove nodes *within* an existing cell, never grow or shrink the cell set itself. `Clone` is a manual impl (not derived): the tessellation instance is shared via `Arc`, never copied, so `T` itself needs no `Clone`.
 
@@ -182,6 +190,8 @@ Raw `Field<T>` remains in use only:
 - At `maze-wasm`'s post-edit path (`analytics/post_edit.rs`'s `build_field_from_nodes`), which constructs via `Field::from_id_cells` (preserving client-supplied ids) and then wraps the result with `MultiLevelField::new([field])`.
 
 Built on top of this layer since: add/remove/reorder floors UI (#335), and — as of #337 — `CustomVertexBased` generation, which builds a field from `GenerateConfig.level_fields` (`maze-wasm`'s `dispatch_generate`/`build_multi_level_field`) and connects levels via `EdgeKind::VerticalPassage`/`Elevator` (`Specs/generation.md`'s "Vertical Connections"). As of #338, each level's own field *shape* is independent — `level_fields` carries one point-set per floor — though tessellation *kind* (`T`) is still fixed maze-wide (a `MultiLevelField<T>` uses one `T` for every level it holds — `Maze<T>`'s existing single-`T`-per-maze design). QC/repair/routing during generation is multi-floor-aware. `compute_analytics` (post-edit's confirm step and analytics/snapshot recompute) is genuinely multi-level as of GitHub issue #359 — `ComputeAnalyticsConfig` gained its own `level_fields`, mirroring `GenerateConfig`'s; `maze-wasm`'s `build_analytics_snapshot` always surfaces every floor now — the `all_levels: bool` param that used to gate this was removed (GitHub issue #355), since every real caller had passed `true` since #359 — see `Specs/floors.md`'s "`compute_analytics` multi-level awareness" section. Not yet built: a `LevelId`-aware project file format, or a wire-level way to vary tessellation kind itself between levels.
+
+**Folds (GitHub issues #831, #832).** Per-floor topology (cylinder/torus/twisted gluings of two faces, addressed by `(cell, face_idx)` with `face_idx` the position in `faces_of(cell)`) lives in `space::topology` and is installed per level with `Field::set_topology` / `MultiLevelField::set_topology`. `Field::neighbor_via(cell, face) -> Option<Crossing>` is the effective adjacency (active fold, else `Tessellation::neighbor`); `Field::neighbors`, `Field::is_straight`, `Field::face_index_toward` and every maze algorithm use it. `Tessellation::neighbor` is the base adjacency, called directly only from `space/` (geometry, `field_ops`, tessellation implementations) and the runner's geometry snapshot — enforced by a guard test. Without folds behaviour is unchanged. See `Specs/topology.md`.
 
 ## Target model: extensible tessellation (GitHub epic #752)
 
@@ -281,8 +291,13 @@ Status (GitHub issues #822, #824): core API, config resolution and UI query are 
 - **Independent of shapes.** A type may depend on the cell's position in the pattern, not only on
   its `ShapeDescriptor`, and cells of different types may share a shape. Types never affect
   topology or geometry.
+- **`cells_vary_in_size()`** says the cells of one type differ in size or shape (Voronoi, radial: `true`; default `false`). It is the one source of that fact: `field_cell_sizes` reports such types `regular: false`, and `tessellation_cell_types` returns it as `cells_vary_in_size`, so a consumer knows before measuring any cell.
 - **Default.** A tessellation that does not override the methods has the single type `cell`, so
-  consumers need no special case for uniform tilings. Built-in tessellations that mix polygons
+  consumers need no special case for uniform tilings. The uniform tilings of one regular polygon
+  name their single type by it: `square`, `hexagon`, `triangle` (the same keys the mixed tilings use
+  for that polygon); Cairo names its type `pentagon` (GitHub issue #1002); `radial`, `voronoi`, brick
+  and curved-quadrilateral keep `cell`.
+  Built-in tessellations that mix polygons
   (4.8.8, 3.6.3.6, 3.12.12, 3.4.6.4, 3.3.4.3.4, 3.3.3.3.6, 4.6.12, 3.3.3.4.4) type cells by
   polygon: keys `triangle`, `square`, `hexagon`, `octagon`, `dodecagon`.
 
@@ -403,6 +418,7 @@ orientation or pixel scale (see "Display transform").
   area, never as a precomputed map of the whole (possibly infinite) space. Both cells get the
   same segments: the owner's run counter-clockwise along its boundary, and the other cell gets
   them reversed. Paired faces are therefore identical as segments and as flattened polylines.
+- **Folded faces.** A face glued by an active fold is unpaired: `Field::edge_owner`, `edge_segments` and `contact_point` give it its own segments and contact point, and `space::edge_position` takes a `Field` so that across a fold it resolves the folded face's own contact point. Folds are classified isometric or topological-only (`Field::fold_class`). See `Specs/topology.md`, "Fold geometry". Without folds nothing changes.
 - **Segments** (kinds: `Line`, `CircularArc`; more may be added) expose operations on a
   normalized parameter `t ∈ [0, 1]`, linear in arc length:
   - `point(t)` and `tangent(t)` (unit length).
@@ -481,7 +497,9 @@ Field-editing operations work on cell sets and live in core (`space/field_ops.rs
   symmetry;
 - **preset field shapes** built from named integer params: `rect`, `parallelogram`, `circle`,
   `triangle` and `hexagon` (the ported `square_rect`, `hex_hexagon`, `tri_*`, `cairo_rect` and the
-  web generators from `storeHelpers`/`fieldConfig`).
+  web generators from `storeHelpers`/`fieldConfig`); the square tessellation also offers `box` and the triangle tessellation `tetrahedron`, `octahedron` and `icosahedron`, whose
+  nets come with gluings (`Tessellation::build_preset_folds`, default empty: one `Vec<NewFold>`
+  per fold group; see `topology.md`, "Topology presets").
 
 Availability is separate from execution. `Tessellation::field_operations` lists the supported
 operations and `Tessellation::presets` its preset list, each `PresetDescriptor { key, params }`
@@ -502,6 +520,24 @@ the error carries a reason:
 
 Results are sorted by `CellId`. An empty input yields an empty result.
 
+**Translation basis.** Probing a translation geometrically (above) scans a 12 × 12 world window and
+costs hundreds of milliseconds on dense tilings such as 3.3.3.3.6, which makes dragging a selection
+lag (it runs on every pointer move). A periodic tessellation therefore declares
+`Tessellation::translation_basis() -> Option<[Point; 2]>`: a reduced basis of its lattice of
+translation symmetries. `translate_cells` then accepts a vector exactly when it is an integer
+combination of the basis (tolerance `1e-6` on the coordinates), by arithmetic. Without a basis
+(`None`, the default) it falls back to the probe. The contract:
+
+- a tessellation whose `field_operations` contains `Translate` must declare a basis;
+- the basis must accept exactly the vectors the probe accepts.
+
+`field_ops::check_translation_basis` verifies both for one instance (lattice vectors, fractions of
+them, other offsets). The `maze-runner` factory test runs it for every `TessellationKind::ALL`
+entry, and an exhaustive match keeps `ALL` complete, so a new kind cannot skip the basis or get it
+wrong. To find a basis for a new tessellation, collect the center differences from one cell to
+nearby cells that pass the probe and take the shortest vector and the shortest one independent of
+it.
+
 Presets are built in canonical math orientation — there is no orientation param, because core
 geometry knows nothing about the display transform. All sizes are world units (cell area 1), the
 shape is centered on the tessellation origin (the origin cell's center, or the lattice origin for
@@ -512,10 +548,13 @@ rectangle) are built from lattice coordinates; `circle` (the tri circle takes wh
 cell geometry. The hex rectangle has screen-aligned sides on the flat-top lattice core uses.
 
 Wire (`maze-runner::runner::field_ops`, exported by `maze-wasm`): `field_capabilities`,
-`field_preset`, `field_preset_extents`, `field_translate_cells`, `field_reflect_cells`; failures are
+`field_preset`, `field_preset_topology` (the fold groups of a preset, empty for shape-only presets), `field_preset_extents`, `field_print_sizing`, `field_cell_sizes` (GitHub issue #948: the count, distinct side lengths and diameter, in world units, of the cells of each cell type among the cells of the given presets (built in core, each with a `times` count) and hand-given cells, measured from `boundary_path` and `center`, plus the cell count of each given preset, so a caller never needs the cells back; a type of a tessellation whose `cells_vary_in_size` is true (Voronoi, radial) is reported `regular: false` without sides or diameter, and for every other tessellation one cell of each type is measured, the cells of a type being congruent; `maze-runner` `cell_sizes`), `tessellation_cell_type_sizes` (GitHub issue #1006: the same sides and diameter per cell type for the tessellation alone, `count` 0, from sample cells `candidate_cells` finds in a box around the origin that doubles until every type is seen, so it never enumerates field cells; a tessellation whose `cells_vary_in_size` is true reports every type `regular: false` without sides or diameter, and a type no sample cell showed is left out; `maze-runner` `cell_type_sizes`), `field_translate_cells`, `field_reflect_cells`; failures are
 `{ kind, message? }` with `kind` one of the reasons above (`invalid_request` for a malformed
-request; also returned for non-finite vector or axis coordinates). `field_preset_extents` takes a preset plus two world directions and returns the `[min, max]` extent of the shape's cell boundaries along each, without shipping the cells (print-fit sizing evaluates many candidate sizes); it flattens only the cells whose centers lie within twice the cell reach (centre-to-farthest-boundary-point distance) of the center limits. The reach is the maximum over the cells at the limits and the first cell of every distinct shape descriptor, so a tessellation of mixed sizes (a dodecagon beside a triangle in 3.12.12, a dodecagon beside a square in 4.6.12) is not underestimated; cells of one shape are assumed near-uniform. Future extension: let a tessellation choose its extent mode (for example a core-supplied upper bound of cell reach, or an exact full scan when none is given), with a shared test comparing every mode against the full scan on small fields. The web `configAllCells` treats
+request; also returned for non-finite vector or axis coordinates). `field_preset_extents` takes a preset plus two world directions and returns the `[min, max]` extent of the shape's cell boundaries along each, without shipping the cells (print-fit sizing evaluates many candidate sizes); with `smooth: true` (default `false`; GitHub issue #957) it measures the shape without the cells smoothing removes: `smooth_preset_cells` (`maze_core::space::normalize_cells`, the rule of the web editor's `normalizeCells`, kept equal by `fieldPrintSizing.test.ts`) runs over the shape built in full, not under the extent focus, since a cell's neighbors decide whether it stays; a preset built from exact cells (`preset_requires_exact_cells`: box, polyhedra, cylinder, torus) is measured as without `smooth`; `field_print_sizing` takes the same `smooth` flag and sizes the smoothed shape; it flattens only the cells whose centers lie within twice the cell reach (centre-to-farthest-boundary-point distance) of the center limits. The reach is the maximum over the cells at the limits and the first cell of every distinct shape descriptor, so a tessellation of mixed sizes (a dodecagon beside a triangle in 3.12.12, a dodecagon beside a square in 4.6.12) is not underestimated; cells of one shape are assumed near-uniform. Under the extent focus (GitHub issue #939; `with_extent_focus`, used by `field_print_sizing` and `field_preset_extents` for `rect`, `parallelogram`, `circle`, `triangle`, `hexagon`) the geometric builders do not return the whole shape: on a tessellation with a translation lattice the shape's bounding box is cut into tiles of six cell reaches, and for each of the four ends of the two display directions the tiles are visited from the one reaching furthest until one lies more than three reaches behind the furthest accepted center, so only the strips at the extremes are enumerated and the cost does not scale with the shape's area. The result is identical to the full build (tested against it on every tessellation and direction). A builder that needs the whole set (the elongated triangular `largest_component`) calls `spoil_extent_focus`, and the measurement then falls back to the full build; a box too large for `MAX_REGION_CANDIDATES` is refused exactly as in the full build, so a size found is always buildable. `field_print_sizing` takes the print request (preset, params, display directions, usable area and cell side in millimeters) and returns the params of the largest fitting standard shape (`Specs/field-editor.md`). Future extension: let a tessellation choose its extent mode (for example a core-supplied upper bound of cell reach, or an exact full scan when none is given), with a shared test comparing every mode against the full scan on small fields. The web `configAllCells` treats
 `invalid_preset` as an empty field and caches built presets by tessellation, key and params.
+`translateFieldCells` keeps the last 16 successful results by (tessellation, cells, vector) and
+returns copies: dragging a selection repeats the same request on every pointer event inside one
+cell and again at commit. Refusals are not cached.
 
 ### Display transform
 
@@ -543,17 +582,37 @@ runner, or `None` for the whole space); `maze-wasm`
 exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`. The snapshot's
 `instance` is the serialized tessellation config (equal configs build equal instances) and
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
-cell or a polyline request with a non-positive tolerance is an error. The benchmark measures the snapshot as its
+cell or a polyline request with a non-positive tolerance is an error.
+
+Status (GitHub issue #890): the snapshot wire is trimmed for load speed. A third boundary request, `{ kind: "faces" }`, returns `BoundaryDto::Faces` and no boundary data: the faces' segments chain in `faces_of` order, so the caller rebuilds the path (`MoveTo` the first segment's start, then one command per segment); `getGeometrySnapshot` in the web does this for `{ kind: "path" }` (`pathCommandsOfFaces`) and its tests pin it equal to core's `geometry_outlines`. A cell's `allowed_group` is an index into the snapshot's `allowed_groups`, which holds each distinct group once; the web resolves the index back to the permutation list, so consumers still read `CellGeometry.allowed_group` as before.
+
+Status (GitHub issue #937): the snapshot carries less per cell. The request's `faces` is `all` (default), `none` or `boundary`. `none` drops every cell's faces; `boundary` keeps them only for cells with a neighbor outside the requested cell set (the field's edge, and the folded cells, whose faces `topology` marks), so the interior costs no face data. A cell has `has_faces`; the cell-level `neighbor_offsets` are an index into the snapshot's `offset_tables` (each distinct neighbor-offset list once, so offsets stay available without faces). `boundary: { kind: "path_templated" }` returns each boundary as a path relative to the cell center, interned in `boundary_templates` under a key quantized to 1e-9; the web restores it by translation (`translateCommands`), with an error far below its endpoint tolerance. `geometry_region_edges` (the viewport grid) answers a region query with the edges of the selected cells, each shared edge once via `edge_owner`.
+
+On the web, `cartesianCache.ts` warms the field with `faces: "boundary"` and `path_templated`. A field cell without faces is a light cell: `getLightCellGeometry`, `getCellNeighborOffsets`, `getCellVertices`, `getCellPath`, `getCellCenter`, `getCellArea`, `getCartesian` and the world-bounds and area stats never need faces. `getCellGeometry` guarantees faces: when a light cell is asked, it completes the whole field's faces in one snapshot call (`completeFieldFaces`). `getFieldCellsWithFaces` serves the seam model, which only needs the boundary-mode cells (fold faces are always among them).
+
+Status (GitHub issue #833): the request may carry `topology_version` and `topology`
+(`{ field_cells, folds: [{ a, b, twist, group }], groups }`, cells as `[x, y]` and `face_idx` a position in
+`faces_of`). `field_cells` is the floor's whole cell set, which decides fold activity (the requested `cells` may be a
+region of it); it must be non-empty and hold only valid cells, otherwise the request is an error. The topology is
+validated structurally and resolved like `Field::set_topology`, and an invalid one is an error. The snapshot echoes `topology_version` and is bound to the field version **and** the topology version: the web
+invalidates it when either changes. Every face of an active fold carries `fold`
+(`{ fold, partner_cell, partner_face_idx, twist, start_meets, isometric, transform }`): the partner `(cell, face)`, the endpoint
+correspondence (`start_meets`: which end of the partner's chain this face's chain start meets, `end` untwisted, `start`
+twisted; plus `twist`) and, for an isometric fold, the affine matrix `[a, b, c, d, e, f]` mapping the partner's face geometry
+into this cell's coordinates (the inverse of the class transform on side `b`). The face's `segments` and `contact_point` are
+its own, unpaired. The web never derives any of this from coordinates. Without `topology`, or with no active fold,
+the snapshot equals the plain one. A folded face's `neighbor` is still the base `Tessellation::neighbor` (possibly a cell
+outside the field); the glued partner is given by `fold` only. The snapshot rebuilds its `Field` on every call. The benchmark measures the snapshot as its
 `geometry` stage.
 
 Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is the web geometry
 access layer. It holds the snapshot of the current field's cells, invalidated by the tessellation
 instance (the serialized config) and a web-owned field version (bumped when the cell set or the
 instance changes) — never by the display transform. Reads (`getCellGeometry`, `getCartesian`) are
-synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. Point and region queries
+synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. A caller about to read many outside cells (auto-lock over other floors, the wall renderer's border neighbors) calls `prefetchCellGeometries`, which loads the uncached ones in snapshot calls of at most 1000 cells instead of one call per cell (GitHub issue #890). Point and region queries
 (`cellAtWorldPoint`, `cellsInWorldRegion`) are scoped to the field's cells by default, so a selection
 over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a branded tuple. The web
-test suite requires the wasm build (`tools/require-wasm.mjs`; `test.sh`/`test.ps1` rebuild it).
+test suite requires the wasm build (`tools/require-wasm.mjs`; `scripts/test.sh`/`scripts/windows/test.ps1` rebuild it).
 
 Status (GitHub issue #761, second step): `maze-web/src/pixi/geometry/` holds the generic consumers
 of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache requests the path commands too, see #763) (`tracePath` onto Pixi `Graphics` or a
@@ -590,7 +649,7 @@ branch cut cannot reorder them.
 
 Status (GitHub issue #762): the field editor is built on core's geometry and field operations.
 Selection, editor primitives, nearest-cell lookup and print layout use the snapshot geometry;
-moving a selection, the symmetry tool and the preset shapes call `field_translate_cells`,
+moving a selection, the mirror tool and the preset shapes call `field_translate_cells`,
 `field_reflect_cells` and `field_preset`. `field_capabilities` decides which shapes, parameter
 forms and tools the editor offers (a tool whose operation is unavailable is hidden). Refusals
 (`FieldOpError`) are shown to the user. The web does no arithmetic on `CellId`s outside the geometry
@@ -629,7 +688,7 @@ Status (GitHub issue #784): `space::square_octagon` (`SquareOctagonTessellation`
 - **Straightness.** A pass is straight iff it leaves through the opposite face (table, checked against the geometric definition).
 - **Geometry.** Every vertex coordinate is `(m + n·√2) / 2` for integers `m`, `n` derived from the lattice point, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts the valid lattice cells in the box exactly before building any.
 - **Presets.** `rect` (`cols × rows` octagons plus the squares between them, origin octagon at `size / 2`), `circle` and `triangle`; translate and reflect are derived geometrically.
-- **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. Tessellation-specific split templates are not part of this ticket.
+- **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. The `regular:8` built-in splits are the diagonal divider (`0..3` / `4..7`), bridge (`0-4` / `2-6`), double bridge (`0-4` / `1-5` / `2-6`), and triple bridge (`0-4` / `1-5` / `2-6` / `3-7`).
 
 ### Brick tessellation (offset-row squares)
 
@@ -646,7 +705,7 @@ Status (GitHub issue #789): `space::brick` (`BrickTessellation`, kind `brick`, n
 
 Status (GitHub issue #811): the anchor-lattice tessellations (trihexagonal, snub hexagonal, snub square, rhombitrihexagonal, truncated hexagonal, truncated trihexagonal) share two internal modules; the per-tessellation sections below only describe what differs.
 
-- **`space::multi_shape`** (all six). `AnchoredPoint<K>` is the cell id `{ q, r, kind }`, with `K: CellKind` (`all()` in wire order, `index()`); `XPoint` is an alias of it and `new`, `to_xy`, `from_xy` are shared. Wire encoding is `[x, y] = [k·q + kind index, r]` with `k` the number of kinds; `q` beyond `±i32::MAX / k` wraps. `CellFace` is the face type of the polygon tessellations (`XFace` aliases it): the position in `faces_of`, counter-clockwise. Every cell is a regular polygon of side 1, so `faces_of` is `polygon_faces(n)`, the local-to-canonical map of `shape_of` is the identity, the shape is the one `regular:n` descriptor with `n` faces (`regular_cell_shape`, side counts must be distinct within a tessellation) and the default area is `n / (4·tan(π/n))`. Also shared: `is_opposite_face`, the `candidate_cells` enumeration with its cell-count limit (`anchor_cells`, `expanded_box`), the `rect` / `circle` / `triangle` preset dispatch (`preset_cells`, `lattice_rect_cells`) and `retain_attached` (keeps a non-anchor cell only beside a kept anchor cell, errors when nothing is left).
+- **`space::multi_shape`** (all six). `AnchoredPoint<K>` is the cell id `{ q, r, kind }`, with `K: CellKind` (`all()` in wire order, `index()`); `XPoint` is an alias of it and `new`, `to_xy`, `from_xy` are shared. Wire encoding is `[x, y] = [k·q + kind index, r]` with `k` the number of kinds; `q` beyond `±i32::MAX / k` wraps. `CellFace` is the face type of the polygon tessellations (`XFace` aliases it): the position in `faces_of`, counter-clockwise. Every cell is a regular polygon of side 1, so `faces_of` is `polygon_faces(n)`, the local-to-canonical map of `shape_of` is the identity, the shape is the one `regular:n` descriptor with `n` faces (`regular_cell_shape`, side counts must be distinct within a tessellation) and the default area is `n / (4·tan(π/n))`. Also shared: `is_opposite_face`, the `candidate_cells` enumeration with its cell-count limit (`anchor_cells`, `expanded_box`), the `rect` / `circle` / `triangle` preset dispatch (`preset_cells`, `lattice_rect_cells`) and `retain_attached` (keeps a non-anchor cell only beside a kept anchor cell, errors when nothing is left). Presets call it through `retain_attached_for_preset`, which applies it to every preset except the whole-period `cylinder` and `torus`, where cells wrap and none are cut off.
 - **`space::exact_tiling`** (snub square, rhombitrihexagonal, truncated hexagonal, truncated trihexagonal). Cells are polygons with vertices in `ℤ[√3]` kept as integer quadruples over a denominator (2 or 4). A tessellation supplies the denominator, the two lattice steps and one vertex `Template` per kind; `Tiling` provides `center`, `face_segments` and the neighbor table `link(kind, face)`, built once per kind by matching reversed edges among cells anchored within two lattice steps of the origin. Trihexagonal and snub hexagonal keep their own lattice geometry.
 
 ### Trihexagonal tessellation (3.6.3.6)
@@ -666,7 +725,7 @@ Status (GitHub issue #792): `space::trihexagonal` (`TrihexagonalTessellation`, k
 Status (GitHub issue #793): `space::snub_hexagonal` (`SnubHexagonalTessellation`, kind `snub_hexagonal`, no params) is the snub trihexagonal tiling: regular hexagons and equilateral triangles of edge length 1, four triangles and one hexagon around every vertex. Per hexagon there are eight triangles: six share an edge with it (one per hexagon face) and two border only triangles. Hexagon area `3√3 / 2`, triangle area `√3 / 4`, so `cell_scale` differs between the two. The split editor consumes its arc faces through the faces' flattened polylines (GitHub issue #800, `Specs/split-blueprints.md`).
 
 - **Construction.** Vertices are the points `a + b·ω` (`ω = e^{iπ/3}`, written `(a, b)`, world position `x = a + b/2`, `y = b·√3/2`) of the unit triangular lattice minus the index-7 sublattice `L = { a ≡ 2b (mod 7) }`. Each removed point is a hexagon center (its six lattice neighbors are the hexagon's vertices); every lattice triangle touching no removed point is a triangle cell. `L` is spanned by `(2, 1)` and `(-1, 3)` (hexagon center distance `√7`) and is closed under 60° rotation, so the tiling has the full `p6` symmetry about a hexagon center and the two lattice translations.
-- **Handedness.** The tiling is chiral. The fixed form is counter-clockwise (y up): the lattice vector `(2, 1)` points `atan(√3 / 5) ≈ 19.1°` counter-clockwise from the hexagon's vertex axis. The mirror image (`a ≡ 4b (mod 7)`) is not offered. The tiling has no mirror symmetry, so the kind lists only `Translate` in `field_operations` and `reflect_cells` is `Unavailable` (the web Symmetry tool stays visible but disabled, tooltip "Unavailable in this tessellation"); translation works for lattice vectors only (`q·(5/2, √3/2) + r·(1/2, 3√3/2)`).
+- **Handedness.** The tiling is chiral. The fixed form is counter-clockwise (y up): the lattice vector `(2, 1)` points `atan(√3 / 5) ≈ 19.1°` counter-clockwise from the hexagon's vertex axis. The mirror image (`a ≡ 4b (mod 7)`) is not offered. The tiling has no mirror symmetry, so the kind lists only `Translate` in `field_operations` and `reflect_cells` is `Unavailable` (the web Mirror tool stays visible but disabled, tooltip "Unavailable in this tessellation"); translation works for lattice vectors only (`q·(5/2, √3/2) + r·(1/2, 3√3/2)`).
 - **Cell ids.** `SnubHexagonalPoint { q, r, kind }`, `kind` one of `Hexagon`, `Edge0 … Edge5`, `Inner0`, `Inner1` (`SnubHexagonalKind::ALL`, wire order). `(q, r)` names the hexagon with center `q·(2, 1) + r·(-1, 3)` (lattice units). `Edge k` is the triangle across face `k` of that hexagon; `Inner0`/`Inner1` are the nearest translates of the two triangle classes that border no hexagon (a triangle is the kind's template translated to its anchor). Every id is a valid cell. Wire encoding: `[x, y] = [9q + kind index, r]` (`to_xy`/`from_xy`; `q` beyond `±i32::MAX / 9` wraps).
 - **Faces.** `SnubHexagonalFace` is the position in `faces_of`: counter-clockwise from the cell's first vertex, a hexagon `0..6` (face `k` runs from the vertex at `60°·k` to the next; `regular:6`), a triangle `0..3` (`regular:3`; an edge triangle's face `0` is the one shared with its anchor hexagon). The opposite face is not a function of the face: `neighbor` returns it, found as the cell on the other side of the same unit lattice edge.
 - **Neighbors.** `neighbor(cell, face)` is `None` only when the neighbor's `q` or `r` leave `i32`. Hexagon faces lead to its edge triangles; an edge triangle has one hexagon neighbor and two triangle neighbors; an inner triangle has three triangle neighbors.

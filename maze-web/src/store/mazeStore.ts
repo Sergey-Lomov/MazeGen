@@ -1,6 +1,9 @@
 import { create } from "zustand";
+import { notify } from "../notifications/notificationStore";
+import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "./projectLoadNotifications";
 import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
+import { guardPresetEdits } from "./presetEditGuard";
 import { createTessellationSlice } from "./slices/tessellationSlice";
 import { createFloorFieldSlice } from "./slices/floorFieldSlice";
 import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
@@ -10,8 +13,16 @@ import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
+import { createTopologySlice } from "./slices/topologySlice";
+import { TRANSIENT_UI_STATE } from "./transientUiState";
+import { installTopologySync } from "./topologySync";
+import { installFieldClipboardSync } from "./fieldClipboardSync";
+import { installEdgeMarkerSync } from "./edgeMarkerSync";
+import { installTeleportConnectorPathSync, retainLiveTeleportConnectorPaths } from "./teleportConnectorPathSync";
+import { installExportEditStateSync } from "./exportEditStateSync";
+import { installLabelFontSync } from "./labelFontSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
-import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
+import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { resolveFieldConfig } from "../pixi/tessellationCells";
@@ -33,7 +44,7 @@ export type {
 
 export { decodePoint };
 
-export const useMazeStore = create<MazeStore>()((...a) => ({
+export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
   ...createTessellationSlice(...a),
   ...createFloorFieldSlice(...a),
   ...createPresetConnectionsSlice(...a),
@@ -42,9 +53,20 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createPostEditSlice(...a),
   ...createImageExportSlice(...a),
   ...createFloorsSlice(...a),
+  ...createTopologySlice(...a),
 
-  loadProject: (file) => {
+  loadProject: async (file) => {
     const [set, get] = a;
+    // The registry loads asynchronously on app start. Applying a file before it settles would skip
+    // everything that needs `availableStrategies`, and the first registry load would then replace the
+    // loaded quality rules with the defaults (GitHub issue #967). `loadRegistry` joins a load in
+    // flight and starts a fresh one after a failure, so one call covers both waiting and retrying.
+    if (!get().registryLoaded) await get().loadRegistry();
+    if (!get().registryLoaded) {
+      notify({ source: PROJECT_LOAD_SOURCE, code: PROJECT_LOAD_CODES.engineNotLoaded });
+      return;
+    }
+    const targetOpenCard = file.ui.openCard;
     const { kind, params, hexOrientation, triOrientation } = file.tessellation;
     const tessellation = { kind, params };
     const previewState = buildPreviewState(tessellation, hexOrientation, triOrientation);
@@ -118,7 +140,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     } as MazeState);
 
     // Single atomic set of all non-maze state
-    warmCartesianCache(cfg);
+    warmCartesianCache(cfg, file.floorTopology?.[activeFloorId] ?? null);
     set({
       // tessellation
       tessellationKind: kind,
@@ -126,6 +148,11 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       hexOrientation,
       triOrientation,
       floorFields,
+      floorTopology: file.floorTopology ?? {},
+      floorCreases: file.floorCreases ?? {},
+      // Every UI mode, prompt, hover and open panel of the previous session ends here, before the
+      // saved project's own UI state is restored below (GitHub issue #946).
+      ...TRANSIENT_UI_STATE,
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,
@@ -145,9 +172,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       seedAttachedToHistory: file.generation.seedHistory.length > 0
         && file.generation.seedHistory[file.generation.seedHistoryIndex] === file.generation.seed,
       // quality
-      rules: rulesFromFile(file.quality.rules),
+      rules: rulesFromFile(file.quality.rules, get().availableStrategies),
       stages: file.quality.stages,
-      strategyParams: file.quality.strategyParams,
       repairMaxIterations: file.quality.repairMaxIterations,
       repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,
       // presets
@@ -164,46 +190,33 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // reproducibility.
       generationSourceMode: file.presets.generationSourceMode,
       presetTeleports: file.presets.teleports,
-      presetTeleportPendingFrom: null,
       _nextPresetTeleportId: file.presets.teleports.length === 0
         ? 1
         : Math.max(...file.presets.teleports.map((t) => t.id)) + 1,
       presetVerticalPassages: file.presets.verticalPassages,
-      presetVerticalPassagePending: null,
       _nextPresetVerticalPassageId: file.presets.verticalPassages.length === 0
         ? 1
         : Math.max(...file.presets.verticalPassages.map((p) => p.id)) + 1,
       presetElevators: file.presets.elevators,
-      presetElevatorPending: null,
       _nextPresetElevatorId: file.presets.elevators.length === 0
         ? 1
         : Math.max(...file.presets.elevators.map((e) => e.id)) + 1,
       presetSplitPoints: file.presets.splitPoints,
-      presetActiveSplitNode: {},
-      presetFocusedPoint: null,
-      presetSplitTargetPrompt: null,
-      presetEntityPickPrompt: null,
-      presetMoveRequest: null,
-      presetConnectionSettingsPrompt: null,
-      presetLockSettingsPrompt: null,
       // reset maze state — will be populated by generate below
       ...buildResetMazeState(),
       generationStatus: "idle" as const,
+      generationProgress: null,
       postEditAutoConfirm: file.ui.postEditAutoConfirm,
       postEditDraftEdges: null,
       postEditDraftTeleports: [],
-      postEditTeleportPendingFrom: null,
       _nextPostEditTeleportId: 1,
       postEditDraftMeta: null,
       postEditDraftSplitPoints: {},
-      postEditActiveSplitNode: {},
-      postEditFocusedPoint: null,
       postEditEdges: null,
       postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
       postEditRefreshError: null,
-      postEditTool: "wall" as const,
       postEditDirty: file.dirtyFlags.postEdit,
       presetsDirty: file.dirtyFlags.presets,
       mazeDirty: file.dirtyFlags.maze,
@@ -212,6 +225,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       _postEditRequestId: 0,
       showMaze: true,
       // analytics overlays
+      showGridOverlay: file.analytics.showGridOverlay,
       showMazeOverlay: file.analytics.showMazeOverlay,
       showComponentsOverlay: file.analytics.showComponentsOverlay,
       showGraphOverlay: file.analytics.showGraphOverlay,
@@ -229,7 +243,6 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // ui
       showPresetOrigin: file.ui.showPresetOrigin,
       showPresetLocks: file.ui.showPresetLocks,
-      showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
       showBackgroundImage: file.showBackgroundImage ?? false,
       backgroundImage: file.backgroundImage === null || file.backgroundImage === undefined
@@ -241,21 +254,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
           },
       backgroundImageManualPositioning: file.backgroundImageManualPositioning ?? false,
       backgroundImageCropping: file.backgroundImageCropping ?? false,
-      backgroundAutoFillPreview: null,
-      showPrimitiveFrame: true,
-      smoothPrimitives: true,
-      symmetrySnapMode: "centers",
-      symmetryScope: "one_side",
-      symmetryAxisPoints: [],
-      symmetrySourceSide: 1,
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
-      fieldOpError: null,
-      openCard: file.ui.openCard,
-      // clear transient UI flags
-      highlightInvalidPresets: false,
-      highlightIsolatedNodes: false,
-      highlightOrphanSplitNodes: false,
+      // Do not let a feature renderer draw the regenerated maze before the saved post-edit
+      // commands have been restored and confirmed below. Switching to the requested card only
+      // after that confirmation makes the first maze frame match the loaded project.
+      openCard: "basic_config",
       error: null,
       // image export (GitHub issue #295) — buildResetMazeState() above resets these to their
       // defaults; restore the saved values on top.
@@ -277,6 +279,23 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     // A project saved with Image Export open lands on it without a `setOpenCard` call.
     if (file.ui.openCard === "image_export") set(chooseFloorLabelModeOnce(get()));
 
+    // Saved dirty flags take precedence over whatever generation (or its absence) left behind.
+    const restoreDirtyFlags = () => set((state) => ({
+      postEditDirty: file.dirtyFlags.postEdit,
+      floorFields: Object.fromEntries(
+        Object.entries(state.floorFields).map(([id, f]) => [id, { ...f, fieldDirty: file.dirtyFlags.field }]),
+      ),
+      presetsDirty: file.dirtyFlags.presets,
+      mazeDirty: file.dirtyFlags.maze,
+    }));
+
+    // A project saved before any generation stays ungenerated (GitHub issue #932).
+    if (!hasGeneration({ mazeDirty: file.dirtyFlags.maze, postEditDirty: file.dirtyFlags.postEdit })) {
+      restoreDirtyFlags();
+      set({ openCard: targetOpenCard });
+      return;
+    }
+
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
     // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below
     // if a saved postEdit exists, then confirmPostEdit recomputes analytics over the restored
@@ -285,7 +304,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     generateWithSeed(file.generation.seed, get, set, file.generation.qcExperiment);
 
     // Only proceed with post-edit and analytics if generation succeeded
-    if (get().generationStatus !== "done") return;
+    if (get().generationStatus !== "done") {
+      set({ openCard: targetOpenCard });
+      return;
+    }
 
     // After generation: if postEdit was saved, replay it over the freshly-built baseline
     // (GitHub issue #543) — fail-closed: if a single command doesn't resolve (corrupted file, or a
@@ -339,17 +361,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     }
 
     // Restore dirty flags — generateWithSeed resets them, but saved values take precedence
-    set((state) => ({
-      postEditDirty: file.dirtyFlags.postEdit,
-      floorFields: Object.fromEntries(
-        Object.entries(state.floorFields).map(([id, f]) => [id, { ...f, fieldDirty: file.dirtyFlags.field }]),
-      ),
-      presetsDirty: file.dirtyFlags.presets,
-      mazeDirty: file.dirtyFlags.maze,
-    }));
-
-    // confirmPostEdit to compute analytics over restored state
-    void get().confirmPostEdit();
+    restoreDirtyFlags();
 
     // If debug mode: restore the saved step, clamped to the freshly (re)generated arena's range —
     // generateWithSeed above already set debugStep to the last step of the new run.
@@ -357,5 +369,31 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       const maxStep = get().debugStep;
       set({ debugStep: Math.min(file.debug.debugStep, maxStep) });
     }
+
+    // Confirm post-edit before revealing the saved feature card. This avoids an intermediate
+    // frame of the freshly generated maze without its restored post-edit result.
+    const confirmationRequestId = get()._postEditRequestId + 1;
+    await get().confirmPostEdit();
+
+    // A later load (or post-edit action) supersedes this confirmation. It owns the selected card,
+    // so an older async load must not reveal its own saved card over the newer state.
+    if (get()._postEditRequestId !== confirmationRequestId) return;
+    // A saved post-edit teleport is absent from the regenerated baseline. Restore manual paths
+    // only after the command log has been confirmed, otherwise the stale-path synchronizer drops
+    // them before that teleport exists again (GitHub issue #955).
+    const paths = retainLiveTeleportConnectorPaths(
+      file.imageExport.vectorByWallsSettings.manualTeleportConnectorPaths ?? {},
+      get().edges,
+      get().nodes,
+    );
+    get().setManualTeleportConnectorPaths(paths);
+    set({ openCard: targetOpenCard });
   },
-}));
+}, a[0], a[1]));
+
+installTopologySync(useMazeStore);
+installFieldClipboardSync(useMazeStore);
+installExportEditStateSync(useMazeStore);
+installEdgeMarkerSync(useMazeStore);
+installTeleportConnectorPathSync(useMazeStore);
+installLabelFontSync(useMazeStore);

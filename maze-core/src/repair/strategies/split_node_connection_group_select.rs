@@ -180,17 +180,20 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue>
         };
         let build_nested_issue = |source_check: &str,
                                   target: &EdgeId,
-                                  _others: &[EdgeId]|
+                                  _others: &[&EdgeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidSplitNodeConnectionIssue::new_from_check(
                 source_check,
                 vec![*target],
             ))
         };
+        let prepare_invalidation = |nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+            crate::repair::removed_edge_ids(nested_commands)
+                .into_iter()
+                .collect::<std::collections::HashSet<EdgeId>>()
+        };
         let element_invalidated =
-            |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
-                crate::repair::removed_edge_ids(nested_commands).contains(edge)
-            };
+            |removed: &std::collections::HashSet<EdgeId>, edge: &EdgeId| removed.contains(edge);
         let order_candidates = |candidates: &mut Vec<EdgeId>,
                                 _membership: &HashMap<EdgeId, usize>,
                                 rng: &mut dyn RngCore| {
@@ -215,7 +218,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue>
             }
         };
 
-        group_select_apply::<T, SplitNodeConnectionGroupKind>(
+        group_select_apply::<T, SplitNodeConnectionGroupKind, _>(
             issue,
             maze,
             rng,
@@ -223,6 +226,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue>
             fix_target,
             element_allowed,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             order_candidates,
         )

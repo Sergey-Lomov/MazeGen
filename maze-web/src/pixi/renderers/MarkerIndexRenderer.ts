@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
 import { markerIndexPlateBox, type MarkerIndexLabel, type MarkerIndexPlateBox } from "../selectors/mazeSelectors/markerIndex";
-import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
+import { makeCenteredLabel } from "./msdfFont";
 import { drawRoundedRect } from "./markerShapes";
 
 export interface MarkerIndexRenderData {
@@ -54,8 +54,6 @@ export class MarkerIndexRenderer {
     if (!style.enabled || labels.length === 0) return;
 
     const gap = Math.max(0, style.gap);
-    const fontSize = style.textSize;
-    const fontFamily = msdfFontFamily(style.textFontWeight);
 
     const boxes: PlateBox[] = labels.map((item) => ({
       ...markerIndexPlateBox(item, style),
@@ -68,7 +66,7 @@ export class MarkerIndexRenderer {
     // so the plate uses the same full-width offset convention.
     if (gap > 0) {
       for (const b of boxes) {
-        const outset = gap + b.borderWidth;
+        const outset = gap * b.scale + b.borderWidth;
         const g = new Graphics();
         drawRoundedRect(g, b.x - outset, b.y - outset, b.w + 2 * outset, b.h + 2 * outset, b.cornerRadius + outset);
         g.fill(floorColor);
@@ -88,7 +86,7 @@ export class MarkerIndexRenderer {
       g.fill(style.fillColor);
       this.bodyLayer.addChild(g);
 
-      const text = makeCenteredLabel(labels[i].label, fontFamily, fontSize, style.textColor);
+      const text = makeCenteredLabel(labels[i].label, style.textFont, style.textSize * b.scale, style.textColor);
       text.x = b.x + b.w / 2;
       text.y = b.y + b.h / 2;
       this.bodyLayer.addChild(text);

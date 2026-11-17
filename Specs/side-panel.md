@@ -10,8 +10,8 @@ Generic resizable panel docked to the canvas's right edge (`SidePanel.tsx`). Por
 every panel docks next to the canvas regardless of where in the component tree it's triggered from
 (issue #237).
 
-Props: `title`, `subtitle?`, `onClose`, `warnings?` (dismissible strip, re-opens whenever the
-message set changes), `overlay?`, `onTopChange?`, `children`.
+Props: `title`, `stackKey?`, `subtitle?`, `onClose`, `warnings?` (dismissible strip, re-opens
+whenever the message set changes), `overlay?`, `onTopChange?`, `children`.
 
 ### Mount-order stack (issue #629)
 
@@ -21,7 +21,9 @@ the post-edit "Changes" panel and "Manage split nodes" panel). A module-level st
 (`panelStack`, keyed by a stable per-instance `Symbol`, not React context — panels mount across
 unrelated, non-nested trees) tracks mount order. Only the most recently mounted instance is shown;
 the rest stay mounted (internal state like scroll position or drafts survives) but are hidden.
-Closing the top one unmounts it and pops it off the stack, revealing the next one down.
+Closing the top one unmounts it and pops it off the stack, revealing the next one down. A panel
+with a `stackKey` can also be moved to the top in place by its control; this preserves its local
+state and means repeatedly pressing a panel control never closes that panel.
 
 Push/pop happen in `useLayoutEffect` (not split across render + cleanup) so the stack stays
 balanced under `StrictMode`'s mount-cleanup-mount effect cycle, and so two panels mounted in the
@@ -42,7 +44,7 @@ overlay's `inset: 0` down with it (issue #629 follow-up).
 
 Pressing Escape closes the panel — but only when:
 - this instance is the topmost entry on the mount-order stack (`isTop`), and
-- no `Modal` dialog is currently open (`hasOpenModal()`, exported by `Modal.tsx`) — a dialog
+- no `Modal` dialog is currently open (`hasOpenModal()`, exported by `Modal.tsx`; a `Modal` also `preventDefault()`s the Escape it handles, since it unmounts before this listener runs) — a dialog
   stacked on top of the panel must take precedence, leaving the panel open and closing only the
   dialog, and
 - the keydown event wasn't already handled by content nested inside the panel
@@ -64,12 +66,12 @@ outline while covered, `PngExportSettingsPanel` hides its print-frame canvas ove
 
 `ColorPickerPanel` (overlay), `DebugPanel`, `AnalyticsFeature`, `ImageExportFeature` (render-mode
 settings, overlay for nested config), `PostEditChangesPanel`, `SplitNodesDialogView`,
-`VertexBasedSettingsPanel`.
+`VertexBasedSettingsPanel`, `MirrorPanel`, `TopologyPanel`, `GlueEditorPanel`, `FloorsPanel`.
 
 ### Top-edge hit testing (issue #679)
 
-`SectionHeader` and `SubsectionHeader` keep their small negative vertical margin so their spacing
-inside ordinary sections does not change. They must also remain `position: relative`: without that
+`SectionHeader` (used at every nesting level, optionally `disabled`) keeps its small negative vertical margin so its spacing
+inside ordinary sections does not change. It must also remain `position: relative`: without that
 positioning, Chromium-based browsers (notably Opera) can drop pointer events for the first
 negative-margin flex item near the top edge of the panel's `overflow-y: auto` body. Do not fix this
 by adding global top padding to `SidePanel`, since that shifts unrelated panel content.
@@ -99,7 +101,11 @@ overlay that closes it on click (stopped by clicking inside the dialog itself).
 
 Props: `title`, `size?` (a `dialogSize` key), `rawBody?` (raw full-bleed container for content that
 manages its own layout, e.g. split-pane dialogs — replaces the default padded body), `onClose`,
-`children?`.
+`onConfirm?` (Enter/Space shortcut, issue #638), `children?`.
+
+On mount the dialog box (`tabIndex={-1}`) takes focus so Enter/Space reach its own shortcuts instead of
+re-activating the trigger that opened it — unless a child already took focus during its own mount
+effect (an `autoFocus` `SelectableList`, so its arrow keys work at once); that child keeps it.
 
 ### Stack and Escape
 
@@ -120,3 +126,68 @@ preset entity/elevator/vertical-direction/reset/split-target dialogs, `SeedHisto
 `ScreenDpiCalibrationModal`, warning-bubble popups (`ExportWarningBubble`,
 `PngOverflowWarningBubble`), `ParamFields`' pattern/split-config list editors, `DebugRefBubble`,
 `IssuesBlock`.
+
+## Shared list and bubble primitives (issue #978)
+
+Small presentational components that the side panels and dialogs share. They lay out and style;
+hover, click and highlight behavior stays with the caller through the usual DOM props (`style` is
+always merged last).
+
+### `SearchInput` (`components/SearchInput.tsx`)
+
+Every text search or free-text filter uses this component. It is a controlled `type="text"` field,
+never a native `type="search"`: a non-empty query gets the same in-field clear action everywhere,
+clearing is immediate and retains focus, and committed query updates are debounced by 150 ms. The
+field is 24 px high; its 18 px compact clear action has a 3 px top/bottom/right inset. Its font,
+dimensions, inset, border, clear label and hover treatment are not configurable; callers may
+supply their own `onKeyDown` only for context-specific keyboard behavior. `tools/check-search-input.mjs`
+runs before the web test suite and production build; it rejects native search controls, raw
+search/filter inputs, and regression of the currently migrated consumers.
+
+### `Bubble` (`components/Bubble.tsx`)
+
+The monospace chip. `variant`: `neutral` (references an entity, `ui.debug.refHighlight`), `success`
+(tags an id) or `danger` (marks a problem); `colors` overrides the variant (the glue runs' own hues);
+`size`: `caption` (default) or `body` (a bubble inside a line of body text); `interactive` shows the
+pointer cursor, otherwise the cursor is `default`. Bubble text is never selectable. `IdBubble` is the
+`id: N` tag (a `success` bubble). `bubbleColors(variant)` gives a variant's colours for something
+that sits inside a bubble (a floor badge).
+
+`BubbleHoverZones` / `BubbleHoverZone` wrap bubbles whose hover highlights something on the canvas:
+the zones **touch** (the visual spacing is padding on each zone, never a gap), so moving between two
+bubbles never passes a spot that hovers the whole group and the highlight does not flicker.
+`BubbleArrow` is the muted `->`, `<-` or `<->` glyph between two bubbles.
+
+### `ListCell` / `ListCellAction` (`components/ListCell.tsx`)
+
+One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour dot, `badge`
+pinned right — an `IdBubble`), an optional details row, an optional body, and an `actions` area at the
+right end of the title row or of the details row (`actionsPlacement`). `ListCellAction` is the 22×22
+icon button: `title` is both tooltip and accessible name, `danger` tints it with the error colour,
+`selected` marks the active mode button (and sets `aria-pressed`; leave it out for a plain button).
+It never clicks the cell it sits in. With `activateOnPress` the action runs on `pointerdown`
+(with `preventDefault` + `stopPropagation`) and keyboard activation (`click` with `detail === 0`) still
+works — the SidePanel hit-testing workaround of issue #679 for rows that re-render between press and
+release.
+
+### `SelectableList` / `SelectableRow` (`components/SelectableList.tsx`)
+
+Single-select `role="listbox"` over `role="option"` rows (option ids contain no whitespace, so
+`aria-activedescendant` is valid for any value). The listbox itself holds focus (`tabIndex={0}`,
+`autoFocus` takes it on mount). `values` is the arrow-key walk order of the selectable values;
+without it the list has no key handling at all (a list that applies its selection at once). Up/Down
+clamp at both ends; from no selection Down lands on the first value and Up on the last. `onSelect`
+gets `"pointer"` or `"keyboard"` as the source. The selected row is scrolled into view when the
+selection moves (not on a re-render that only rebuilds `values`). `footer` is sticky content that is
+not an option. `SelectableRow` is memoized (moving the highlight re-renders two rows) and `disabled`
+rows are dimmed, `aria-disabled` and not selectable.
+
+`appearance="panel"` is the framed list of a side panel (`FontPickerPanel`); `appearance="dialog"`
+is bare rows spanning a dialog (`ItemSelectDialog` — `compact`, with `indented` rows under
+`role="group"` section headers —, `CopyFloorDialog`, `SeedHistoryDialog`). In dialog lists the
+selected row does not react to hover unless `hoverSelected` is set (`SeedHistoryDialog`, which
+brightens it like the other rows).
+
+`SeedHistoryDialog` highlights only the history entry the seed field currently shows (none when the
+typed seed is not in the history). A click jumps to the seed and closes; Up/Down move the highlight
+without jumping and Enter then jumps to the highlighted seed.

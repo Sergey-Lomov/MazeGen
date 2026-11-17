@@ -213,9 +213,9 @@ fn resolve_face<T: Tessellation>(
         return true;
     }
 
-    let neighbor = tessellation
-        .neighbor(point, tess_face)
-        .and_then(|(neighbor_point, _)| field.nodes_at(level, neighbor_point).first().copied());
+    let neighbor = field
+        .neighbor_via(level, point, tess_face)
+        .and_then(|crossing| field.nodes_at(level, crossing.cell).first().copied());
 
     match face.requirement {
         SplitFaceRequirement::Wall => {
@@ -733,7 +733,7 @@ fn apply_pattern_adaptation<T: Tessellation>(
     // — the whole point's nodes are fully processed by this one event, so none of them is a
     // pending traversal step the way an ordinary frontier entry is. Only their outside neighbors
     // (already pushed above, by `mark_connected`) continue the traversal from here.
-    apply_split_teleport(graph, elements, preset_state, state, &nodes, scope);
+    apply_split_teleport(graph, field, elements, preset_state, state, &nodes, scope);
 }
 
 #[cfg(test)]

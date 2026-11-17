@@ -12,17 +12,26 @@ import { createGenerationStagesSlice } from "./generationSliceStages";
 import { createGenerationDebugSlice } from "./generationSliceDebug";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
+import { cancelActiveGeneration } from "./generateConfigBuilder";
 import * as m from "~/paraglide/messages";
 
 const REGISTRY_LOAD_FAILED = "generation.registry_load_failed";
-registerNotificationCode(REGISTRY_LOAD_FAILED, { category: "error", message: () => m[REGISTRY_LOAD_FAILED]() });
+registerNotificationCode(REGISTRY_LOAD_FAILED, { severity: "error", message: () => m[REGISTRY_LOAD_FAILED]() });
 
 /** In-flight `loadRegistry` call, shared by overlapping callers (React StrictMode runs the mount
  *  effect twice in dev) so one failure is reported once, not as a second toast occurrence. */
 let registryLoadInFlight: Promise<void> | null = null;
 
-export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
+export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID, NESTED_STRATEGY_MAX_SIZE_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
+
+/** Selection, hover and search state tied to the maze and debug run being replaced (GitHub issue #946). */
+export const generationTransientUi = {
+  selectedNode: null,
+  hoveredDebugRef: null,
+  debugSearchQuery: "",
+  debugFocusNodeIndex: null,
+} satisfies Partial<GenerationState>;
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (...a) => {
   const [set, get] = a;
@@ -58,7 +67,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   showNodeIds: false,
   showCoords: false,
   showMaze: true,
-  selectedNode: null,
+  ...generationTransientUi,
   issues: [],
   error: null,
   registryError: null,
@@ -68,7 +77,6 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   availableRuleParams: [],
   rules: [],
   stages: [newStage(0)],
-  strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
   elementsConfig: { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
   routeInfo: null,
@@ -82,19 +90,17 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   lastUsedQcExperiment: false,
   vertexSettingsPanelOpen: false,
   generationStatus: "idle" as const,
+  generationProgress: null,
   openCard: "basic_config" as const,
   debugMode: false,
   debugAutoPlayDelay: 200,
   debugArena: null,
   debugStep: 0,
   debugFocusToken: 0,
-  debugFocusNodeIndex: null,
   debugAutoSwitchFloor: true,
   debugStale: false,
-  hoveredDebugRef: null,
   debugValueToggles: new Set<string>(),
   showKruskalDsuGroups: false,
-  debugSearchQuery: "",
   mazeDirty: false,
   repairMaxIterations: 100,
   repairTimeBudgetSecs: 10,
@@ -172,6 +178,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     await generateWithSeedAsync(usedSeed, get, set, qcExperiment);
   },
 
+  cancelGeneration: () => {
+    cancelActiveGeneration();
+  },
+
   seedHistoryBack: () => set((state) => {
     if (state.seedHistory.length === 0 || state.seedHistoryIndex <= 0) return {};
     const idx = state.seedHistoryIndex - 1;
@@ -243,11 +253,15 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
+  setElementCellTypeRestrictions: (cell_type_restrictions) => set((state) => ({
+    elementsConfig: { ...state.elementsConfig, cell_type_restrictions },
+    debugStale: debugStaleOf(state),
+  })),
+
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   loadQualityPreset: (quality) => set((state) => ({
-    rules: rulesFromFile(quality.rules),
+    rules: rulesFromFile(quality.rules, state.availableStrategies),
     stages: quality.stages,
-    strategyParams: quality.strategyParams,
     repairMaxIterations: quality.repairMaxIterations,
     repairTimeBudgetSecs: quality.repairTimeBudgetSecs,
     debugStale: debugStaleOf(state),

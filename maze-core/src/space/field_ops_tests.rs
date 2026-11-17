@@ -1,4 +1,5 @@
 use super::*;
+use crate::space::test_support::BasisSquareTessellation;
 
 fn square(x: i32, y: i32) -> SquarePoint {
     SquarePoint { x, y }
@@ -14,7 +15,21 @@ fn preset_keys<T: Tessellation>(tessellation: &T) -> Vec<&'static str> {
 
 /// Sample parameters for every param of `descriptor`, all set to `value`.
 fn params_of(descriptor: &PresetDescriptor, value: u32) -> Vec<(&'static str, u32)> {
-    descriptor.params.iter().map(|p| (p.name, value)).collect()
+    // `mode`, `net` and `axis` are switches, not sizes; `0` is the connected net and left-right.
+    descriptor
+        .params
+        .iter()
+        .map(|p| {
+            (
+                p.name,
+                if matches!(p.name, "mode" | "net" | "axis") {
+                    0
+                } else {
+                    value
+                },
+            )
+        })
+        .collect()
 }
 
 fn check_presets_build_valid_connected_sorted_cells<T: Tessellation>(tessellation: &T) {
@@ -23,8 +38,13 @@ fn check_presets_build_valid_connected_sorted_cells<T: Tessellation>(tessellatio
             let params = params_of(descriptor, size);
             let cells = match tessellation.build_preset(descriptor.key, &params) {
                 Ok(cells) => cells,
-                // A shape too small to hold any cell center is refused, never returned empty.
-                Err(FieldOpError::InvalidPreset(reason)) if reason.contains("no cells") => continue,
+                // A shape too small to hold any cell center is refused, never returned empty; so is a
+                // cylinder or torus of a size that does not close up.
+                Err(FieldOpError::InvalidPreset(reason))
+                    if reason.contains("no cells") || reason.contains("glued") =>
+                {
+                    continue;
+                }
                 Err(e) => panic!("{} {params:?}: {e}", descriptor.key),
             };
             assert!(!cells.is_empty(), "{} {params:?} is empty", descriptor.key);
@@ -71,59 +91,77 @@ fn every_builtin_preset_builds_valid_connected_sorted_cells() {
 fn presets_per_kind_match_the_spec_table() {
     assert_eq!(
         preset_keys(&SquareTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "box", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&HexTessellation),
-        ["rect", "parallelogram", "hexagon", "circle", "triangle"]
+        [
+            "rect",
+            "parallelogram",
+            "hexagon",
+            "circle",
+            "triangle",
+            "cylinder",
+            "torus"
+        ]
     );
     assert_eq!(
         preset_keys(&TriTessellation),
-        ["rect", "triangle", "hexagon", "circle"]
+        [
+            "rect",
+            "triangle",
+            "hexagon",
+            "circle",
+            "tetrahedron",
+            "octahedron",
+            "icosahedron",
+            "cylinder",
+            "torus"
+        ]
     );
     assert_eq!(
         preset_keys(&CairoTessellation),
-        ["rect", "circle", "triangle", "hexagon"]
+        ["rect", "circle", "triangle", "hexagon", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&SquareOctagonTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&BrickTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&TrihexagonalTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&SnubHexagonalTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&RhombitrihexagonalTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&TruncatedHexagonalTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&TruncatedTrihexagonalTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&ElongatedTriangularTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&SnubSquareTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
     assert_eq!(
         preset_keys(&CurvedQuadrilateralTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "cylinder", "torus"]
     );
 }
 
@@ -369,4 +407,59 @@ fn a_tessellation_can_withhold_operations() {
         NoOps.build_preset("rect", &[]),
         Err(FieldOpError::Unavailable)
     );
+}
+
+fn unit_basis() -> [Point; 2] {
+    [Point::new(1.0, 0.0), Point::new(0.0, 1.0)]
+}
+
+#[test]
+fn translation_basis_accepts_lattice_vectors_within_tolerance_only() {
+    let t = BasisSquareTessellation {
+        basis: Some(unit_basis()),
+    };
+    // Integer combinations of either sign, with floating-point noise below the tolerance.
+    assert_eq!(
+        t.translate_cells(&[square(0, 0)], Point::new(-3.0 + 1e-9, 2.0 - 1e-9)),
+        Ok(vec![square(-3, 2)])
+    );
+    for vector in [Point::new(1.001, 0.0), Point::new(0.0, 0.5)] {
+        assert_eq!(
+            t.translate_cells(&[square(0, 0)], vector),
+            Err(FieldOpError::NotASymmetry),
+            "({}, {})",
+            vector.x,
+            vector.y
+        );
+    }
+}
+
+#[test]
+fn translate_trusts_a_declared_basis_over_the_probe() {
+    // The probe would accept (1, 0); a coarser declared basis refuses it, so the basis decides.
+    let t = BasisSquareTessellation {
+        basis: Some([Point::new(2.0, 0.0), Point::new(0.0, 2.0)]),
+    };
+    assert_eq!(
+        t.translate_cells(&[square(0, 0)], Point::new(1.0, 0.0)),
+        Err(FieldOpError::NotASymmetry)
+    );
+}
+
+#[test]
+fn basis_contract_check_passes_a_correct_basis_and_fails_wrong_or_missing_ones() {
+    let check = |basis| check_translation_basis(&BasisSquareTessellation { basis });
+    assert_eq!(check(Some(unit_basis())), Ok(()));
+    // A basis that is too coarse rejects a real symmetry; one that is too fine accepts a fake.
+    assert!(
+        check(Some([Point::new(2.0, 0.0), Point::new(0.0, 2.0)]))
+            .unwrap_err()
+            .contains("disagrees")
+    );
+    assert!(
+        check(Some([Point::new(0.5, 0.0), Point::new(0.0, 0.5)]))
+            .unwrap_err()
+            .contains("disagrees")
+    );
+    assert!(check(None).unwrap_err().contains("no translation_basis"));
 }

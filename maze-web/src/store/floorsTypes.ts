@@ -35,6 +35,18 @@ export interface FloorsState {
    * mutation could otherwise leave it dangling (removing the active floor) or out of range
    * (project load). */
   activeFloorId: string;
+  /** Per-floor topology (GitHub issue #836), keyed by floor id; a floor without folds has no entry.
+   * Authored for the tessellation config current when it was set, so every kind/params change
+   * clears it. Sent to wasm as the `topology` key and saved in the project file's `floorTopology`. */
+  floorTopology: Record<string, import("../wasm/types").WireTopology>;
+  /** Per-floor topological crease lines (GitHub issue #898), keyed by floor id; a floor without creases has no entry.
+   * Free segments in world units: they do not affect generation, so editing them never discards the maze. Cleared
+   * with the topology by a tessellation change; saved in the project file's `floorCreases`. */
+  floorCreases: Record<string, import("./creases").Crease[]>;
+  /** The edge alignment markers' keys of each floor in their display order (GitHub issue #902), keyed by floor id: a marker's
+   * number on its floor is its position here. Not persisted: `edgeMarkerSync` refreshes the active floor's entry, the only
+   * floor whose seam geometry exists. */
+  edgeMarkerOrder: Record<string, string[]>;
 }
 
 export interface FloorsActions {

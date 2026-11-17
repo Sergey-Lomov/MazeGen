@@ -1,25 +1,31 @@
-import type React from "react";
-import { typography, muted } from "../styles/theme";
+import { IconActionButton } from "./IconActionButton";
 
-/** Shared clickable "ℹ" icon that opens an info popup for a row/section — mirrors
- *  `LinkStatusIcon`'s own per-field icon convention, so every info entry point renders and
- *  behaves identically instead of each row hand-rolling its own span+styles copy. */
-export function InfoIconButton({ onClick }: { onClick: () => void }) {
+/** Shared information action with the common icon-button hover treatment. */
+export function InfoIconButton({ onClick, label = "Info", inList = false, hoverable = true, disabled = false, testId }: {
+  onClick: () => void;
+  label?: string;
+  /** A list action keeps its parent list's focus and does not become a tab stop. */
+  inList?: boolean;
+  /** Suppresses the hover highlight for a deliberately static inline badge. */
+  hoverable?: boolean;
+  /** Dimmed and inert: it keeps its place, so the row does not shift when an action becomes unavailable. */
+  disabled?: boolean;
+  testId?: string;
+}) {
   return (
-    <span
-      role="button"
-      tabIndex={0}
-      aria-label="Info"
-      className="hoverable"
-      style={styles.infoIcon}
-      onClick={onClick}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
-    >
-      ℹ
-    </span>
+    <IconActionButton
+      action="info"
+      title={label}
+      withTooltip={false}
+      suppressHover={!hoverable}
+      tabIndex={inList ? -1 : undefined}
+      disabled={disabled}
+      data-testid={testId}
+      onMouseDown={inList ? (event) => event.preventDefault() : undefined}
+      onClick={(event) => {
+        if (inList) event.stopPropagation();
+        onClick();
+      }}
+    />
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
-};

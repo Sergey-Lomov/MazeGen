@@ -224,4 +224,9 @@ describe("VertexBasedEvent golden round trip", () => {
     const decoded = decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CROSS_FLOOR_TELEPORT_ROLLED, bytes);
     expect(decoded).toEqual({ kind: "CrossFloorTeleportRolled", roll: 1.5, balance: 1.5, otherFloorPreferred: true });
   });
+  it("ElementRollSkipped", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 120, 1, 0, 0, 0, 120]);
+    const decoded = decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.ELEMENT_ROLL_SKIPPED, bytes);
+    expect(decoded).toEqual({ kind: "ElementRollSkipped", src: 7n, element: "x", cellType: "x" });
+  });
 });

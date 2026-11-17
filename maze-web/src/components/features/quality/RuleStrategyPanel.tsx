@@ -43,16 +43,16 @@ interface Props {
 // themselves (the checks still run; only the repair step is what gets toggled here).
 export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit }: Props) {
   const toggleStrategyDisabled = useMazeStore((s) => s.toggleStrategyDisabled);
-  const strategyParams = useMazeStore((s) => s.strategyParams);
+  const rules = useMazeStore((s) => s.rules);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
 
   const strategy = slot.strategy;
   const { values, onChange, flushRef } = useParamEditor({
     entityId: strategy?.id ?? "",
     params: strategy?.params ?? [],
-    storeValues: strategy ? (strategyParams[strategy.id] ?? {}) : {},
+    storeValues: strategy ? (rules.find((r) => r.id === slot.ruleId)?.strategyParams ?? {}) : {},
     onCommit: (paramId, value) => {
-      if (strategy) setStrategyParam(strategy.id, paramId, value);
+      if (strategy) setStrategyParam(slot.ruleId, paramId, value);
     },
   });
 

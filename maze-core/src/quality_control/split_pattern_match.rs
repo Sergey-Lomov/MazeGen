@@ -37,10 +37,10 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
                 .faces_of(point)
                 .iter()
                 .map(|&face| {
-                    let Some((neighbor_point, _)) = tessellation.neighbor(point, face) else {
+                    let Some(crossing) = field.neighbor_via(level, point, face) else {
                         return SplitFaceRequirement::Wall;
                     };
-                    let candidates = field.nodes_at(level, neighbor_point);
+                    let candidates = field.nodes_at(level, crossing.cell);
                     if candidates.is_empty() {
                         return SplitFaceRequirement::Wall;
                     }

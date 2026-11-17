@@ -37,10 +37,11 @@ describe("buildRegionGeometry", () => {
 
   it("does not draw a perimeter segment on the shared interior wall between two cells of the same region", () => {
     const nodes = [node(0, 0, 0), node(1, 1, 0)];
-    const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, cfg);
+    const { perimeterSegments, componentCount } = buildRegionGeometry([0, 1], nodes, cfg);
     // 4 sides each, minus the 2 shared sides (one per cell) that face each other inside the region.
     expect(perimeterSegments).toHaveLength(6);
     expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
+    expect(componentCount).toBe(1);
   });
 
   it("merges adjacent hexagonal cells into one contour", () => {
@@ -83,11 +84,12 @@ describe("buildRegionGeometry", () => {
     // (0,0) and (1,1) are both "up" triangles (parity even) that touch only at one apex vertex --
     // not tessellation neighbors, so they must trace as independent contours.
     const nodes = [node(0, 0, 0), node(1, 1, 1)];
-    const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, triangleCfg);
+    const { perimeterSegments, componentCount } = buildRegionGeometry([0, 1], nodes, triangleCfg);
     const contours = buildRegionContours(perimeterSegments);
     expect(contours).toHaveLength(2);
     expect(contours[0]).toHaveLength(3);
     expect(contours[1]).toHaveLength(3);
+    expect(componentCount).toBe(2);
   });
 
   it("keeps a ring's hole nested while a separate corner-touching cell stays its own contour", () => {

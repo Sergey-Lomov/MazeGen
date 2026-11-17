@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { useMazeStore } from "../../store/mazeStore";
 import { TileFaceEditor } from "../features/TileFaceEditor";
@@ -7,11 +6,16 @@ import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
 import { degreeFor, originCellOf, tileNodesForPattern } from "../../pixi/splitPatternTile";
-import { blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { blueprintNumber, blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import { patternShapeOf } from "../../pixi/shapeTemplates";
+import { messageForTitleKey } from "../../pixi/splitPatternTitles";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 import { Tooltip } from "../Tooltip";
+import { NumberInput } from "../NumberInput";
+import { AddIconButton } from "../AddIconButton";
+import { EditIconButton } from "../EditIconButton";
+import { DeleteIconButton } from "../DeleteIconButton";
 
 interface Props {
   patterns: SplitPattern[];
@@ -84,6 +88,10 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
     addPattern(blueprintToSplitPattern(blueprint, fieldConfig));
   }
 
+  const blueprintName = (blueprint: (typeof blueprints)[number]) => blueprint.titleKey
+    ? messageForTitleKey(blueprint.titleKey)
+    : m["post_edit.split_blueprint_unnamed"]({ number: blueprintNumber(blueprint) });
+
   // Removing a pattern shifts every later index down by one — an open editor for the removed
   // pattern itself, or for any pattern after it, must close/re-target accordingly, or it would
   // silently keep editing whatever pattern ended up at that index afterward.
@@ -120,9 +128,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         <div style={styles.sectionHeader}>
           <span style={styles.label}>{m["generation.split_patterns"]()}</span>
           {!locked && (
-            <Tooltip content={m["generation.split_pattern_add"]()}><button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern}>
-              <Plus size={14} />
-            </button></Tooltip>
+            <AddIconButton title={m["generation.split_pattern_add"]()} onClick={handleAddPattern} />
           )}
         </div>
         {patterns.length === 0 ? (
@@ -135,16 +141,14 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                 {withWeights && (
                   <div style={styles.weightRow}>
                     <span style={styles.label}>{m["generation.split_pattern_weight"]()}</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       name={`split-pattern-${i}-weight`}
                       style={sharedStyles.inputSm}
-                      value={pattern.weight ?? 1.0}
+                      value={String(pattern.weight ?? 1.0)}
                       min={0}
-                      step={0.1}
-                      onChange={(e) => {
-                        const w = Math.max(0, Number(e.target.value));
-                        if (Number.isFinite(w)) updatePattern(i, { ...pattern, weight: w });
+                      onChange={(value) => {
+                        const weight = Number(value);
+                        if (Number.isFinite(weight)) updatePattern(i, { ...pattern, weight });
                       }}
                     />
                     <span style={styles.percent}>{percentOf(pattern.weight ?? 1.0).toFixed(1)}%</span>
@@ -156,8 +160,8 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
               </div>
               {!locked && (
                 <div style={styles.patternActions}>
-                  <Tooltip content={m["generation.split_pattern_edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)}>✎</button></Tooltip>
-                  <Tooltip content={m["generation.split_pattern_remove"]()}><button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)}>✕</button></Tooltip>
+                  <EditIconButton title={m["generation.split_pattern_edit"]()} onClick={() => setEditingIndex(i)} />
+                  <DeleteIconButton title={m["generation.split_pattern_remove"]()} onClick={() => handleRemovePattern(i)} />
                 </div>
               )}
             </div>
@@ -168,8 +172,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
             <span style={styles.label}>{m["generation.split_pattern_blueprints_label"]()}</span>
             <div style={styles.blueprintStrip}>
               {blueprints.map((blueprint) => (
-                <button
-                  key={blueprint.id}
+                <Tooltip key={blueprint.id} content={blueprintName(blueprint)}><button
                   className="hoverable"
                   style={styles.blueprintThumb}
                   onClick={() => handleAddBlueprint(blueprint)}
@@ -178,7 +181,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                     point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
-                </button>
+                </button></Tooltip>
               ))}
             </div>
           </div>
@@ -239,13 +242,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "row",
     gap: 2,
     flexShrink: 0,
-  },
-  editBtn: {
-    background: "none",
-    border: "none",
-    cursor: "default",
-    color: ui.text.secondary,
-    padding: "2px 6px",
+    alignSelf: "flex-start",
+    // `FlatIconButton` deliberately extends 2 px above its layout footprint; offset it back down
+    // so its visible square aligns with the preview tile's top edge.
+    paddingTop: 2,
   },
   // Horizontally scrolling strip of built-in blueprint thumbnails (GitHub issue #235 follow-up)
   // — same visual pattern as `SplitNodesDialogView`'s own blueprint strip, one-click "add a
@@ -276,17 +276,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  iconBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "none",
-    border: `1px solid ${ui.border.strong}`,
-    borderRadius: 4,
-    cursor: "default",
-    padding: 4,
-    color: ui.text.secondary,
   },
   empty: {
     ...muted(typography.body),

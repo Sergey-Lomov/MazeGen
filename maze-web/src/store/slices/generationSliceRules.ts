@@ -2,8 +2,9 @@ import type { StateCreator } from "zustand";
 import { entriesForSlot } from "../storeTypes";
 import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
+import { NESTED_STRATEGY_MAX_SIZE_PARAM_ID, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 import {
-  resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
+  newStage, nextStageIndex, resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
   newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName,
 } from "./generationSliceHelpers";
 
@@ -11,7 +12,8 @@ type RulesSliceKeys =
   | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "toggleCheckDisabled" | "removeCheckFromRule"
   | "setStrategy" | "clearStrategy" | "setNestedStrategy" | "setNestedStrategyParam" | "addNestedStrategy"
   | "removeNestedStrategy" | "moveNestedStrategy" | "toggleStrategyDisabled" | "toggleRuleDisabled"
-  | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule";
+  | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule"
+  | "reorderRule" | "moveRuleToNewStage";
 
 export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, RulesSliceKeys>> = (set) => ({
   // retired) could always be added, including one already active elsewhere — each call mints a
@@ -54,15 +56,9 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       params: initialCheckParams?.[descriptor.id] ?? defaultParamsFor(descriptor),
       disabled: false,
     }));
-    const strategyParams = { ...state.strategyParams };
-    if (strategyId && !strategyParams[strategyId]) {
-      const strategyDescriptor = state.availableStrategies.find((s) => s.id === strategyId);
-      strategyParams[strategyId] = initialStrategyParams ?? defaultParamsFor({ params: strategyDescriptor?.params ?? [] });
-    }
-    const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies);
+    const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies, initialStrategyParams);
     const stages = appendRuleToStage(state.stages, rule.id, targetStageId);
     return {
-      strategyParams,
       rules: [...state.rules, rule],
       stages,
       debugStale: debugStaleOf(state),
@@ -115,9 +111,9 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // config left over from the old strategy would be meaningless at best, misleading at worst.
   // Every mandatory slot of the new strategy is auto-filled with a default nested strategy (see
   // `buildDefaultNestedStrategies`) rather than left empty.
-  setStrategy: (ruleId, strategyId) => set((state) => ({
+  setStrategy: (ruleId, strategyId, initialStrategyParams) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, strategyId, nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
+      ? { ...g, strategyId, strategyParams: initialStrategyParams ?? defaultParamsFor({ params: state.availableStrategies.find((s) => s.id === strategyId)?.params ?? [] }), nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
       : g),
     debugStale: debugStaleOf(state),
   })),
@@ -138,7 +134,14 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
     const transform = (target: NestedStrategyState): NestedStrategyState[] => {
       if (strategyId === null) return [];
       const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-      const params = descriptor ? defaultParamsFor(descriptor) : {};
+      // Dispatcher-owned params describe the entry's place in its slot, not the strategy, so they
+      // survive a swap (a lost `max_size` would silently turn the entry's range unbounded).
+      const kept = Object.fromEntries(
+        [NESTED_STRATEGY_WEIGHT_PARAM_ID, NESTED_STRATEGY_MAX_SIZE_PARAM_ID]
+          .filter((id) => target.params[id] !== undefined)
+          .map((id) => [id, target.params[id]]),
+      );
+      const params = { ...(descriptor ? defaultParamsFor(descriptor) : {}), ...kept };
       const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
       return [{ slotId: target.slotId, strategyId, params, nested }];
     };
@@ -263,6 +266,32 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       if (i === neighborIdx) return { ...s, ruleIds: neighborRuleIds };
       return s;
     });
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  // Drag-and-drop placement (GitHub issue #39): puts `ruleId` into `targetStageId` at `index`,
+  // where `index` counts positions in the target's `ruleIds` *after* the rule was taken out of its
+  // source (so a same-stage reorder behaves like `arrayMove`). Out-of-range indices are clamped.
+  // No-op for an unknown rule or target stage.
+  reorderRule: (ruleId, targetStageId, index) => set((state) => {
+    if (!state.stages.some((s) => s.id === targetStageId)) return {};
+    if (!state.stages.some((s) => s.ruleIds.includes(ruleId))) return {};
+    const stages = state.stages.map((s) => {
+      const ruleIds = s.ruleIds.filter((id) => id !== ruleId);
+      if (s.id !== targetStageId) return { ...s, ruleIds };
+      const at = Math.max(0, Math.min(index, ruleIds.length));
+      return { ...s, ruleIds: [...ruleIds.slice(0, at), ruleId, ...ruleIds.slice(at)] };
+    });
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  // Drag-and-drop beyond the outer stage boundaries (GitHub issue #39): creates a new stage at
+  // the start or end of `stages` and moves `ruleId` into it. Default name follows `addStage`.
+  moveRuleToNewStage: (ruleId, position) => set((state) => {
+    if (!state.stages.some((s) => s.ruleIds.includes(ruleId))) return {};
+    const created = newStage(nextStageIndex(state.stages), [ruleId]);
+    const rest = state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => id !== ruleId) }));
+    const stages = position === "start" ? [created, ...rest] : [...rest, created];
     return { stages, debugStale: debugStaleOf(state) };
   }),
 });

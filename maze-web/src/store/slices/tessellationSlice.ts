@@ -8,9 +8,25 @@ import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfi
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { splitPatternsFor } from "../../pixi/shapeTemplates";
 import { qcForTessellation } from "./qcTessellationFilter";
-import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellation, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
-import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellationSettings, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { computeMirrorPreview } from "../../pixi/mirror";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
+
+/** Field-editing modes and previews that never outlive the project they were opened in (GitHub issue #946). */
+export const tessellationTransientUi = {
+  showPrimitiveFrame: true,
+  backgroundAutoFillPreview: null,
+  smoothPrimitives: true,
+  smoothInverted: false,
+  mirrorSnapMode: "centers",
+  mirrorScope: "one_side",
+  mirrorAxisPoints: [],
+  mirrorSourceSide: 1,
+  mirrorPolygon: [],
+  mirrorPolygonFinished: false,
+  fieldOpError: null,
+  fieldClipboard: null,
+} satisfies Partial<TessellationState>;
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
@@ -27,21 +43,13 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   activeFieldConfig: resolveFieldConfig(buildPreviewConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI)),
   showFieldOverlay: true,
   showFieldOrigin: true,
-  showPrimitiveFrame: true,
   showPaperLayout: false,
   showBackgroundImage: false,
   backgroundImage: null,
   backgroundImageManualPositioning: false,
   backgroundImageCropping: false,
-  backgroundAutoFillPreview: null,
-  smoothPrimitives: true,
-  symmetrySnapMode: "centers",
-  symmetryScope: "one_side",
-  symmetryAxisPoints: [],
-  symmetrySourceSide: 1,
-  symmetryPolygon: [],
-  symmetryPolygonFinished: false,
-  fieldOpError: null,
+  ...tessellationTransientUi,
+  fieldHasSelection: false,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
@@ -73,14 +81,22 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     const tessellation: TessellationConfig = { kind: state.previewKind, params: state.previewParams };
     const hexOrientation = state.previewHexOrientation;
     const triOrientation = state.previewTriOrientation;
-    // Params define the cell set, so a params change discards the maze like a kind change does.
-    const clearMaze = !sameTessellation(tessellation, tessellationOf(state));
+    // Any settings change (kind, params, orientation) discards the maze, presets included.
+    const clearMaze = !sameTessellationSettings(
+      { tessellation, hexOrientation, triOrientation },
+      { tessellation: tessellationOf(state), hexOrientation: state.hexOrientation, triOrientation: state.triOrientation },
+    );
     const freshField = defaultFloorFieldConfig(tessellation, hexOrientation, triOrientation);
-    warmCartesianCache(freshField.fieldConfig);
+    // Re-confirming unchanged settings keeps every floor's field as it is.
+    const unchanged = !clearMaze;
+    const activeField = unchanged ? state.floorFields[state.activeFloorId] ?? freshField : freshField;
+    warmCartesianCache(activeField.fieldConfig, clearMaze ? null : state.floorTopology[state.activeFloorId] ?? null);
     // Kind/orientation are maze-wide (Specs/field-editor.md) — every floor's own field config is
     // rebuilt against the newly confirmed kind, same as a single-floor maze always did.
     const floorFields: Record<string, FloorFieldConfig> = {};
-    for (const floorId of Object.keys(state.floorFields)) floorFields[floorId] = freshField;
+    for (const floorId of Object.keys(state.floorFields)) {
+      floorFields[floorId] = unchanged ? state.floorFields[floorId] : freshField;
+    }
     return {
       tessellationKind: tessellation.kind,
       tessellationParams: tessellation.params,
@@ -89,15 +105,16 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationConfirmed: true,
       ...buildPreviewState(tessellation, hexOrientation, triOrientation),
       floorFields,
+      ...(clearMaze ? { floorTopology: {}, floorCreases: {}, creaseDraft: null, creaseHover: null } : {}),
       backgroundAutoFillPreview: null,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
       ...(clearMaze ? {
         ...buildResetDownstreamState(),
         pngExportSettings: {
           ...state.pngExportSettings,
-          print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+          print: { ...state.pngExportSettings.print, scaleAutoFit: false },
         },
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -161,13 +178,17 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationKind: kind,
       tessellationParams: tessellation.params,
       floorFields,
+      floorTopology: {},
+      floorCreases: {},
+      creaseDraft: null,
+      creaseHover: null,
       backgroundAutoFillPreview: null,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
       pngExportSettings: {
         ...state.pngExportSettings,
-        print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+        print: { ...state.pngExportSettings.print, scaleAutoFit: false },
       },
       ...buildResetDownstreamState(),
       error: null,
@@ -225,26 +246,29 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       debugStale: debugStaleOf(state),
     };
   }),
+  setSmoothInverted: (inverted) => set({ smoothInverted: inverted }),
   setFieldOpError: (error) => set({ fieldOpError: error }),
-  setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
-  setSymmetryScope: (scope) => set({ symmetryScope: scope }),
-  setSymmetryAxisPoints: (points) => set((state) => {
+  setFieldClipboard: (cells) => set({ fieldClipboard: cells }),
+  setFieldHasSelection: (has) => set((state) => state.fieldHasSelection === has ? {} : { fieldHasSelection: has }),
+  setMirrorSnapMode: (mode) => set({ mirrorSnapMode: mode }),
+  setMirrorScope: (scope) => set({ mirrorScope: scope }),
+  setMirrorAxisPoints: (points) => set((state) => {
     if (points.length !== 2 || (points[0].x === points[1].x && points[0].y === points[1].y)) {
-      return { symmetryAxisPoints: points, fieldOpError: null };
+      return { mirrorAxisPoints: points, fieldOpError: null };
     }
     const field = state.floorFields[state.activeFloorId];
-    const preview = computeSymmetryPreview(
+    const preview = computeMirrorPreview(
       field.fieldPoints,
       field.fieldConfig,
-      { scope: "everything", sourceSide: state.symmetrySourceSide, axis: [points[0], points[1]], polygon: [] },
+      { scope: "everything", sourceSide: state.mirrorSourceSide, axis: [points[0], points[1]], polygon: [] },
       encodePoint,
       decodePoint,
     );
-    return { symmetryAxisPoints: points, fieldOpError: preview.error };
+    return { mirrorAxisPoints: points, fieldOpError: preview.error };
   }),
-  setSymmetrySourceSide: (side) => set({ symmetrySourceSide: side }),
-  setSymmetryPolygon: (points) => set({ symmetryPolygon: points }),
-  finishSymmetryPolygon: () => set((state) => state.symmetryPolygon.length >= 3 ? { symmetryPolygonFinished: true } : {}),
-  resetSymmetryPolygon: () => set({ symmetryPolygon: [], symmetryPolygonFinished: false }),
-  resetSymmetryAxis: () => set({ symmetryAxisPoints: [], fieldOpError: null }),
+  setMirrorSourceSide: (side) => set({ mirrorSourceSide: side }),
+  setMirrorPolygon: (points) => set({ mirrorPolygon: points }),
+  finishMirrorPolygon: () => set((state) => state.mirrorPolygon.length >= 3 ? { mirrorPolygonFinished: true } : {}),
+  resetMirrorPolygon: () => set({ mirrorPolygon: [], mirrorPolygonFinished: false }),
+  resetMirrorAxis: () => set({ mirrorAxisPoints: [], fieldOpError: null }),
 });

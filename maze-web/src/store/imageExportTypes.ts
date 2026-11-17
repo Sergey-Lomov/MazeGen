@@ -1,5 +1,7 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
-import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
+import type { MarkerLayoutMode } from "../pixi/selectors/mazeSelectors/markerLayout";
+import type { IndexLabelStyle } from "../pixi/renderers/indexLabel";
+import type { LabelFont } from "../pixi/renderers/fontChoice";
 import type { FieldConfig } from "../fieldConfig";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
@@ -48,12 +50,10 @@ export interface PrintExportSettings {
   orientation: PaperOrientation;
   marginHMm: number;
   marginVMm: number;
-  /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. Ignored (kept
-   * up to date but not user-editable) while `scaleAutoFit` is on. */
+  /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. */
   scale: number;
-  /** While on, `scale` is recomputed automatically (`computeAutoFitPrintScale`) on every change
-   * that could affect the fit — sheet size/orientation/DPI, margins, or the maze itself — instead
-   * of the user setting it by hand. The scale input is disabled in this state. */
+  /** Legacy persisted field retained for project compatibility. New projects always store false;
+   * print auto-fit is a one-shot panel action, never a persistent mode. */
   scaleAutoFit: boolean;
   anchor: PrintAnchor;
   /** Content offset in mm from the margin-inset area's top-left corner — only meaningful (and only
@@ -65,7 +65,7 @@ export interface PrintExportSettings {
 }
 
 /** Physical field-sizing inputs shared by Field Setup's print calculator and the PNG Print
- * settings. `cellSizeMm` is the square side or regular-polygon circumcircle diameter, and is
+ * settings. `cellSizeMm` is the cell's circumscribed circle diameter, and is
  * converted to `PrintExportSettings.scale` using the current print DPI. */
 export interface PrintFieldSizingInput {
   paperSize: PaperSize;
@@ -75,6 +75,9 @@ export interface PrintFieldSizingInput {
   cellSizeMm: number;
   marginHMm: number;
   marginVMm: number;
+  /** The field is sized as the editor shows it with smoothing on, without the cells smoothing
+   * removes (GitHub issue #957). */
+  smooth?: boolean;
 }
 
 /** PNG export settings — two independent output-mode branches (`digital`/`print`), only one
@@ -84,6 +87,126 @@ export interface PngExportSettings {
   outputMode: PngExportOutputMode;
   digital: DigitalExportSettings;
   print: PrintExportSettings;
+  /** Cut lines of the topology's glues (GitHub issue #859). Export-only: they never touch the maze
+   * or the topology. */
+  cuts: CutExportSettings;
+}
+
+/** How a glue's cut line is set: not at all, from the glue's own geometry, or by the user. */
+export type CutMode = "none" | "auto" | "manual";
+
+/** One glue's cut line. `offset` is the line's position as a fraction of the glue's period (`0` is
+ * the automatic position, negative is outward); it is read only in `manual` mode. */
+export interface CutLineSetting {
+  mode: CutMode;
+  offset: number;
+}
+
+/** How a render mode draws the cut lines of the export (GitHub issue #859): both modes carry these fields. */
+export interface CutLineStyleFields {
+  /** Draws the cut lines on the image (a fold line for a printed sheet). */
+  showCutLines: boolean;
+  /** Each cut line takes the colour of its glue; `cutLinesColor` applies when off. */
+  cutLinesGlueColor: boolean;
+  cutLinesColor: number;
+  /** Clips maze artwork at glued face boundaries without clipping ordinary field edges. */
+  trimWallsAtFaceBoundaries?: boolean;
+}
+
+/** How the export shows topological crease lines (GitHub issue #900): as lines, or as pairs of marks whose tips point at each other. */
+export type CreaseDisplayMode = "lines" | "marks";
+/** Reusable appearance of a stroked line. */
+export type LineStyle = "dashed" | "solid";
+
+/** Crease display on the image (GitHub issue #900, `Specs/image-export.md`, "Crease lines"). Sizes are in display
+ * units, so they zoom with the field. */
+export interface CreaseExportStyle {
+  showCreases: boolean;
+  mode: CreaseDisplayMode;
+  lineStyle: LineStyle;
+  lineWidth: number;
+  /** Base width of one mark. */
+  markSize: number;
+  /** Length of one mark from its base to its tip. */
+  markTipLength: number;
+  /** Line colour (`"lines"` mode). */
+  color: number;
+  /** Mark colour (`"marks"` mode). */
+  markColor: number;
+}
+
+/** Both render modes carry the crease style. */
+export interface CreaseStyleFields {
+  creases: CreaseExportStyle;
+}
+
+/** Glue-tab display on the image (GitHub issue #901, `Specs/image-export.md`, "Glue tabs"). Sizes are in display units,
+ * so they zoom with the field. */
+export interface GlueTabStyle {
+  showTabs: boolean;
+  /** Distance from each end of a straight glued stretch to the start of its tab. */
+  inset: number;
+  /** How far the tab reaches out from the edge. */
+  width: number;
+  /** On a glue with a broken edge, every second straight stretch gets its tab on side B instead of side A. */
+  alternate: boolean;
+  /** Linked to the background colour by default. */
+  fillColor: number;
+  /** Outline colour, linked to the outer grid colour by default. Used while `lineWidth` is above zero. */
+  lineColor: number;
+  lineStyle: LineStyle;
+  /** Outline thickness; zero draws no outline. */
+  lineWidth: number;
+}
+
+/** Both render modes carry the glue-tab style. */
+export interface GlueTabStyleFields {
+  glueTabs: GlueTabStyle;
+}
+
+/** Which edge alignment markers the export shows (GitHub issue #902). */
+export type EdgeMarkerMode = "hidden" | "ambiguous" | "gluings" | "all";
+
+/** The two parameters of a marker's own look. */
+export type EdgeMarkerRole = "color" | "shape";
+
+/** One marker's own look (the same model as `TeleportGroupOverride`): a value set here wins; otherwise the marker follows the
+ * incoming link of the shared parameter, rebound to the marker, else the shared value itself. `linkBroken` marks a role whose
+ * inherited link is cut for this marker. */
+export interface EdgeMarkerOverride {
+  shape?: MarkerShape;
+  color?: number;
+  linkBroken?: Partial<Record<EdgeMarkerRole, boolean>>;
+}
+
+/** Edge alignment markers on the image (GitHub issue #902, `Specs/image-export.md`, "Edge alignment markers"): marks on
+ * matching edges that show how faces connect during assembly. Sizes are in display units, so they zoom with the field. */
+export interface EdgeMarkerStyle {
+  mode: EdgeMarkerMode;
+  /** Diameter of a marker. */
+  size: number;
+  /** The shape every marker has unless its override says otherwise. */
+  shape: MarkerShape;
+  /** The colour every marker has unless its override says otherwise. */
+  color: number;
+  /** Per floor id, then per marker (`EdgeMarker.key`): the keys come from a floor's own geometry, so they only mean something on that floor. */
+  overrides: Record<string, Record<string, EdgeMarkerOverride>>;
+}
+
+/** The style as one floor sees it: the overrides of that floor alone (what the export, the overlay and the warnings read). */
+export interface FloorEdgeMarkerStyle extends Omit<EdgeMarkerStyle, "overrides"> {
+  overrides: Record<string, EdgeMarkerOverride>;
+}
+
+/** Both render modes carry the edge marker style. */
+export interface EdgeMarkerStyleFields {
+  edgeMarkers: EdgeMarkerStyle;
+}
+
+/** Cut-line export settings (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). */
+export interface CutExportSettings {
+  /** Per floor, then per glue (group id); a missing entry means no cut. An edit that removes a glue drops its entry. */
+  lines: Record<string, Record<number, CutLineSetting>>;
 }
 
 /** Teleports section settings (GitHub issue #293, restructured in a follow-up that removed the
@@ -100,7 +223,7 @@ export interface PngExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
  *  captions, elevator badges and teleport floor badges all configure their text the same way:
- *  color, font weight, an **absolute** font size in px, a margin (not a fraction of the badge/marker
+ *  color, font, an **absolute** font size in px, a margin (not a fraction of the badge/marker
  *  diameter), and reusable horizontal alignment. Alignment is optional while only floor labels
  *  expose it; consumers that omit it remain centered. `MarkerSettings` carries these optionally
  *  (only start/finish expose them in the UI); the badge settings require the original fields. */
@@ -108,7 +231,8 @@ export type TextHorizontalAlignment = "left" | "center" | "right";
 
 export interface TextStyleFields {
   textColor: number;
-  textFontWeight: LabelFontWeight;
+  /** Family and weight as one choice (GitHub issue #973): the weights on offer depend on the font. */
+  textFont: LabelFont;
   /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
   textAlignment?: TextHorizontalAlignment;
   /** Font size in px. */
@@ -145,6 +269,9 @@ export type ElevatorBadgeLabelType = IndexLabelStyle;
  *  gives real geometric overlap. `"full_circle"` spreads badges around the marker's own circle at
  *  radius `distance` — see `ElevatorBadgeSettings.evenDistribution` for the two ring layouts. */
 export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left" | "top_bottom" | "bottom_top";
+
+/** Whether elevator badge bodies are individual or joined into one backing per contiguous group. */
+export type ElevatorBadgeBacking = "individual" | "shared";
 
 /** "Floor-number badges" (GitHub issue #430) — an independent decorative layer drawn on top of an
  *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative): one small
@@ -189,6 +316,10 @@ export interface ElevatorBadgeSettings extends BadgeSettings {
   distance: number;
   gap: number;
   evenDistribution: boolean;
+  /** Replaces individual badge bodies with a shared backing in every placement. */
+  backing?: ElevatorBadgeBacking;
+  /** Clockwise degrees from 12 o'clock for the first circular badge. */
+  startAngle?: number;
 }
 
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
@@ -302,12 +433,14 @@ export interface VerticalDecorativeFields {
 /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
  *  a teleport endpoint that lands on another floor (`drawFloorBadge`, see `Specs/floors.md`'s
  *  "Cross-floor teleport badges"). `shape`, `labelType`, `size`, `fillColor`, `borderColor`,
- *  `textColor`, `textFontWeight` and `textSize` (px) are all configurable (GitHub issue #503
+ *  `textColor`, `textFont` and `textSize` (px) are all configurable (GitHub issue #503
  *  follow-up made the fill/border independent — they previously always followed the connector
  *  color; GitHub issue #701 unified the text style with the other badges). */
 export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
 
 export interface TeleportSettingsFields {
+  /** User-authored connector polylines, keyed by their unordered teleport-node pair. */
+  manualTeleportConnectorPaths?: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>;
   /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
    *  markers instead of the former flat `teleportLine*`/`teleportEdge*` fields. `gapWidth` is the
    *  floor-colored gap ring around the border (GitHub issue #302), same convention as the waypoint
@@ -319,6 +452,8 @@ export interface TeleportSettingsFields {
    *  `teleportConnection*` ("connector" is the settings panel's own term for it). */
   teleportConnectorColor: number;
   teleportConnectorWidth: number;
+  /** Corner join for an angled connector. Linked to the shared corner style by default. */
+  teleportConnectorCornerStyle?: CornerStyle;
   /** `"none"` (no connector), `"straight"` (direct center-to-center) or `"orthogonal"`
    *  (single-bend, axis-aligned, with a local collision offset — see `teleportConnectorRouting.ts`). */
   teleportConnectorStyle: TeleportConnectorStyle;
@@ -331,6 +466,9 @@ export interface TeleportSettingsFields {
    *  outranking every other routing weight (see `FIELD_EXIT_WEIGHT` in `teleportConnectorRouter.ts`),
    *  so a connector prefers any in-field detour over stepping outside the field. */
   teleportAvoidFieldExit: boolean;
+  /** "Route through seams" toggle (GitHub issue #873) — whether a connector crossing a topological
+   *  seam is drawn seam-aware. Shown only while some floor has a seam; off when absent. */
+  teleportThroughSeams?: boolean;
   /** How a one-way connector draws its direction arrow(s) — see `TeleportArrowMode`. */
   teleportArrowMode: TeleportArrowMode;
   /** Tile-width period between arrows in `"periodic"` mode — unused (and hidden in the settings
@@ -347,6 +485,10 @@ export interface TeleportSettingsFields {
    *  `TeleportFloorBadgeSettings`. The settings subsection is hidden entirely when the project has
    *  no cross-floor teleport. */
   teleportFloorBadge: TeleportFloorBadgeSettings;
+  /** Teleport merge mode (GitHub issue #868). On (default): teleports whose endpoints land on the
+   *  same cell share one marker and one group. Off: every teleport draws its own marker (laid out by
+   *  the marker positioning layer) and forms its own group. */
+  teleportMergeMode: boolean;
   /** Off by default — see this interface's own doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;
@@ -386,6 +528,11 @@ export interface SizeAdaptationField {
  *  optional free-text caption. `borderWidth: 0` (the default) draws no border, so there is no
  *  separate show-border toggle. */
 export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, Partial<TextStyleFields> {
+  /** "Show marker" toggle (GitHub issue #963) — independent of the caption's own `textEnabled`, so
+   *  the caption can be shown without the marker and vice versa. `undefined`/`true` draws the marker
+   *  (matches pre-toggle behavior); `false` draws none (size, border and gap count as `0` in every
+   *  consumer, see `withMarkerVisibility`). Only start/finish markers offer it in the UI. */
+  markerEnabled?: boolean;
   /** Custom badge label (GitHub issue #697), e.g. a start/finish marker's "S"/"F". Empty/omitted
    *  draws no label. Currently restricted to a single glyph — UI input truncates to the first
    *  one and restricts to the baked MSDF charset (`tools/msdf/generate.mjs`), uppercased — but the
@@ -397,9 +544,83 @@ export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, P
    *  clearing it, so re-enabling restores the same text. `undefined`/`true` draws the badge
    *  (matches pre-toggle behavior); `false` suppresses it. */
   textEnabled?: boolean;
-  // `textColor`/`textFontWeight`/`textSize` come from `TextStyleFields` (all optional here).
-  // Unset: `textColor` falls back to `gapColor`, weight to `"bold"`, size to
-  // `DEFAULT_MARKER_TEXT_SIZE`.
+  // `textColor`/`textFont`/`textSize` come from `TextStyleFields` (all optional here).
+  // Unset: `textColor` falls back to `gapColor`, `textFont` to `DEFAULT_LABEL_FONT`,
+  // size to `DEFAULT_MARKER_TEXT_SIZE`.
+}
+
+/** What a start/finish "External passage" (GitHub issue #330) does to the field's outer wall:
+ *  `"none"` leaves the wall alone, `"opening"` leaves the chosen wall segment out, `"pointer"` keeps
+ *  the wall and draws a pointer over it, `"both"` does both. */
+export type WaypointOpeningMode = "none" | "opening" | "pointer" | "both";
+export const WAYPOINT_OPENING_MODES: readonly WaypointOpeningMode[] = ["none", "opening", "pointer", "both"];
+/** Whether the chosen outer wall segment is left out in `mode`. */
+export function openingCutsWall(mode: WaypointOpeningMode): boolean {
+  return mode === "opening" || mode === "both";
+}
+/** Whether the direction pointer is drawn in `mode`. */
+export function openingShowsPointer(mode: WaypointOpeningMode): boolean {
+  return mode === "pointer" || mode === "both";
+}
+
+/** Own size parameters of each direction indicator pattern (GitHub issue #993), in px — shared by the
+ *  one-ways section and the waypoint openings' pointer. Every pattern keeps its own set, so switching
+ *  the pattern never reinterprets another pattern's value: the triangle needs one `size`; the chevron a
+ *  `size` (wingspan scale) and line `thickness`; the arrow its tail-to-tip `length`, `headWidth` across
+ *  the direction and line `thickness`. */
+export interface DirectionIndicatorGeometry {
+  triangle: { size: number };
+  chevron: { size: number; thickness: number };
+  arrow: { length: number; headWidth: number; thickness: number };
+}
+
+/** Dotted path of one `DirectionIndicatorGeometry` parameter inside it (`"arrow.headWidth"`). */
+export type DirectionIndicatorLeaf = { [P in keyof DirectionIndicatorGeometry]: `${P}.${keyof DirectionIndicatorGeometry[P] & string}` }[keyof DirectionIndicatorGeometry];
+
+/** A partial update of `DirectionIndicatorGeometry`: any subset of any pattern's parameters. */
+export type DirectionIndicatorGeometryPatch = { [P in keyof DirectionIndicatorGeometry]?: Partial<DirectionIndicatorGeometry[P]> };
+
+/** A partial update of `WaypointOpeningSettings` whose `geometry` is itself partial per parameter. */
+export type WaypointOpeningPatch = Omit<Partial<WaypointOpeningSettings>, "geometry"> & { geometry?: DirectionIndicatorGeometryPatch };
+
+/** The indicator drawing metrics of `pattern`, as the draw style reads them. Parameters the pattern
+ *  has no use for take the fallback of the given `unused` set, which the draw function ignores. */
+export function resolveIndicatorMetrics(
+  pattern: OneWayPattern,
+  geometry: DirectionIndicatorGeometry,
+  unused: { thickness: number; headWidth: number },
+): { size: number; thickness: number; headWidth: number } {
+  switch (pattern) {
+    case "triangle":
+      return { size: geometry.triangle.size, thickness: unused.thickness, headWidth: unused.headWidth };
+    case "chevron":
+      return { size: geometry.chevron.size, thickness: geometry.chevron.thickness, headWidth: unused.headWidth };
+    case "arrow":
+      return { size: geometry.arrow.length, thickness: geometry.arrow.thickness, headWidth: geometry.arrow.headWidth };
+  }
+}
+
+/** One start/finish "External passage" (GitHub issue #330): the endpoint's cell is shown as an entrance/exit
+ *  through the field's outer wall — the chosen outer wall segment may be left out, and a pointer marks
+ *  the way in (start: pointing into the cell) or out (finish: pointing out of it), per `mode`. "Vector by walls"
+ *  only (corridor mode has no outer walls). The pointer has its own pattern, color, size, line thickness
+ *  corner style and gap width (same types as the One-ways section's, so they can be linked); the gap color and
+ *  cap still come from the One-ways section. */
+export interface WaypointOpeningSettings {
+  /** `"none"` by default; `"none"` keeps the endpoint drawn exactly as before. */
+  mode: WaypointOpeningMode;
+  /** Face (side) of the endpoint's cell the passage is made in — a key of the cell's neighbour
+   *  offsets (`getCellNeighborOffsets`). Meaningful only while that face is an outer wall of the
+   *  current floor; `undefined` and a face that is not outer both use the cell's first outer face. */
+  face?: number;
+  pattern: OneWayPattern;
+  color: number;
+  /** Own parameters of every pattern, same shape and units as `VectorByWallsSettings.oneWayGeometry`. */
+  geometry: DirectionIndicatorGeometry;
+  /** Width of the floor-colored gap ring around the pointer, same unit as `oneWayGapWidth`. */
+  gapWidth: number;
+  /** Corner style of the arrow's tip (and the triangle's corners), same as `oneWayJoin`. */
+  join: CornerStyle;
 }
 
 /** A marker with a computed index label instead of a free-text caption (GitHub issue #701) — the
@@ -459,6 +680,8 @@ export interface FloorLabelDragState {
  *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
  *  comment. */
 export interface SharedStyleSourceFields {
+  /** Source font (family and weight) for every linked canvas-label style. */
+  labelFont?: LabelFont;
   /** GitHub issue #701: the "Markers" sub-section of "Shared style" carries every property all
    *  markers share — shape, corner style, size, fill/border color, border width, gap width. The
    *  shape and color sources only drive their (disabled-by-default) links. */
@@ -470,11 +693,10 @@ export interface SharedStyleSourceFields {
   markerBorderColor: number;
   markerBorderWidth: number;
   gapWidth: number;
-  /** Shared label font size (px) and weight (GitHub issue #707) — drive every caption/badge text
+  /** Shared label font size (px, GitHub issue #707) — drives every caption/badge text
    *  style through disabled-by-default links; the "Auto-fit" button picks the size. */
   markerTextSize: number;
   markerTextMargin: number;
-  markerTextFontWeight: LabelFontWeight;
   /** Shared floor-number format for floor, elevator and teleport labels. */
   floorLabelType: IndexLabelStyle;
 }
@@ -486,9 +708,7 @@ export interface SharedStyleSourceFields {
  *  with `startMarker`/`finishMarker`/teleport fields. Every link to these sources starts disabled
  *  (`parameterLinksDefaults.ts`), same as the panel-level "Shared style" links into this section's
  *  own fields — the three markers' defaults are pinned to `GenerationRenderer`'s fixed look, not
- *  this group. `borderColor` is deliberately excluded — a future follow-up could fold it in now
- *  that all three marker groups share the same ordinary fill/border semantics (GitHub issue #693
- *  removed the one-way marker's former accent-color distinction). */
+ *  this group. */
 export interface VerticalSharedStyleFields {
   verticalCornerStyle: CornerStyle;
   verticalShape: MarkerShape;
@@ -497,6 +717,7 @@ export interface VerticalSharedStyleFields {
   verticalBorderWidth: number;
   verticalGapWidth: number;
   verticalFillColor: number;
+  verticalBorderColor: number;
   verticalArrowColor: number;
   verticalArrowSize: number;
   verticalArrowStyle: VerticalArrowStyle;
@@ -576,7 +797,17 @@ export interface MarkerIndexCoverage {
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+/** Marker positioning layer (GitHub issue #735) shared by both vector renderers — arranges several
+ *  markers (start/finish, teleport points, vertical-connection markers) hosted by one cell or one
+ *  split-tile node. `markerLayout`: `"auto"` picks by count (2 row, 3-4 radial, 5+ grid), the others force that arrangement; the gap between markers is fixed (`MARKER_LAYOUT_SPACING`). A host with a single marker is unaffected. See `Specs/marker-layout.md`. */
+export interface MarkerLayoutSettingsFields {
+  markerLayout: MarkerLayoutMode;
+  /** Shrink factor in (0, 1] for every marker in a host with 2+ markers; all marker components
+   *  (shape, border, gap, arrows, text) scale together. `1` = no shrink. */
+  markerScale: number;
+}
+
+export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, EdgeMarkerStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
@@ -622,17 +853,18 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
    *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
    *  color always mirrors `floorColor`, not independently settable. */
   oneWayGapWidth: number;
-  /** Indicator size, in px (GitHub issue #681 — previously a fraction of the tile size). */
-  oneWaySize: number;
-  /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
-   *  effect on the `triangle` pattern. */
-  oneWayThickness: number;
+  /** Size parameters of every pattern, in px (GitHub issues #681, #993) — only the selected
+   *  `oneWayPattern`'s set is shown and drawn. */
+  oneWayGeometry: DirectionIndicatorGeometry;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
    *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
   oneWayJoin: CornerStyle;
   startMarker: MarkerSettings;
   finishMarker: MarkerSettings;
+  /** Start/finish "Opening" (GitHub issue #330) — see `WaypointOpeningSettings`. */
+  startOpening: WaypointOpeningSettings;
+  finishOpening: WaypointOpeningSettings;
   /** Splits section (GitHub issue #294) — per-split-node-slot identity colors, indexed by slot
    *  (0 = original node, 1 = first extra node, ...), overriding `splitSlotColor`'s default palette
    *  one-to-one; a point with more nodes than this array's length falls back to the default
@@ -699,7 +931,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, EdgeMarkerStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
@@ -793,6 +1025,13 @@ export interface ImageExportState {
    * toggles. */
   activeRenderMode: RenderModeId | null;
   floorLabelDrag: FloorLabelDragState | null;
+  /** Transient state for the on-canvas teleport connector editor. */
+  teleportConnectorEdit: {
+    renderMode: RenderModeId;
+    selected: { key: string; index: number } | null;
+    /** Manual connector currently under the canvas pointer, if any (GitHub issue #1005). */
+    hoveredKey: string | null;
+  } | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -824,6 +1063,9 @@ export interface ImageExportState {
    *  — drives the export canvas's cell highlight (same overlay as a hovered export warning). `null`
    *  when nothing is hovered. */
   hoveredTeleportNodeIds: number[] | null;
+  /** Cells highlighted next to `hoveredTeleportNodeIds` that are not nodes — a cross-floor floor badge
+   *  hovered in the teleport connector editor (GitHub issue #989). `floorIndex` is the floor the cell is on. */
+  hoveredTeleportCells: { floorIndex: number; x: number; y: number }[] | null;
   /** Currently hovered export-warning list entry, by `ExportWarning.key` (GitHub issue #298) — set
    *  by hovering a warning row in the settings panel, drives `VectorByWallsRenderer`'s own warning
    *  highlight overlay. `null` when nothing is hovered. Mirrors `hoveredIssueLoopEdges`'s role for
@@ -843,6 +1085,9 @@ export interface ImageExportState {
    * overlay reads this alongside `openExportFormatSettings === "png"` — it would otherwise keep
    * drawing the frame/dimming for a panel the user can no longer see or act on. */
   exportFormatSettingsCovered: boolean;
+  /** The export topology panel (GitHub issue #859) is open: the canvas shows the active floor's glues
+   * and cut lines and lets the manual cut lines be dragged. */
+  exportTopologyOpen: boolean;
   pngExportSettings: PngExportSettings;
 }
 
@@ -859,9 +1104,16 @@ export interface ImageExportActions {
   updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
   finishFloorLabelDrag: () => void;
   cancelFloorLabelDrag: () => void;
+  startTeleportConnectorEdit: (renderMode: RenderModeId) => void;
+  finishTeleportConnectorEdit: () => void;
+  setTeleportConnectorEditSelection: (selected: { key: string; index: number } | null) => void;
+  setTeleportConnectorEditHoveredKey: (key: string | null) => void;
+  /** Writes the renderer-independent paths to both display modes in one transaction. */
+  setManualTeleportConnectorPaths: (paths: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;
+  setExportTopologyOpen: (open: boolean) => void;
   setPngOutputMode: (mode: PngExportOutputMode) => void;
   setDigitalScale: (scale: number) => void;
   setDigitalCanvasMode: (mode: PngCanvasMode) => void;
@@ -876,6 +1128,8 @@ export interface ImageExportActions {
   setPrintScale: (scale: number) => void;
   setPrintScaleAutoFit: (autoFit: boolean) => void;
   setPrintAnchor: (anchor: PrintAnchor) => void;
+  /** Sets or (with `null` / mode `none`) removes a glue's cut line. */
+  setCutLine: (floorId: string, group: number, setting: CutLineSetting | null) => void;
   /** Sets scale + offset together and switches `anchor` to `"custom"` in one update — used when
    * the user pans/zooms the maze under the on-canvas print frame (`ExportFrameOverlay`), where all
    * three values change together on every viewport move and must land in a single render, not
@@ -888,6 +1142,16 @@ export interface ImageExportActions {
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;
+  setVectorByCorridorsCreases: (patch: Partial<CreaseExportStyle>) => void;
+  setVectorByCorridorsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
+  setVectorByCorridorsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
+  /** Sets one marker's own look; `null` drops the override. */
+  setVectorByCorridorsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  /** Several markers of one floor in a single update (the "Auto colours" button). */
+  setVectorByCorridorsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
+  setVectorByCorridorsShowCutLines: (v: boolean) => void;
+  setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
+  setVectorByCorridorsCutLinesColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJunctionRadius: (v: number) => void;
@@ -897,6 +1161,8 @@ export interface ImageExportActions {
   patchVectorByCorridorsMarker: (kind: VectorMarkerKind, patch: Partial<MarkerSettings>) => void;
   setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
   setVectorByCorridorsMarkerWidenShape: (shape: MarkerWidenShape) => void;
+  setVectorByCorridorsMarkerLayout: (mode: MarkerLayoutMode) => void;
+  setVectorByCorridorsMarkerScale: (v: number) => void;
   patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
   patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
@@ -972,21 +1238,35 @@ export interface ImageExportActions {
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
+  setVectorByWallsCreases: (patch: Partial<CreaseExportStyle>) => void;
+  setVectorByWallsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
+  setVectorByWallsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
+  /** Sets one marker's own look; `null` drops the override. */
+  setVectorByWallsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  /** Several markers of one floor in a single update (the "Auto colours" button). */
+  setVectorByWallsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
+  setVectorByWallsShowCutLines: (v: boolean) => void;
+  setVectorByWallsTrimWallsAtFaceBoundaries: (v: boolean) => void;
+  setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
+  setVectorByWallsCutLinesColor: (color: number) => void;
   setVectorByWallsShowInnerGrid: (v: boolean) => void;
   setVectorByWallsInnerGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;
+  setVectorByWallsMarkerLayout: (mode: MarkerLayoutMode) => void;
+  setVectorByWallsMarkerScale: (v: number) => void;
   setVectorByWallsWallJoin: (join: CornerStyle) => void;
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
   setVectorByWallsOneWayColor: (color: number) => void;
   setVectorByWallsOneWayGapWidth: (v: number) => void;
-  setVectorByWallsOneWaySize: (v: number) => void;
-  setVectorByWallsOneWayThickness: (v: number) => void;
+  setVectorByWallsOneWayGeometry: (leaf: DirectionIndicatorLeaf, v: number) => void;
   setVectorByWallsOneWayJoin: (join: CornerStyle) => void;
   /** Writes marker fields through the parameter-links engine (detaching each written field's incoming link); `text` is a plain, unlinked write. */
   patchVectorByWallsMarker: (kind: VectorMarkerKind, patch: Partial<MarkerSettings>) => void;
+  /** Writes a start/finish opening's fields (GitHub issue #330): `enabled`/`color`/`size` through the parameter-links engine, `pattern`/`face` as plain writes. */
+  patchVectorByWallsOpening: (kind: "startOpening" | "finishOpening", patch: WaypointOpeningPatch) => void;
   /** `verticalStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc comment (GitHub
    *  issue #347). */
   patchVectorByWallsVerticalSettings: (
@@ -1035,6 +1315,7 @@ export interface ImageExportActions {
   /** Bulk form of `setVectorByWallsTeleportGroupOverride` — merges every group's patch in one store update (GitHub issue #728). */
   patchVectorByWallsTeleportGroupOverrides: (patches: Record<string, TeleportGroupOverride>) => void;
   setHoveredTeleportNodeIds: (ids: number[] | null) => void;
+  setHoveredTeleportCells: (cells: { floorIndex: number; x: number; y: number }[] | null) => void;
   /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with
    *  `splitSlotColor`'s own default) if `index` is past the array's current end — see GitHub issue
    *  #294. */

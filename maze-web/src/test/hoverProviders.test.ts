@@ -95,7 +95,6 @@ describe("zoom reset controls", () => {
     const floorConfig = state.floorFields[state.activeFloorId].fieldConfig;
 
     expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewFieldConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.floors(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.field_setup(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.preset_connections(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.quality(state)).toBe(floorConfig);
@@ -166,6 +165,21 @@ describe("zoom reset controls", () => {
     expect(newScale).toHaveBeenCalledWith(1.75);
     MazeScene.prototype.setViewportScaleListener.call(scene, newScale);
     expect(newScale).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a replaced field-size listener and ignores re-registration", () => {
+    const oldSize = vi.fn();
+    const newSize = vi.fn();
+    const current = { selection: { width: 2, height: 1, count: 2 }, shape: null };
+    const scene = { fieldSizeCallback: null, fieldSizeReadout: current } as unknown as MazeScene;
+
+    MazeScene.prototype.setFieldSizeListener.call(scene, oldSize);
+    expect(oldSize).toHaveBeenCalledWith(current);
+    MazeScene.prototype.setFieldSizeListener.call(scene, newSize);
+    expect(oldSize).toHaveBeenLastCalledWith({ selection: null, shape: null });
+    expect(newSize).toHaveBeenCalledWith(current);
+    MazeScene.prototype.setFieldSizeListener.call(scene, newSize);
+    expect(newSize).toHaveBeenCalledTimes(1);
   });
 
   it("sets the viewport transform and exposes its current scale", () => {
@@ -287,6 +301,38 @@ describe("zoom reset controls", () => {
     expect(Object.getOwnPropertyDescriptor(MazeScene.prototype, "canvas")?.get?.call(scene)).toBe(canvas);
     await expect(MazeScene.prototype.exportPng.call(scene, { } as never)).resolves.toBeInstanceOf(Blob);
     expect(pngExporter.export).toHaveBeenCalledOnce();
+  });
+
+  it("skips the WASM-backed hover lookup while the default viewport pan is active", () => {
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const getHoverInfo = vi.fn(() => ({ x: 2, y: 3 }));
+    const onHoverChanged = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: { addEventListener: vi.fn(), removeEventListener: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo }),
+      onHoverChanged,
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointerdown({ globalX: 10, globalY: 10, button: 1 });
+    stageHandlers.pointermove({ globalX: 20, globalY: 20, buttons: 4 });
+
+    expect(getHoverInfo).not.toHaveBeenCalled();
+    expect(onHoverChanged).toHaveBeenLastCalledWith(null);
+    interaction.destroy();
   });
 
   it("does not highlight a hover cell for the polygon field tool", () => {
@@ -693,6 +739,51 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("keeps the selection when the pointer is released on a control that preserves it", () => {
+    const stageHandlers: Record<string, (e?: unknown) => void> = {};
+    const commitPendingSelectionMove = vi.fn(() => true);
+    const cancelPointerGesture = vi.fn();
+    const fieldController = {
+      hasSelectionPreview: vi.fn(() => true),
+      commitPendingSelectionMove,
+      cancelPointerGesture,
+      clearHover: vi.fn(),
+    };
+    const state = useMazeStore.getState();
+    const previous = { openCard: state.openCard, floorFields: state.floorFields };
+    useMazeStore.setState({
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldEditMode: "custom", isEditingField: true },
+      },
+    });
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn((event: string, handler: (e?: unknown) => void) => { stageHandlers[event] = handler; }) },
+        canvas: { addEventListener: vi.fn(), removeEventListener: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => fieldController as any,
+      fieldEditorOverlay: { updateHover: vi.fn() } as any,
+      getController: () => fieldController as any,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+    const button = document.createElement("button");
+    button.setAttribute("data-preserves-field-selection", "");
+
+    stageHandlers.pointerupoutside({ nativeEvent: { target: button } });
+
+    expect(commitPendingSelectionMove).not.toHaveBeenCalled();
+    expect(cancelPointerGesture).not.toHaveBeenCalled();
+    interaction.destroy();
+    useMazeStore.setState(previous);
+  });
+
   it("confirms a persistent field selection when the pointer is released outside the canvas", () => {
     const stageHandlers: Record<string, () => void> = {};
     const state = useMazeStore.getState();
@@ -884,6 +975,7 @@ describe("zoom reset controls", () => {
       onResetZoom: vi.fn(),
     });
     useMazeStore.setState({
+      openCard: "image_export",
       activeRenderMode: "vector_by_walls",
       vectorByWallsSettings: {
         ...previous.vectorByWallsSettings,

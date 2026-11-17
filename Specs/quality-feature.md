@@ -40,6 +40,7 @@ interface QcRuleState {
   checks: CheckInstance[]; // member check instances — can be empty (see below)
   nextLocalCheckId: number; // monotonic per-rule counter minting new CheckInstance.localId — never reused
   strategyId: string | null;
+  strategyParams: Record<string, string>; // top-level strategy overrides for this rule only
   disabled: boolean;     // strategy-only toggle, see below
   ruleDisabled: boolean; // whole-rule toggle, see below
   collapsed: boolean;    // UI-only card collapse state, see below
@@ -56,6 +57,7 @@ own field.
 All check types may have multiple independent instances across rules and stages.
 
 - `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
+- `strategyParams` belongs to the rule, not the strategy id: two rules using the same strategy may configure independent values.
 - A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`.
 - The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, and is `null` for an un-renamed rule, in which case the view model resolves it to the current-locale `kind label`. Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
@@ -230,6 +232,24 @@ Each entry (`NestedStrategyEntryRow`) renders up to three stacked rows:
    and, if it itself declares nested slots, one more `NestedStrategyPanel` per such slot,
    recursively, up to `MAX_NESTED_STRATEGY_DEPTH`.
 
+**Size-threshold slots** (`dispatchKind: "size_threshold"`, `size_threshold_region_merge`, GitHub
+issue #91): the weight row is replaced by an *interval row*, and list order (no reordering) defines
+consecutive region-size intervals — entry `i` covers `lo..=hi`, where `lo` is the previous entry's
+`hi + 1` (1 for the first) and `hi` is the entry's own `param_overrides["max_size"]`. The last
+entry has no bound and reads "from {lo} and above"; every other entry shows "from {lo} to"
+followed by a `NumberInput` (integer, `min = lo`, committed on blur only, so a cascade never acts
+on a half-typed value). Pure interval math lives in `store/sizeThresholdIntervals.ts`
+(`resolveIntervals`, `editMaxSize`, `cascadedIndices`): a missing/invalid bound resolves to
+`lo + DEFAULT_INTERVAL_SPAN - 1` (5-wide), a bound below `lo` is raised to `lo`, and committing a
+bound that pushes later ones below their own `lo` raises those too (each raised entry gets a
+`raised_above_previous` hint via `NumberInput`'s `externalReason`). Adding an entry gives the
+previous last entry an explicit `max_size = lo + DEFAULT_INTERVAL_SPAN - 1` and makes the new one
+the "and above" entry. `maze-core` treats a missing/unparsable `max_size` as unbounded (see
+`Specs/repair.md`), so the store keeps every non-last entry's `max_size` explicit: `withExplicitBounds`
+/ `withExplicitBoundsInSlots` fill it on project and quality-preset load (`rulesFromFile`, which both go through; skipped while the strategy registry is not loaded), and
+`setNestedStrategy` keeps the dispatcher-owned `weight`/`max_size` when it swaps an entry's
+strategy.
+
 Hovering or clicking anywhere in rows 2–3 (the strategy row and everything under it, not just the
 strategy's name) highlights/selects that entry — `onSelect({ type: "nested_strategy", ruleId,
 path })`. Clicks on an actual control inside the params block (`input`/`select`/the `Switch`
@@ -255,7 +275,7 @@ removeNestedStrategy(ruleId: string, path: PathSegment[]): void
 
 - `setNestedStrategy`: replaces (or clears, if `strategyId` is `null`) the entry at `path` in
   place — never appends. Replacing rebuilds `params` from the new strategy's declared defaults
-  (`defaultParamsFor`) and auto-fills that strategy's own mandatory nested slots
+  (`defaultParamsFor`) (apart from the old entry's dispatcher-owned `weight`/`max_size`, which are kept) and auto-fills that strategy's own mandatory nested slots
   (`buildDefaultNestedStrategies`), discarding whatever was there before. A no-op if `path`
   doesn't resolve to an existing entry (stale path — e.g. the entry was removed elsewhere in the
   same render).
@@ -595,7 +615,6 @@ precisely because nothing is ever reset when hidden.)
 // State
 rules: QcRuleState[]
 stages: RepairStageState[]   // see "What a stage is" above — no minimum count
-strategyParams: Record<string, Record<string, string>>   // strategyId → paramId → value
 
 // Actions
 addCheck(typeId: string, ruleId?: string, initialParams?: Record<string, string>): void
@@ -603,7 +622,7 @@ createRule(typeIds: string[], strategyId: string | null, initialCheckParams?: Re
 removeCheck(ruleId: string, localId: number): void
 setCheckParam(ruleId: string, localId: number, paramId: string, value: string): void
 removeCheckFromRule(ruleId: string, localId: number): void
-setStrategy(ruleId: string, strategyId: string): void
+setStrategy(ruleId: string, strategyId: string, initialStrategyParams?: Record<string, string>): void
 clearStrategy(ruleId: string): void
 toggleStrategyDisabled(ruleId: string): void
 toggleRuleDisabled(ruleId: string): void
@@ -611,13 +630,16 @@ toggleRuleCollapsed(ruleId: string): void
 renameRule(ruleId: string, name: string): void
 removeRule(ruleId: string): void
 moveRule(ruleId: string, direction: "up" | "down"): void
+reorderRule(ruleId: string, targetStageId: string, index: number): void
+moveRuleToNewStage(ruleId: string, position: "start" | "end"): void
+reorderStage(stageId: string, index: number): void
 addStage(): void
 renameStage(stageId: string, name: string): void
 removeStage(stageId: string): void
 moveStage(stageId: string, direction: "up" | "down"): void
 toggleStageDisabled(stageId: string): void
 toggleStageCollapsed(stageId: string): void
-setStrategyParam(strategyId: string, paramId: string, value: string): void
+setStrategyParam(ruleId: string, paramId: string, value: string): void
 setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
 setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
 addNestedStrategy(ruleId: string, path: PathSegment[], slotKind: string): void
@@ -646,7 +668,7 @@ id searched across all rules.
 - Creates exactly **one** new rule with one fresh `CheckInstance` per surviving `typeIds` entry (`localId` 0..n by position) — the multiselect "Add new rule" flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`). Unlike calling `addCheck` once per id, this never creates intermediate singleton rules for ids after the first.
 - `kind` is taken from `typeIds[0]`'s descriptor — same one-kind-per-rule assumption as `addCheck`; callers pre-filter candidates by kind.
 - Each instance's params: `initialCheckParams[typeId]` if given, else descriptor defaults.
-- If `strategyId` is given and has no existing `strategyParams` entry: uses `initialStrategyParams` if given, else the strategy descriptor's defaults.
+- If `strategyId` is given: stores `initialStrategyParams` on the new rule, or the strategy descriptor's defaults when omitted.
 
 ### removeCheck(ruleId, localId)
 
@@ -666,7 +688,7 @@ id searched across all rules.
 ### toggleStrategyDisabled(ruleId)
 
 - Flips the rule's `disabled` (absent/`false` ↔ `true`).
-- Does **not** touch `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
+- Does **not** touch the rule's `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
 - A disabled rule's strategy is sent as `strategy: null` in its stage's `GenerateConfig.stages[].rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned. Distinct from `ruleDisabled` (below), which omits the rule entirely rather than sending it with `strategy: null`.
 
 ### toggleRuleDisabled(ruleId)
@@ -700,6 +722,25 @@ Operates directly on `state.stages` (not a derived flat list):
 Surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row — `isFirst`/`isLast` are computed against the combined stage-then-rule flat order (`stages.flatMap(s => s.slots)`), not per-stage position, so the buttons only disable at the true global boundary.
 
 `createRule`'s optional `targetStageId` — when given and resolving to a known stage, places the new rule there instead of the last stage; used by each stage's own toolbar "+ Add rule" button (see "Stage toolbar" below) so a rule created from within a specific stage's section actually lands in that stage, not always the last one. The three-step new-rule dialog flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`) threads this id through every step.
+
+### Drag-and-drop: reorderRule / moveRuleToNewStage / reorderStage
+
+`RulesColumn` wraps rule cards and stage sections in `@dnd-kit` sortables; only the grip handle (rule title row / stage header) starts a drag. The up/down buttons stay for precision and keyboard use. Drag state and event handling live in the `useQualityDnd` hook (`quality/useQualityDnd.ts`); the pure placement rules in `qcDnd.ts`.
+
+Store actions:
+
+- `reorderRule(ruleId, targetStageId, index)`: removes the rule from its stage and inserts it at `index` of the target's `ruleIds` (counted after removal, clamped).
+- `moveRuleToNewStage(ruleId, position)`: creates a new stage at the start/end of `stages` and moves the rule into it. Default name follows `addStage` (`nextStageIndex`: highest `Stage N` suffix in use).
+- `reorderStage(stageId, index)`: moves the whole stage to `index` (clamped), rules intact. Never creates a stage; the new-stage behavior applies only to dragging a rule past the outer boundaries.
+
+UI behavior while a **rule** is dragged:
+
+- The item under the pointer is a `DragOverlay` showing the collapsed (title-only) card, always following the pointer (x locked, no horizontal scrollbar). The original node stays in the list as an empty dashed placeholder of the same collapsed size, marking the drop slot. No move animation.
+- A live `PreviewLayout` (`stageId -> ruleIds`, pure helpers in `qcDnd.ts`: `movePreview`, `finalizeRuleDrop`) decides the slot: pointer in the upper half of a rule card inserts above it, lower half below it; over a stage's title/toolbar inserts as that stage's first slot; over an empty stage body inserts there. Other cards shift to make room, including across stages. On drop `finalizeRuleDrop` yields the `reorderRule` call (none if the rule ended where it started).
+- "New stage" zones: a dashed strip overlays the top edge of the list (shown when the pointer is within `EDGE_ZONE_PX` of the top) and one sits at the end of the list, before the add-stage button (shown when the pointer nears it; its wrapper grows only then, pushing the button down). Both droppables stay mounted for the whole drag (hidden until approached) so dnd-kit measures them at drag start. A floating label next to the dragged card names the hovered zone (`quality.drop_new_stage_top` / `_bottom`). Dropping on a zone calls `moveRuleToNewStage` (`resolveDrop`); the preview placeholder stays in its last existing stage while the pointer is over a zone. A zone under the pointer wins collision detection over rules/headers it overlaps.
+- Hover effects, text selection and tooltips are suppressed for the duration of any drag (`pointer-events: none` on the list, `setTooltipsSuppressed`, `grabbing` cursor).
+
+**Stage** drags use dnd-kit's built-in sortable (closest-center among stages); `resolveDrop` maps the drop to `reorderStage`. Stage placeholder is full size; the overlay shows only the stage title. Keyboard drags have no pointer position, so the edge zones are not reachable that way (use the toolbar buttons).
 
 ### Stage toolbar: addStage() / renameStage(stageId, name) / removeStage(stageId) / moveStage(stageId, direction) / toggleStageDisabled(stageId)
 
@@ -769,7 +810,7 @@ descriptor defaults. Values are clamped server-side.
 1. Filters out every stage with `disabled: true` entirely — a disabled stage is absent from `stages: StageConfig[]`, not sent as an entry with an empty `rules: []` (that shape means "stage exists but nothing to dispatch", a different thing from "stage doesn't exist for this run").
 2. Builds `stages: StageConfig[]` from the remaining (enabled) stages, one entry per stage, **in `state.stages` order** — order is significant now (see `moveRule`'s doc comment above and `repair.md`'s "Stages" section for why).
 3. Within each stage: excludes `ruleDisabled` rules entirely from that stage's `rules`, and also excludes any remaining rule left with zero *effective* checks (every member `CheckInstance.disabled`, or `checks` already empty) — same "as if never selected" treatment, since core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright ("rule `<id>` has no checks"). Neither exclusion sends the rule as `strategy: null` (that shape means something different — see below). **Every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`. Each rule's `checks` is filtered to its non-`disabled` members, then mapped to `CheckInstanceConfig[]` via `c => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })` — order preserved from `QcRuleState.checks`, never resorted, so serialization stays deterministic. `localId` is a `number` in the store but crosses the wasm boundary as a `string` (`CheckInstanceConfig.local_id: string`) — the numeric type never crosses; only this conversion point.
-4. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+4. For a rule with a strategy: resolves the strategy's param overrides from that rule's `strategyParams`, filtered to keys the strategy descriptor actually declares.
 5. A stage left with an empty `rules` array after step 3's filtering is sent as-is (`{ id, name, rules: [] }`) — core treats a stage with no dispatchable rules as a trivial degenerate case (see `repair.md`'s "Stages" section), no special-casing needed here.
 
 See `quality_control.md`'s "StageConfig"/"QcRuleConfig" sections for the wasm-side shapes this maps onto, and `repair.md`'s "Stages" / "QcRule and rule-based RepairEngine" sections for how core turns it into a `RepairEngine`.

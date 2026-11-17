@@ -1,220 +1,8 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig, WasmTessellationConfig } from "./types";
-import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
+import type { CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, WasmTessellationConfig, WireTopology, WireFoldEnd } from "./types";
 
-function isNodeDto(v: unknown): v is NodeDto {
-  return typeof v === "object" && v !== null &&
-    typeof (v as NodeDto).id === "number" &&
-    typeof (v as NodeDto).x === "number" &&
-    typeof (v as NodeDto).y === "number" &&
-    typeof (v as NodeDto).i === "number";
-}
-
-function isEdgeDto(v: unknown): v is EdgeDto {
-  return typeof v === "object" && v !== null &&
-    typeof (v as EdgeDto).from === "number" &&
-    typeof (v as EdgeDto).to === "number";
-}
-
-function isNavNodeDto(v: unknown): v is NavNodeDto {
-  return typeof v === "object" && v !== null &&
-    typeof (v as NavNodeDto).node_id === "number";
-}
-
-function isNavEdgeDto(v: unknown): v is NavEdgeDto {
-  return typeof v === "object" && v !== null &&
-    typeof (v as NavEdgeDto).from === "number" &&
-    typeof (v as NavEdgeDto).to === "number" &&
-    Array.isArray((v as NavEdgeDto).path) &&
-    (v as NavEdgeDto).path.every((n: unknown) => typeof n === "number");
-}
-
-function isIssueDto(v: unknown): v is IssueDto {
-  return typeof v === "object" && v !== null &&
-    typeof (v as IssueDto).kind === "string";
-}
-
-/** Debug event tape (GitHub issue #124) — node table + payload byte arena, both eagerly copied
- *  out of WASM linear memory at read time. The WASM-side buffers are zero-copy views that get
- *  invalidated by the next call into the WASM module (see `GenerateResult` doc comments in
- *  `maze-wasm/src/result.rs`), so this is the point where that constraint is discharged — every
- *  consumer downstream of `generateMaze` gets a plain owned `Uint8Array`, safe to hold onto.
- *
- *  Intermediate snapshot checkpoints (GitHub issue #128) are computed entirely on the web side
- *  from this tape (see `eventTape.ts`'s `resolveDebugArenaMetadata`) — the core has no notion of
- *  "snapshot" and never crosses the WASM boundary with one. */
-export interface DebugTape {
-  nodeTable: Uint8Array;
-  payload: Uint8Array;
-  /** Name of each top-level source scope in the merged tape's tree (GitHub issue #169), same
-   *  order as `sourceEventKinds`, sourced from `GenerateResult::sourceScopeNames()` — e.g.
-   *  `["generation"]` today. */
-  sourceScopeNames: string[];
-  /** Parallel to `sourceScopeNames` — which concrete event enum each source scope's subtree was
-   *  encoded from (GitHub issue #146, generalized by #169), sourced from
-   *  `GenerateResult::sourceEventKinds()`. Tells downstream consumers
-   *  (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`) which decoder/apply/
-   *  narration function to dispatch to — see `DebugArenaHandle.sources` in `storeTypes.ts` (GitHub
-   *  issue #147: a merged tape may now carry more than one top-level source, e.g. `"generation"`
-   *  + `"quality_control"`). */
-  sourceEventKinds: EventedEventKind[];
-  /** Debug values (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
-   *  algorithm, each with its rendering `kind` — the static list from
-   *  `GenerateResult::debugValueNames()`/`debugValueKinds()` (zipped together, see
-   *  `generateMaze()` below), not derived from what this particular run happened to emit (a
-   *  trivial run that never triggers a delta would otherwise silently omit a name the algorithm
-   *  still supports). Empty when the algorithm isn't instrumented for debug values yet. Plain
-   *  array, not a WASM buffer — no copy-before-free concern like `nodeTable`/`payload`. */
-  debugValueNames: DebugValueDescriptor[];
-  /** Nodes minted mid-run (preset split, pattern-mode split, QC/repair mint), including ones
-   *  later removed or replaced by QC/repair (GitHub issue #271) — sourced from
-   *  `GenerateResult::debugAllNodes()`. Not itself a full "every node that ever existed" union —
-   *  see `DebugArenaHandle.allNodes` in `storeTypes.ts` for the full rationale and what consumers
-   *  must do to get the actual union. Separate from `MazeSnapshot.nodes` (final survivors only). */
-  allNodes: NodeDto[];
-}
-
-/** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
- *  tape's bytes were encoded from. */
-export type EventedEventKind = "preset_setup" | "recursive_backtracker" | "kruskal" | "wilson" | "vertex_based" | "quality_control";
-
-function toEventedEventKind(raw: string): EventedEventKind {
-  if (
-    raw !== "preset_setup" && raw !== "recursive_backtracker" && raw !== "kruskal" && raw !== "wilson" &&
-    raw !== "vertex_based" && raw !== "quality_control"
-  ) {
-    throw new Error(`unknown event kind "${raw}"`);
-  }
-  return raw;
-}
-
-export interface GenerateMazeResult {
-  snapshot: MazeSnapshot;
-  debugTape: DebugTape | undefined;
-}
-
-/** Runs generation off the main thread so long WASM calls can provide responsive UI feedback. */
-export function generateMazeAsync(seed: number, config: GenerateConfig): Promise<GenerateMazeResult> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (event: MessageEvent<GenerateMazeResult | { error: string }>) => {
-      worker.terminate();
-      if ("error" in event.data) reject(new Error(event.data.error));
-      else resolve(event.data);
-    };
-    worker.onerror = (event) => {
-      worker.terminate();
-      reject(new Error(event.message || "Generation worker failed"));
-    };
-    worker.postMessage({ seed, config });
-  });
-}
-
-interface AnalyticsWorkerResponse {
-  error: string;
-}
-
-interface ActiveAnalyticsRequest {
-  worker: Worker;
-  reject: (reason?: unknown) => void;
-  settled: boolean;
-}
-
-let activeAnalyticsRequest: ActiveAnalyticsRequest | null = null;
-
-/** Runs the expensive analytics-only WASM call off the UI thread. A newer request supersedes the
- * previous one, so rapid rule edits do not leave a pool of stale cycle analyses running in the
- * background. `confirmPostEdit`'s request id still protects the store from a result that raced
- * with another state change after the worker completed. */
-export function computeAnalyticsAsync(config: ComputeAnalyticsConfig): Promise<MazeSnapshot> {
-  if (activeAnalyticsRequest !== null) {
-    const previous = activeAnalyticsRequest;
-    activeAnalyticsRequest = null;
-    previous.settled = true;
-    previous.worker.terminate();
-    previous.reject(new Error("Analytics request superseded"));
-  }
-
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./analyticsWorker.ts", import.meta.url), { type: "module" });
-    const request: ActiveAnalyticsRequest = { worker, reject, settled: false };
-    activeAnalyticsRequest = request;
-
-    const finish = (callback: () => void): void => {
-      if (request.settled) return;
-      request.settled = true;
-      if (activeAnalyticsRequest === request) activeAnalyticsRequest = null;
-      worker.terminate();
-      callback();
-    };
-
-    worker.onmessage = (event: MessageEvent<unknown>) => {
-      if (isAnalyticsWorkerResponse(event.data)) {
-        const message = event.data.error;
-        finish(() => reject(new Error(message)));
-        return;
-      }
-      try {
-        const snapshot = validateSnapshot(event.data);
-        finish(() => resolve(snapshot));
-      } catch (error) {
-        finish(() => reject(error));
-      }
-    };
-    worker.onerror = (event) => {
-      finish(() => reject(new Error(event.message || "Analytics worker failed")));
-    };
-    try {
-      worker.postMessage({ config });
-    } catch (error) {
-      finish(() => reject(error));
-    }
-  });
-}
-
-function isAnalyticsWorkerResponse(value: unknown): value is AnalyticsWorkerResponse {
-  return typeof value === "object" && value !== null &&
-    typeof (value as AnalyticsWorkerResponse).error === "string";
-}
-
-/** Zips `GenerateResult::debugValueNames()`/`debugValueKinds()`'s parallel arrays (see
- *  `maze-wasm/src/result.rs`'s `kind_wire_str`) into `DebugValueDescriptor`s. Both arrays are
- *  always the same length by construction on the Rust side — asserted here so a mismatch (e.g.
- *  a future wire-format change on one side but not the other) fails loudly instead of silently
- *  truncating or misaligning names against kinds. */
-function zipDebugValueNames(names: string[], kinds: string[]): DebugValueDescriptor[] {
-  if (names.length !== kinds.length) {
-    throw new Error(`debugValueNames/debugValueKinds length mismatch: ${names.length} vs ${kinds.length}`);
-  }
-  return names.map((name, i) => {
-    const kind = kinds[i];
-    if (kind !== "region" && kind !== "sequence" && kind !== "map" && kind !== "vertex") {
-      throw new Error(`unknown debug value kind "${kind}" for "${name}"`);
-    }
-    return { name, kind: kind as DebugValueKind };
-  });
-}
-
-function validateSnapshot(raw: unknown): MazeSnapshot {
-  if (typeof raw !== "object" || raw === null) throw new Error("WASM returned invalid snapshot");
-  const s = raw as Record<string, unknown>;
-  if (!Array.isArray(s.nodes) || !s.nodes.every(isNodeDto))
-    throw new Error("WASM snapshot: invalid nodes");
-  if (!Array.isArray(s.edges) || !s.edges.every(isEdgeDto))
-    throw new Error("WASM snapshot: invalid edges");
-  if (!Array.isArray(s.issues) || !s.issues.every(isIssueDto))
-    throw new Error("WASM snapshot: invalid issues");
-  if (!Array.isArray(s.nav_nodes) || !s.nav_nodes.every(isNavNodeDto))
-    throw new Error("WASM snapshot: invalid nav_nodes");
-  if (!Array.isArray(s.nav_edges) || !s.nav_edges.every(isNavEdgeDto))
-    throw new Error("WASM snapshot: invalid nav_edges");
-  const nodeIds = new Set<number>((s.nodes as NodeDto[]).map(n => n.id));
-  for (const e of s.edges as EdgeDto[]) {
-    if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);
-    if (!nodeIds.has(e.to)) throw new Error(`WASM snapshot: edge.to ${e.to} not in nodes`);
-  }
-  return s as unknown as MazeSnapshot;
-}
+export * from "./mazeGeneration";
+export { generateMazeAsync, startGenerateMaze, computeAnalyticsAsync, disposeWorkers } from "./workerClients";
 
 export function getAvailableChecks(): CheckDescriptor[] {
   return getWasm().available_checks() as CheckDescriptor[];
@@ -226,51 +14,6 @@ export function getAvailableStrategies(): StrategyDescriptor[] {
 
 export function getAvailableRuleParams(): RuleParamDescriptor[] {
   return getWasm().available_rule_params() as RuleParamDescriptor[];
-}
-
-export function generateMaze(seed: number, config: GenerateConfig): GenerateMazeResult {
-  const result = getWasm().generate(BigInt(seed), config);
-  try {
-    const snapshot = validateSnapshot(result.snapshot());
-
-    // Copy the debug tape buffers out of WASM linear memory now — the WASM-side views are
-    // invalidated by the next call into the module (see `GenerateResult` doc comments in
-    // `maze-wasm/src/result.rs`), so this is the only safe place to read them.
-    const nodeTable = result.debugTapeNodeTable();
-    const payload = result.debugTapePayload();
-    let debugTape: DebugTape | undefined;
-    if (nodeTable && payload) {
-      const sourceScopeNames = result.sourceScopeNames();
-      const rawSourceEventKinds = result.sourceEventKinds();
-      if (sourceScopeNames.length === 0 || rawSourceEventKinds.length === 0) {
-        throw new Error("generateMaze: debug tape present but sourceScopeNames/sourceEventKinds is empty");
-      }
-      if (sourceScopeNames.length !== rawSourceEventKinds.length) {
-        throw new Error(`generateMaze: sourceScopeNames/sourceEventKinds length mismatch: ${sourceScopeNames.length} vs ${rawSourceEventKinds.length}`);
-      }
-      const rawAllNodes = result.debugAllNodes();
-      const allNodes = Array.isArray(rawAllNodes) && rawAllNodes.every(isNodeDto) ? rawAllNodes : [];
-      debugTape = {
-        nodeTable: nodeTable.slice(),
-        payload: payload.slice(),
-        sourceScopeNames,
-        sourceEventKinds: rawSourceEventKinds.map(toEventedEventKind),
-        debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
-        allNodes,
-      };
-    }
-
-    return { snapshot, debugTape };
-  } finally {
-    // `GenerateResult` is a wasm-bindgen class — its Rust-side allocation (including the debug
-    // tape buffers) is only released on an explicit `free()`, not by JS garbage collection.
-    result.free();
-  }
-}
-
-export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
-  const raw = getWasm().compute_analytics(config);
-  return validateSnapshot(raw);
 }
 
 /** Mirrors `maze-runner`'s geometry wire types (`runner::geometry`): world units, math convention
@@ -294,6 +37,38 @@ export interface FaceGeometry {
   canonical_face: number | null;
   contact_point: WorldPoint;
   segments: SegmentDto[];
+  /// Present when an active fold is glued to this face; the face is then unpaired (its own
+  /// `segments` and `contact_point`). Core resolves all of it; never derive it from coordinates.
+  fold?: FoldFace | null;
+}
+
+/// An active fold seen from one of its faces (`runner::geometry::FoldFaceDto`).
+export interface FoldFace {
+  /// The fold's index in the request's `topology.folds`.
+  fold: number;
+  partner_cell: [number, number];
+  /// The partner's glued face, as a position in its `faces_of`.
+  partner_face_idx: number;
+  twist: boolean;
+  /// Which end of the partner's face chain this face's chain start meets.
+  start_meets: "start" | "end";
+  /// `false` for a topological-only fold (not passed to a distance algorithm).
+  isometric: boolean;
+  /// Affine `[a, b, c, d, e, f]` (`x' = a*x + c*y + e`, `y' = b*x + d*y + f`) mapping the partner's
+  /// face geometry into this cell's coordinates; `null` unless `isometric`.
+  transform: [number, number, number, number, number, number] | null;
+}
+
+export interface FoldEndRequest {
+  cell: [number, number];
+  face_idx: number;
+}
+
+/// The folds of one floor plus the floor's whole cell set (which decides fold activity).
+export interface TopologyRequest {
+  field_cells: [number, number][];
+  folds: { a: FoldEndRequest; b: FoldEndRequest; twist: boolean; group: number }[];
+  groups: { id: number; folds: number[] }[];
 }
 
 /// The boundary representation of a snapshot: exactly one per request, never both.
@@ -318,9 +93,18 @@ export interface CellGeometry<B extends PathBoundary | PolylineBoundary = PathBo
   shape: string | null;
   /** Allowed transform group: permutations of canonical face indices, identity first. */
   allowed_group: number[][] | null;
+  /** Per face in `faces_of` order: the neighbor's coordinates minus the cell's, `[0, 0]` for a face
+   *  without a neighbor. Present with or without `faces`. */
+  neighbor_offsets: [number, number][];
   boundary: B;
+  /// `false` when the request's `faces` mode left this cell's `faces` empty.
+  has_faces: boolean;
   faces: FaceGeometry[];
 }
+
+/// Which cells of a snapshot carry their faces (`runner::geometry::FacesRequest`): `boundary` keeps
+/// them for the cells with a face that has no neighbor among the requested cells or carries a fold.
+export type FacesMode = "all" | "none" | "boundary";
 
 export type PolylineCellGeometry = CellGeometry<PolylineBoundary>;
 export type PathCellGeometry = CellGeometry<PathBoundary>;
@@ -328,6 +112,9 @@ export type PathCellGeometry = CellGeometry<PathBoundary>;
 export interface GeometrySnapshot<B extends PathBoundary | PolylineBoundary = PathBoundary | PolylineBoundary> {
   instance: string;
   field_version: number;
+  /// Echo of the request's `topologyVersion`; the snapshot is valid for this field and topology
+  /// version pair.
+  topology_version: number;
   cells: CellGeometry<B>[];
 }
 
@@ -340,25 +127,192 @@ export function getGeometrySnapshot(config: {
   cells: [number, number][];
   boundary: { kind: "polyline"; tolerance: number };
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot<PolylineBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
   cells: [number, number][];
   boundary: { kind: "path" };
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot<PathBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
   cells: [number, number][];
   boundary: BoundaryRequest;
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot {
-  return getWasm().geometry_snapshot({
+  // A path boundary is not sent when every cell has faces: it is their segments chained, rebuilt
+  // here. Cells without faces get the path itself.
+  const wasPath = config.boundary.kind === "path" && (config.faces ?? "all") === "all";
+  const raw = getWasm().geometry_snapshot({
     tessellation: config.tessellation,
     cells: config.cells,
-    boundary: config.boundary,
+    boundary: wasPath ? { kind: "faces" } : config.boundary.kind === "path" ? { kind: "path_templated" } : config.boundary,
     field_version: config.fieldVersion,
-  }) as GeometrySnapshot;
+    topology_version: config.topologyVersion ?? 0,
+    topology: config.topology ?? null,
+    faces: config.faces ?? "all",
+  }) as WireGeometrySnapshot;
+  return restoreSnapshot(raw, wasPath);
+}
+
+/// A snapshot as the wire carries it: allowed groups interned in a shared list, no boundary
+/// when the faces carry it (`runner::geometry::GeometrySnapshot`).
+type WireGeometrySnapshot = Omit<GeometrySnapshot, "cells"> & {
+  allowed_groups: number[][][];
+  offset_tables: [number, number][][];
+  boundary_templates: PathCommand[][];
+  cells: (Omit<CellGeometry, "allowed_group" | "neighbor_offsets" | "boundary"> & { allowed_group: number | null; offsets: number; boundary: PolylineBoundary | { kind: "faces" } | { kind: "path_template"; template: number } })[];
+};
+
+function restoreSnapshot(raw: WireGeometrySnapshot, pathBoundary: boolean): GeometrySnapshot {
+  const { allowed_groups, offset_tables, boundary_templates, cells, ...rest } = raw;
+  return {
+    ...rest,
+    cells: cells.map(({ offsets, ...cell }) => ({
+      ...cell,
+      neighbor_offsets: offset_tables[offsets],
+      allowed_group: cell.allowed_group === null ? null : allowed_groups[cell.allowed_group],
+      boundary:
+        cell.boundary.kind === "path_template"
+          ? { kind: "path", commands: translateCommands(boundary_templates[cell.boundary.template], cell.center) }
+          : pathBoundary && cell.boundary.kind === "faces"
+            ? { kind: "path", commands: pathCommandsOfFaces(cell.faces) }
+            : (cell.boundary as PolylineBoundary),
+    })),
+  };
+}
+
+/// A shared boundary template (relative to the cell's center) placed at `center`.
+function translateCommands(template: readonly PathCommand[], [cx, cy]: WorldPoint): PathCommand[] {
+  return template.map((command): PathCommand =>
+    command.op === "arc_to"
+      ? { ...command, center: [command.center[0] + cx, command.center[1] + cy] }
+      : { op: command.op, to: [command.to[0] + cx, command.to[1] + cy] },
+  );
+}
+
+/// `MoveTo` the first segment's start, then one command per segment (`BoundaryPath::path_commands`).
+export function pathCommandsOfFaces(faces: readonly FaceGeometry[]): PathCommand[] {
+  const commands: PathCommand[] = [];
+  for (const face of faces) {
+    for (const segment of face.segments) {
+      if (commands.length === 0) commands.push({ op: "move_to", to: segment.from });
+      commands.push(
+        segment.kind === "line"
+          ? { op: "line_to", to: segment.to }
+          : { op: "arc_to", center: segment.center, radius: segment.radius, start_angle: segment.start_angle, end_angle: segment.start_angle + segment.sweep, ccw: segment.sweep > 0 },
+      );
+    }
+  }
+  return commands;
+}
+
+/// A cell's boundary and nothing else (`geometry_outlines`).
+export interface CellOutline {
+  cell: [number, number];
+  commands: PathCommand[];
+}
+
+/// Boundary path commands of `cells` without faces, shapes or contact points: the cheap request
+/// for painting many cells (the viewport grid).
+export function getCellOutlines(tessellation: WasmTessellationConfig, cells: [number, number][]): CellOutline[] {
+  return getWasm().geometry_outlines({ tessellation, cells }) as CellOutline[];
+}
+
+/// The floor a topology query or edit is about: the tessellation, the floor's whole cell set and
+/// its current topology (`null` = no folds). Mirrors `runner::topology_edit::TopologyFloor`.
+export interface TopologyFloorRequest {
+  tessellation: WasmTessellationConfig;
+  field_cells: [number, number][];
+  topology: WireTopology | null;
+}
+
+export type InactiveFoldReason = "missing_cell" | "interior_neighbor" | "duplicate_neighbor";
+
+export type FoldActivityDto = { state: "active" } | { state: "inactive"; reason: InactiveFoldReason };
+
+/// Why core refused an edit (`runner::topology_edit::TopologyErrorDto`), with the sides
+/// it concerns. `internal` is raised on the client for an error that carries no structure.
+export type TopologyErrorDto =
+  | { code: "empty_run" }
+  | { code: "run_length_mismatch"; a: number; b: number }
+  | { code: "open_contour"; face: WireFoldEnd }
+  | { code: "inactive_fold"; reason: InactiveFoldReason; a: WireFoldEnd; b: WireFoldEnd; existing: boolean; connections?: [WireFoldEnd, WireFoldEnd][] }
+  | { code: "face_in_use"; face: WireFoldEnd }
+  | { code: "self_glued"; a: WireFoldEnd; b: WireFoldEnd }
+  | { code: "unknown_group"; group: number }
+  | { code: "inconsistent"; message: string }
+  | { code: "internal"; message: string };
+
+/// Activity and boundary contours of one floor (`topology_info`).
+export interface TopologyInfo {
+  /// One entry per fold, in `topology.folds` order; empty without folds.
+  activity: FoldActivityDto[];
+  /// Closed chains of boundary faces in traversal order (the field's cells stay on the left).
+  contours: WireFoldEnd[][];
+  /// Set when a boundary walk does not close (`contours` is then empty).
+  contours_error?: TopologyErrorDto | null;
+}
+
+/// One topology edit; applied as a whole or not at all (`runner::topology_edit::TopologyOp`).
+export type TopologyOp =
+  /** `replace` glues in place of that existing group (keeping its id) instead of adding a new one. */
+  | { kind: "glue"; a: WireFoldEnd[]; b: WireFoldEnd[]; twist: boolean; replace?: number }
+  | { kind: "remove_group"; id: number };
+
+export interface TopologyEditResult {
+  topology: WireTopology;
+  /// The id of the group the edit created; absent for remove / replace.
+  group?: number | null;
+}
+
+/// Raised by `getTopologyInfo` / `editTopology`; `problem` is core's structured reason.
+export class TopologyError extends Error {
+  constructor(readonly problem: TopologyErrorDto) {
+    super("message" in problem ? problem.message : problem.code);
+  }
+}
+
+/// Core's refusals arrive as the JSON of a `TopologyErrorDto`; anything else (a malformed request)
+/// has no structure and is wrapped as `internal`.
+function parseTopologyError(text: string): TopologyErrorDto {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && typeof (parsed as { code?: unknown }).code === "string") {
+      return parsed as TopologyErrorDto;
+    }
+  } catch {
+    // Not JSON: fall through.
+  }
+  return { code: "internal", message: text };
+}
+
+function topologyCall<T>(call: () => unknown): T {
+  try {
+    return call() as T;
+  } catch (error) {
+    throw new TopologyError(parseTopologyError(typeof error === "string" ? error : error instanceof Error ? error.message : String(error)));
+  }
+}
+
+/// Fold activity and boundary contours of one floor (GitHub issue #839).
+export function getTopologyInfo(floor: TopologyFloorRequest): TopologyInfo {
+  return topologyCall(() => getWasm().topology_info(floor));
+}
+
+/// One transactional edit of a floor's topology. On failure nothing changes: the thrown
+/// `TopologyError` names the reason.
+export function editTopology(floor: TopologyFloorRequest, op: TopologyOp): TopologyEditResult {
+  return topologyCall(() => getWasm().topology_edit({ ...floor, op }));
 }
 
 /// The cell at a world point within `scope` (`null` = the whole tessellation space).
@@ -381,6 +335,18 @@ export function getCellsInRegion(config: {
   return getWasm().geometry_cells_in_region(config) as [number, number][];
 }
 
+/** Cells matching a region and their path boundaries, computed by core in one WASM call. */
+/// The edges of the cells in a region, each shared edge once, as one flat command list
+/// (`geometry_region_edges`).
+export function getRegionEdges(config: {
+  tessellation: WasmTessellationConfig;
+  region: WorldPoint[];
+  mode: RegionMode;
+  scope: [number, number][] | null;
+}): PathCommand[] {
+  return getWasm().geometry_region_edges(config) as PathCommand[];
+}
+
 /** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell
  *  without a template comes back as `undefined` in `point_shapes`. */
 export interface TessellationShapes {
@@ -400,6 +366,8 @@ export function getTessellationShapes(config: { tessellation: WasmTessellationCo
 export interface TessellationCellTypes {
   keys: string[];
   point_types: string[];
+  /** The cells of one type differ in size or shape (Voronoi, the rings of a radial field). */
+  cells_vary_in_size: boolean;
 }
 
 /// Cell types of the tessellation instance `config.tessellation` builds (GitHub issue #822): every
@@ -433,14 +401,110 @@ export function getFieldPreset(
   return getWasm().field_preset({ tessellation, preset, params }) as [number, number][];
 }
 
+/// The topology a preset shape defines together with its cells (`field_preset_topology`, GitHub
+/// issue #858); `null` for a preset that is only a shape. Throws the wire `FieldOpError`.
+export function getFieldPresetTopology(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): WireTopology | null {
+  return (getWasm().field_preset_topology({ tessellation, preset, params }) as WireTopology | undefined) ?? null;
+}
+
+/// The crease lines a preset shape defines (`field_preset_creases`, GitHub issue #899): world-unit
+/// segments `[[x, y], [x, y]]`, empty for a preset without any. Throws the wire `FieldOpError`.
+export function getFieldPresetCreases(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): [[number, number], [number, number]][] {
+  return getWasm().field_preset_creases({ tessellation, preset, params }) as [[number, number], [number, number]][];
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions.
 export function getFieldPresetExtents(
   tessellation: WasmTessellationConfig,
   preset: string,
   params: Record<string, number>,
   directions: [[number, number], [number, number]],
+  smooth = false,
 ): [[number, number], [number, number]] {
-  return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
+  return getWasm().field_preset_extents({ tessellation, preset, params, directions, smooth }) as [[number, number], [number, number]];
+}
+
+/// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939): the
+/// search runs in core. `null` when nothing fits. `width`/`height` are the result in cell sides.
+export interface PrintSizingRequest {
+  tessellation: WasmTessellationConfig;
+  preset: string;
+  params: Record<string, number>;
+  directions: [[number, number], [number, number]];
+  cellSide: number;
+  usableWidthMm: number;
+  usableHeightMm: number;
+  cellSideMm: number;
+  axisAligned: boolean;
+  /// Size the field without the cells smoothing removes (GitHub issue #957).
+  smooth: boolean;
+}
+
+/// `limit` is the search cap the answer sits on (the sheet may hold a larger field), else `null`.
+export interface PrintSizingAnswer {
+  params: Record<string, number>;
+  width: number;
+  height: number;
+  limit: number | null;
+}
+
+export function getFieldPrintSizing(request: PrintSizingRequest): PrintSizingAnswer | null {
+  return getWasm().field_print_sizing({
+    tessellation: request.tessellation,
+    preset: request.preset,
+    params: request.params,
+    directions: request.directions,
+    cell_side: request.cellSide,
+    usable_width_mm: request.usableWidthMm,
+    usable_height_mm: request.usableHeightMm,
+    cell_side_mm: request.cellSideMm,
+    axis_aligned: request.axisAligned,
+    smooth: request.smooth,
+  }) as PrintSizingAnswer | null;
+}
+
+/// Sizes of the cells of one cell type (`field_cell_sizes`, GitHub issue #948), in world units.
+/// `sides` and `diameter` are empty / `0` when the type's cells differ in size (`regular` false).
+export interface CellTypeSizes {
+  key: string;
+  count: number;
+  sides: number[];
+  diameter: number;
+  regular: boolean;
+}
+
+/// What `field_cell_sizes` reports: numbers only, never cells.
+export interface CellSizesReport {
+  types: CellTypeSizes[];
+  /** Cells of one floor of each requested preset, in request order (`0` for a refused preset). */
+  presetCounts: number[];
+}
+
+/// The count, sides and diameter of the cells of each cell type among the cells of `presets` (built
+/// by core, so they never cross the wasm boundary) and the hand-given `cells`, measured by core.
+export function getFieldCellSizes(
+  tessellation: WasmTessellationConfig,
+  source: { presets: { preset: string; params: Record<string, number>; times: number }[]; cells: [number, number][] },
+): CellSizesReport {
+  const report = getWasm().field_cell_sizes({ tessellation, presets: source.presets, cells: source.cells }) as {
+    types: CellTypeSizes[];
+    preset_counts: number[];
+  };
+  return { types: report.types, presetCounts: report.preset_counts };
+}
+
+/// The sides and diameter of every cell type of the tessellation (`count` 0), from sample cells core
+/// picks itself: independent of any field and cheap, unlike `getFieldCellSizes`.
+export function getTessellationCellTypeSizes(tessellation: WasmTessellationConfig): CellTypeSizes[] {
+  return getWasm().tessellation_cell_type_sizes(tessellation) as CellTypeSizes[];
 }
 
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
@@ -449,8 +513,21 @@ export function translateFieldCells(
   cells: [number, number][],
   vector: [number, number],
 ): [number, number][] {
-  return getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+  // Core re-verifies that `vector` is a translation symmetry on every call, which is slow on dense
+  // tessellations; a drag repeats the same request on every pointer event inside one cell and
+  // again at commit, so the latest results are reused.
+  const key = JSON.stringify([tessellation, cells, vector]);
+  const hit = translateCache.get(key);
+  if (hit) return hit.map(([x, y]) => [x, y]);
+  const result = getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+  translateCache.set(key, result);
+  if (translateCache.size > TRANSLATE_CACHE_SIZE) translateCache.delete(translateCache.keys().next().value!);
+  return result.map(([x, y]) => [x, y]);
 }
+
+const TRANSLATE_CACHE_SIZE = 16;
+/// Only successful results are stored: a refused translation throws and is recomputed.
+const translateCache = new Map<string, [number, number][]>();
 
 /// Cells mirrored across the world line through two points; it must be a reflection symmetry.
 export function reflectFieldCells(

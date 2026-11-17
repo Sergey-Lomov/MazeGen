@@ -9,15 +9,19 @@ export function coordKey(x: number, y: number): string {
   return `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
 }
 
+/** Order-independent node-id pair key: the `teleportEdgeKey` of a teleport with node ids. Shared by
+ *  every caller that maps a raw teleport `EdgeDto` onto a group's `edgeKeys`. */
+export function teleportNodePairKey(a: number, b: number): string {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+
 /** Stable per-edge identity for a `TeleportEdge` produced by `buildTeleportEdges` — the sorted pair
  *  of its endpoint node ids (order-independent, since `buildTeleportEdges` already collapses a
  *  two-way teleport's forward/backward `EdgeDto`s into one `TeleportEdge`). Falls back to a
  *  position-based key when `fromNode`/`toNode` are absent (non-`VectorByWallsRenderer` callers
  *  never build groups, but the fallback keeps this total). */
 export function teleportEdgeKey(edge: TeleportEdge): string {
-  if (edge.fromNode !== undefined && edge.toNode !== undefined) {
-    return edge.fromNode < edge.toNode ? `${edge.fromNode}-${edge.toNode}` : `${edge.toNode}-${edge.fromNode}`;
-  }
+  if (edge.fromNode !== undefined && edge.toNode !== undefined) return teleportNodePairKey(edge.fromNode, edge.toNode);
   return edge.from[0] < edge.to[0] || (edge.from[0] === edge.to[0] && edge.from[1] < edge.to[1])
     ? `${coordKey(edge.from[0], edge.from[1])}~${coordKey(edge.to[0], edge.to[1])}`
     : `${coordKey(edge.to[0], edge.to[1])}~${coordKey(edge.from[0], edge.from[1])}`;
@@ -42,6 +46,28 @@ export type TeleportGroup = {
 
 export type TeleportGroupLink = { from: number; to: number; oneWay: boolean };
 
+/** Merge-mode-off grouping (GitHub issue #868): every teleport is its own group, even when its
+ *  endpoints coincide with another teleport's. Edges sharing an edge key (a teleport seen twice) fold
+ *  into one group. */
+function buildUnmergedTeleportGroups(edges: TeleportEdge[]): TeleportGroup[] {
+  const byKey = new Map<string, TeleportGroup>();
+  for (const e of edges) {
+    const edgeKey = teleportEdgeKey(e);
+    let group = byKey.get(edgeKey);
+    if (!group) {
+      group = { key: edgeKey, edgeKeys: [edgeKey], points: [], links: [] };
+      byKey.set(edgeKey, group);
+      if (e.fromNode !== undefined && e.toNode !== undefined) {
+        group.links.push({ from: e.fromNode, to: e.toNode, oneWay: e.oneWay });
+      }
+    }
+    for (const p of [e.from, e.to]) {
+      if (!group.points.some(([x, y]) => coordKey(x, y) === coordKey(p[0], p[1]))) group.points.push(p);
+    }
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
+}
+
 /** Merges `TeleportEdge`s into `TeleportGroup`s wherever an endpoint coordinate coincides across
  *  different teleport pairs (GitHub issue #293's "grouped" pattern) — implemented as union-find
  *  over coordinate keys, unioning both a group's own from/to on every edge (so a pair's two ends
@@ -56,7 +82,8 @@ export type TeleportGroupLink = { from: number; to: number; oneWay: boolean };
  *  which have no node ids yet at that stage) used to vanish from every consumer of this function,
  *  including `TeleportRenderer`'s per-group draw-order interleave, which relies on
  *  `buildTeleportGroups` unconditionally now (GitHub issue #293 follow-up). */
-export function buildTeleportGroups(edges: TeleportEdge[]): TeleportGroup[] {
+export function buildTeleportGroups(edges: TeleportEdge[], merge = true): TeleportGroup[] {
+  if (!merge) return buildUnmergedTeleportGroups(edges);
   const parent = new Map<string, string>();
   const find = (k: string): string => {
     let root = k;

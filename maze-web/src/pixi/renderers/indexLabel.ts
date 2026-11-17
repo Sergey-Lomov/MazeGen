@@ -2,10 +2,6 @@
  *  index labels (GitHub issue #471). "roman" tends to stay legible at small font sizes. */
 export type IndexLabelStyle = "arabic" | "roman" | "letters";
 
-/** Font weight choice for a label, shared by the same two features — resolved to a baked MSDF
- *  atlas family name by `msdfFont.ts`'s `msdfFontFamily` (GitHub issue #352). */
-export type LabelFontWeight = "regular" | "bold";
-
 const ROMAN_VALUES: [number, string][] = [
   [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
   [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],

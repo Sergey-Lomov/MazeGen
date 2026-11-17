@@ -109,6 +109,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(11);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::InvalidDeadEnd { nodes } => {
+            out.push(15);
+            write_str_keyed_node_lists(out, nodes);
+        }
         IssuePayload::AreaDeficit { areas } => {
             out.push(12);
             write_str_keyed_area_deficits(out, areas);
@@ -122,8 +126,17 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             write_str_keyed_cross_element_groups(out, groups);
         }
         IssuePayload::InvalidCrossElement { elements } => {
-            out.push(15);
+            out.push(17);
             write_str_keyed_cross_elements(out, elements);
+        }
+        IssuePayload::IndeterminateDistance { pairs } => {
+            out.push(16);
+            out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
+            for pair in pairs {
+                out.extend_from_slice(&pair.nodes[0].to_le_bytes());
+                out.extend_from_slice(&pair.nodes[1].to_le_bytes());
+                out.push(pair.unsupported as u8);
+            }
         }
     }
 }
@@ -180,7 +193,7 @@ pub(crate) fn write_details_map(
 
 /// Encodes `IssuePayload::RegionNeedsExpansion`/`RegionNeedsShrink`'s `nodes` field — this binary
 /// QC event tape is intentionally build-coupled (produced and consumed by the same wasm+web build,
-/// never persisted across builds via `wasm-rebuild.ps1`), so no backward-compatibility/versioning
+/// never persisted across builds via `scripts/windows/wasm-rebuild.ps1`), so no backward-compatibility/versioning
 /// is attempted here; a wire-shape change like this one is a normal, unversioned edit. Wire order
 /// per region: the `region` node list, then a trailing 1-byte `preset_locked` flag (0/1 — GitHub
 /// issue #245's region extension), mirroring `write_edge_group_payload`'s own trailing flag.

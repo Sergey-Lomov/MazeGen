@@ -14,7 +14,9 @@ import {
 import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { TessellationKind } from "../../fieldConfig";
-import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
+import type { InitialGenerationConfig, ElementsConfig, WireTopology } from "../../wasm/types";
+import { tessellationFingerprint, validateWireTopology } from "../topologyWire";
+import { validateCreases, type Crease } from "../creases";
 import type { FeatureId } from "../mazeStore";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertBoolRecord,
@@ -181,12 +183,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     postEdit: optBool(dirtyFlagsObj, "postEdit", false),
     field: optBool(dirtyFlagsObj, "field", false),
     presets: optBool(dirtyFlagsObj, "presets", false),
-    maze: optBool(dirtyFlagsObj, "maze", false),
+    // A file without the section predates the flags and was always regenerated on load (GitHub
+    // issue #932), so it keeps loading generated.
+    maze: optBool(dirtyFlagsObj, "maze", dirtyFlagsObj === null),
   };
 
   // analytics
   const analyticsObj = assertObject(migrated.analytics, "analytics");
   const analytics: ProjectFileAnalytics = {
+    // Optional — grid visibility was added after existing project files.
+    showGridOverlay: optBool(analyticsObj, "showGridOverlay", true),
     showMazeOverlay: assertBoolean(analyticsObj.showMazeOverlay, "analytics.showMazeOverlay"),
     showComponentsOverlay: assertBoolean(analyticsObj.showComponentsOverlay, "analytics.showComponentsOverlay"),
     showGraphOverlay: assertBoolean(analyticsObj.showGraphOverlay, "analytics.showGraphOverlay"),
@@ -210,12 +216,14 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // ui (optional section — defaults for old files)
   const uiObj = optSection(migrated, "ui", "ui");
-  const validFeatureIds: FeatureId[] = ["basic_config", "floors", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
+  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
   const ui: ProjectFileUi = {
     showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
     showPresetLocks: optBool(uiObj, "showPresetLocks", true),
     showFieldOrigin: optBool(uiObj, "showFieldOrigin", true),
-    openCard: uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
+    // The "floors" card (removed in GitHub issue #1010) now lives inside the field setup card.
+    openCard: uiObj != null && uiObj.openCard === "floors" ? "field_setup"
+      : uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
     postEditAutoConfirm: optBool(uiObj, "postEditAutoConfirm", true),
   };
 
@@ -256,10 +264,32 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], elongated_triangular: [], snub_square: [], curved_quadrilateral: [], radial: [], voronoi: [] }, fieldEditMode: "default" };
   }
 
+  // floorTopology (GitHub issue #836) — optional; entries for unknown floors are dropped, every
+  // kept entry must carry the current tessellation's fingerprint.
+  const floorTopologyObj = migrated.floorTopology != null ? assertObject(migrated.floorTopology, "floorTopology") : {};
+  const fingerprint = tessellationFingerprint(kind, params);
+  const floorTopology: Record<string, WireTopology> = {};
+  for (const floor of floors.floors) {
+    const raw = floorTopologyObj[floor.id];
+    if (raw != null) floorTopology[floor.id] = validateWireTopology(raw, `floorTopology.${floor.id}`, fingerprint);
+  }
+
+  // floorCreases (GitHub issue #898) — optional; entries for unknown floors are dropped.
+  const floorCreasesObj = migrated.floorCreases != null ? assertObject(migrated.floorCreases, "floorCreases") : {};
+  const floorCreases: Record<string, Crease[]> = {};
+  for (const floor of floors.floors) {
+    const raw = floorCreasesObj[floor.id];
+    if (raw == null) continue;
+    const creases = validateCreases(raw, `floorCreases.${floor.id}`);
+    if (creases.length > 0) floorCreases[floor.id] = creases;
+  }
+
   return {
     version: CURRENT_VERSION,
     tessellation: { kind, params, hexOrientation, triOrientation },
     floorFields,
+    floorTopology,
+    ...(Object.keys(floorCreases).length > 0 ? { floorCreases } : {}),
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
     quality,
     presets: {

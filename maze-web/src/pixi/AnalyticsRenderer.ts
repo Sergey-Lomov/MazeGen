@@ -1,5 +1,8 @@
 ﻿import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamHopContext } from "./selectors/seamHop";
+import { selectIssueHighlightData } from "./selectors/issueHighlight";
 import { RegionsRenderer } from "./RegionsRenderer";
 import { RegionClassesRenderer } from "./RegionClassesRenderer";
 import { MazeOverlayRenderer } from "./MazeOverlayRenderer";
@@ -17,11 +20,10 @@ import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { EdgeDto } from "../wasm/types";
-import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
-import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly regionsContainer: Container;
@@ -48,6 +50,7 @@ export class AnalyticsRenderer {
   private readonly issueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly mazeOverlay: MazeOverlayRenderer;
   private readonly regionsRenderer: RegionsRenderer;
   private readonly regionClassesRenderer: RegionClassesRenderer;
@@ -69,6 +72,7 @@ export class AnalyticsRenderer {
 
   constructor(container: Container) {
     this.gridContainer        = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer       = new Container();
     this.closedCellsContainer = new Container();
     this.regionsContainer     = new Container();
@@ -88,6 +92,8 @@ export class AnalyticsRenderer {
 
     container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    container.addChild(this.seamArrowContainer);
     container.addChild(this.closedCellsContainer);
     container.addChild(this.regionsContainer);
     container.addChild(this.regionClassesContainer);
@@ -104,7 +110,8 @@ export class AnalyticsRenderer {
     container.addChild(this.routeContainer);
     container.addChild(this.issueHighlightContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "analytics");
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.mazeOverlay = new MazeOverlayRenderer({
       floor: this.floorContainer,
       closedCells: this.closedCellsContainer,
@@ -131,6 +138,7 @@ export class AnalyticsRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
         state.openCard !== prev.openCard ||
+        state.showGridOverlay !== prev.showGridOverlay ||
         state.showMazeOverlay !== prev.showMazeOverlay ||
         state.showComponentsOverlay !== prev.showComponentsOverlay ||
         state.showGraphOverlay !== prev.showGraphOverlay ||
@@ -170,7 +178,7 @@ export class AnalyticsRenderer {
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const analyticsOpen = state.openCard === "analytics";
     const { activeFieldConfig: cfg,
-      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
+      showGridOverlay, showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
       showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
 
     // Floor-scoped (GitHub issue #358) — `state.nodes` can span every floor (post-edit's confirm
@@ -230,8 +238,11 @@ export class AnalyticsRenderer {
     const start  = startOnLevel !== undefined ? resolveEndpoint(startOnLevel, resolveSplit) ?? null : null;
     const finish = finishOnLevel !== undefined ? resolveEndpoint(finishOnLevel, resolveSplit) ?? null : null;
 
-    // Grid — background context, independent of showMazeOverlay
-    const showGrid = analyticsOpen && nodes.length > 0;
+    // Where a graph edge crosses a glue it ends at the contour; one context serves every graph overlay.
+    const seam = selectSeamHopContext(state, nodes);
+
+    // Grid — independent of the maze overlay, so analytical views can hide visual noise.
+    const showGrid = analyticsOpen && showGridOverlay && nodes.length > 0;
     this.gridContainer.visible = showGrid;
     if (showGrid) {
       this.grid.render({ viewport: this.viewport }, cfg);
@@ -257,6 +268,7 @@ export class AnalyticsRenderer {
 
     // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
+    this.seamArrowContainer.visible = showMaze;
     this.floorContainer.visible       = showMaze;
     this.closedCellsContainer.visible = showMaze;
     this.wallsContainer.visible       = showMaze;
@@ -350,6 +362,7 @@ export class AnalyticsRenderer {
         interactive: false,
         resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex,
         crossFloorEdges,
+        seam,
       });
     }
 
@@ -357,7 +370,7 @@ export class AnalyticsRenderer {
     const showNavGraph = analyticsOpen && showNavGraphOverlay && navNodes.length > 0;
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
-      this.navGraphRenderer.render({ nodes, navNodes, navEdges, edges, start, finish, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
+      this.navGraphRenderer.render({ nodes, navNodes, navEdges, edges, start, finish, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, seam });
     }
 
     // Pure cycles overlay
@@ -368,7 +381,7 @@ export class AnalyticsRenderer {
     const showPureCycles = analyticsOpen && showPureCyclesOverlay && navNodes.length > 0;
     this.pureCyclesContainer.visible = showPureCycles;
     if (showPureCycles) {
-      this.pureCyclesRenderer.render({ nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
+      this.pureCyclesRenderer.render({ nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, seam });
     } else {
       this.pureCyclesRenderer.clear();
     }
@@ -377,7 +390,7 @@ export class AnalyticsRenderer {
     const showRoute = analyticsOpen && showRouteOverlay && routeInfo != null;
     this.routeContainer.visible = showRoute;
     if (showRoute) {
-      this.routeRenderer.render({ routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
+      this.routeRenderer.render({ routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, seam });
     } else {
       this.routeRenderer.clear();
     }
@@ -388,10 +401,7 @@ export class AnalyticsRenderer {
     const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
-      const crossFloorEdgeKeys = new Set(
-        state.edges.filter((e) => e.kind !== "basic").map((e) => `${e.from}->${e.to}`),
-      );
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay) });
+      this.issueHighlightRenderer.render(selectIssueHighlightData(state, { nodes, edges }, cfg));
     } else {
       this.issueHighlightRenderer.clear();
     }
@@ -407,6 +417,8 @@ export class AnalyticsRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.mazeOverlay.destroy();
     this.regionsRenderer.destroy();

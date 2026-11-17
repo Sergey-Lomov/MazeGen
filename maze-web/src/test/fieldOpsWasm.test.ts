@@ -18,7 +18,7 @@ describe("field operations over wasm", () => {
   it("lists the operations and preset schemas of a tessellation", () => {
     const capabilities = getFieldCapabilities(square);
     expect(capabilities.operations).toEqual(["translate", "reflect"]);
-    expect(capabilities.presets.map((preset) => preset.key)).toEqual(["rect", "circle", "triangle"]);
+    expect(capabilities.presets.map((preset) => preset.key)).toEqual(["rect", "circle", "triangle", "box", "cylinder", "torus"]);
   });
 
   it("publishes the radial circle radius limit from the tessellation params", () => {
@@ -58,6 +58,16 @@ describe("field operations over wasm", () => {
       expect.unreachable();
     } catch (error) {
       expect(error).toEqual({ kind: "outside_tessellation" });
+    }
+  });
+
+  it("reuses translation results without sharing arrays and does not cache refusals", () => {
+    const first = translateFieldCells(square, [[0, 0], [1, 0]], [2, 1]);
+    first[0][0] = 999;
+    first.pop();
+    expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(() => translateFieldCells(square, [[0, 0]], [0.5, 0])).toThrow();
     }
   });
 

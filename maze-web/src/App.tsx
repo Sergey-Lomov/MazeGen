@@ -3,17 +3,22 @@ import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
-import { SymmetryPanel } from "./components/features/SymmetryPanel";
+import { MirrorPanel } from "./components/features/MirrorPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
+import { NoExportRendererHint } from "./components/NoExportRendererHint";
 import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { NotificationHost } from "./components/notifications/NotificationHost";
 import { Announcer } from "./components/Announcer";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { BackgroundActivityStack } from "./components/BackgroundActivityStack";
+import { LocalFontPermissionDialog } from "./components/dialogs/LocalFontPermissionDialog";
+import { GenerationProgressOverlay } from "./components/GenerationProgressOverlay";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
-import { ui, typography, disabled, inset } from "./styles/theme";
+import { ui } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
@@ -25,13 +30,15 @@ const PANEL_WIDTH = 260;
 /** Feature cards the floor switcher stays hidden for (GitHub issue #336): "Basic configuration"
  *  (tessellation is floor-independent), "Floors" (configures the floor set itself), and "Quality
  *  control" (spans the whole maze, not scoped to one floor). */
-const FLOOR_SWITCHER_HIDDEN_CARDS: ReadonlySet<FeatureId> = new Set(["basic_config", "floors", "quality"]);
+const FLOOR_SWITCHER_HIDDEN_CARDS: ReadonlySet<FeatureId> = new Set(["basic_config", "quality"]);
 
 export function App() {
   useLocale(); // re-render entire tree on locale change
   const canvasRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<"graphics" | "fonts">("graphics");
+  const [loadingLeaving, setLoadingLeaving] = useState(false);
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
   const debugMode = useMazeStore((s) => s.debugMode);
   const debugArena = useMazeStore((s) => s.debugArena);
@@ -41,9 +48,9 @@ export function App() {
   const floorCount = useMazeStore((s) => s.floors.length);
   const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
   const field = useMazeStore((s) => s.floorFields[s.activeFloorId]);
-  const showSymmetryPanel = openCard === "field_setup"
+  const showMirrorPanel = openCard === "field_setup"
     && field.fieldEditMode === "custom"
-    && field.fieldPrimitive === "symmetry";
+    && field.fieldPrimitive === "mirror";
 
   useEffect(() => {
     loadRegistry();
@@ -84,10 +91,14 @@ export function App() {
         autoDensity: true,
         autoStart: false,
       })
-      // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
+      // The default MSDF label font (GitHub issue #352, ~150 KB for both weights) is a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
-      // later page load free. Blocking `setReady` on it avoids a flash of missing labels.
-      .then(() => loadMsdfFont())
+      // later page load free. Blocking `setReady` on it avoids a flash of missing labels. Other MSDF
+      // fonts load on demand (issue #982).
+      .then(() => {
+        setLoadingStage("fonts");
+        return loadMsdfFont();
+      })
       .then(() => {
         if (cancelled) { app.destroy(); return; }
         canvasRef.current!.appendChild(app.canvas);
@@ -100,6 +111,7 @@ export function App() {
           sampleRegion: (clientX, clientY, radiusPx) => sceneRef.current?.sampleRegionAt(clientX, clientY, radiusPx) ?? null,
         });
         setReady(true);
+        setLoadingLeaving(true);
       })
       .catch((err) => {
         // A failed WebGL init or MSDF-font fetch would otherwise leave the app stuck on the
@@ -117,30 +129,41 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!loadingLeaving) return;
+    const timer = window.setTimeout(() => setLoadingLeaving(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [loadingLeaving]);
+
   return (
     <div style={styles.root}>
       <div style={styles.panel}>
         <FeaturesPanel
           onRefit={() => sceneRef.current?.refit()}
           onExportPng={(settings) => sceneRef.current?.exportPng(settings) ?? Promise.resolve(null)}
+          onFocusTeleportConnector={(points) => sceneRef.current?.focusTeleportConnector(points)}
         />
       </div>
       <div style={styles.canvasColumn}>
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
+        {!qualityOpen && <NoExportRendererHint />}
         {showFloorSwitcher && <FloorSwitcher />}
+        <BackgroundActivityStack />
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
-      {showSymmetryPanel && <SymmetryPanel />}
+      {showMirrorPanel && <MirrorPanel />}
       {/* Portal target for `SidePanel` (GitHub issue #237) — split-node management panels
        * (post-edit, preset, pattern editor) render here regardless of where in the component tree
        * they're triggered from, so they always dock beside the canvas, never inside the left
        * features panel. */}
       <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
-      {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
+      {(!ready || loadingLeaving) && <LoadingScreen status={m[loadingStage === "graphics" ? "loading.graphics" : "loading.fonts"]()} leaving={loadingLeaving} />}
+      <GenerationProgressOverlay />
       {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
        * anchored to the canvas column's top-left corner. */}
+      <LocalFontPermissionDialog />
       <NotificationHost canvasLeft={PANEL_WIDTH} />
       <Announcer />
     </div>
@@ -164,14 +187,4 @@ const styles: Record<string, React.CSSProperties> = {
   // contents` would drop the positioning context, so keep it a plain block).
   sidePanelSlot: { position: "relative" },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: {
-    position: "fixed",
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: ui.bg.app,
-    padding: inset.panelInsetX,
-    ...disabled(typography.body),
-  },
 };

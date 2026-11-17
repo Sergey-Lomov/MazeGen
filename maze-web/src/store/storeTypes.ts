@@ -7,6 +7,7 @@ export * from "./debugArenaTypes";
 export * from "./generationTypes";
 export * from "./postEditFullTypes";
 export * from "./floorsTypes";
+export * from "./topologyTypes";
 
 import type { TessellationState, FloorFieldsState, TessellationActions, FloorFieldsActions } from "./tessellationTypes";
 import type { PresetConnectionsState, PresetConnectionsActions } from "./presetConnectionsTypes";
@@ -14,7 +15,8 @@ import type { GenerationState, GenerationActions } from "./generationTypes";
 import type { AnalyticsOverlayState, PostEditState, AnalyticsOverlayActions, PostEditActions } from "./postEditFullTypes";
 import type { ImageExportState, ImageExportActions } from "./imageExportTypes";
 import type { FloorsState, RootActions, FloorsActions } from "./floorsTypes";
+import type { TopologyState, TopologyActions } from "./topologyTypes";
 
-export type MazeState = TessellationState & FloorFieldsState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState;
-export type MazeActions = RootActions & TessellationActions & FloorFieldsActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions;
+export type MazeState = TessellationState & FloorFieldsState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState & TopologyState;
+export type MazeActions = RootActions & TessellationActions & FloorFieldsActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions & TopologyActions;
 export type MazeStore = MazeState & MazeActions;

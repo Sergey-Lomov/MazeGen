@@ -11,6 +11,7 @@ import { TileFaceEditor } from "../components/features/TileFaceEditor";
 import { resetNotifications } from "../notifications/notificationStore";
 import { noticeCodes } from "./notificationTestHelpers";
 import { SPLIT_BOUNDARY_FACE } from "../notifications/editRefusalNotifications";
+import { getTooltipControls } from "./tooltipTestUtils";
 
 beforeEach(() => {
   resetNotifications();
@@ -38,6 +39,28 @@ beforeEach(() => {
 });
 
 describe("ManageSplitNodesDialog", () => {
+  it("places current diagnostics in the standard collapsed warnings section", () => {
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+
+    const section = screen.getByTestId("split-node-warnings");
+    expect(section).toHaveTextContent("Warnings (3)");
+    expect(section).not.toHaveTextContent("Node 1 only has wall faces");
+    expect(section.parentElement).toHaveStyle({ paddingTop: "8px" });
+
+    fireEvent.click(screen.getByText("Warnings (3)"));
+    const firstWarning = screen.getByText("Node 1 only has wall faces and no valid neighbor, it will be unreachable.");
+    expect(firstWarning).toHaveStyle({ borderWidth: "1px" });
+    expect(section).toHaveTextContent("Node 3 only has wall faces and no valid neighbor, it will be unreachable.");
+    expect(firstWarning.parentElement).toHaveStyle({ marginTop: "8px", gap: "8px" });
+  });
+
+  it("labels split-editor blueprint thumbnails with their template names", () => {
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+
+    expect(getTooltipControls("Bridge")).toHaveLength(1);
+    expect(getTooltipControls("Diagonal divider")).toHaveLength(1);
+  });
+
   it("moves face hit zones with the active node anchor", () => {
     const onFaceClick = vi.fn();
     const onFaceRightClick = vi.fn();

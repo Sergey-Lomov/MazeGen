@@ -246,7 +246,13 @@ pub fn cross_element_occurrences<T: Tessellation>(
             else {
                 continue;
             };
-            let edge_xy = edge_position(tessellation, from_point, to_point);
+            let Some(level) = maze.field.level_of(from) else {
+                continue;
+            };
+            let Some(level_field) = maze.field.field_of(level) else {
+                continue;
+            };
+            let edge_xy = edge_position(level_field, from_point, to_point);
             let before = out.len();
             push_at(&mut out, CrossElement::OneWay(id), from);
             push_at(&mut out, CrossElement::OneWay(id), to);
@@ -499,7 +505,7 @@ mod tests {
             "3 stops -> 3 occurrences, one distinct element each"
         );
         stops.sort_unstable();
-        let mut expected = nodes.clone();
+        let mut expected = nodes;
         expected.sort_unstable();
         assert_eq!(stops, expected, "each element's id is its own stop node");
     }

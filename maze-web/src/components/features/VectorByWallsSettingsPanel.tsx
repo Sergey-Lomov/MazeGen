@@ -1,35 +1,33 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
-import { SectionHeader, SubsectionHeader } from "../SectionHeader";
-import { hasCellAreaSpread } from "../../pixi/markerScale";
+import { SectionHeader } from "../SectionHeader";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
-import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
-import { maxFittingFontSize } from "../../pixi/textFit";
-import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { TextFitContextProvider } from "./TextFitContext";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { computeVectorByWallsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
-import { requiredTextPlateDimensions } from "../../pixi/textFit";
-import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
-import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
+import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
+import { WaypointOpeningSubsection } from "./WaypointOpeningSubsection";
+import { IndicatorGeometryRows } from "./IndicatorGeometryRows";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
+import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { FloorLabelSection } from "./FloorLabelSection";
-import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
+import { TeleportSettingsSection } from "./TeleportSettingsSection";
+import { useExportPanelModel } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
+import { TopologySettingsSection } from "./TopologySettingsSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { TILE_SIZE } from "../../pixi/constants";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
-import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { ColorVisibilityProvider, LayoutGate } from "../ColorVisibilityContext";
-import { PC, buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
+import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 /** "Background", "Tiles", "Markers" and "One-ways" sections of the "Vector by walls" render mode's
@@ -63,20 +61,31 @@ export function VectorByWallsSettingsPanel() {
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
+  const setShowCutLines = useMazeStore((s) => s.setVectorByWallsShowCutLines);
+  const setTrimWallsAtFaceBoundaries = useMazeStore((s) => s.setVectorByWallsTrimWallsAtFaceBoundaries);
+  const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByWallsCutLinesGlueColor);
+  const setCutLinesColor = useMazeStore((s) => s.setVectorByWallsCutLinesColor);
+  const setCreases = useMazeStore((s) => s.setVectorByWallsCreases);
+  const setGlueTabs = useMazeStore((s) => s.setVectorByWallsGlueTabs);
+  const setEdgeMarkers = useMazeStore((s) => s.setVectorByWallsEdgeMarkers);
+  const setEdgeMarkerOverride = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverride);
+  const setEdgeMarkerOverrides = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverrides);
   const setShowInnerGrid = useMazeStore((s) => s.setVectorByWallsShowInnerGrid);
   const setInnerGridColor = useMazeStore((s) => s.setVectorByWallsInnerGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
   const setWallColor = useMazeStore((s) => s.setVectorByWallsWallColor);
   const setRandomWallColorMode = useMazeStore((s) => s.setVectorByWallsRandomWallColorMode);
+  const setMarkerLayout = useMazeStore((s) => s.setVectorByWallsMarkerLayout);
+  const setMarkerScale = useMazeStore((s) => s.setVectorByWallsMarkerScale);
   const setWallJoin = useMazeStore((s) => s.setVectorByWallsWallJoin);
   const setWallThickness = useMazeStore((s) => s.setVectorByWallsWallThickness);
   const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
   const setOneWayColor = useMazeStore((s) => s.setVectorByWallsOneWayColor);
   const setOneWayGapWidth = useMazeStore((s) => s.setVectorByWallsOneWayGapWidth);
-  const setOneWaySize = useMazeStore((s) => s.setVectorByWallsOneWaySize);
-  const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
+  const setOneWayGeometry = useMazeStore((s) => s.setVectorByWallsOneWayGeometry);
   const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const patchMarker = useMazeStore((s) => s.patchVectorByWallsMarker);
+  const patchOpening = useMazeStore((s) => s.patchVectorByWallsOpening);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
   const patchVerticalSharedStyle = useMazeStore((s) => s.patchVectorByWallsVerticalSharedStyle);
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
@@ -95,93 +104,10 @@ export function VectorByWallsSettingsPanel() {
   const addLink = useMazeStore((s) => s.addVectorByWallsLink);
   const removeLink = useMazeStore((s) => s.removeVectorByWallsLink);
 
-  const rawNodes = useMazeStore((s) => s.nodes);
-  const rawEdges = useMazeStore((s) => s.edges);
-  const rawStart = useMazeStore((s) => s.start);
-  const rawFinish = useMazeStore((s) => s.finish);
-  const postEditMeta = useMazeStore((s) => s.postEditMeta);
-  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const cfg = useMazeStore((s) => s.activeFieldConfig);
-  const floors = useMazeStore((s) => s.floors);
-  const activeFloorId = useMazeStore((s) => s.activeFloorId);
-
-  // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
-  // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
-  // `state.start`/`state.finish`, only `postEditMeta` reflects a post-edit marker move).
-  const rawEffectiveEndpoints = useMemo(
-    () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
-    [rawNodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
-  );
-
-  // Scoped to `activeFloorId` (GitHub issue #347) — mirrors `VectorByWallsRenderer.renderAll`'s own
-  // scoping, so this panel's warnings/section-visibility checks see exactly what's drawn.
-  // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
-  // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list
-  // (Analytics feature) — see `exportWarnings.ts`'s doc comment.
-  const exportWarnings = useMemo(
-    () => computeVectorByWallsWarningsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
-    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
-  );
-
-  // Auto-fit data for font-size rows (GitHub issue #707) — floor labels have their own independent
-  // size control, so `fitAll` only covers the shared-style label controls.
-  const textFit = useMemo<TextFitContextValue>(() => {
-    const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
-    return {
-      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
-      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
-      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
-      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
-    };
-  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
-
-  // Group customization lists every teleport connection group of the *whole project*, cross-floor
-  // pairs included (GitHub issue #484) — not just the active floor's — so switching floors never
-  // changes the set of customizable groups. Built per floor exactly the way each floor's own
-  // renderer builds it, then merged by key (see the hook's own doc comment), so an override set
-  // here always resolves against what that floor's renderer draws.
-  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(
-    rawNodes, rawEdges, cfg, floors, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish,
-  );
-
-  // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
-  // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
-  // `nodes`/`edges` — so switching floors never makes a section appear or disappear (which flickered
-  // the panel). Same "hide only when there's genuinely nothing to configure anywhere" rule the
-  // "Vertical connections" sub-sections below already follow against `rawEdges`.
-  const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
-
-  // One visibility context for the whole panel (GitHub issue #717): the section gates below, the
-  // priority color lists and the "Project colors" list all derive from it, so they cannot drift.
-  // Built from the unscoped `rawNodes`/`rawEdges` so a floor switch never changes the answer.
-  const colorVisibility = useMemo(
-    () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors }, settings),
-    [rawNodes, rawEdges, floors, settings],
-  );
-  const hasOneWays = colorVisibility.oneWayIndicator;
-  const hasTeleports = colorVisibility.teleports;
-  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport.
-  const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
-  const hasTwoWayPassages = colorVisibility.twoWayPassages;
-  const hasOneWayPassages = colorVisibility.oneWayPassages;
-  const hasElevators = colorVisibility.elevators;
-  const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
-  // "Marker indices" is shown only when some marker could ever carry an index (GitHub issue #730).
-  const hasMarkerIndexSource = colorVisibility.markerIndexAvailable;
-  // Marker size adaptation only matters when cells differ in area (GitHub issue #819).
-  const hasAreaSpread = useMemo(() => hasCellAreaSpread(cfg), [cfg]);
-
-  // Which registry paths the panel currently shows (GitHub issue #670) — mirrors the section/
-  // subsection visibility conditions above, so the parameter-links dialog can tell an inactive
-  // parameter (e.g. a teleport field with no teleports in the maze) apart from an active one.
-  const activePaths = useMemo(
-    () => computeActivePaths(VECTOR_BY_WALLS_PARAM_REGISTRY, {
-      hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread,
-      hasMultipleFloors: floors.length > 1,
-    }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, floors.length, settings],
-  );
+  const {
+    floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
+    colorVisibility, gate, activePaths,
+  } = useExportPanelModel(settings, VECTOR_BY_WALLS_PARAM_REGISTRY, "walls", computeVectorByWallsWarningsAcrossFloors);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -228,10 +154,10 @@ export function VectorByWallsSettingsPanel() {
     PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
   ];
   // Every vertical-connection / elevator color row ends with the "Vertical connections" section's
-  // own "Shared style" fill/arrow colors (GitHub issue #668 — these feed all three marker groups
-  // via disabled-by-default links), then the floor color (the corridor-color analogue this mode
+  // own "Shared style" fill/border/arrow colors (GitHub issues #668, #968 — these feed all three marker groups
+  // via their vertical shared-style links), then the floor color (the corridor-color analogue this mode
   // has), then (for the rows that already carry it) the background — GitHub issue #503.
-  const vShared = [PC.verticalFill.at(settings.verticalFillColor), PC.verticalArrow.at(settings.verticalArrowColor)];
+  const vShared = [PC.verticalFill.at(settings.verticalFillColor), PC.verticalBorder.at(settings.verticalBorderColor), PC.verticalArrow.at(settings.verticalArrowColor)];
   const vTail = [...vShared, floor];
   const vTailBg = [...vShared, floor, background];
   // Elevator floor-badge fill / text prioritize each other first (they sit one on the other), then
@@ -241,7 +167,7 @@ export function VectorByWallsSettingsPanel() {
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate } as unknown as LinkContextValue<string>}>
     <ColorVisibilityProvider value={colorVisibility}>
     <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
@@ -282,6 +208,8 @@ export function VectorByWallsSettingsPanel() {
         <SharedStyleSection
           settings={settings}
           onChange={patchSharedStyle}
+          onLayoutChange={setMarkerLayout}
+          onScaleChange={setMarkerScale}
           priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), floor, background], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), floor, background] }}
         />
       )}
@@ -399,7 +327,7 @@ export function VectorByWallsSettingsPanel() {
 
       <div style={styles.divider} />
 
-      {floors.length > 1 && (
+      {gate("multipleFloors") && (
         <>
           <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
           {isExpanded("floors") && (
@@ -435,6 +363,8 @@ export function VectorByWallsSettingsPanel() {
         const finishBorder = PC.finishBorder.at(settings.finishMarker.borderColor);
         const startText = PC.startText.at(settings.startMarker.textColor ?? D.startMarker.textColor ?? floor.color);
         const finishText = PC.finishText.at(settings.finishMarker.textColor ?? D.finishMarker.textColor ?? floor.color);
+        const startArrow = PC.startOpeningArrow.at(settings.startOpening.color);
+        const finishArrow = PC.finishOpeningArrow.at(settings.finishOpening.color);
         return (
         <div style={styles.block}>
           <MarkerSettingsGroup
@@ -444,14 +374,16 @@ export function VectorByWallsSettingsPanel() {
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
+            showMarkerToggle
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, floor], borderColor: [startFill, startText, finishBorder, finishFill, floor], textColor: [startFill, startBorder, finishText, floor] }}
+            priorityColors={{ fillColor: [startBorder, startText, startArrow, finishFill, finishBorder, finishArrow, floor], borderColor: [startFill, startText, startArrow, finishBorder, finishFill, finishArrow, floor], textColor: [startFill, startBorder, startArrow, finishText, finishArrow, floor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fields={{ fillColor: PC.startFill, borderColor: PC.startBorder, textColor: PC.startText }}
             onChange={(patch) => {
               patchMarker("startMarker", patch);
             }}
             linkTargets={{
+              markerEnabled: "startMarker.markerEnabled",
               shape: "startMarker.shape",
               cornerStyle: "startMarker.cornerStyle",
               size: "startMarker.size",
@@ -461,12 +393,25 @@ export function VectorByWallsSettingsPanel() {
               borderWidth: "startMarker.borderWidth",
               gapWidth: "startMarker.gapWidth",
               textEnabled: "startMarker.textEnabled",
-              textFontWeight: "startMarker.textFontWeight",
+              textFont: "startMarker.textFont",
               textSize: "startMarker.textSize",
               textMargin: "startMarker.textMargin",
               textColor: "startMarker.textColor",
             }}
-          />
+          >
+            <WaypointOpeningSubsection
+              kind="start"
+              sectionId="markers_start"
+              settings={settings.startOpening}
+              onChange={(patch) => patchOpening("startOpening", patch)}
+              isExpanded={isExpanded}
+              onToggle={toggleSection}
+              linkTargets={{ mode: "startOpening.mode", pattern: "startOpening.pattern", color: "startOpening.color", gapWidth: "startOpening.gapWidth", join: "startOpening.join" }}
+              field={PC.startOpeningArrow}
+              defaultColor={D.startOpening.color}
+              priorityColors={[startFill, startBorder, floor, wall]}
+            />
+          </MarkerSettingsGroup>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
             sectionId="markers_finish"
@@ -474,14 +419,16 @@ export function VectorByWallsSettingsPanel() {
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
+            showMarkerToggle
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, floor], borderColor: [finishFill, finishText, startBorder, startFill, floor], textColor: [finishFill, finishBorder, startText, floor] }}
+            priorityColors={{ fillColor: [finishBorder, finishText, finishArrow, startFill, startBorder, startArrow, floor], borderColor: [finishFill, finishText, finishArrow, startBorder, startFill, startArrow, floor], textColor: [finishFill, finishBorder, finishArrow, startText, startArrow, floor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fields={{ fillColor: PC.finishFill, borderColor: PC.finishBorder, textColor: PC.finishText }}
             onChange={(patch) => {
               patchMarker("finishMarker", patch);
             }}
             linkTargets={{
+              markerEnabled: "finishMarker.markerEnabled",
               shape: "finishMarker.shape",
               cornerStyle: "finishMarker.cornerStyle",
               size: "finishMarker.size",
@@ -491,17 +438,30 @@ export function VectorByWallsSettingsPanel() {
               borderWidth: "finishMarker.borderWidth",
               gapWidth: "finishMarker.gapWidth",
               textEnabled: "finishMarker.textEnabled",
-              textFontWeight: "finishMarker.textFontWeight",
+              textFont: "finishMarker.textFont",
               textSize: "finishMarker.textSize",
               textMargin: "finishMarker.textMargin",
               textColor: "finishMarker.textColor",
             }}
-          />
+          >
+            <WaypointOpeningSubsection
+              kind="finish"
+              sectionId="markers_finish"
+              settings={settings.finishOpening}
+              onChange={(patch) => patchOpening("finishOpening", patch)}
+              isExpanded={isExpanded}
+              onToggle={toggleSection}
+              linkTargets={{ mode: "finishOpening.mode", pattern: "finishOpening.pattern", color: "finishOpening.color", gapWidth: "finishOpening.gapWidth", join: "finishOpening.join" }}
+              field={PC.finishOpeningArrow}
+              defaultColor={D.finishOpening.color}
+              priorityColors={[finishFill, finishBorder, floor, wall]}
+            />
+          </MarkerSettingsGroup>
         </div>
         );
       })()}
 
-      {hasOneWays && (
+      {gate("oneWays") && (
         <>
           <div style={styles.divider} />
 
@@ -521,7 +481,7 @@ export function VectorByWallsSettingsPanel() {
                   { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
                 ]}
                 onChange={setOneWayPattern}
-                linkTarget={null}
+                linkTarget="oneWayPattern"
               />
               <LinkedColorRow
                 label={m["image_export.vector_by_walls.one_way_color"]()}
@@ -552,32 +512,13 @@ export function VectorByWallsSettingsPanel() {
                 onChange={setOneWayJoin}
                 linkTarget="oneWayJoin"
               />
-              <LinkedSliderRow
-                label={m["image_export.vector_by_walls.one_way_size"]()}
-                value={settings.oneWaySize}
-                onChange={setOneWaySize}
-                min={0.05 * TILE_SIZE}
-                max={TILE_SIZE}
-                step={1}
-                format={(v) => String(Math.round(v))}
-                linkTarget="oneWaySize"
-              />
-              <LinkedSliderRow
-                label={m["image_export.vector_by_walls.one_way_thickness"]()}
-                value={settings.oneWayThickness}
-                onChange={setOneWayThickness}
-                min={1}
-                max={10}
-                step={1}
-                format={(v) => String(v)}
-                linkTarget="oneWayThickness"
-              />
+              <IndicatorGeometryRows geometry={settings.oneWayGeometry} onChange={setOneWayGeometry} prefix="oneWayGeometry" />
             </div>
           )}
         </>
       )}
 
-      {hasTeleports && (
+      {gate("teleports") && (
         <>
           <div style={styles.divider} />
 
@@ -595,8 +536,7 @@ export function VectorByWallsSettingsPanel() {
               onGroupOverridesPatch={patchTeleportGroupOverrides}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
-              hasCrossFloorTeleports={hasCrossFloorTeleports}
-              linkTargets={{
+                            linkTargets={{
                 lineCornerStyle: "teleportMarker.cornerStyle",
                 lineShape: "teleportMarker.shape",
                 lineSize: "teleportMarker.size",
@@ -606,7 +546,12 @@ export function VectorByWallsSettingsPanel() {
                 edgeBorderWidth: "teleportMarker.borderWidth",
                 edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
+                connectorCornerStyle: "teleportConnectorCornerStyle",
                 avoidFieldExit: "teleportAvoidFieldExit",
+                throughSeams: "teleportThroughSeams",
+                curveDirection: "teleportCurveDirection",
+                curveStrength: "teleportCurveStrength",
+                mergeMode: "teleportMergeMode",
                 connectorColor: "teleportConnectorColor",
                 connectorWidth: null,
                 connectorGapWidth: "teleportConnectorGapWidth",
@@ -625,7 +570,7 @@ export function VectorByWallsSettingsPanel() {
                 floorBadgeGapWidth: "teleportFloorBadge.gapWidth",
                 floorBadgeTextSize: "teleportFloorBadge.textSize",
                 floorBadgeTextMargin: "teleportFloorBadge.textMargin",
-                floorBadgeTextFontWeight: "teleportFloorBadge.textFontWeight",
+                floorBadgeTextFont: "teleportFloorBadge.textFont",
                 groupCustomization: "teleportGroupCustomization",
               }}
               edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
@@ -651,7 +596,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasVerticalSection && (
+      {gate("verticalSection") && (
         <>
           <div style={styles.divider} />
 
@@ -674,7 +619,7 @@ export function VectorByWallsSettingsPanel() {
               />
 
               <div style={styles.subGroupWrap}>
-                <SubsectionHeader
+                <SectionHeader
                   label={m["image_export.vector_by_walls.vertical_subsection_shared_style"]()}
                   expanded={isExpanded("vertical_shared_style")}
                   onToggle={() => toggleSection("vertical_shared_style")}
@@ -768,6 +713,15 @@ export function VectorByWallsSettingsPanel() {
                         field={PC.verticalFill}
                         linkTarget="verticalFillColor"
                       />
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.marker_border_color"]()}
+                        color={settings.verticalBorderColor}
+                        onChange={(verticalBorderColor) => patchVerticalSharedStyle({ verticalBorderColor })}
+                        priorityColors={[PC.verticalFill.at(settings.verticalFillColor), PC.verticalArrow.at(settings.verticalArrowColor), floor]}
+                        defaultColor={D.verticalBorderColor}
+                        field={PC.verticalBorder}
+                        linkTarget="verticalBorderColor"
+                      />
                       <LinkedSliderRow
                         label={m["image_export.vector_by_walls.marker_border_width"]()}
                         value={settings.verticalBorderWidth}
@@ -844,8 +798,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
-                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && gate("twoWayPassages")} disabled={!gate("twoWayPassages")} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && gate("twoWayPassages") && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsTwoWay}
@@ -886,8 +840,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
-                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && gate("oneWayPassages")} disabled={!gate("oneWayPassages")} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && gate("oneWayPassages") && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsOneWay}
@@ -928,8 +882,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
-                  {isExpanded("vertical_elevator") && hasElevators && (
+                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && gate("elevators")} disabled={!gate("elevators")} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && gate("elevators") && (
                   <div style={styles.subGroup}>
                     <LinkedToggleRow
                       label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
@@ -946,19 +900,23 @@ export function VectorByWallsSettingsPanel() {
                       lineColorField={PC.decorLineElevator}
                     />
                     <ElevatorBadgesSubsection
+                      isExpanded={isExpanded}
+                      onToggle={toggleSection}
                       settings={settings.elevatorBadges}
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
-                        textFontWeight: "elevatorBadges.textFontWeight",
+                        textFont: "elevatorBadges.textFont",
                         placement: null,
                         shape: "elevatorBadges.shape",
                         cornerStyle: "elevatorBadges.cornerStyle",
                         size: "elevatorBadges.size",
                         distance: "elevatorBadges.distance",
+                        startAngle: "elevatorBadges.startAngle",
                         evenDistribution: "elevatorBadges.evenDistribution",
+                        backing: "elevatorBadges.backing",
                         gap: "elevatorBadges.gap",
                         gapWidth: "elevatorBadges.gapWidth",
                         fillColor: "elevatorBadges.fillColor",
@@ -985,8 +943,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
-                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && gate("twoWayPassages")} disabled={!gate("twoWayPassages")} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && gate("twoWayPassages") && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -1017,7 +975,6 @@ export function VectorByWallsSettingsPanel() {
                             borderWidth: "twoWayPassageMarker.borderWidth",
                             gapWidth: "twoWayPassageMarker.gapWidth",
                             textEnabled: null,
-                            textFontWeight: null,
                             textSize: null,
                             textMargin: null,
                             textColor: null,
@@ -1079,8 +1036,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
-                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && gate("oneWayPassages")} disabled={!gate("oneWayPassages")} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && gate("oneWayPassages") && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -1111,7 +1068,6 @@ export function VectorByWallsSettingsPanel() {
                             borderWidth: "oneWayPassageMarker.borderWidth",
                             gapWidth: "oneWayPassageMarker.gapWidth",
                             textEnabled: null,
-                            textFontWeight: null,
                             textSize: null,
                             textMargin: null,
                             textColor: null,
@@ -1173,8 +1129,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
-                  {isExpanded("vertical_elevator") && hasElevators && (
+                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && gate("elevators")} disabled={!gate("elevators")} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && gate("elevators") && (
                   <div style={styles.subGroup}>
                     <LinkedToggleRow
                       label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
@@ -1182,105 +1138,102 @@ export function VectorByWallsSettingsPanel() {
                       onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
                       linkTarget="replaceTwoFloorElevatorsWithStairs"
                     />
-                    <div style={styles.subGroupWrap}>
-                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
-                      <div style={styles.subGroup}>
-                        <MarkerSettingsGroup
-                          title=""
-                          showTextSection={false}
-                          settings={settings.elevatorMarker}
-                          priorityColors={{
-                            fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
-                            borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
-                          }}
-                          defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
-                          fields={{
-                            fillColor: PC.elevatorFill,
-                            borderColor: PC.elevatorBorder,
-                          }}
-                          onChange={(patch) => {
-                            patchMarker("elevatorMarker", patch);
-                          }}
-                          linkTargets={{
-                            shape: "elevatorMarker.shape",
-                            cornerStyle: "elevatorMarker.cornerStyle",
-                            size: "elevatorMarker.size",
-                            sizeAdaptation: "elevatorMarker.sizeAdaptation",
-                            fillColor: "elevatorMarker.fillColor",
-                            borderColor: "elevatorMarker.borderColor",
-                            borderWidth: "elevatorMarker.borderWidth",
-                            gapWidth: "elevatorMarker.gapWidth",
-                            textEnabled: null,
-                            textFontWeight: null,
-                            textSize: null,
-                            textMargin: null,
-                            textColor: null,
-                          }}
-                        />
-                      </div>
-                    </div>
+                    <CollapsibleSubGroup id="vertical_elevator_marker" label={m["image_export.vector_by_walls.vertical_subsection_marker"]()} isExpanded={isExpanded} onToggle={toggleSection}>
+                      <MarkerSettingsGroup
+                        title=""
+                        showTextSection={false}
+                        settings={settings.elevatorMarker}
+                        priorityColors={{
+                          fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                          borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                        }}
+                        defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
+                        fields={{
+                          fillColor: PC.elevatorFill,
+                          borderColor: PC.elevatorBorder,
+                        }}
+                        onChange={(patch) => {
+                          patchMarker("elevatorMarker", patch);
+                        }}
+                        linkTargets={{
+                          shape: "elevatorMarker.shape",
+                          cornerStyle: "elevatorMarker.cornerStyle",
+                          size: "elevatorMarker.size",
+                          sizeAdaptation: "elevatorMarker.sizeAdaptation",
+                          fillColor: "elevatorMarker.fillColor",
+                          borderColor: "elevatorMarker.borderColor",
+                          borderWidth: "elevatorMarker.borderWidth",
+                          gapWidth: "elevatorMarker.gapWidth",
+                          textEnabled: null,
+                          textSize: null,
+                          textMargin: null,
+                          textColor: null,
+                        }}
+                      />
+                    </CollapsibleSubGroup>
 
-                    <div style={styles.subGroupWrap}>
-                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
-                      <div style={styles.subGroup}>
-                        <LinkedColorRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
-                          color={settings.elevatorArrowColor}
-                          onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
-                          priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
-                          defaultColor={D.elevatorArrowColor}
-                          field={PC.elevatorArrow}
-                          linkTarget="elevatorArrowColor"
-                        />
-                        <LinkedSliderRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
-                          value={settings.elevatorArrowSize}
-                          onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
-                          min={0.2}
-                          max={1}
-                          step={0.05}
-                          format={(v) => v.toFixed(2)}
-                          linkTarget="elevatorArrowSize"
-                        />
-                        <LinkedSelectRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
-                          value={settings.elevatorArrowStyle}
-                          options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
-                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
-                          ]}
-                          onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
-                          linkTarget="elevatorArrowStyle"
-                        />
-                        <LinkedSelectRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
-                          value={settings.elevatorArrowCornerStyle}
-                          options={[
-                            { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
-                            { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
-                          ]}
-                          onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
-                          linkTarget="elevatorArrowCornerStyle"
-                        />
-                      </div>
-                    </div>
+                    <CollapsibleSubGroup id="vertical_elevator_arrows" label={m["image_export.vector_by_walls.vertical_subsection_arrows"]()} isExpanded={isExpanded} onToggle={toggleSection}>
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                        color={settings.elevatorArrowColor}
+                        onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
+                        priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
+                        defaultColor={D.elevatorArrowColor}
+                        field={PC.elevatorArrow}
+                        linkTarget="elevatorArrowColor"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                        value={settings.elevatorArrowSize}
+                        onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
+                        min={0.2}
+                        max={1}
+                        step={0.05}
+                        format={(v) => v.toFixed(2)}
+                        linkTarget="elevatorArrowSize"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                        value={settings.elevatorArrowStyle}
+                        options={[
+                          { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                          { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                          { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
+                        ]}
+                        onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
+                        linkTarget="elevatorArrowStyle"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                        value={settings.elevatorArrowCornerStyle}
+                        options={[
+                          { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                          { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                        ]}
+                        onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
+                        linkTarget="elevatorArrowCornerStyle"
+                      />
+                    </CollapsibleSubGroup>
 
                     <ElevatorBadgesSubsection
+                      isExpanded={isExpanded}
+                      onToggle={toggleSection}
                       settings={settings.elevatorBadges}
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
-                        textFontWeight: "elevatorBadges.textFontWeight",
+                        textFont: "elevatorBadges.textFont",
                         placement: null,
                         shape: "elevatorBadges.shape",
                         cornerStyle: "elevatorBadges.cornerStyle",
                         size: "elevatorBadges.size",
                         distance: "elevatorBadges.distance",
+                        startAngle: "elevatorBadges.startAngle",
                         evenDistribution: "elevatorBadges.evenDistribution",
+                        backing: "elevatorBadges.backing",
                         gap: "elevatorBadges.gap",
                         gapWidth: "elevatorBadges.gapWidth",
                         fillColor: "elevatorBadges.fillColor",
@@ -1309,7 +1262,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {maxSplit > 0 && (
+      {gate("splits") && (
         <>
           <div style={styles.divider} />
 
@@ -1352,7 +1305,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasMarkerIndexSource && (
+      {gate("markerIndexSource") && (
         <>
           <div style={styles.divider} />
 
@@ -1363,6 +1316,8 @@ export function VectorByWallsSettingsPanel() {
           />
           {isExpanded("marker_index") && (
             <MarkerIndexSection
+              isExpanded={isExpanded}
+              onToggle={toggleSection}
               settings={settings.markerIndex}
               onChange={patchMarkerIndex}
               linkTargets={{
@@ -1372,7 +1327,7 @@ export function VectorByWallsSettingsPanel() {
                 coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
                 coverageElevator: "markerIndex.coverage.elevator",
                 labelStyle: "markerIndex.labelStyle",
-                textFontWeight: "markerIndex.textFontWeight",
+                textFont: "markerIndex.textFont",
                 width: "markerIndex.width",
                 textSize: "markerIndex.textSize",
                 textMargin: "markerIndex.textMargin",
@@ -1400,6 +1355,40 @@ export function VectorByWallsSettingsPanel() {
           )}
         </>
       )}
+
+      <TopologySettingsSection
+        expanded={isExpanded("topology")}
+        onToggle={() => toggleSection("topology")}
+        style={settings}
+        defaultColor={D.cutLinesColor}
+        priorityColors={[background, floor, wall, PC.bgGrid.at(settings.gridColor)]}
+        onShow={setShowCutLines}
+        onTrimWallsAtFaceBoundaries={setTrimWallsAtFaceBoundaries}
+        onGlueColor={setCutLinesGlueColor}
+        onColor={setCutLinesColor}
+        cutLinesExpanded={isExpanded("cutLines")}
+        onToggleCutLines={() => toggleSection("cutLines")}
+        creasesExpanded={isExpanded("creases")}
+        onToggleCreases={() => toggleSection("creases")}
+        creaseStyle={settings.creases}
+        creaseDefaultColor={D.creases.color}
+        creasePriorityColors={[wall]}
+        onCreasesChange={setCreases}
+        glueTabsExpanded={isExpanded("glueTabs")}
+        onToggleGlueTabs={() => toggleSection("glueTabs")}
+        glueTabStyle={settings.glueTabs}
+        glueTabDefaults={D.glueTabs}
+        glueTabPriorityColors={[background, floor, wall]}
+        onGlueTabsChange={setGlueTabs}
+        edgeMarkersExpanded={isExpanded("edgeMarkers")}
+        onToggleEdgeMarkers={() => toggleSection("edgeMarkers")}
+        edgeMarkerStyle={settings.edgeMarkers}
+        edgeMarkerDefaultColor={D.edgeMarkers.color}
+        edgeMarkerPriorityColors={[wall]}
+        onEdgeMarkersChange={setEdgeMarkers}
+        onEdgeMarkerOverride={setEdgeMarkerOverride}
+        onEdgeMarkerOverrides={setEdgeMarkerOverrides}
+      />
 
     </div>
     </TextFitContextProvider>

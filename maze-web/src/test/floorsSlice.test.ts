@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig } from "./storeTestHelpers";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import { presetEdgeKey } from "../pixi/fieldEditUtils";
+import { presetEdgeKey } from "../pixi/presetSplitResolve";
 import { fieldOf } from "./fieldConfigFixtures";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 
@@ -84,6 +84,25 @@ describe("floorsSlice", () => {
       const { floors, floorFields } = useMazeStore.getState();
       const floor3Id = floors[2].id;
       expect(floorFields[floor3Id].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 8 }));
+    });
+
+    it("carries the below floor's topology and creases to the new floor (#921)", () => {
+      const topology = { glues: [] } as never;
+      const creases = [{ a: [0, 0], b: [1, 1] }] as never;
+      useMazeStore.setState({ floorTopology: { floor_1: topology }, floorCreases: { floor_1: creases } });
+      useMazeStore.getState().addFloor();
+      const { floors, floorTopology, floorCreases } = useMazeStore.getState();
+      const newId = floors[1].id;
+      expect(floorTopology[newId]).toBe(topology);
+      expect(floorCreases[newId]).toBe(creases);
+    });
+
+    it("leaves the new floor without topology and creases when the below floor has none", () => {
+      useMazeStore.setState({ floorTopology: {}, floorCreases: {} });
+      useMazeStore.getState().addFloor();
+      const { floors, floorTopology, floorCreases } = useMazeStore.getState();
+      expect(floorTopology[floors[1].id]).toBeUndefined();
+      expect(floorCreases[floors[1].id]).toBeUndefined();
     });
 
     it("copies into an independent object, not a shared reference", () => {

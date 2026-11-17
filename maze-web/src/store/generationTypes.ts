@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, ElementCellTypeRestrictions, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
@@ -47,8 +47,6 @@ export interface GenerationState {
   /** Named, ordered rule groups — see `RepairStageState`'s doc comment and GitHub issue #65.
    * Always non-empty (see `generationSlice.ts`'s initial state and `removeStage`). */
   stages: RepairStageState[];
-  /** strategyParams[strategyId][paramId] = raw string value */
-  strategyParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
   routeInfo: RouteInfoDto | null;
@@ -88,6 +86,8 @@ export interface GenerationState {
    *  `ProjectFile`) so loading a project restores the panel to the state it was saved in. */
   vertexSettingsPanelOpen: boolean;
   generationStatus: "idle" | "done" | "error";
+  /** Current worker-reported completion percentage, or `null` when no generation is active. */
+  generationProgress: number | null;
   // Active feature card
   openCard: FeatureId;
   // Debug state — read-only projection, does not mutate production graph
@@ -169,6 +169,8 @@ export interface GenerationActions {
   generate: () => void;
   /** Async counterpart used by the UI so WASM generation does not block delayed feedback. */
   generateAsync: () => Promise<void>;
+  /** Stops the active generation worker. Its partial result is discarded. */
+  cancelGeneration: () => void;
   /** Moves `seedHistoryIndex` one step back and copies that seed into `seed` — does not trigger
    *  generation. No-op at the start of history. Also turns `randomSeed` off (a navigated-to seed
    *  would otherwise be discarded by the next `generate()`). */
@@ -224,7 +226,7 @@ export interface GenerationActions {
    * of its own — its params move with it (no separate lookup, they're already part of the
    * `CheckInstance`). */
   removeCheckFromRule: (ruleId: string, localId: number) => void;
-  setStrategy: (ruleId: string, strategyId: string) => void;
+  setStrategy: (ruleId: string, strategyId: string, initialStrategyParams?: Record<string, string>) => void;
   clearStrategy: (ruleId: string) => void;
   /** Sets, replaces, or removes (`strategyId: null`) the nested strategy at `path` — a chain of
    * `(slotId, index)` steps, each resolved relative to the node selected by the previous element
@@ -271,6 +273,12 @@ export interface GenerationActions {
    * last stage moving "down"). This *does* affect repair dispatch now — unlike before staging
    * existed, order across a stage boundary changes which stage a rule belongs to. */
   moveRule: (ruleId: string, direction: "up" | "down") => void;
+  /** Drag-and-drop: moves `ruleId` into `targetStageId` at `index` (counted after the rule is
+   * taken out of its source stage, clamped). */
+  reorderRule: (ruleId: string, targetStageId: string, index: number) => void;
+  /** Drag-and-drop past the outer boundary: creates a new stage at the start/end of `stages` and
+   * moves `ruleId` into it. */
+  moveRuleToNewStage: (ruleId: string, position: "start" | "end") => void;
   /** Appends a new empty stage, default name `Stage N` (N = current stage count + 1 at creation
    * time, not renumbered later). */
   addStage: () => void;
@@ -284,14 +292,16 @@ export interface GenerationActions {
    * other restriction (an empty stage, or the sole stage, is still swappable like any other —
    * the "sole stage" case is naturally a no-op anyway, since it has no neighbor). */
   moveStage: (stageId: string, direction: "up" | "down") => void;
+  /** Drag-and-drop: moves the whole stage to `index` in `stages` order (clamped); rules
+   * untouched, no stage created. */
+  reorderStage: (stageId: string, index: number) => void;
   /** Flips the stage's `disabled` — see `RepairStageState`'s doc comment. */
   toggleStageDisabled: (stageId: string) => void;
   /** Flips the stage section's `collapsed` — UI-only, does not mark the config stale. */
   toggleStageCollapsed: (stageId: string) => void;
-  setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
+  setStrategyParam: (ruleId: string, paramId: string, value: string) => void;
   /** Sets one rule-level parameter (e.g. `protect_route`) on `ruleId`'s own `params` — see
-   * GitHub issue #253. Unlike `setStrategyParam`, scoped to a single rule, not shared globally
-   * by strategy id. */
+   * GitHub issue #253. */
   setRuleParam: (ruleId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
@@ -299,6 +309,7 @@ export interface GenerationActions {
   /** Boolean-valued `ElementsConfig` fields (currently only `allow_non_consecutive_elevator_floors`,
    * GitHub issue #337) — kept separate from `setElementsParam` since that one is typed to `number`. */
   setElementsBoolParam: (key: "allow_non_consecutive_elevator_floors", value: boolean) => void;
+  setElementCellTypeRestrictions: (restrictions: ElementCellTypeRestrictions | undefined) => void;
   setRandomSeed: (v: boolean) => void;
   setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;

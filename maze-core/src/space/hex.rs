@@ -2,6 +2,7 @@ use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, PARALLELOGRAM_PRESET, RECT_PRESET, TRIANGLE_PRESET,
     circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, validate_rect_topology};
 use super::square::cell_range;
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
@@ -48,9 +49,16 @@ const HEX_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("hexagon")];
+
 impl Tessellation for HexTessellation {
     type CellId = HexPoint;
     type Face = HexFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: HexPoint) -> bool {
         true
@@ -96,6 +104,13 @@ impl Tessellation for HexTessellation {
     }
 
     /// Flat-top hexagon of area 1. Lattice coordinates (`hex_lattice`): center `(3q, -(2r + q))`.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-0.930604859102099, 0.537284965911771),
+            Point::new(-0.930604859102099, -0.537284965911771),
+        ])
+    }
+
     fn center(&self, cell: HexPoint) -> Point {
         hex_lattice(3 * cell.q as i64, -(2 * cell.r as i64 + cell.q as i64))
     }
@@ -160,7 +175,9 @@ impl Tessellation for HexTessellation {
         validate_preset(&HEX_PRESETS, key, params)?;
         let origin = self.center(HexPoint { q: 0, r: 0 });
         let mut cells = match key {
-            "rect" => centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "rect" | "cylinder" | "torus" => {
+                centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32)
+            }
             "parallelogram" => centered_hex_parallelogram(
                 param(params, "cols") as i32,
                 param(params, "rows") as i32,
@@ -171,6 +188,9 @@ impl Tessellation for HexTessellation {
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            validate_rect_topology(self, &cells, key, params)?;
+        }
         Ok(cells)
     }
 
@@ -211,12 +231,14 @@ pub fn hex_hexagon(radius: usize) -> Vec<HexPoint> {
 }
 
 /// Preset field shapes of the hex grid, in UI order.
-const HEX_PRESETS: [PresetDescriptor; 5] = [
+const HEX_PRESETS: [PresetDescriptor; 7] = [
     RECT_PRESET,
     PARALLELOGRAM_PRESET,
     HEXAGON_PRESET,
     CIRCLE_PRESET,
     TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
 ];
 
 /// An axial rectangle: each parameter runs along one grid axis; the origin cell sits at

@@ -36,10 +36,21 @@ export type IssuePayload =
   | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> }
+  | { kind: "InvalidDeadEnd"; nodes: Map<string, RegionGroup[]> }
   | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> }
   | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> }
   | { kind: "InvalidCrossElementGroup"; groups: Map<string, CrossElementEntry[][]> }
-  | { kind: "InvalidCrossElement"; elements: Map<string, CrossElementEntry[]> };
+  | { kind: "InvalidCrossElement"; elements: Map<string, CrossElementEntry[]> }
+  | { kind: "IndeterminateDistance"; pairs: UndecidedPair[] };
+
+/** Mirrors `IssueUndecidedPairPayload` in `maze-core/src/quality_control/issue_payload/types.rs` —
+ *  one pair a geometric check could not decide (GitHub issue #838): a representative node per side
+ *  and whether the cause is a topological-only fold (`unsupported`) rather than a distance bracket
+ *  straddling the threshold. */
+export interface UndecidedPair {
+  nodes: [bigint, bigint];
+  unsupported: boolean;
+}
 
 /** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
  *  flagged cycle/group's base-graph edges paired with whether every one of them is
@@ -531,6 +542,22 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
     return { value: { kind: "InvalidCrossElementGroup", groups }, next };
   }
   if (tag === 15) {
+    const { value: nodes, next } = readStrKeyedNodeLists(bytes, offset + 1);
+    return { value: { kind: "InvalidDeadEnd", nodes }, next };
+  }
+  if (tag === 16) {
+    const count = readU32(bytes, offset + 1);
+    let pos = offset + 5;
+    const pairs: UndecidedPair[] = [];
+    for (let i = 0; i < count; i++) {
+      const a = BigInt(readU32(bytes, pos));
+      const b = BigInt(readU32(bytes, pos + 4));
+      pairs.push({ nodes: [a, b], unsupported: bytes[pos + 8] !== 0 });
+      pos += 9;
+    }
+    return { value: { kind: "IndeterminateDistance", pairs }, next: pos };
+  }
+  if (tag === 17) {
     const { value: elements, next } = readStrKeyedCrossElements(bytes, offset + 1);
     return { value: { kind: "InvalidCrossElement", elements }, next };
   }

@@ -2,6 +2,7 @@ import type { TeleportGroupOverride, TeleportGroupRole } from "../pixi/renderers
 import type { MarkerSettings } from "./storeTypes";
 import type { ParamLink } from "./parameterLinks";
 import { applyLinkChain } from "./slices/parameterLinksEngine";
+import { lazyOverlay } from "./lazyOverlay";
 
 /** Group-scoped parameter links (GitHub issue #729). A teleport group's shape / fill / border inherit
  *  the incoming link of the matching common marker parameter, rebound to the group's own parameters:
@@ -154,4 +155,11 @@ export function mergeGroupOverridePatch(prev: TeleportGroupOverride | undefined,
 export function withResolvedGroupOverrides<S extends GroupLinkSettings>(settings: S): S {
   const resolved = resolveGroupOverrides(settings);
   return resolved === settings.teleportGroupOverrides ? settings : { ...settings, teleportGroupOverrides: resolved };
+}
+
+/** `withResolvedGroupOverrides` that resolves only when `teleportGroupOverrides` is first read and copies
+ *  nothing, so over dependency-tracked settings (GitHub issue #928) a reader that never asks for group
+ *  overrides subscribes to none of the fields the resolution reads. Read-only. */
+export function withLazyResolvedGroupOverrides<S extends GroupLinkSettings>(settings: S): S {
+  return lazyOverlay(settings, { teleportGroupOverrides: () => resolveGroupOverrides(settings) } as { [K in keyof S]?: () => S[K] });
 }

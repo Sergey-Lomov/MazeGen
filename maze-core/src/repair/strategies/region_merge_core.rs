@@ -1,6 +1,10 @@
+use crate::Maze;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::ids::NodeId;
+use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
+use crate::repair::result::RepairResult;
+use crate::space::Tessellation;
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
 
@@ -76,27 +80,33 @@ pub fn narrow_to_partial<'a>(
     }
 }
 
-/// Runs the shared "merge every flagged region into a chosen neighbor" loop: pops region ids
-/// from `invalid` (LIFO), skips ones already absorbed by an earlier merge in this call
+/// Runs the shared "merge every flagged region into a chosen neighbor" loop: walks region ids
+/// in `invalid` order (front to back, so a caller that sorted the batch — e.g.
+/// `ReduceSccCountStrategy`'s `merge_priority` — gets it processed in exactly that order), skips ones already absorbed by an earlier merge in this call
 /// (`merged_away`), and calls `find_candidate` for each remaining one to pick a neighbor and
 /// apply the actual connection. `find_candidate` receives the region's id and the current
-/// `needy` set (every other still-unmerged flagged region) and returns `Some((neighbor_idx,
+/// `needy` set (every other still-unmerged flagged region) plus the `excluded` set (neighbors
+/// already tried and failed for this region; it must not pick them again) and returns `Some((neighbor_idx,
 /// applied))` — `applied` is whether the connection actually succeeded (a candidate can be found
 /// but fail to bridge, e.g. `one_way` mode needing a second distinct pair that doesn't exist) —
-/// or `None` if the region has no eligible neighbor at all. If the chosen neighbor was itself a
+/// or `None` if the region has no eligible neighbor left. An unapplied candidate is retried with
+/// that neighbor excluded until one applies or none is left. If the chosen neighbor was itself a
 /// needy region, it's marked `merged_away` so a later iteration doesn't try to expand it again.
 ///
 /// Returns `true` if at least one region was successfully merged (caller maps this to
 /// `Fixed`/`Failed`).
 pub fn run_merge_loop(
     invalid: &[ComponentId],
-    mut find_candidate: impl FnMut(ComponentId, &HashSet<ComponentId>) -> Option<(ComponentId, bool)>,
+    mut find_candidate: impl FnMut(
+        ComponentId,
+        &HashSet<ComponentId>,
+        &HashSet<ComponentId>,
+    ) -> Option<(ComponentId, bool)>,
 ) -> bool {
-    let mut pending: Vec<ComponentId> = invalid.to_vec();
     let mut merged_away: HashSet<ComponentId> = HashSet::new();
     let mut any_fixed = false;
 
-    while let Some(region_idx) = pending.pop() {
+    for &region_idx in invalid {
         if merged_away.contains(&region_idx) {
             continue;
         }
@@ -107,15 +117,22 @@ pub fn run_merge_loop(
             .filter(|i| *i != region_idx && !merged_away.contains(i))
             .collect();
 
-        let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy) else {
-            continue;
-        };
-        if !applied {
-            continue;
-        }
-        any_fixed = true;
-        if needy.contains(&neighbor_idx) {
-            merged_away.insert(neighbor_idx);
+        // A chosen neighbor that could not be bridged is excluded and the next one is tried, so a
+        // blocked preferred pick (target mode, partial-connection preference) falls back to the
+        // remaining neighbors instead of leaving the region unmerged.
+        let mut excluded: HashSet<ComponentId> = HashSet::new();
+        while let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy, &excluded) {
+            if applied {
+                any_fixed = true;
+                if needy.contains(&neighbor_idx) {
+                    merged_away.insert(neighbor_idx);
+                }
+                break;
+            }
+            // Guards against a candidate finder that ignores `excluded` and keeps returning the same neighbor.
+            if !excluded.insert(neighbor_idx) {
+                break;
+            }
         }
     }
 
@@ -166,6 +183,72 @@ pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, 
 /// sizes, so `pick_by_mode`'s `largest`/`smallest` arms (which read `scc.components[i].len()`)
 /// are covered by those strategies' own tests instead — this module covers everything that
 /// doesn't need a real `ConnectedComponents`.
+/// Component index (other than `region_idx` itself) that any of `commands` connects to. That
+/// neighbor, if it is also a still-pending region in the batch, has effectively been merged away
+/// by this dispatch and must not be separately dispatched later in the same `apply()` call.
+fn merged_neighbor(
+    commands: &[MutationCommand],
+    scc: &ConnectedComponents,
+    region_idx: ComponentId,
+) -> Option<ComponentId> {
+    commands.iter().find_map(|cmd| {
+        let (a, b) = mutation_command_endpoints(cmd)?;
+        [a, b]
+            .into_iter()
+            .filter_map(|node| scc.component_of(node))
+            .find(|&idx| idx != region_idx)
+    })
+}
+
+/// Shared batch loop of the dispatcher strategies (`WeightedRegionMergeStrategy`,
+/// `PriorityRegionMergeStrategy`, `SizeThresholdRegionMergeStrategy`): one `dispatch` call per
+/// region in `invalid`, in order (receiving that region's id and the SCC snapshot), each on a synthetic
+/// single-region issue, skipping regions already merged away by an earlier dispatch.
+/// One `scc()` snapshot taken up front stays valid for the whole call, since nested strategies
+/// only propose commands and never mutate `maze.graph`. `Fixed` if any dispatch succeeded.
+pub fn run_per_region_dispatch<T: Tessellation>(
+    invalid: &[ComponentId],
+    maze: &Maze<T>,
+    rng: &mut dyn RngCore,
+    mut dispatch: impl FnMut(
+        ComponentId,
+        &ConnectedComponents,
+        &dyn Issue,
+        &mut dyn RngCore,
+    ) -> (RepairResult, Vec<MutationCommand>),
+) -> (RepairResult, Vec<MutationCommand>) {
+    let scc = maze.analysis.scc(&maze.graph);
+
+    let mut merged_away: HashSet<ComponentId> = HashSet::new();
+    let mut all_commands: Vec<MutationCommand> = Vec::new();
+    let mut any_fixed = false;
+
+    for &region_idx in invalid {
+        if merged_away.contains(&region_idx) {
+            continue;
+        }
+
+        let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
+        let (result, commands) = dispatch(region_idx, &scc, &single_region_issue, rng);
+
+        if matches!(result, RepairResult::Fixed { .. }) {
+            any_fixed = true;
+            if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx)
+                && invalid.contains(&neighbor_idx)
+            {
+                merged_away.insert(neighbor_idx);
+            }
+            all_commands.extend(commands);
+        }
+    }
+
+    if any_fixed {
+        (RepairResult::Fixed { score: None }, all_commands)
+    } else {
+        (RepairResult::Failed, vec![])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,7 +346,7 @@ mod tests {
     #[test]
     fn run_merge_loop_returns_false_when_nothing_merges() {
         let invalid = vec![0, 1, 2];
-        let any_fixed = run_merge_loop(&invalid, |_region, _needy| None);
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, _excluded| None);
         assert!(!any_fixed);
     }
 
@@ -272,7 +355,7 @@ mod tests {
         let invalid = vec![0, 1];
         let any_fixed = run_merge_loop(
             &invalid,
-            |region, _needy| {
+            |region, _needy, _excluded| {
                 if region == 0 { Some((99, true)) } else { None }
             },
         );
@@ -285,19 +368,47 @@ mod tests {
         // candidate was found but the connection itself failed to apply (e.g. one_way mode
         // needing a second distinct pair that doesn't exist) -- must not count as any_fixed.
         let invalid = vec![0, 1];
-        let any_fixed = run_merge_loop(&invalid, |_region, _needy| Some((99, false)));
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, _excluded| Some((99, false)));
         assert!(!any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_falls_back_to_the_next_neighbor_after_an_unapplied_one() {
+        // Neighbor 7 never bridges; once excluded, the finder offers 8, which does.
+        let invalid = vec![0];
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, excluded| {
+            if !excluded.contains(&7) {
+                Some((7, false))
+            } else if !excluded.contains(&8) {
+                Some((8, true))
+            } else {
+                None
+            }
+        });
+        assert!(any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_gives_up_when_every_neighbor_fails() {
+        let invalid = vec![0];
+        let mut calls = 0;
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, excluded| {
+            calls += 1;
+            [7, 8].into_iter().find(|n| !excluded.contains(n)).map(|n| (n, false))
+        });
+        assert!(!any_fixed);
+        assert_eq!(calls, 3, "two failed neighbors, then none left");
     }
 
     #[test]
     fn run_merge_loop_skips_a_region_already_merged_away_as_someone_elses_neighbor() {
         // Region 0 merges into region 1 (itself in `invalid`, hence "needy") -- region 1 must
-        // then be marked merged_away and skipped when its own turn comes up in the LIFO pop
+        // then be marked merged_away and skipped when its own turn comes up in the batch
         // order, never calling find_candidate for it a second time.
         use std::cell::RefCell;
-        let invalid = vec![1, 0]; // pop order: 0 first, then 1
+        let invalid = vec![0, 1]; // processed in this order: 0 first, then 1
         let calls: RefCell<Vec<ComponentId>> = RefCell::new(Vec::new());
-        let any_fixed = run_merge_loop(&invalid, |region, _needy| {
+        let any_fixed = run_merge_loop(&invalid, |region, _needy, _excluded| {
             calls.borrow_mut().push(region);
             if region == 0 {
                 Some((1, true))
@@ -315,33 +426,57 @@ mod tests {
 
     #[test]
     fn run_merge_loop_passes_the_correct_needy_set_excluding_self_and_merged_away() {
-        // 3 flagged regions: 0, 1, 2. When region 2 (popped first, LIFO) is dispatched, needy
-        // must be {0, 1} (everyone else in `invalid`, excluding itself). Region 2 merges into
-        // region 1 (needy), marking it merged_away; when region 0 is dispatched next (region 1
-        // popped in between but skipped since merged_away, never reaching find_candidate),
-        // needy must be {2} -- region 1 excluded (merged_away), region 2 still included (it
+        // 3 flagged regions: 0, 1, 2, processed in that order. Region 0 is dispatched first, so
+        // its needy set is {1, 2} (everyone else in `invalid`). It merges into region 1 (needy),
+        // marking it merged_away; region 1 is then skipped (never reaching find_candidate), and
+        // region 2 sees needy {0} -- region 1 excluded (merged_away), region 0 still included (it
         // was processed itself, but processing doesn't merge it away; only being *chosen as
         // someone else's neighbor* does). Captures the needy set seen at each dispatched call.
         use std::cell::RefCell;
-        let invalid = vec![0, 1, 2]; // pop order: 2, 1, 0
+        let invalid = vec![0, 1, 2];
         let seen: RefCell<Vec<(ComponentId, Vec<ComponentId>)>> = RefCell::new(Vec::new());
-        run_merge_loop(&invalid, |region, needy| {
+        run_merge_loop(&invalid, |region, needy, _excluded| {
             let mut sorted: Vec<ComponentId> = needy.iter().copied().collect();
             sorted.sort_unstable();
             seen.borrow_mut().push((region, sorted));
-            if region == 2 { Some((1, true)) } else { None }
+            if region == 0 { Some((1, true)) } else { None }
         });
         let seen = seen.into_inner();
         assert_eq!(
             seen[0],
-            (2, vec![0, 1]),
-            "region 2's needy set is every other flagged region"
+            (0, vec![1, 2]),
+            "region 0's needy set is every other flagged region"
         );
         assert_eq!(
             seen[1],
-            (0, vec![2]),
-            "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy"
+            (2, vec![0]),
+            "region 1 is now merged_away and excluded, but region 0 (not merged_away itself) still counts as needy"
         );
+    }
+
+    #[test]
+    fn run_per_region_dispatch_processes_regions_in_batch_order() {
+        // `ReduceSccCountStrategy` sorts the batch by `merge_priority`; the loop must walk it
+        // front to back so e.g. `smallest` really starts with the smallest region.
+        use crate::IdGenerator;
+        use crate::graph::Graph;
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+        use std::sync::Arc;
+        let mut ids = IdGenerator::new();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let mut rng = crate::random::MazeRng::seed_from_u64(1);
+        let mut seen: Vec<ComponentId> = Vec::new();
+        run_per_region_dispatch(&[2, 0, 3], &maze, &mut rng, |region, _scc, _issue, _rng| {
+            seen.push(region);
+            (RepairResult::Failed, vec![])
+        });
+        assert_eq!(seen, vec![2, 0, 3]);
     }
 
     #[test]

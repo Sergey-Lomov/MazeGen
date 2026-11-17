@@ -1,7 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { PrintExportSettings } from "../store/storeTypes";
 import { cellMeasureWorldUnits, printCellMeasureMm, resolveSheetSizeMm, DPI_BY_DENSITY, mmToPx } from "./imageExport/printFit";
-import { DEFAULT_PRINT_CELL_SIZE_MM } from "./fieldPrintSizing";
 
 export interface PaperLayoutWorldGeometry {
   sheetWidth: number;
@@ -20,9 +19,7 @@ export function paperLayoutWorldGeometry(
 ): PaperLayoutWorldGeometry | null {
   const { widthMm, heightMm } = resolveSheetSizeMm(settings);
   const dpi = DPI_BY_DENSITY[settings.density];
-  const cellSizeMm = settings.scaleAutoFit
-    ? DEFAULT_PRINT_CELL_SIZE_MM
-    : printCellMeasureMm(config, settings.scale, dpi);
+  const cellSizeMm = printCellMeasureMm(config, settings.scale, dpi);
   const measureWorld = cellMeasureWorldUnits(config);
   const cellScale = mmToPx(cellSizeMm, dpi) / measureWorld;
   if (![widthMm, heightMm, cellSizeMm, cellScale].every(Number.isFinite)

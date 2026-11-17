@@ -1,7 +1,8 @@
 import type React from "react";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
-import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
+import { Bubble, BubbleArrow } from "../Bubble";
+import { radius, dialogSpacing, spacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 export type ConnectionDirection = "forward" | "backward" | "two_way";
@@ -37,9 +38,9 @@ export function ConnectionSettingsDialog({ title, fromLabel, toLabel, direction,
             onClick={() => { onSelect(option.direction); onClose(); }}
           >
             <span style={styles.label}>{option.label}</span>
-            <span style={styles.bubble}>{fromLabel}</span>
-            <span style={styles.arrow}>{option.arrow}</span>
-            <span style={styles.bubble}>{toLabel}</span>
+            <Bubble>{fromLabel}</Bubble>
+            <BubbleArrow style={styles.arrow}>{option.arrow}</BubbleArrow>
+            <Bubble>{toLabel}</Bubble>
           </Button>
         ))}
       </div>
@@ -57,10 +58,5 @@ const styles: Record<string, React.CSSProperties> = {
     justifyItems: "start", columnGap: spacing.itemGap, padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`, borderRadius: radius.sm,
   },
   label: { ...typography.body, whiteSpace: "nowrap", marginRight: spacing.itemGap },
-  arrow: { ...muted(typography.caption), justifySelf: "center", whiteSpace: "nowrap" },
-  bubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex", alignItems: "center",
-    borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg, borderColor: ui.debug.refHighlight.text, color: ui.debug.refHighlight.text, whiteSpace: "nowrap",
-  },
+  arrow: { justifySelf: "center" },
 };

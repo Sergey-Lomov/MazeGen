@@ -2,10 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ui, typography, spacing, inset } from "../styles/theme";
-import { sharedStyles } from "../styles/shared";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { hasOpenModal } from "./Modal";
+import { CloseIconButton } from "./CloseIconButton";
+import { SIDE_PANEL_SLOT_ID } from "./sidePanelSlot";
+import { FlatIconButton } from "./FlatIconButton";
 import type React from "react";
+import * as m from "~/paraglide/messages";
 
 const MIN_PANEL_WIDTH = 360;
 
@@ -23,6 +26,8 @@ const MIN_PANEL_WIDTH = 360;
  *  all of them. */
 interface PanelStackEntry {
   id: symbol;
+  /** Stable name used by a control to bring an already-mounted panel back to the front. */
+  stackKey?: string;
   /** Mirrors this entry's own `overlay` prop — needed so a lower entry can tell whether it's fully
    *  occluded (an in-flow entry stacked on top of it) or merely visually covered (an absolutely
    *  positioned overlay on top of it, which takes no width of its own). */
@@ -36,13 +41,30 @@ function notifyPanelStackChange() {
   for (const listener of panelStackListeners) listener();
 }
 
-function pushPanel(id: symbol, overlay: boolean) {
-  panelStack = [...panelStack, { id, overlay }];
+function pushPanel(id: symbol, overlay: boolean, stackKey?: string) {
+  panelStack = [...panelStack, { id, overlay, stackKey }];
   notifyPanelStackChange();
 }
 
 function popPanel(id: symbol) {
   panelStack = panelStack.filter((p) => p.id !== id);
+  notifyPanelStackChange();
+}
+
+/** Moves the live panel identified by `stackKey` to the top of the shared stack. A control may
+ * call this before opening its panel: when it is not mounted yet this is deliberately a no-op and
+ * its normal mount will make it topmost. */
+export function bringSidePanelToFront(stackKey: string) {
+  let index = -1;
+  for (let i = panelStack.length - 1; i >= 0; i -= 1) {
+    if (panelStack[i].stackKey === stackKey) {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0 || index === panelStack.length - 1) return;
+  const entry = panelStack[index];
+  panelStack = [...panelStack.slice(0, index), ...panelStack.slice(index + 1), entry];
   notifyPanelStackChange();
 }
 
@@ -81,7 +103,7 @@ function useKeepsFlowWidth(id: symbol): boolean {
  *  regardless of where in the component tree it's triggered from (GitHub issue #237), so it
  *  always docks next to the canvas rather than wherever its owning feature happens to live in the
  *  left features panel. */
-export const SIDE_PANEL_SLOT_ID = "side-panel-slot";
+export { SIDE_PANEL_SLOT_ID };
 export const SIDE_PANEL_DIAGNOSTICS_STORAGE_KEY = "maze.debug.sidePanelHitTesting";
 
 function sidePanelDiagnosticsEnabled(): boolean {
@@ -137,6 +159,9 @@ function pointFromEvent(event: Event): { x: number; y: number } | null {
 
 interface Props {
   title: string;
+  /** Stable control-facing identifier. When its control is pressed again while this panel remains
+   * mounted beneath another panel, `bringSidePanelToFront` uses it to reveal this same instance. */
+  stackKey?: string;
   subtitle?: string;
   onClose: () => void;
   /** Diagnostic hints/warnings for the panel's current content — shown in a dismissible strip
@@ -176,7 +201,7 @@ interface Props {
  *  mounted one is actually shown. Closing it unmounts that instance and pops it off the stack, so
  *  the next one down becomes visible again — restoring what was underneath rather than clearing
  *  the whole slot. */
-export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
+export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
@@ -209,9 +234,9 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
   }
   const panelId = panelIdRef.current;
   useLayoutEffect(() => {
-    pushPanel(panelId, !!overlay);
+    pushPanel(panelId, !!overlay, stackKey);
     return () => popPanel(panelId);
-  }, [panelId, overlay]);
+  }, [panelId, overlay, stackKey]);
   const isTop = useIsTopPanel(panelId);
   // Whether this instance should stay in normal flow (contributing its box/width to the slot) even
   // when it isn't the topmost entry — see `useKeepsFlowWidth`. Irrelevant for an overlay instance
@@ -495,12 +520,12 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
           onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
         />
       )}
-      <div ref={headerRef} data-side-panel-region="header" style={styles.header}>
+      <div ref={headerRef} className="side-panel-header" data-side-panel-region="header" style={styles.header}>
         <div style={styles.headerText}>
           <span style={typography.title}>{title}</span>
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
         </div>
-        <button className="hoverable" style={sharedStyles.closeBtn} onClick={onClose}><X size={16} /></button>
+        <CloseIconButton onClick={onClose} />
       </div>
       {showWarnings && (
         <div style={styles.warningsStrip}>
@@ -509,9 +534,15 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
               <div key={i} style={styles.warningItem}>{w}</div>
             ))}
           </div>
-          <button className="hoverable" style={sharedStyles.closeBtn} onClick={() => setWarningsDismissed(true)}>
+          <FlatIconButton
+            title={m["notifications.close"]()}
+            variant="contextual"
+            layoutStyle={{ margin: 0 }}
+            tooltipLayoutStyle={styles.warningDismiss}
+            onClick={() => setWarningsDismissed(true)}
+          >
             <X size={14} />
-          </button>
+          </FlatIconButton>
         </div>
       )}
       <div ref={bodyRef} data-side-panel-region="body" style={styles.body}>
@@ -594,14 +625,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     background: notificationPalette("warning").bg,
+    color: notificationPalette("warning").text,
     flexShrink: 0,
+    position: "relative",
   },
+  warningDismiss: { position: "absolute", top: 7, right: 7, zIndex: 1 },
   warningsList: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: spacing.itemGap,
     minWidth: 0,
+    paddingRight: 30,
   },
   warningItem: {
     ...embeddedNotificationStyle,

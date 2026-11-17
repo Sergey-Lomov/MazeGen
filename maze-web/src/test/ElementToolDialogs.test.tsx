@@ -139,6 +139,8 @@ describe("element pick dialogs (GitHub issue #748)", () => {
 describe("PresetLockSettingsDialog (GitHub issue #748)", () => {
   it("switches the lock's kind and closes", () => {
     useMazeStore.setState({
+      mazeDirty: false,
+      postEditDirty: false,
       lockedNodes: new Map([["1,0", "in"]]),
       presetLockSettingsPrompt: { endpoint: presetEndpoint([1, 0]) },
     });

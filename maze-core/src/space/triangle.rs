@@ -1,10 +1,17 @@
 use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, rect_folds, rect_param_max_of, validate_rect_topology,
+};
 use super::square::{cell_range, grid_candidates};
+use super::tri_polyhedron::{
+    ICOSAHEDRON_PRESET, OCTAHEDRON_PRESET, TETRAHEDRON_PRESET, is_polyhedron, polyhedron_cells,
+    polyhedron_creases, polyhedron_folds, polyhedron_param_max,
+};
 use super::{
-    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
+    ShapeDescriptor, Tessellation, validate_preset,
 };
 use std::sync::LazyLock;
 
@@ -54,9 +61,16 @@ fn pointing_up(cell: TriPoint) -> bool {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TriTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("triangle")];
+
 impl Tessellation for TriTessellation {
     type CellId = TriPoint;
     type Face = TriFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: TriPoint) -> bool {
         true
@@ -102,6 +116,13 @@ impl Tessellation for TriTessellation {
     }
 
     /// Centroid of the cell's triangle (area 1).
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(0.759835685651592, 1.316074012952492),
+            Point::new(1.519671371303185, 0.0),
+        ])
+    }
+
     fn center(&self, cell: TriPoint) -> Point {
         let [a, b, c] = tri_vertices(cell);
         Point::new((a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0)
@@ -145,17 +166,55 @@ impl Tessellation for TriTessellation {
     ) -> Result<Vec<TriPoint>, FieldOpError> {
         validate_preset(&TRI_PRESETS, key, params)?;
         let mut cells = match key {
-            "rect" => centered_tri_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "rect" | "cylinder" | "torus" => {
+                centered_tri_rect(param(params, "cols") as i32, param(params, "rows") as i32)
+            }
             "triangle" => centered_on_lattice(tri_triangle(param(params, "side") as usize)),
             "hexagon" => centered_on_lattice(tri_hexagon(param(params, "radius") as usize)),
             "circle" => {
                 let origin = self.center(TriPoint { col: 0, row: 0 });
                 circle_cells(self, origin, param(params, "radius"), Inclusion::WholeCell)?
             }
+            _ if is_polyhedron(key) => polyhedron_cells(key, params)?,
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            validate_rect_topology(self, &cells, key, params)?;
+        }
         Ok(cells)
+    }
+
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        polyhedron_param_max(key, name).or_else(|| rect_param_max_of(self.presets(), key, name))
+    }
+
+    fn build_preset_folds(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Vec<NewFold<TriPoint>>>, FieldOpError> {
+        validate_preset(&TRI_PRESETS, key, params)?;
+        match key {
+            "rect" | "cylinder" | "torus" => {
+                rect_folds(self, &self.build_preset(key, params)?, key, params)
+            }
+            _ if is_polyhedron(key) => polyhedron_folds(key, params),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn build_preset_creases(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<[Point; 2]>, FieldOpError> {
+        validate_preset(&TRI_PRESETS, key, params)?;
+        if is_polyhedron(key) {
+            polyhedron_creases(key, params)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     fn area(&self, _cell: TriPoint) -> f64 {
@@ -165,7 +224,7 @@ impl Tessellation for TriTessellation {
 
 /// World units of the triangle lattice: side `s` with `sqrt(3)/4·s² = 1`; `x = s/4 · i`,
 /// `y = s·sqrt(3)/2 · j`. Every vertex sits on integer `(i, j)`, so shared vertices are identical.
-fn tri_units() -> (f64, f64) {
+pub(super) fn tri_units() -> (f64, f64) {
     let side = 2.0 / 3f64.sqrt().sqrt();
     (side / 4.0, side * 3f64.sqrt() / 2.0)
 }
@@ -235,8 +294,17 @@ pub fn tri_hexagon(radius: usize) -> Vec<TriPoint> {
 }
 
 /// Preset field shapes of the triangle grid, in UI order.
-const TRI_PRESETS: [PresetDescriptor; 4] =
-    [RECT_PRESET, TRIANGLE_PRESET, HEXAGON_PRESET, CIRCLE_PRESET];
+const TRI_PRESETS: [PresetDescriptor; 9] = [
+    RECT_PRESET,
+    TRIANGLE_PRESET,
+    HEXAGON_PRESET,
+    CIRCLE_PRESET,
+    TETRAHEDRON_PRESET,
+    OCTAHEDRON_PRESET,
+    ICOSAHEDRON_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// Each configured column is a pair of adjacent opposite-orientation triangles, so a rectangle
 /// holds `2 · cols` triangles per row.

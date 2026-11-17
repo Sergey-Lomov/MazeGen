@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { FieldSetupFeature, fieldSetupSubtitle } from "../components/features/FieldSetupFeature";
 import { configSizeDescription } from "../components/dialogs/FieldPrintSizingDialog";
 import type { FieldConfig } from "../fieldConfig";
@@ -10,8 +10,17 @@ import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import { getCartesian } from "../pixi/cartesianCache";
 import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
-import { getTooltipControlWithin } from "./tooltipTestUtils";
+import { computePrintSizing } from "../pixi/printSizingJob";
+import { getTooltipAnchor, getTooltipAnchors, getTooltipControlWithin } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
+
+// The print sizing worker is not available under jsdom: the job runs inline, still asynchronously.
+vi.mock("../wasm/workerClients", () => ({
+  startPrintSizing: (request: Parameters<typeof computePrintSizing>[0]) => ({
+    promise: Promise.resolve().then(() => computePrintSizing(request)),
+    cancel: () => {},
+  }),
+}));
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -21,8 +30,18 @@ beforeEach(() => {
   useMazeStore.setState({ ...baseStoreState(), backgroundAutoFillPreview: null });
 });
 
-describe("FieldSetupFeature — Copy floor button", () => {
-  it("applies the current field to every other floor after confirmation", () => {
+function openFloorsPanel() {
+  fireEvent.click(screen.getByRole("button", { name: m["floors.title"]() }));
+}
+
+/** The floor-row action button of the floor with `title`. */
+function rowAction(title: string, name: string): HTMLElement {
+  const row = screen.getAllByTestId("floor-row").find((candidate) => within(candidate).queryByText(title));
+  return within(row!).getByRole("button", { name });
+}
+
+describe("FieldSetupFeature — floors panel field copy", () => {
+  it("copies the field to every other floor via the copy-to-all button", () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -34,16 +53,59 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
+    openFloorsPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
-    expect(screen.getByText(m["floors.confirm_from_current"]())).toBeInTheDocument();
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.click(screen.getByRole("button", { name: m["floors.copy_to_all"]() }));
+    // Nothing to reset: no confirmation, the copy is applied at once.
+    expect(screen.queryByText(m["field.reset_generation_warning"]())).not.toBeInTheDocument();
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+  });
+
+  it("asks to confirm the reset before copying to floors when generation exists", () => {
+    useMazeStore.setState({
+      mazeDirty: true,
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+      },
+    });
+    render(<FieldSetupFeature />);
+    openFloorsPanel();
+
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.click(screen.getByRole("button", { name: m["floors.copy_to_all"]() }));
+    expect(screen.getByText(m["field.reset_generation_warning"]())).toBeInTheDocument();
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
 
     fireEvent.click(screen.getByRole("button", { name: m["common.ok"]() }));
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
   });
 
-  it("keeps other floors unchanged when the confirmation is cancelled", () => {
+  it("Escape closes only the copy dialog, not the floors panel", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig(),
+        floor_2: baseFloorFieldConfig(),
+      },
+    });
+    render(<FieldSetupFeature />);
+    openFloorsPanel();
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: m["floors.copy_to_all"]() })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("floor-row")).toHaveLength(2);
+  });
+
+  it("keeps other floors unchanged when the dialog is dismissed", () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -55,9 +117,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
+    openFloorsPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
-    fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.keyDown(document, { key: "Escape" });
 
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
   });
@@ -166,7 +229,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(configSizeDescription(config)).toBe(expected);
   });
 
-  it("calculates the current predefined shape for print", () => {
+  it("calculates the current predefined shape for print", async () => {
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
@@ -174,9 +237,12 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(dialog).toBeTruthy();
     const dialogQueries = within(dialog!);
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
-    fireEvent.change(inputs[4], { target: { value: "10" } });
+    fireEvent.change(inputs[4], { target: { value: "9.99" } });
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
+    // The typed size is still a draft: confirming takes it and calculates it before applying.
+    await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 })));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
     expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({
@@ -186,7 +252,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
       marginVMm: 5,
       scaleAutoFit: false,
     });
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / 40);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(9.99, 300) / 40);
   });
 
   it("keeps the print cell-size input compact", () => {
@@ -199,13 +265,23 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(cellInput).toHaveStyle({ width: "56px", boxSizing: "border-box" });
   });
 
-  it("shows only the field size in the single-floor result", () => {
+  it("shows no progress indicator when the calculation ends before the delay", async () => {
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(screen.getByText("Field size: 20 × 28 cells")).toBeInTheDocument();
-    expect(screen.getByText("Cell count: 560")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(await screen.findByText("Field size: 25 × 35 cells")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("shows only the field size in the single-floor result", async () => {
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(await screen.findByText("Field size: 25 × 35 cells")).toBeInTheDocument();
+    expect(screen.getByText("Cell count: 875")).toBeInTheDocument();
     expect(screen.queryByText(/Field footprint:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Usable area:/)).not.toBeInTheDocument();
   });
@@ -221,7 +297,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
           orientation: "landscape",
           marginHMm: 7,
           marginVMm: 9,
-          scale: mmToPx(12, 150) / 40,
+          scale: mmToPx(12, 150) / (40 * Math.SQRT2),
           scaleAutoFit: false,
         },
       },
@@ -237,10 +313,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(inputs[1].value).toBe("297");
     expect(inputs[2].value).toBe("7");
     expect(inputs[3].value).toBe("9");
-    expect(inputs[4].value).toBe("12");
+    expect(inputs[4].value).toBe("8");
   });
 
-  it("opens with a 10 mm cell size before the user sets a print size", () => {
+  it("opens with the default minimum side even when auto-fit is on", () => {
     useMazeStore.setState({
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
@@ -251,7 +327,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("10");
+    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("8");
   });
 
   it("allows the last numeric character to be cleared", () => {
@@ -277,13 +353,26 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].selectedShape).toBe("parallelogram");
   });
 
-  it("is hidden with a single floor", () => {
+  it("shows only the generation-loss dialog when switching from custom to default", () => {
+    const base = baseFloorFieldConfig();
+    useMazeStore.setState({
+      mazeDirty: true,
+      floorFields: { [TEST_FLOOR_ID]: { ...base, fieldEditMode: "custom", fieldPoints: new Set([1, 2]) } },
+    });
     render(<FieldSetupFeature />);
-    expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();
-    expect(screen.queryByText(m["floors.from_current"]())).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(m["field.default"]()));
+    expect(screen.getByText(m["field.reset_generation_warning"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["field.confirm_switch_to_default"]())).not.toBeInTheDocument();
   });
 
-  it("is shown once more than one floor exists", () => {
+  it("hides the copy buttons in the floors panel with a single floor", () => {
+    render(<FieldSetupFeature />);
+    openFloorsPanel();
+    expect(screen.queryByRole("button", { name: "Copy floor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: m["floors.copy_to_floors"]() })).not.toBeInTheDocument();
+  });
+
+  it("shows the copy buttons in the floors panel once more than one floor exists", () => {
     useMazeStore.setState({
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       floorFields: {
@@ -292,8 +381,9 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
-    expect(screen.getByText("Copy floor")).toBeInTheDocument();
-    expect(screen.getByText(m["floors.from_current"]())).toBeInTheDocument();
+    openFloorsPanel();
+    expect(screen.getAllByRole("button", { name: "Copy floor" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: m["floors.copy_to_floors"]() })).toHaveLength(2);
   });
 
   it("describes smoothing", () => {
@@ -304,7 +394,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
 
-    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    expect(screen.getAllByText("Smoothing").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     expect(screen.getByText(/removes cells that touch the rest of the selected shape by only one side/)).toBeInTheDocument();
   });
@@ -312,11 +402,48 @@ describe("FieldSetupFeature — Copy floor button", () => {
   it("shows and updates primitive smoothing for a standard field", () => {
     render(<FieldSetupFeature />);
 
-    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    expect(screen.getAllByText("Smoothing").length).toBeGreaterThan(0);
     const smoothing = screen.getByRole("checkbox");
     expect(smoothing).toBeChecked();
     fireEvent.click(smoothing);
     expect(useMazeStore.getState().smoothPrimitives).toBe(false);
+  });
+
+  it("mentions the hold hotkey in the tooltip only for the custom editor", () => {
+    const hint = m["field.smooth_hold_hint"]();
+    const { unmount } = render(<FieldSetupFeature />);
+    expect(screen.queryAllByText(hint)).toHaveLength(0);
+    unmount();
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }) },
+    });
+    render(<FieldSetupFeature />);
+    expect(screen.queryAllByText(hint).length).toBeGreaterThan(0);
+  });
+
+  it("mentions the hold hotkey in the smoothing info only for the custom editor", () => {
+    const hotkey = m["field.smoothing_info_hotkey"]();
+    const { unmount } = render(<FieldSetupFeature />);
+    fireEvent.click(screen.getByRole("button", { name: /info/i }));
+    expect(screen.getByText(m["field.smoothing_info_description"]())).toBeInTheDocument();
+    expect(screen.queryByText(hotkey)).not.toBeInTheDocument();
+    unmount();
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }) },
+    });
+    render(<FieldSetupFeature />);
+    fireEvent.click(screen.getByRole("button", { name: /info/i }));
+    expect(screen.getByText(hotkey)).toBeInTheDocument();
+  });
+
+  it("shows the inverted smoothing state while the hotkey is held", () => {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    render(<FieldSetupFeature />);
+    const smoothing = screen.getByRole("checkbox");
+    expect(smoothing).toBeChecked();
+    act(() => useMazeStore.getState().setSmoothInverted(true));
+    expect(smoothing).not.toBeChecked();
+    expect(useMazeStore.getState().smoothPrimitives).toBe(true);
   });
 
   it("offers one polygon tool whose operation follows the active mode", () => {
@@ -333,13 +460,13 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
-    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
-    expect(symmetryTool).toBeDisabled();
-    const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
-    expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
+    const mirrorTool = screen.getByRole("button", { name: /Mirror/ });
+    expect(mirrorTool).toBeDisabled();
+    const mirrorDescription = document.getElementById(mirrorTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(mirrorDescription).toHaveTextContent("MirrorMUnavailable in Select mode.");
   });
 
-  it("keeps the symmetry tool visible but disabled where core offers no reflection", () => {
+  it("keeps the mirror tool visible but disabled where core offers no reflection", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
@@ -351,10 +478,60 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
 
-    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
-    expect(symmetryTool).toBeDisabled();
-    const description = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    const mirrorTool = screen.getByRole("button", { name: /Mirror/ });
+    expect(mirrorTool).toBeDisabled();
+    const description = document.getElementById(mirrorTool.parentElement?.getAttribute("aria-describedby")!);
     expect(description).toHaveTextContent("Unavailable in this tessellation.");
+  });
+
+  it("disables Copy without a selection and Paste without a clipboard, with explanations", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      fieldClipboard: null,
+      fieldHasSelection: false,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeDisabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeDisabled();
+    expect(getTooltipAnchor(m["field.copy.empty_selection"]())).toBeInTheDocument();
+    expect(getTooltipAnchor(m["field.paste.empty_clipboard"]())).toBeInTheDocument();
+  });
+
+  it("enables Copy with a selection and Paste with a clipboard", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      fieldClipboard: [[0, 0]],
+      fieldHasSelection: true,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeEnabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeEnabled();
+  });
+
+  it("shows only the tessellation reason when the tessellation has no translation symmetry", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldConfig: fieldOf("radial", { shape: "custom", points: [] }),
+        }),
+      },
+      fieldClipboard: null,
+      fieldHasSelection: false,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeDisabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeDisabled();
+    expect(getTooltipAnchors(m["field.clipboard.tessellation_disabled"]())).toHaveLength(2);
+    expect(screen.queryAllByTestId("tooltip-anchor").filter((a) => document.getElementById(a.getAttribute("aria-describedby") ?? "")?.textContent?.includes(m["field.paste.empty_clipboard"]()))).toHaveLength(0);
   });
 
   it("offers the parallelogram tool for a square field", () => {
@@ -383,7 +560,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(description).toHaveTextContent("Connected AreaAAffects all connected cells.");
   });
 
-  it("applies print sizing to standard floors but preserves custom floors", () => {
+  it("applies print sizing to standard floors but preserves custom floors", async () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -415,14 +592,14 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const dialogQueries = within(dialog!);
     const cellInput = dialogQueries.getAllByRole("spinbutton")[4] as HTMLInputElement;
-    fireEvent.change(cellInput, { target: { value: "10" } });
-    expect(cellInput.value).toBe("10");
+    fireEvent.change(cellInput, { target: { value: "9.99" } });
+    expect(cellInput.value).toBe("9.99");
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     expect(dialogQueries.getByRole("checkbox")).toBeChecked();
-    expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled();
+    await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
+    await waitFor(() => expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 })));
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig.shape.shape).toBe("triangle");
     expect((useMazeStore.getState().floorFields.floor_2.fieldConfig.shape as { side: number }).side).toBeGreaterThan(0);
     expect(useMazeStore.getState().floorFields.floor_3.fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[0, 0]] }));
@@ -452,14 +629,15 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(screen.getByText("Floors")).toBeInTheDocument();
+    // The field card's own "Floors" button plus the dialog's section header.
+    expect(await screen.findAllByText("Floors")).toHaveLength(2);
     const groundRow = screen.getByText("1: Ground floor").parentElement!;
     const upperRow = screen.getByText("2: Upper floor").parentElement!;
     const customRow = screen.getByText("3: Custom floor").parentElement!;
     expect(upperRow.compareDocumentPosition(groundRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(groundRow).getByText("Rectangle")).toBeInTheDocument();
-    expect(within(groundRow).getByText("20 × 28")).toBeInTheDocument();
-    expect(within(groundRow).getByText("560 cells")).toBeInTheDocument();
+    expect(within(groundRow).getByText("25 × 35")).toBeInTheDocument();
+    expect(within(groundRow).getByText("875 cells")).toBeInTheDocument();
     expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
     expect(within(customRow).getByText("Non-standard shape")).toBeInTheDocument();
     expect(within(customRow).getByText("—")).toBeInTheDocument();
@@ -469,12 +647,16 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
-    fireEvent.change(cellInput, { target: { value: "5" } });
+    fireEvent.change(cellInput, { target: { value: "4.99" } });
+    // The preview follows the committed value, not every keystroke.
+    fireEvent.blur(cellInput);
 
+    // The rows are rebuilt once the new calculation ends.
     await waitFor(() => {
-      expect(within(groundRow).getByText("40 × 57")).toBeInTheDocument();
-      expect(within(groundRow).getByText("2280 cells")).toBeInTheDocument();
-      expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
+      const row = screen.getByText("1: Ground floor").parentElement!;
+      expect(within(row).getByText("40 × 57")).toBeInTheDocument();
+      expect(within(row).getByText("2280 cells")).toBeInTheDocument();
+      expect(within(screen.getByText("2: Upper floor").parentElement!).getByText("Triangle")).toBeInTheDocument();
     });
   });
 
@@ -508,7 +690,31 @@ describe("FieldSetupFeature — Copy floor button", () => {
       marginHMm: 5,
       marginVMm: 5,
     });
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / 40);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / (40 * Math.SQRT2));
+  });
+
+  it("opens the paper layout dialog with a cell size derived from the print scale even when legacy auto-fit is on", () => {
+    useMazeStore.setState({
+      showPaperLayout: true,
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0]),
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
+        }),
+      },
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 2.5, scaleAutoFit: true },
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
+    const dialog = screen.getAllByText("Paper layout")[1].parentElement?.parentElement;
+    const inputs = within(dialog!).getAllByRole("spinbutton") as HTMLInputElement[];
+    expect(inputs[4].value).toBe("11.97");
   });
 });
 

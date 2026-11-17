@@ -211,11 +211,7 @@ mod tests {
             key.clone(),
             HashMap::from([(teleport(0, 1), vec![1]), (one_way(2), vec![7])]),
         );
-        let b = InvalidCrossElementGroupIssue::new_from_check(
-            "rule_1:b",
-            vec![(pair.clone(), 1)],
-            close_b,
-        );
+        let b = InvalidCrossElementGroupIssue::new_from_check("rule_1:b", vec![(pair, 1)], close_b);
 
         a.merge(b);
         let merged = &a.close_nodes[&key];

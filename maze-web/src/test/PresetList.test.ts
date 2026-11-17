@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../pixi/fieldEditUtils", async () => {
-  const actual = await vi.importActual<typeof import("../pixi/fieldEditUtils")>("../pixi/fieldEditUtils");
+vi.mock("../pixi/presetSplitResolve", async () => {
+  const actual = await vi.importActual<typeof import("../pixi/presetSplitResolve")>("../pixi/presetSplitResolve");
   return {
     ...actual,
     allNodesAt: (point: [number, number], splitPoints: Record<string, number[]>, level?: number) => {

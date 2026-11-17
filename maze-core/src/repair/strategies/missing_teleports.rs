@@ -7,6 +7,7 @@ use super::standard_add_params::{self, attempts_limit, reserve_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
+use crate::graph::pathfinding::bfs_distances;
 use crate::ids::NodeId;
 use crate::quality_control::{MissingTeleportsIssue, RepairArea};
 use crate::repair::command::MutationCommand;
@@ -17,7 +18,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
 use rand::{Rng, RngCore};
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
 pub const PARAM_EXIT_PICK: &str = "exit_pick";
@@ -429,25 +430,6 @@ fn pick_pool_index(
 /// Tile-hop BFS distances from `source` over the raw graph (outgoing edges only) — deliberately
 /// not the `NavGraph`, see `MissingTeleportsStrategy`'s doc comment. `usize::MAX` for any node
 /// never visited (unreachable from `source`).
-fn bfs_distances<T: Tessellation>(
-    maze: &Maze<T>,
-    source: NodeId,
-) -> std::collections::HashMap<NodeId, usize> {
-    let mut dist = std::collections::HashMap::new();
-    let mut queue: VecDeque<(NodeId, usize)> = VecDeque::new();
-    dist.insert(source, 0);
-    queue.push_back((source, 0));
-    while let Some((node, d)) = queue.pop_front() {
-        for next in maze.graph.outgoing_neighbors(node) {
-            if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(next) {
-                e.insert(d + 1);
-                queue.push_back((next, d + 1));
-            }
-        }
-    }
-    dist
-}
-
 #[allow(clippy::too_many_arguments)]
 fn pick_exit<T: Tessellation>(
     maze: &Maze<T>,
@@ -464,7 +446,7 @@ fn pick_exit<T: Tessellation>(
     exit_pick: &str,
     dead_ends: &HashSet<NodeId>,
 ) -> Option<NodeId> {
-    let dist = bfs_distances(maze, entry);
+    let dist = bfs_distances(&maze.graph, entry);
     let all_nodes: Vec<NodeId> = maze.field.all_node_ids().collect();
     let entry_level = maze.field.level_of(entry);
 

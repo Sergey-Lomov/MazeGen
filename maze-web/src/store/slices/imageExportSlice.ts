@@ -9,8 +9,10 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
-import type { MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import type { CreaseExportStyle, DirectionIndicatorGeometryPatch, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind, WaypointOpeningPatch } from "../imageExportTypes";
+import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
+import { patchPaths, type PatchGroup } from "../parameterLinkSchema";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
 import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
 import {
@@ -51,6 +53,43 @@ function writeMarkerPatch<S extends object>(settings: S, kind: VectorMarkerKind,
   return markLinked(next);
 }
 
+/** Writes each defined field of `patch` into the start/finish external passage `kind` (GitHub issue #330):
+ *  `mode`/`pattern`/`color`/`gapWidth`/`join` and every `geometry` parameter (one write per leaf, so each
+ *  is linkable on its own, GitHub issue #993) through the link engine, `face` as a plain, unlinked write. */
+function writeOpeningPatch<S extends object>(settings: S, kind: "startOpening" | "finishOpening", patch: WaypointOpeningPatch): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  const write = (path: string, value: unknown, plain: boolean) => {
+    next = (plain ? setParamValue(next, path, value) : writeLinkedParam(next, path, value)) as Writable;
+  };
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (field === "geometry") {
+      for (const [pattern, params] of Object.entries(value as DirectionIndicatorGeometryPatch)) {
+        for (const [param, leaf] of Object.entries(params ?? {})) {
+          if (leaf !== undefined) write(`${kind}.geometry.${pattern}.${param}`, leaf, false);
+        }
+      }
+      continue;
+    }
+    write(`${kind}.${field}`, value, field === "face");
+  }
+  return markLinked(next);
+}
+
+/** Writes linkable crease fields through the link engine; the display mode stays unsupported. */
+function writeCreasePatch<S extends object>(settings: S, patch: Partial<CreaseExportStyle>): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    next = field === "mode"
+      ? markLinked(setParamValue(next, `creases.${field}`, value)) as Writable
+      : writeLinkedParam<string, { links: ParamLink<string>[] }>(next, `creases.${field}`, value) as unknown as Writable;
+  }
+  return markLinked(next);
+}
+
 const wallsParam = (path: VectorByWallsParamPath, value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: writeLinkedParam(s.vectorByWallsSettings, path, value),
 });
@@ -66,6 +105,7 @@ function withMazeBound<S extends VectorByWallsSettings | VectorByCorridorsSettin
   return {
     ...preset,
     teleportGroupOverrides: current.teleportGroupOverrides,
+    manualTeleportConnectorPaths: current.manualTeleportConnectorPaths,
     floorLabel: { ...preset.floorLabel, positionsByFloorId: current.floorLabel.positionsByFloorId },
   };
 }
@@ -83,8 +123,8 @@ type GuardedSet = (partial: GuardedUpdate | ((s: MazeStore) => GuardedUpdate)) =
 /** Settings paths that are deliberately NOT linkable (not in the param registry) and so need no
  *  detach/propagate on write. Listing a registry path here is a compile error (`wallsPlain`/
  *  `corridorsPlain` constrain `path` to these) and a test failure (`imageExportLinkedSetters`). */
-export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "oneWayPattern", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
-export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "markerLayout", "startMarker.text", "finishMarker.text", "startOpening.face", "finishOpening.face", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "markerLayout", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
 
 const wallsPlain = (path: (typeof WALLS_PLAIN_PATHS)[number], value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: markLinked(setParamValue(s.vectorByWallsSettings, path, value)),
@@ -98,6 +138,26 @@ const wallsPatch =
   (s: MazeStore) => ({
     vectorByWallsSettings: applyLinkedPatch(s.vectorByWallsSettings, build(s.vectorByWallsSettings), rootPatch, overridable),
   });
+/** The paths a `patch*` action detaches on edit come from `LINK_SCHEMA` (`patchPaths`), so a field
+ *  declared as written through that action cannot be left out of its list (GitHub issue #927). */
+const wallsPatchPaths = (group: PatchGroup) => patchPaths<VectorByWallsParamPath>("walls", group);
+const corridorsPatchPaths = (group: PatchGroup) => patchPaths<VectorByCorridorsParamPath>("corridors", group);
+
+/** The edge marker style with one marker of one floor merged with `patch` (GitHub issue #902); `null` drops it. A floor left
+ *  without overrides is dropped too. */
+function withEdgeMarkerOverride(style: EdgeMarkerStyle, floorId: string, key: string, patch: EdgeMarkerOverride | null): EdgeMarkerStyle {
+  const { [floorId]: floorOverrides, ...otherFloors } = style.overrides;
+  const { [key]: current, ...rest } = floorOverrides ?? {};
+  const next = patch === null ? null : mergeEdgeMarkerOverridePatch(current, patch);
+  const floor = next ? { ...rest, [key]: next } : rest;
+  return { ...style, overrides: Object.keys(floor).length > 0 ? { ...otherFloors, [floorId]: floor } : otherFloors };
+}
+
+/** `withEdgeMarkerOverride` for every key of `patches` in turn. */
+function withEdgeMarkerOverrides(style: EdgeMarkerStyle, floorId: string, patches: Record<string, EdgeMarkerOverride | null>): EdgeMarkerStyle {
+  return Object.entries(patches).reduce((acc, [key, patch]) => withEdgeMarkerOverride(acc, floorId, key, patch), style);
+}
+
 const corridorsPatch =
   (rootPatch: object, overridable: readonly VectorByCorridorsParamPath[], build: (cur: MazeStore["vectorByCorridorsSettings"]) => MazeStore["vectorByCorridorsSettings"]) =>
   (s: MazeStore) => ({
@@ -122,41 +182,21 @@ function pruneUnchanged(cur: unknown, patch: object): object {
   return out;
 }
 
-const TELEPORT_OVERRIDABLE = [
-  "teleportMarker.shape",
-  "teleportMarker.cornerStyle",
-  "teleportMarker.size",
-  "teleportMarker.sizeAdaptation",
-  "teleportMarker.fillColor",
-  "teleportMarker.borderColor",
-  "teleportMarker.borderWidth",
-  "teleportMarker.gapWidth",
-  "teleportConnectorColor",
-  "teleportConnectorGapWidth",
-  "teleportFloorBadge.shape",
-  "teleportFloorBadge.fillColor",
-  "teleportFloorBadge.borderColor",
-  "teleportFloorBadge.cornerStyle",
-  "teleportFloorBadge.size",
-  "teleportFloorBadge.sizeAdaptation",
-  "teleportFloorBadge.borderWidth",
-  "teleportFloorBadge.gapWidth",
-  "teleportFloorBadge.textColor",
-  "teleportFloorBadge.textSize",
-  "teleportFloorBadge.textMargin",
-  "teleportFloorBadge.textFontWeight",
-] as const;
-const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.shape", "elevatorBadges.fillColor", "elevatorBadges.borderColor", "elevatorBadges.borderWidth", "elevatorBadges.textColor", "elevatorBadges.textSize", "elevatorBadges.textMargin", "elevatorBadges.textFontWeight"] as const;
-const MARKER_INDEX_OVERRIDABLE = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"] as const;
-const FLOOR_LABEL_OVERRIDABLE = [
-  "floorLabel.enabled", "floorLabel.labelType", "floorLabel.textFontWeight", "floorLabel.textSize",
-  "floorLabel.textMargin", "floorLabel.width", "floorLabel.height", "floorLabel.cornerRadius",
-  "floorLabel.gap", "floorLabel.borderWidth", "floorLabel.fillColor", "floorLabel.borderColor", "floorLabel.textColor",
-] as const;
+/** Canvas edit modes, hovers and open settings dialogs of the export feature (GitHub issue #946). */
+export const imageExportTransientUi = {
+  floorLabelDrag: null,
+  teleportConnectorEdit: null,
+  hoveredTeleportNodeIds: null,
+  hoveredTeleportCells: null,
+  hoveredExportWarningKey: null,
+  openExportFormatSettings: null,
+  exportFormatSettingsCovered: false,
+  exportTopologyOpen: false,
+} satisfies Partial<ImageExportState>;
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
-  floorLabelDrag: null,
+  ...imageExportTransientUi,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
@@ -165,13 +205,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   floorLabelModeChosen: false,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
-  hoveredTeleportNodeIds: null,
-  hoveredExportWarningKey: null,
-  openExportFormatSettings: null,
-  exportFormatSettingsCovered: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
-  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null, teleportConnectorEdit: null }),
   loadVisualPreset: (preset) => set((s) => {
     const p = preset.imageExport;
     const update = {
@@ -181,7 +217,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       hoveredExportWarningKey: null,
       showColorWarnings: p.showColorWarnings,
       linkIconVisibility: p.linkIconVisibility,
-      pngExportSettings: p.pngExportSettings,
+      // Cut lines belong to this project's glues, not to the style.
+      pngExportSettings: { ...p.pngExportSettings, cuts: s.pngExportSettings.cuts },
       floorLabelModeChosen: p.floorLabelModeChosen,
       vectorByWallsSettings: markLinked(withMazeBound(p.vectorByWallsSettings, s.vectorByWallsSettings)),
       vectorByCorridorsSettings: markLinked(withMazeBound(p.vectorByCorridorsSettings, s.vectorByCorridorsSettings)),
@@ -245,7 +282,19 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       }),
     };
   }),
+  startTeleportConnectorEdit: (renderMode) => set({ teleportConnectorEdit: { renderMode, selected: null, hoveredKey: null }, floorLabelDrag: null }),
+  finishTeleportConnectorEdit: () => set({ teleportConnectorEdit: null }),
+  setTeleportConnectorEditSelection: (selected) => set((s) => s.teleportConnectorEdit ? { teleportConnectorEdit: { ...s.teleportConnectorEdit, selected } } : {}),
+  setTeleportConnectorEditHoveredKey: (hoveredKey) => set((s) => {
+    if (!s.teleportConnectorEdit || s.teleportConnectorEdit.hoveredKey === hoveredKey) return {};
+    return { teleportConnectorEdit: { ...s.teleportConnectorEdit, hoveredKey } };
+  }),
+  setManualTeleportConnectorPaths: (paths) => set((s) => ({
+    vectorByWallsSettings: markLinked({ ...s.vectorByWallsSettings, manualTeleportConnectorPaths: paths }),
+    vectorByCorridorsSettings: markLinked({ ...s.vectorByCorridorsSettings, manualTeleportConnectorPaths: paths }),
+  })),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
+  setExportTopologyOpen: (open) => set({ exportTopologyOpen: open }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from
   // whatever the previously open format's covered state happened to be.
   setOpenExportFormatSettings: (format) => set({ openExportFormatSettings: format, exportFormatSettingsCovered: false }),
@@ -265,9 +314,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const oldDpi = DPI_BY_DENSITY[print.density];
       const newDpi = DPI_BY_DENSITY[density];
       // `scale` is a pixel-space value, while the user-facing print size is physical. Keep
-      // the latter stable when a manually selected DPI changes (GitHub issue #620). Auto-fit
-      // will recompute its own scale from the sheet/content ratio, which is DPI-independent.
-      const scale = print.scaleAutoFit ? print.scale : print.scale * newDpi / oldDpi;
+      // the latter stable when a manually selected DPI changes (GitHub issue #620).
+      const scale = print.scale * newDpi / oldDpi;
       return { pngExportSettings: { ...s.pngExportSettings, print: { ...print, density, scale } } };
     }),
   setPrintPaperSize: (size) =>
@@ -303,12 +351,22 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   setPrintScale: (scale) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale } } })),
-  setPrintScaleAutoFit: (autoFit) =>
-    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scaleAutoFit: autoFit } } })),
+  setPrintScaleAutoFit: (_autoFit) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scaleAutoFit: false } } })),
   setPrintAnchor: (anchor) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, anchor } } })),
   setPrintCustomPlacement: (scale, offsetXMm, offsetYMm) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale, offsetXMm, offsetYMm, anchor: "custom" } } })),
+  setCutLine: (floorId, group, setting) =>
+    set((s) => {
+      const lines = { ...s.pngExportSettings.cuts.lines };
+      const floor = { ...lines[floorId] };
+      if (setting === null || setting.mode === "none") delete floor[group];
+      else floor[group] = setting;
+      if (Object.keys(floor).length === 0) delete lines[floorId];
+      else lines[floorId] = floor;
+      return { pngExportSettings: { ...s.pngExportSettings, cuts: { ...s.pngExportSettings.cuts, lines } } };
+    }),
   setVectorByWallsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
   setVectorByCorridorsSectionExpanded: (id, expanded) =>
@@ -318,6 +376,14 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsBackground: (color) => set(corridorsParam("background", color)),
   setVectorByCorridorsShowGrid: (v) => set(corridorsParam("showGrid", v)),
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
+  setVectorByCorridorsGlueTabs: (patch) => set(corridorsPatch({ glueTabs: patch }, corridorsPatchPaths("glueTabs"), (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
+  setVectorByCorridorsEdgeMarkers: (patch) => set(corridorsPatch({ edgeMarkers: patch }, corridorsPatchPaths("edgeMarkers"), (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
+  setVectorByCorridorsEdgeMarkerOverride: (floorId, key, patch) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
+  setVectorByCorridorsEdgeMarkerOverrides: (floorId, patches) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
+  setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: writeCreasePatch(s.vectorByCorridorsSettings, patch) })),
+  setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
+  setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
+  setVectorByCorridorsCutLinesColor: (color) => set(corridorsParam("cutLinesColor", color)),
   setVectorByCorridorsColor: (color) => set(corridorsParam("color", color)),
   setVectorByCorridorsThickness: (v) => set(corridorsParam("thickness", v)),
   setVectorByCorridorsJunctionRadius: (v) => set(corridorsParam("junctionRadius", v)),
@@ -329,10 +395,12 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsMarkerWidenPadding: (v) => set(corridorsParam("markerWidenPadding", v)),
   setVectorByCorridorsMarkerWidenShape: (shape) =>
     set(corridorsPlain("markerWidenShape", shape)),
+  setVectorByCorridorsMarkerLayout: (mode) => set(corridorsPlain("markerLayout", mode)),
+  setVectorByCorridorsMarkerScale: (v) => set(corridorsParam("markerScale", v)),
   patchVectorByCorridorsOneWaySettings: (patch) =>
-    set(corridorsPatch(patch, ["oneWayJoin"], (c) => ({ ...c, ...patch }))),
+    set(corridorsPatch(patch, corridorsPatchPaths("oneWay"), (c) => ({ ...c, ...patch }))),
   patchVectorByCorridorsTeleportSettings: (patch) =>
-    set((s) => corridorsPatch(pruneUnchanged(s.vectorByCorridorsSettings, patch), TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))(s)),
+    set((s) => corridorsPatch(pruneUnchanged(s.vectorByCorridorsSettings, patch), corridorsPatchPaths("teleport"), (c) => ({ ...c, ...patch }))(s)),
   setVectorByCorridorsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByCorridorsSettings.teleportGroupOverrides };
@@ -362,13 +430,13 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsSplitGapWidth: (v) => set(corridorsParam("splitGapWidth", v)),
   setVectorByCorridorsSplitDiagonalBowAmount: (v) => set(corridorsParam("splitDiagonalBowAmount", v)),
   patchVectorByCorridorsVerticalSettings: (patch) =>
-    set(corridorsPatch(patch, ["twoWayArrowColor", "oneWayArrowColor", "elevatorArrowColor"], (c) => ({ ...c, ...patch }))),
+    set(corridorsPatch(patch, corridorsPatchPaths("verticalSettings"), (c) => ({ ...c, ...patch }))),
   patchVectorByCorridorsElevatorBadges: (patch) =>
-    set(corridorsPatch({ elevatorBadges: patch }, ELEVATOR_BADGES_OVERRIDABLE, (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
+    set(corridorsPatch({ elevatorBadges: patch }, corridorsPatchPaths("elevatorBadges"), (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
   patchVectorByCorridorsMarkerIndexSettings: (patch) =>
-    set(corridorsPatch({ markerIndex: patch }, MARKER_INDEX_OVERRIDABLE, (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
+    set(corridorsPatch({ markerIndex: patch }, corridorsPatchPaths("markerIndex"), (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
   patchVectorByCorridorsFloorLabelSettings: (patch) =>
-    set(corridorsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
+    set(corridorsPatch({ floorLabel: patch }, corridorsPatchPaths("floorLabel"), (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) => set(corridorsParam("elevatorBadges.cornerStyle", style)),
   patchVectorByCorridorsSharedStyle: (patch) =>
     set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources({ ...s.vectorByCorridorsSettings, ...patch }, Object.keys(patch) as VectorByCorridorsParamPath[]) })),
@@ -387,6 +455,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   resetVectorByCorridorsSettings: () => set((s) => ({
     vectorByCorridorsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, defaultFloorLabelMode(s.floors))),
+    // The topology (cut lines) belongs to the renderer settings too.
+    pngExportSettings: { ...s.pngExportSettings, cuts: DEFAULT_PNG_EXPORT_SETTINGS.cuts },
   })),
   setVectorByCorridorsLinkEnabled: (target, enabled) =>
     set((s) => {
@@ -408,36 +478,48 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsBackground: (color) => set(wallsParam("background", color)),
   setVectorByWallsShowGrid: (v) => set(wallsParam("showGrid", v)),
   setVectorByWallsGridColor: (color) => set(wallsParam("gridColor", color)),
+  setVectorByWallsGlueTabs: (patch) => set(wallsPatch({ glueTabs: patch }, wallsPatchPaths("glueTabs"), (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
+  setVectorByWallsEdgeMarkers: (patch) => set(wallsPatch({ edgeMarkers: patch }, wallsPatchPaths("edgeMarkers"), (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
+  setVectorByWallsEdgeMarkerOverride: (floorId, key, patch) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
+  setVectorByWallsEdgeMarkerOverrides: (floorId, patches) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
+  setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: writeCreasePatch(s.vectorByWallsSettings, patch) })),
+  setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
+  setVectorByWallsTrimWallsAtFaceBoundaries: (v) => set(wallsParam("trimWallsAtFaceBoundaries", v)),
+  setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),
+  setVectorByWallsCutLinesColor: (color) => set(wallsParam("cutLinesColor", color)),
   setVectorByWallsShowInnerGrid: (v) => set(wallsParam("showInnerGrid", v)),
   setVectorByWallsInnerGridColor: (color) => set(wallsParam("innerGridColor", color)),
   setVectorByWallsFloorColor: (color) => set(wallsParam("floorColor", color)),
   setVectorByWallsWallColor: (color) => set(wallsParam("wallColor", color)),
   setVectorByWallsRandomWallColorMode: (mode) =>
     set(wallsPlain("randomWallColorMode", mode)),
+  setVectorByWallsMarkerLayout: (mode) => set(wallsPlain("markerLayout", mode)),
+  setVectorByWallsMarkerScale: (v) => set(wallsParam("markerScale", v)),
   setVectorByWallsWallJoin: (join) => set(wallsParam("wallJoin", join)),
   setVectorByWallsWallThickness: (v) => set(wallsParam("wallThickness", v)),
   setVectorByWallsOneWayPattern: (pattern) =>
-    set(wallsPlain("oneWayPattern", pattern)),
+    set(wallsParam("oneWayPattern", pattern)),
   setVectorByWallsOneWayColor: (color) => set(wallsParam("oneWayColor", color)),
   setVectorByWallsOneWayGapWidth: (v) => set(wallsParam("oneWayGapWidth", v)),
-  setVectorByWallsOneWaySize: (v) => set(wallsParam("oneWaySize", v)),
-  setVectorByWallsOneWayThickness: (v) => set(wallsParam("oneWayThickness", v)),
+  setVectorByWallsOneWayGeometry: (leaf, v) => set(wallsParam(`oneWayGeometry.${leaf}`, v)),
   setVectorByWallsOneWayJoin: (join) => set(wallsParam("oneWayJoin", join)),
   patchVectorByWallsMarker: (kind, patch) =>
     set((s) => ({ vectorByWallsSettings: writeMarkerPatch(s.vectorByWallsSettings, kind, patch) })),
+  patchVectorByWallsOpening: (kind, patch) =>
+    set((s) => ({ vectorByWallsSettings: writeOpeningPatch(s.vectorByWallsSettings, kind, patch) })),
   patchVectorByWallsVerticalSettings: (patch) =>
-    set(wallsPatch(patch, ["twoWayArrowColor", "oneWayArrowColor", "elevatorArrowColor", "decorativeStairsArrowColor", "decorativeStairsOneWayArrowColor"], (c) => ({ ...c, ...patch }))),
+    set(wallsPatch(patch, wallsPatchPaths("verticalSettings"), (c) => ({ ...c, ...patch }))),
   patchVectorByWallsDecorativeLineStyle: (section, patch) =>
-    set(wallsPatch({ [section]: patch }, [`${section}.lineColor` as VectorByWallsParamPath], (c) => ({ ...c, [section]: { ...c[section], ...patch } }))),
+    set(wallsPatch({ [section]: patch }, wallsPatchPaths("decorativeLine").filter((p) => p === `${section}.lineColor`), (c) => ({ ...c, [section]: { ...c[section], ...patch } }))),
   patchVectorByWallsElevatorBadges: (patch) =>
-    set(wallsPatch({ elevatorBadges: patch }, ELEVATOR_BADGES_OVERRIDABLE, (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
+    set(wallsPatch({ elevatorBadges: patch }, wallsPatchPaths("elevatorBadges"), (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
   patchVectorByWallsMarkerIndexSettings: (patch) =>
-    set(wallsPatch({ markerIndex: patch }, MARKER_INDEX_OVERRIDABLE, (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
+    set(wallsPatch({ markerIndex: patch }, wallsPatchPaths("markerIndex"), (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
   patchVectorByWallsFloorLabelSettings: (patch) =>
-    set(wallsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
+    set(wallsPatch({ floorLabel: patch }, wallsPatchPaths("floorLabel"), (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByWallsElevatorBadgesCornerStyle: (style) => set(wallsParam("elevatorBadges.cornerStyle", style)),
   patchVectorByWallsTeleportSettings: (patch) =>
-    set((s) => wallsPatch(pruneUnchanged(s.vectorByWallsSettings, patch), TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))(s)),
+    set((s) => wallsPatch(pruneUnchanged(s.vectorByWallsSettings, patch), wallsPatchPaths("teleport"), (c) => ({ ...c, ...patch }))(s)),
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
@@ -457,6 +539,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
   setHoveredTeleportNodeIds: (ids) => set({ hoveredTeleportNodeIds: ids }),
+  setHoveredTeleportCells: (cells) => set({ hoveredTeleportCells: cells }),
   setVectorByWallsSplitNodeColor: (index, color) =>
     set((s) => {
       const colors = [...s.vectorByWallsSettings.splitNodeColors];
@@ -482,6 +565,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   resetVectorByWallsSettings: () => set((s) => ({
     vectorByWallsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_WALLS_SETTINGS, defaultFloorLabelMode(s.floors))),
+    // The topology (cut lines) belongs to the renderer settings too.
+    pngExportSettings: { ...s.pngExportSettings, cuts: DEFAULT_PNG_EXPORT_SETTINGS.cuts },
   })),
   setVectorByWallsLinkEnabled: (target, enabled) =>
     set((s) => {

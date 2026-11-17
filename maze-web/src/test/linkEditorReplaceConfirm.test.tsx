@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { LinkEditor } from "../components/features/ParameterLinksDialog";
 import type { ColorModifier, ParamDescriptor, ParamLink, ParamModifier } from "../store/parameterLinks";
 
@@ -45,8 +45,26 @@ describe("LinkEditor cycle filtering", () => {
     expect(document.querySelectorAll('[aria-disabled="true"]')).toHaveLength(1);
   });
 
+  it("explains a group whose every leaf is cyclic with the same tooltip", () => {
+    const grouped: Record<P, ParamDescriptor> = { a: registry.a, b: { ...registry.b, group: ["Group"] }, c: registry.c };
+    render(
+      <LinkEditor<P>
+        registry={grouped}
+        activePaths={new Set<P>(["a", "b", "c"])}
+        existingLinks={existing}
+        initialSource={null}
+        initialTarget="a"
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // Target column lists the group too (no badge there); the source column's copy is the last one.
+    const anchor = screen.getAllByText("Group").at(-1)?.querySelector<HTMLElement>('[data-testid="tooltip-anchor"]');
+    expect(document.getElementById(anchor?.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/cyclic/i);
+  });
+
   it("drops an already-picked source when a new target makes it cyclic", () => {
-    const onSave = renderEditor("b", "c", existing);
+    const onSave = renderEditor("b", null, existing);
     fireEvent.click(screen.getAllByText("Alpha")[0]);
     expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
     expect(onSave).not.toHaveBeenCalled();
@@ -74,6 +92,64 @@ describe("LinkEditor grouped picker layout", () => {
 
     expect(screen.getByText("Alpha").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
     expect(screen.getByText("Beta").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
+  });
+
+  it("removes an inactive selection and its picker section when inactive paths are hidden", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Active target"] },
+      b: { ...registry.b, group: ["Inactive section"] },
+      c: { ...registry.c, group: ["Active source"] },
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Inactive section"));
+    fireEvent.click(screen.getByText("Beta"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show inactive" }));
+
+    expect(screen.queryByText("Inactive section")).toBeNull();
+    fireEvent.click(screen.getByText("Active target"));
+    fireEvent.click(screen.getByText("Alpha"));
+    expect(screen.queryByText("Inactive section")).toBeNull();
+  });
+
+  it("clears an inactive source when inactive paths are hidden", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Active target"] },
+      b: { ...registry.b, group: ["Inactive section"] },
+      c: { ...registry.c, group: ["Active source"] },
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Active target"));
+    fireEvent.click(screen.getByText("Alpha"));
+    fireEvent.click(screen.getAllByText("Inactive section")[1]);
+    fireEvent.click(screen.getByText("Beta"));
+    expect(screen.getByRole("button", { name: "Save" })).not.toHaveAttribute("disabled");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show inactive" }));
+
+    expect(screen.queryByText("Inactive section")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("disabled");
   });
 });
 
@@ -162,5 +238,32 @@ describe("LinkEditor replace confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(different).not.toHaveBeenCalled();
     expect(screen.getByText(/already depends on "Alpha"/)).toBeTruthy();
+  });
+});
+
+// GitHub issue #732 — search field above each picker tree; target tree is locked while editing.
+describe("LinkEditor picker search and lock", () => {
+  it("filters the target tree by the typed query", async () => {
+    renderEditor(null, null, []);
+    const [targetSearch] = screen.getAllByRole("textbox");
+    fireEvent.change(targetSearch, { target: { value: "gam" } });
+    // The shared search field debounces its query.
+    await waitFor(() => expect(screen.queryByText("Alpha")).toBeNull());
+    expect(screen.getByText("Gamma")).toBeTruthy();
+  });
+
+  it("locks the target tree when editing: search disabled, clicks ignored, target stays selected", () => {
+    const onSave = renderEditor("a", "b", []);
+    const [targetSearch] = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(targetSearch.disabled).toBe(true);
+    fireEvent.click(screen.getAllByText("Gamma")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith("a", "b", undefined, undefined);
+  });
+
+  it("keeps the target tree interactive when adding a new link", () => {
+    renderEditor(null, null, []);
+    const [targetSearch] = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(targetSearch.disabled).toBe(false);
   });
 });

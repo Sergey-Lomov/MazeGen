@@ -50,7 +50,6 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
 
         let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
-        let tessellation = maze.field.tessellation();
         for &(level, point) in &split_points {
             let nodes = maze.field.nodes_at(level, point);
             // Bucket every outgoing edge to an outside neighbor by its face-direction index --
@@ -67,8 +66,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
                 if neighbor_point == point {
                     continue; // sibling edge to another node of the same split -- not "outside".
                 }
-                let Some(face_index) =
-                    crate::space::face_index_toward(tessellation, point, neighbor_point)
+                let Some(face_index) = maze.field.face_index_toward(level, point, neighbor_point)
                 else {
                     continue;
                 };

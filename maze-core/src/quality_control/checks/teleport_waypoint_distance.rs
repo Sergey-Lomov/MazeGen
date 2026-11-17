@@ -1,4 +1,5 @@
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::quality_control::InvalidTeleportIssue;
@@ -6,7 +7,6 @@ use crate::quality_control::check::Check;
 use crate::quality_control::checks::waypoint_distance_core::{
     Waypoint, WaypointDistances, waypoint_distance_matches,
 };
-use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
 

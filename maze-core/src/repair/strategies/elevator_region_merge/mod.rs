@@ -3,12 +3,13 @@ use crate::generation::PresetState;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::ids::NodeId;
 use crate::quality_control::RegionNeedsExpansionIssue;
-use crate::quality_control::checks::elevator_core::{Elevator, elevator_groups};
+use crate::quality_control::checks::elevator_core::Elevator;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{
     PriorityLevel, StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams,
 };
 use crate::repair::result::RepairResult;
+use crate::repair::strategies::add_elevator_stop::groups_with_planned as elevator_groups_with_planned;
 use crate::repair::strategies::region_merge_core::{
     self, MODE_OPTIONS, MODE_RANDOM, PARAM_TARGET_MODE,
 };
@@ -123,7 +124,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
         // any other region that reaches into that merged blob resolves to the very same root.
         let mut planned_union = PlannedUnion::new(&scc);
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
             let region = scc.components.get(region_idx)?;
             let region_root = planned_union.find(region_idx);
             let candidates =
@@ -134,6 +135,11 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
 
             let mut keys: Vec<ComponentId> = candidates.keys().copied().collect();
             keys.sort_unstable();
+            // Neighbors already tried and failed for this region (see `run_merge_loop`).
+            keys.retain(|k| !excluded.contains(k));
+            if keys.is_empty() {
+                return None;
+            }
             let chosen = region_merge_core::pick_by_mode(&keys, &scc, mode, needy, rng)?;
             let shared_points = &candidates[&chosen];
 
@@ -525,60 +531,4 @@ fn try_build_new_elevator<T: Tessellation>(
     }
 
     false
-}
-
-/// `elevator_groups(maze)`, overlaid with every pair already queued this `apply()` call
-/// (`planned`) — mirrors `add_elevator_stop::groups_with_planned` so an elevator built moments ago
-/// in this same call is still visible to the reuse branch, not just what's already committed to
-/// `maze`.
-fn elevator_groups_with_planned<T: Tessellation>(
-    maze: &Maze<T>,
-    planned: &[(NodeId, NodeId)],
-) -> Vec<Elevator> {
-    if planned.is_empty() {
-        return elevator_groups(maze);
-    }
-
-    let mut adjacency: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-    for elevator in elevator_groups(maze) {
-        for &a in &elevator.stops {
-            for &b in &elevator.stops {
-                if a != b {
-                    adjacency.entry(a).or_default().push(b);
-                }
-            }
-        }
-    }
-    for &(a, b) in planned {
-        adjacency.entry(a).or_default().push(b);
-        adjacency.entry(b).or_default().push(a);
-    }
-
-    let mut visited: HashSet<NodeId> = HashSet::new();
-    let mut groups = Vec::new();
-    for &start in adjacency.keys() {
-        if visited.contains(&start) {
-            continue;
-        }
-        let mut stack = vec![start];
-        let mut component: HashSet<NodeId> = HashSet::new();
-        while let Some(node) = stack.pop() {
-            if !component.insert(node) {
-                continue;
-            }
-            visited.insert(node);
-            for &neighbor in adjacency.get(&node).into_iter().flatten() {
-                if !component.contains(&neighbor) {
-                    stack.push(neighbor);
-                }
-            }
-        }
-        let mut stops: Vec<NodeId> = component.into_iter().collect();
-        stops.sort_unstable();
-        groups.push(Elevator {
-            stops,
-            edges: Vec::new(),
-        });
-    }
-    groups
 }

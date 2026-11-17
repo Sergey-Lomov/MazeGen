@@ -25,18 +25,10 @@ interface Props {
 // have no fix at all). Commit semantics also mirror `StrategySelectDialog`: `selectedId` is local
 // state only, and `setNestedStrategy` fires once, on "Select" — not per-click in the list.
 //
-// Params work differently from the top-level dialog, though: `StrategySelectDialog` can write a
-// not-yet-assigned candidate's params straight to the store because `strategyParams` is a global
-// `strategyId`-keyed map, independent of whether any rule currently uses that strategy. Nested
-// params are per-`(rule, path)` by design (two rules nesting the same strategy need independent
-// values — the whole reason `nested` is stored per-node instead of reusing `strategyParams`), so
-// there is no node to write into until `setNestedStrategy` creates one. Editing a not-yet-selected
-// candidate's params is therefore held in local `drafts` state here (plain synchronous state, not
-// `useParamEditor` — there is no store write to debounce yet), keyed by strategy id, and flushed
-// into the store right after `setNestedStrategy` on "Select" — discarded on "Cancel" like the
-// rest of the dialog's uncommitted state. The currently-assigned strategy's params still edit the
-// real store value live (via `useParamEditor`), same as `StrategyParamPanel` for the top-level
-// dialog.
+// Params are per-node, so there is no node to write into until `setNestedStrategy` creates one.
+// Editing a not-yet-selected candidate's params is therefore held in local `drafts` state here
+// and flushed into the store right after `setNestedStrategy` on "Select". The top-level dialog
+// follows the same draft-then-select pattern for its rule-local strategy params.
 export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStrategyId, onClose }: Props) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const nestedParams = useMazeStore((s) => findRawNestedParams(s.rules.find((r) => r.id === ruleId), path));

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
+import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, anchorCanonicalFaces } = await import("../pixi/tessellationGeometry");
@@ -19,10 +20,25 @@ describe("brick registry", () => {
     expect(ui.originCell).toEqual([0, 0]);
   });
 
-  it("offers the horizontal and vertical bend axes", () => {
+  it("offers horizontal and 45-degree diagonal bend axes for shifted rows", () => {
     const axes = getConnectorAxes(cfg);
-    expect(axes).toHaveLength(2);
-    expect(Math.abs(axes[0].ux * axes[1].ux + axes[0].uy * axes[1].uy)).toBeCloseTo(0, 9);
+    expect(axes).toHaveLength(3);
+    expect(axes[0]).toEqual({ ux: 1, uy: 0 });
+    expect(axes[1].ux).toBeCloseTo(Math.SQRT1_2);
+    expect(axes[1].uy).toBeCloseTo(Math.SQRT1_2);
+    expect(axes[2].ux).toBeCloseTo(-Math.SQRT1_2);
+    expect(axes[2].uy).toBeCloseTo(Math.SQRT1_2);
+  });
+
+  it("uses a diagonal leg when routing between offset rows", () => {
+    const from = getCellCenter(...EVEN_ROW, cfg);
+    const to = getCellCenter(...ODD_ROW, cfg);
+    const [routed] = new TeleportConnectorRouter().route([
+      { from: [from.x, from.y], to: [to.x, to.y], oneWay: false },
+    ], 1, Infinity, cfg);
+    const [sx, sy, bx, by, ex, ey] = routed.points;
+    const legs = [[bx - sx, by - sy], [ex - bx, ey - by]];
+    expect(legs.some(([dx, dy]) => Math.abs(dx) > 1e-6 && Math.abs(Math.abs(dx) - Math.abs(dy)) < 1e-6)).toBe(true);
   });
 });
 

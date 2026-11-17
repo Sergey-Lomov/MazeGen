@@ -1,20 +1,19 @@
-import React, { useState } from "react";
+import React, { Fragment, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
-import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
+import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
+import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, requiresExactCells, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
-import { ToolIconButton } from "../ToolIconButton";
+import { ToolIconButton, ToolTooltip } from "../ToolIconButton";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
-import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
+import { hasGeneration } from "../../store/storeHelpers";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
 import { Switch } from "../Switch";
 import { Stack, Inline } from "../Layout";
-import { InfoIconButton } from "../InfoIconButton";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { SettingsIconButton } from "../SettingsIconButton";
@@ -24,19 +23,27 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { availablePresetKeys, fieldOperationAvailable, presetParams } from "../../pixi/fieldOps";
+import type { InputNormalizationReason } from "../inputNormalization";
+import { snapRectToClose } from "../../pixi/rectGluing";
+import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronFaceCount, polyhedronNetCount, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
+import { TopologyPanel } from "./TopologyPanel";
+import { FloorsPanel } from "./FloorsPanel";
+import { bringSidePanelToFront } from "../SidePanel";
+import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
-type ConfirmPending = "switchToDefault" | "clearField" | "copyAll" | null;
+type ConfirmPending = "switchToDefault" | "clearField" | null;
 
 const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
   add: ["+"],
   remove: ["−"],
   select: ["0"],
 };
+
+const CLIPBOARD_MODIFIER = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -57,7 +64,6 @@ export function FieldSetupFeature() {
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const centerFieldPoints = useMazeStore((s) => s.centerFieldPoints);
-  const copyCurrentFloorFieldToAll = useMazeStore((s) => s.copyCurrentFloorFieldToAll);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
   const confirmFieldEdit = useMazeStore((s) => s.confirmFieldEdit);
   const cancelFieldEdit = useMazeStore((s) => s.cancelFieldEdit);
@@ -69,11 +75,16 @@ export function FieldSetupFeature() {
   const setShowPaperLayout = useMazeStore((s) => s.setShowPaperLayout);
   const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
+  const smoothInverted = useMazeStore((s) => s.smoothInverted);
+  const topologyPanelOpen = useMazeStore((s) => s.topologyPanelOpen);
+  const setTopologyPanelOpen = useMazeStore((s) => s.setTopologyPanelOpen);
   const floorCount = useMazeStore((s) => s.floors.length);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
+  const fieldHasSelection = useMazeStore((s) => s.fieldHasSelection);
+  const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
-  const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
+  const [floorsPanelOpen, setFloorsPanelOpen] = useState(false);
   const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
   const [smoothingInfoOpen, setSmoothingInfoOpen] = useState(false);
   const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
@@ -83,12 +94,23 @@ export function FieldSetupFeature() {
     ? fieldConfig
     : null;
 
-  function setField(field: string, value: number) {
-    setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value } as FieldShape });
+  function setField(field: string, value: number): InputNormalizationReason | void {
+    // The compact layout of a box or polyhedron is always by faces.
+    const { shape } = fieldConfig;
+    const forced = isSwitchedShape(shape) && field === "net" && value === compactNetOf(fieldConfig.tessellation, shape) ? { mode: 1 } : {};
+    const next = { ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value, ...forced } as FieldShape };
+    // A cylinder or torus only exists at sizes that close up (GitHub issue #894): move to the nearest one.
+    const closing = snapRectToClose(next, field === "rows" ? "rows" : "cols");
+    if (!closing) return;
+    setFieldConfig(closing);
+    if (closing === next || (closing.shape.shape !== "cylinder" && closing.shape.shape !== "torus")) return;
+    return { kind: "rounded_to_gluing", shape: closing.shape.shape, value: String((closing.shape as unknown as Record<string, number>)[field]) };
   }
 
   function handleSwitchToDefault() {
-    if (isCustom && fieldPoints.size > 0) {
+    // The generation-loss dialog (store) already covers the loss of custom shape changes.
+    const generationLossDialogShown = hasGeneration(useMazeStore.getState());
+    if (isCustom && fieldPoints.size > 0 && !generationLossDialogShown) {
       setConfirmPending("switchToDefault");
     } else {
       setFieldEditMode("default");
@@ -102,7 +124,6 @@ export function FieldSetupFeature() {
   function handleConfirm() {
     if (confirmPending === "switchToDefault") setFieldEditMode("default");
     if (confirmPending === "clearField") clearFieldPoints();
-    if (confirmPending === "copyAll") copyCurrentFloorFieldToAll();
     setConfirmPending(null);
   }
 
@@ -122,15 +143,49 @@ export function FieldSetupFeature() {
     );
   }
 
-  function renderSmoothingToggle() {
+  function renderClipboardTool(tool: "copy" | "paste", block: FieldClipboardBlock | null) {
+    const description = block === "tessellation" ? m["field.clipboard.tessellation_disabled"]()
+      : block === "no_selection" ? m["field.copy.empty_selection"]()
+      : block === "empty_clipboard" ? m["field.paste.empty_clipboard"]()
+      : undefined;
     return (
-      <div style={styles.originRow}>
-        <span style={styles.smoothingLabelGroup}>
-          <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
-          <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
-        </span>
-        <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
-      </div>
+      <ToolIconButton
+        selected={false}
+        disabled={fieldEditLocked || block !== null}
+        title={tool === "copy" ? m["field.copy.tool"]() : m["field.paste.tool"]()}
+        shortcut={[CLIPBOARD_MODIFIER, tool === "copy" ? "C" : "V"]}
+        description={description}
+        preservesFieldSelection
+        onClick={tool === "copy" ? copyFieldSelection : pasteFieldClipboard}
+      >
+        {tool === "copy" ? <Copy {...toolIconProps()} /> : <ClipboardPaste {...toolIconProps()} />}
+      </ToolIconButton>
+    );
+  }
+
+  function renderSmoothingToggle() {
+    const exactCells = requiresExactCells(fieldConfig.shape);
+    const row = (
+      <ToggleRow
+        label={m["field.smooth_primitives"]()}
+        checked={smoothPrimitives !== smoothInverted && !exactCells}
+        onChange={setSmoothPrimitives}
+        disabled={fieldEditLocked || exactCells}
+        disabledHint={exactCells ? m["field.smoothing_unavailable"]() : undefined}
+        info={() => setSmoothingInfoOpen(true)}
+      />
+    );
+    // The hold hotkey only exists while drawing in the custom field editor.
+    if (!isCustom) return row;
+    return (
+      <ToolTooltip
+        block
+        title={m["field.smooth_primitives"]()}
+        description={m["field.smooth_hold_hint"]()}
+        descriptionShortcut={["S"]}
+      >
+        {row}
+      </ToolTooltip>
     );
   }
 
@@ -138,7 +193,48 @@ export function FieldSetupFeature() {
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
     const values = shape as unknown as Record<string, number>;
-    return presetParams(fieldConfig.tessellation, shape.shape).map(({ name, min, max }) => (
+    const compactBox = isSwitchedShape(shape) && shape.net === compactNetOf(fieldConfig.tessellation, shape);
+    const params = presetParams(fieldConfig.tessellation, shape.shape);
+    return params.map(({ name, min, max }) => {
+      // The compact layout's sheet aspect is set by print sizing, not typed in.
+      if (name === "aspect") return null;
+      if (shape.shape === "box" && BOX_SIZES.includes(name)) {
+        if (name !== BOX_SIZES[0]) return null;
+        // One "Dimensions" caption above the three side inputs in a row.
+        return (
+          <Fragment key={name}>
+            <div style={styles.sectionLabel}>{m["field.sizes"]()}</div>
+            <Inline gap="itemGap">
+              {params.filter((p) => BOX_SIZES.includes(p.name)).map((p) => (
+                <SizeParam
+                  key={p.name}
+                  hideLabel
+                  label={paramLabel(tessellationKind, shape.shape, p.name)}
+                  value={values[p.name]}
+                  min={p.min}
+                  max={p.max ?? paramMax(tessellationKind, shape.shape, p.name)}
+                  disabled={fieldEditLocked}
+                  onCommit={(v) => setField(p.name, v)}
+                />
+              ))}
+            </Inline>
+          </Fragment>
+        );
+      }
+      const choices = paramChoices(fieldConfig.tessellation, shape.shape, name);
+      if (choices) {
+        return (
+          <label key={name} style={styles.label}>
+            {paramLabel(tessellationKind, shape.shape, name)}
+            <select style={styles.select} value={compactBox && name === "mode" ? 1 : values[name] ?? 0} name={`field-${name}`}
+              disabled={fieldEditLocked || (compactBox && name === "mode")}
+              onChange={(e) => setField(name, Number(e.target.value))}>
+              {choices.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        );
+      }
+      return (
       <SizeParam
         key={name}
         label={paramLabel(tessellationKind, shape.shape, name)}
@@ -148,13 +244,13 @@ export function FieldSetupFeature() {
         disabled={fieldEditLocked}
         onCommit={(v) => setField(name, v)}
       />
-    ));
+      );
+    });
   }
 
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
     switchToDefault: m["field.confirm_switch_to_default"](),
     clearField: m["field.confirm_clear"](),
-    copyAll: m["floors.confirm_from_current"](),
   };
 
   return (
@@ -179,6 +275,7 @@ export function FieldSetupFeature() {
         <>
           {renderShapeSelect()}
           {renderParams()}
+          {renderSmoothingToggle()}
           <Button
             variant="secondary"
             disabled={fieldEditLocked}
@@ -187,7 +284,6 @@ export function FieldSetupFeature() {
           >
             {m["field.print_sizing.open"]()}
           </Button>
-          {renderSmoothingToggle()}
         </>
       )}
       {isCustom && (
@@ -217,10 +313,10 @@ export function FieldSetupFeature() {
               disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked, reflectAvailable)}
               title={tool.label}
               shortcut={shortcut ? [shortcut] : undefined}
-              description={tool.primitive === "symmetry" && !reflectAvailable
-                ? m["field.symmetry.tessellation_disabled"]()
-                : tool.primitive === "symmetry" && fieldOperation === "select"
-                ? m["field.symmetry.select_disabled"]()
+              description={tool.primitive === "mirror" && !reflectAvailable
+                ? m["field.mirror.tessellation_disabled"]()
+                : tool.primitive === "mirror" && fieldOperation === "select"
+                ? m["field.mirror.select_disabled"]()
                 : tool.primitive === "polygon"
                 ? m["field.polygon.shift_tooltip"]()
                 : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
@@ -232,6 +328,8 @@ export function FieldSetupFeature() {
               {primitiveIcon(tool.primitive)}
             </ToolIconButton>;
           })}
+          {renderClipboardTool("copy", fieldClipboardBlock("copy", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
+          {renderClipboardTool("paste", fieldClipboardBlock("paste", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
           </Inline>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
@@ -257,41 +355,46 @@ export function FieldSetupFeature() {
           </div>
           <Button
             variant="secondary"
+            disabled={fieldEditLocked}
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={() => {
+              bringSidePanelToFront("topology");
+              setTopologyPanelOpen(true);
+            }}
+          >
+            {m["topology.open"]()}
+          </Button>
+          <Button
+            variant="secondary"
             disabled={fieldEditLocked || fieldPoints.size === 0 || !translateAvailable}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={centerFieldPoints}
           >
             {m["field.center"]()}
           </Button>
-          <Button
-            variant="destructive"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={handleClearField}
-          >
-            {m["field.clear"]()}
-          </Button>
         </>
       )}
-      {floorCount > 1 && (
-        <>
-          <Button
-            variant="secondary"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={() => setCopyFloorDialogOpen(true)}
-          >
-            {m["field.copy_floor"]()}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={() => setConfirmPending("copyAll")}
-          >
-            {m["floors.from_current"]()}
-          </Button>
-        </>
+      {isCustom && topologyPanelOpen && <TopologyPanel onClose={() => setTopologyPanelOpen(false)} />}
+      <Button
+        variant="secondary"
+        layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+        onClick={() => {
+          bringSidePanelToFront("floors");
+          setFloorsPanelOpen(true);
+        }}
+      >
+        {m["floors.title"]()}
+      </Button>
+      {floorsPanelOpen && <FloorsPanel onClose={() => setFloorsPanelOpen(false)} />}
+      {isCustom && (
+        <Button
+          variant="destructive"
+          disabled={fieldEditLocked}
+          layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+          onClick={handleClearField}
+        >
+          {m["field.clear"]()}
+        </Button>
       )}
       {confirmPending !== null && (
         <ConfirmModal
@@ -306,9 +409,6 @@ export function FieldSetupFeature() {
           onConfirm={confirmFieldEdit}
           onCancel={cancelFieldEdit}
         />
-      )}
-      {copyFloorDialogOpen && (
-        <CopyFloorDialog onClose={() => setCopyFloorDialogOpen(false)} />
       )}
       {printSizingDialogOpen && printableConfig && (
         <FieldPrintSizingDialog
@@ -337,6 +437,8 @@ export function FieldSetupFeature() {
           onClose={() => setSmoothingInfoOpen(false)}
         >
           <div style={styles.infoText}>{m["field.smoothing_info_description"]()}</div>
+          {/* The hold hotkey only exists while drawing in the custom field editor. */}
+          {isCustom && <div style={{ ...styles.infoText, marginTop: 8 }}>{m["field.smoothing_info_hotkey"]()}</div>}
         </Modal>
       )}
     </Stack>
@@ -360,22 +462,28 @@ function primitivesForField(): PrimitiveToolOption[] {
     { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
     { key: "polygon", primitive: "polygon", label: m["field.polygon.tool"]() },
     { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
-    { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
+    { key: "mirror", primitive: "mirror", label: m["field.mirror.tool"]() },
   ];
   return primitives;
 }
 
-function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
+function toolIconProps() {
   const iconSize = TILE_SIZE * 0.8;
   const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
-  const wallColor = colorToHex(canvas.wall.default);
-  const iconProps = {
+  return {
     size: iconSize,
-    color: wallColor,
+    color: colorToHex(canvas.wall.default),
     strokeWidth: wallStyle.width * 24 / iconSize,
     strokeLinecap: wallStyle.cap,
     strokeLinejoin: wallStyle.join,
   } as const;
+}
+
+function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
+  const iconProps = toolIconProps();
+  const iconSize = iconProps.size;
+  const wallColor = iconProps.color;
+  const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
   switch (primitive) {
     case "point":
       return (
@@ -383,7 +491,7 @@ function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
           <circle cx={iconSize / 2} cy={iconSize / 2} r={iconSize * 0.18} fill={wallColor} />
         </svg>
       );
-    case "symmetry": return <FlipHorizontal {...iconProps} />;
+    case "mirror": return <FlipHorizontal {...iconProps} />;
     case "magic_wand": {
       const cellSize = 5;
       const cellGap = 1;
@@ -502,17 +610,74 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
+    case "cylinder": return m["field.shape.cylinder"]();
+    case "torus": return m["field.shape.torus"]();
+    case "box": return m["field.shape.box"]();
+    case "tetrahedron": return m["field.shape.tetrahedron"]();
+    case "octahedron": return m["field.shape.octahedron"]();
+    case "icosahedron": return m["field.shape.icosahedron"]();
   }
 }
 
+/** A rectangle, possibly glued into a cylinder or a torus: labelled and sized like a rectangle. */
+function isRectLike(shape: PresetFieldShapeName): boolean {
+  return shape === "rect" || shape === "cylinder" || shape === "torus";
+}
+
+/** The box side params, shown as one row of inputs under a single caption. */
+const BOX_SIZES = ["width", "height", "depth"];
+
 function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: string): string {
   switch (name) {
-    case "cols": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.width"]() : m["field.cols"]();
-    case "rows": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
+    case "cols": return isRectLike(shape) && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.width"]() : m["field.cols"]();
+    case "rows": return isRectLike(shape) && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
     case "radius": return m["field.radius"]();
     case "side": return m["field.side"]();
+    case "width": return m["field.width"]();
+    case "height": return m["field.height"]();
+    case "depth": return m["field.depth"]();
+    case "mode": return m["field.box.mode"]();
+    case "net": return m["field.box.net"]();
+    case "axis": return m["field.topology.axis"]();
     default: return name;
   }
+}
+
+/** Switch-like params (core publishes them as `0..max` integers) rendered as a select, not a number input. */
+function paramChoices(tessellation: FieldConfig["tessellation"], shape: PresetFieldShapeName, name: string): { value: number; label: string }[] | null {
+  if (shape === "cylinder") {
+    return name === "axis" ? [
+      { value: 0, label: m["field.topology.axis.left_right"]() },
+      { value: 1, label: m["field.topology.axis.top_bottom"]() },
+    ] : null;
+  }
+  const polyhedron = (POLYHEDRON_SHAPES as readonly string[]).includes(shape);
+  if (shape !== "box" && !polyhedron) return null;
+  if (name === "net" && polyhedron) return polyhedronNetChoices(tessellation, shape as PolyhedronShapeName);
+  if (name === "mode") return [
+    { value: 0, label: m["field.box.mode.net"]() },
+    { value: 1, label: m["field.box.mode.faces"]() },
+  ];
+  if (name === "net") return [
+    { value: 0, label: m["field.box.net.cross"]() },
+    { value: 1, label: m["field.box.net.t"]() },
+    { value: BOX_NET_COMPACT, label: m["field.box.net.compact"]() },
+  ];
+  return null;
+}
+
+/** The nets core offers (its `net` max counts them) with their captions, then the compact layout. */
+function polyhedronNetChoices(tessellation: FieldConfig["tessellation"], shape: PolyhedronShapeName): { value: number; label: string }[] {
+  const captions: Record<PolyhedronShapeName, string[]> = {
+    tetrahedron: [m["field.polyhedron.net.star"](), m["field.polyhedron.net.strip"]()],
+    octahedron: [m["field.polyhedron.net.wide"](), m["field.polyhedron.net.close"]()],
+    icosahedron: [m["field.polyhedron.net.band"]()],
+  };
+  const count = polyhedronNetCount(tessellation, shape);
+  return [
+    ...Array.from({ length: count }, (_, value) => ({ value, label: captions[shape][value] ?? `#${value + 1}` })),
+    { value: count, label: m["field.box.net.compact"]() },
+  ];
 }
 
 /** Fallback upper bound of a size param in the editor — UI metadata, used when core publishes no `max`. */
@@ -559,6 +724,8 @@ export function configCellCount(cfg: FieldConfig): number {
   switch (shape.shape) {
     case "custom": return 0;
     case "rect":
+    case "cylinder":
+    case "torus":
       return ui.rectCellsPerUnit === null ? configAllCells(cfg).length : ui.rectCellsPerUnit * shape.cols * shape.rows;
     case "parallelogram": return shape.cols * shape.rows;
     case "hexagon":
@@ -566,6 +733,10 @@ export function configCellCount(cfg: FieldConfig): number {
     case "triangle":
       return ui.triangleCellCount === null ? configAllCells(cfg).length : ui.triangleCellCount(shape.side);
     case "circle": return configAllCells(cfg).length;
+    case "box": return 2 * (shape.width * shape.height + shape.height * shape.depth + shape.width * shape.depth);
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return polyhedronFaceCount(cfg.tessellation, shape.shape) * shape.side * shape.side;
   }
 }
 
@@ -573,10 +744,16 @@ function configSizeLabel(cfg: FieldConfig): string {
   const { shape } = cfg;
   switch (shape.shape) {
     case "rect":
+    case "cylinder":
+    case "torus":
     case "parallelogram": return `${shape.cols}\u00D7${shape.rows}`;
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
-    case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "triangle":
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return `${m["field.side"]()} ${shape.side}`;
+    case "box": return `${shape.width} × ${shape.height} × ${shape.depth}`;
     case "custom": return "";
   }
 }
@@ -612,6 +789,5 @@ const styles: Record<string, React.CSSProperties> = {
   nestedContent: { paddingLeft: indent.tree, minWidth: 0, boxSizing: "border-box", width: "100%" },
   originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", ...muted(typography.body) },
   originLabel: { ...muted(typography.body) },
-  smoothingLabelGroup: { display: "flex", alignItems: "center", gap: spacing.rowGap, minWidth: 0 },
   infoText: { ...typography.body, ...muted(typography.body) },
 };

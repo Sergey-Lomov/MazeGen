@@ -5,15 +5,14 @@ import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
 import { styles, messageFor } from "./analyticsStyles";
 import * as m from "~/paraglide/messages";
 import React from "react";
-import { InfoIconButton } from "../InfoIconButton";
+import { LabelWithInfo } from "../LabelWithInfo";
 
 export function StatRow({ label, count, pct, valueText, onOpenInfo }: { label: string; count?: number; pct?: number | null; valueText?: string; onOpenInfo?: () => void }) {
   return (
     <div style={styles.statRow}>
-      <span style={styles.statLabelGroup}>
-        <span style={styles.statLabel}>{label}</span>
-        {onOpenInfo && <InfoIconButton onClick={onOpenInfo} />}
-      </span>
+      {onOpenInfo
+        ? <LabelWithInfo style={styles.statLabelGroup} labelStyle={styles.statLabel} onInfo={onOpenInfo}>{label}</LabelWithInfo>
+        : <span style={styles.statLabelGroup}><span style={styles.statLabel}>{label}</span></span>}
       <span style={styles.statCount}>{valueText ?? count}</span>
       {pct !== undefined && <span style={styles.statPct}>{pct == null ? "—" : `${pct.toFixed(1)}%`}</span>}
     </div>
@@ -81,10 +80,9 @@ export function SidesSection({ stats, oneWayPassages }: { stats: SpatialEdgeStat
 
 export function SubsectionTitle({ label, onOpenInfo }: { label: string; onOpenInfo?: () => void }) {
   return (
-    <div style={styles.subsectionHeaderRow}>
-      <div style={sharedStyles.sectionHeader}>{label}</div>
-      {onOpenInfo && <InfoIconButton onClick={onOpenInfo} />}
-    </div>
+    onOpenInfo
+      ? <LabelWithInfo style={styles.subsectionHeaderRow} labelStyle={sharedStyles.sectionHeader} onInfo={onOpenInfo}>{label}</LabelWithInfo>
+      : <div style={styles.subsectionHeaderRow}><div style={sharedStyles.sectionHeader}>{label}</div></div>
   );
 }
 

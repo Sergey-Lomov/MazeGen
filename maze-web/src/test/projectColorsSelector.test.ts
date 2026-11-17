@@ -10,13 +10,14 @@ import {
 } from "../store/slices/imageExportSlice";
 
 /** Minimal `MazeState` fixture — only the fields `selectActiveProfileColors` and its helpers
- *  (`sectionVisibility`, `teleportColors`, etc.) actually read. Mirrors `projectExport.test.ts`'s
+ *  (`sectionVisibility`, `teleportColors`, etc.) actually read. Mirrors `projectExportKit.ts`'s
  *  `makeState` cast convention rather than filling in the whole store shape. */
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
     nodes: [] as NodeDto[],
     edges: [] as EdgeDto[],
     floors: [{ id: "floor_1", title: "Floor 1" }],
+    floorTopology: {},
     openRenderModeSettings: null,
     vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -234,6 +235,7 @@ describe("selectActiveProfileColors", () => {
     expect(abstractNames).toContain(PC.elevatorFill.name());
     expect(abstractNames).not.toContain(PC.decorLineElevator.name());
     expect(abstractNames).toContain(PC.verticalFill.name());
+    expect(abstractNames).toContain(PC.verticalBorder.name());
     expect(abstractNames).toContain(PC.verticalArrow.name());
     expect(abstractNames).not.toContain(PC.verticalDecorLine.name());
 
@@ -249,6 +251,7 @@ describe("selectActiveProfileColors", () => {
     expect(decorativeNames).not.toContain(PC.elevatorFill.name());
     expect(decorativeNames).toContain(PC.verticalDecorLine.name());
     expect(decorativeNames).not.toContain(PC.verticalFill.name());
+    expect(decorativeNames).not.toContain(PC.verticalBorder.name());
     expect(decorativeNames).not.toContain(PC.verticalArrow.name());
   });
 
@@ -261,6 +264,7 @@ describe("selectActiveProfileColors", () => {
     });
     const names = selectActiveProfileColors(state).map((c) => c.name);
     expect(names).toContain(PC.verticalFill.name());
+    expect(names).toContain(PC.verticalBorder.name());
     expect(names).toContain(PC.verticalArrow.name());
     expect(names).not.toContain(PC.verticalDecorLine.name());
   });
@@ -528,5 +532,20 @@ describe("field visibility predicate (GitHub issue #717)", () => {
         else if (PC[key].isVisible(ctx)) expect(["startText", "finishText"]).toContain(key);
       }
     }
+  });
+});
+
+describe("glue tab colors", () => {
+  const glued = { floor_1: { fingerprint: "", folds: [], groups: [{ id: 0, folds: [] }] } };
+  const tabs = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, glueTabs: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.glueTabs, showTabs: true } };
+  const names = (floorTopology: MazeState["floorTopology"]) =>
+    selectActiveProfileColors(makeState({ openRenderModeSettings: "vector_by_walls", vectorByWallsSettings: tabs, floorTopology })).map((entry) => entry.name);
+
+  it("lists them while the tabs show and some floor has a glue", () => {
+    expect(names(glued).length).toBeGreaterThan(names({}).length);
+  });
+
+  it("hides them when no floor has a glue", () => {
+    expect(names({})).toEqual(names(glued).filter((name) => names({}).includes(name)));
   });
 });

@@ -53,7 +53,7 @@ export const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discour
 // Float params rendered as a 0-100 percent slider instead of the default number input — an
 // explicit id allowlist rather than a blanket "every Float is a slider" rule, since most Float
 // params (reserve_percent, min_distance, etc.) are edited as exact numbers elsewhere in the app.
-const PERCENT_SLIDER_PARAM_IDS = new Set(["one_way_chance", "loop_one_way_chance", "teleport_loop_one_way_chance", "vertical_loop_one_way_chance"]);
+const PERCENT_SLIDER_PARAM_IDS = new Set(["one_way_chance", "dead_end_one_way_chance", "loop_one_way_chance", "teleport_loop_one_way_chance", "vertical_loop_one_way_chance"]);
 
 // Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
 // fraction (0..1), only the slider bounds and displayed text are scaled by 100.
@@ -643,3 +643,14 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
 };
+
+/** Default value of a param, as the string the param editors exchange. */
+export function defaultParamValue(p: ParamDescriptor): string {
+  const k = p.kind;
+  if (k.type === "bool") return k.default ? "true" : "false";
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  if (k.type === "pattern_list") return "[]";
+  if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
+  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
+  return String(k.default);
+}

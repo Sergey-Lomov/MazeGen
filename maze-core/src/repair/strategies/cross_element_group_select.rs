@@ -214,7 +214,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidCrossElementGroupIssue>
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let nested_for = |element: &CrossElement, _others: &[CrossElement]| {
+        let nested_for = |element: &CrossElement, _others: &[&CrossElement]| {
             if self.route_blocked(maze, element) {
                 return None;
             }
@@ -241,21 +241,26 @@ impl<T: Tessellation> RepairStrategy<T, InvalidCrossElementGroupIssue>
         // `TeleportGroupSelectStrategy`'s own `element_invalidated`: an element is moot when one of
         // its underlying edges (read from the still-unmutated `maze`, which is fine -- ids are
         // stable, only aliveness changes) is among the edges the just-applied commands remove.
-        let element_invalidated =
-            |element: &CrossElement, cmds: &[MutationCommand], maze: &Maze<T>| {
-                let removed = crate::repair::command::removed_edge_ids(cmds);
-                cross_element_edges(maze, element)
-                    .iter()
-                    .any(|id| removed.contains(id))
-            };
+        let prepare_invalidation = |cmds: &[MutationCommand], _maze: &Maze<T>| {
+            crate::repair::command::removed_edge_ids(cmds)
+                .into_iter()
+                .collect::<std::collections::HashSet<crate::ids::EdgeId>>()
+        };
+        let element_invalidated = |removed: &std::collections::HashSet<crate::ids::EdgeId>,
+                                   element: &CrossElement| {
+            cross_element_edges(maze, element)
+                .iter()
+                .any(|id| removed.contains(id))
+        };
 
-        multi_target_group_select_apply::<T, CrossElementGroupKind>(
+        multi_target_group_select_apply::<T, CrossElementGroupKind, _>(
             issue.groups(),
             issue.invalid_sources(),
             maze,
             rng,
             preset_state,
             nested_for,
+            prepare_invalidation,
             element_invalidated,
             order_by_priority(params),
             false,

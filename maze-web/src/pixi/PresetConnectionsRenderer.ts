@@ -1,5 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamPairs } from "./selectors/seamHop";
 import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "./fieldEditUtils";
 import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
@@ -23,6 +25,7 @@ import {
   buildPresetWallGroups,
   buildPresetMarkers,
   buildPresetNodePositions,
+  buildPresetSplitHostKeys,
   buildLocks,
   buildIsolatedCellHighlights,
   computeOrphanSplitPoints,
@@ -34,6 +37,7 @@ import {
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
 import { presetEndpoint, withoutLevel, type PresetEndpoint } from "./presetEndpoint";
+import { layoutEditorMarkersOnHosts } from "./editorMarkerLayout";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
@@ -52,6 +56,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly backgroundImageContainer: Container;
   private readonly invalidPassagesContainer: Container;
@@ -76,6 +81,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly boundaryHover: Graphics;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly floor: CellFillRenderer;
   private readonly backgroundImage: BackgroundImageHost;
   private readonly invalidPassages: WallRenderer;
@@ -114,6 +120,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root = container;
 
     this.gridContainer           = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer          = new Container();
     this.backgroundImageContainer = new Container();
     this.invalidPassagesContainer = new Container();
@@ -140,6 +147,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
@@ -161,7 +170,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
 
-    this.grid           = new GridRenderer(this.gridContainer);
+    this.grid           = new GridRenderer(this.gridContainer, "preset connections");
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,
@@ -393,8 +403,6 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       : [];
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);
-    this.markers.render({ markers: markerData });
 
     // Cross-floor teleport badge collision relocation (GitHub issue #480) — the same shared core the
     // generation/post-edit views use, fed the *maze-wide* (not active-floor-filtered) preset lists so
@@ -426,17 +434,27 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       };
     }
     const presetVerticalMarkers = buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level, nodePositions);
+    // Marker positioning layer (GitHub issue #735) — a split node (hub or slot) owns only part of its
+    // cell, so its position is a split host.
+    const layout = layoutEditorMarkersOnHosts({
+      markers: buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions),
+      teleportEdges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
+      verticalMarkers: presetVerticalMarkers,
+      splitHostKeys: buildPresetSplitHostKeys(presetSplitPoints, nodePositions),
+    });
+    const markerData = layout.markers;
+    this.markers.render({ markers: markerData });
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers (GitHub issue #518) — preset connections have no
     // one-way wall indicator concept, unlike a generated maze's own walls.
     this.teleports.render({
-      edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
+      edges: layout.teleportEdges,
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
       waypoints: buildTeleportAvoidanceWaypoints({
         markers: markerData,
-        verticalMarkers: presetVerticalMarkers,
+        verticalMarkers: layout.verticalMarkers,
         splitPassages,
       }),
     });
@@ -445,7 +463,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticals.render({
-      markers: presetVerticalMarkers,
+      markers: layout.verticalMarkers,
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.presetConnectionsTool !== "clear" &&
@@ -492,7 +510,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const link = state.presetHoveredLink;
     this.boundaryHover.clear();
     if (!link || !link.highlightStyle || link.highlightStyle === "line") {
-      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg));
+      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg, selectSeamPairs(state)));
       return;
     }
     this.linkHover.render([]);
@@ -704,6 +722,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected destroyChildren(): void {
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.backgroundImage.destroy();
     this.floor.destroy();

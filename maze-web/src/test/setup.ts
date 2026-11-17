@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { initWasm } from "../wasm/wasmLoader";
 
-// The real `maze-core` module (built by `wasm-rebuild.sh`), so suites exercise core geometry and
+// The real `maze-core` module (built by `scripts/wasm-rebuild.sh`), so suites exercise core geometry and
 // field presets instead of TypeScript stand-ins.
 await initWasm(readFileSync(resolve(process.cwd(), "src/wasm/pkg/maze_wasm_bg.wasm")));
-import { SIDE_PANEL_SLOT_ID } from "../components/SidePanel";
+import { SIDE_PANEL_SLOT_ID } from "../components/sidePanelSlot";
 
 // `SidePanel` portals into this DOM node (see `App.tsx`) — every test render needs it present the
 // same way the real app always does, or any component using `SidePanel` silently renders nothing.

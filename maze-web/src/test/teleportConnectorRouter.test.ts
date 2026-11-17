@@ -127,6 +127,21 @@ describe("TeleportConnectorRouter.route", () => {
     expect(ys).toEqual([-4, 0, 4]);
   });
 
+  it("a connector to a badge runs its long leg through the badge center, whichever end the badge is (GitHub issue #897)", () => {
+    // Marker displaced 12 to the side of the badge's column: the vertical leg must sit at the badge's x.
+    const markerToBadge = new TeleportConnectorRouter().route([{ ...edge([12, 0], [0, -80]), toFloor: 1 }], 4);
+    expect(markerToBadge[0].points.slice(2, 4)).toEqual([0, 0]);
+    const badgeToMarker = new TeleportConnectorRouter().route([{ ...edge([0, -80], [12, 0]), fromFloor: 1 }], 4);
+    expect(badgeToMarker[0].points.slice(2, 4)).toEqual([0, 0]);
+  });
+
+  it("the badge flag is part of the cache key: same coordinates with and without a badge route independently (GitHub issue #897)", () => {
+    const router = new TeleportConnectorRouter();
+    router.route([edge([12, 0], [0, -80])], 4);
+    const [withBadge] = router.route([{ ...edge([12, 0], [0, -80]), toFloor: 1 }], 4);
+    expect(withBadge.points.slice(2, 4)).toEqual([0, 0]);
+  });
+
   it("orthogonal path always has exactly 3 points (start, bend, end)", () => {
     const routed = new TeleportConnectorRouter().route([edge([0, 0], [5, 5])], 4);
     expect(routed[0].points).toHaveLength(6);

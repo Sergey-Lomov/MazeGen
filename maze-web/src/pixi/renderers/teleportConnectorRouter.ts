@@ -30,7 +30,7 @@ function cacheKey(
       : `${endpointStyle.markerRadius},${endpointStyle.markerBorderWidth},${endpointStyle.connectorGapWidth},${endpointStyle.connectorWidth}`;
   let edgesKey = "";
   for (const e of edges) {
-    edgesKey += `${e.from[0]},${e.from[1]},${e.to[0]},${e.to[1]},${e.oneWay ? 1 : 0}|`;
+    edgesKey += `${e.from[0]},${e.from[1]},${e.to[0]},${e.to[1]},${e.oneWay ? 1 : 0},${e.toFloor !== undefined ? "t" : e.fromFloor !== undefined ? "f" : ""}|`;
   }
   let waypointsKey = "";
   for (const w of waypoints) waypointsKey += `${w[0]},${w[1]}|`;

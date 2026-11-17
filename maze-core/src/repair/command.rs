@@ -159,8 +159,8 @@ pub enum SplitNodeEdgeDirection {
 }
 
 /// Every `EdgeId` a batch of commands proposes removing — a strategy building on another
-/// strategy's returned commands (e.g. `InvalidLoopGroupSelectStrategy` dropping cycles that
-/// share a now-cut edge from its own pending queue) needs this to know what just got cut, without
+/// strategy's returned commands (e.g. `InvalidLoopGroupSelectStrategy` invalidating candidate
+/// cycles that share a now-cut edge) needs this to know what just got cut, without
 /// caring which specific removal variant did it.
 ///
 /// **Maintenance risk, deliberately accepted**: covers only the `EdgeId`-addressed variants

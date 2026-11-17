@@ -1,35 +1,17 @@
 import type React from "react";
-import { typography, ui, inset } from "../styles/theme";
-import { Tooltip } from "./Tooltip";
+import { IconActionButton } from "./IconActionButton";
 
-/** Shared "edit this row" icon button — the plain "✎" glyph convention used throughout the quality
- *  panels (`RulesColumn`'s rule/stage rename buttons, `NestedStrategyPanel`'s own `editBtn`) rather
- *  than a pencil icon, so every edit entry point across the app renders and behaves identically
- *  instead of each row hand-rolling its own button+glyph copy. */
-export function EditIconButton({ onClick, title, fontSize }: { onClick: (e: React.MouseEvent) => void; title: string; fontSize?: number }) {
+/** Shared edit action for row and panel controls. */
+export function EditIconButton({ onClick, title, fontSize, disabled, active = false, style }: {
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  fontSize?: number;
+  disabled?: boolean;
+  active?: boolean;
+  /** Extra layout or state styling for a genuinely exceptional edit control. */
+  style?: React.CSSProperties;
+}) {
   return (
-    <Tooltip content={title}>
-      <button
-        type="button"
-        className="hoverable"
-        style={fontSize === undefined ? styles.editBtn : { ...styles.editBtn, fontSize }}
-        onClick={onClick}
-      >
-        ✎
-      </button>
-    </Tooltip>
+    <IconActionButton action="edit" title={title} disabled={disabled} active={active} onClick={onClick} layoutStyle={{ ...(fontSize === undefined ? {} : { fontSize }), ...style }} />
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  editBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    lineHeight: 1,
-    flexShrink: 0,
-  },
-};

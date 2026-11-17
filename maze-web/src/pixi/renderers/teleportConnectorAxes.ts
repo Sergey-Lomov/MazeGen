@@ -55,9 +55,9 @@ const CAIRO_AXES: Axis[] = [
 // 45 degrees apart; the display transform is a reflection, which keeps this set unchanged.
 const SQUARE_OCTAGON_AXES: Axis[] = [0, 45, 90, 135].map(axisFromDeg);
 
-// Bricks have vertical side edges and horizontal (half) top and bottom edges, so the face normals
-// are the horizontal and vertical axes.
-const BRICK_AXES: Axis[] = [0, 90].map(axisFromDeg);
+// Brick rows are horizontally offset. Horizontal plus the two 45° diagonals gives an orthogonal
+// connector a route between shifted rows without forcing a vertical leg across their half-edges.
+const BRICK_AXES: Axis[] = [0, 45, 135].map(axisFromDeg);
 
 // Hexagon and triangle faces are the sides of a flat-top hexagon, whose normals are 30, 90 and 150
 // degrees; the display transform is a reflection, which keeps this set unchanged.

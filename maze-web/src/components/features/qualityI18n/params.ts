@@ -184,14 +184,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.vertical_passage_priority.label"] as MessageFn,
     description: m["param.vertical_passage_priority.description"] as MessageFn,
   },
-  sample_mode: {
-    label: m["param.sample_mode.label"] as MessageFn,
-    description: m["param.sample_mode.description"] as MessageFn,
-  },
-  sample_size: {
-    label: m["param.sample_size.label"] as MessageFn,
-    description: m["param.sample_size.description"] as MessageFn,
-  },
   distance: {
     label: m["param.distance.label"] as MessageFn,
     description: m["param.distance.description"] as MessageFn,
@@ -227,6 +219,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   priority: {
     label: m["param.priority.label"] as MessageFn,
     description: m["param.priority.description"] as MessageFn,
+  },
+  approximate_topology: {
+    label: m["param.approximate_topology.label"] as MessageFn,
+    description: m["param.approximate_topology.description"] as MessageFn,
   },
   protect_route: {
     label: m["param.protect_route.label"] as MessageFn,
@@ -284,6 +280,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.loop_one_way_chance.label"] as MessageFn,
     description: m["param.loop_one_way_chance.description"] as MessageFn,
   },
+  dead_end_one_way_chance: {
+    label: m["param.dead_end_one_way_chance.label"] as MessageFn,
+    description: m["param.dead_end_one_way_chance.description"] as MessageFn,
+  },
   vertical_loop_one_way_chance: {
     label: m["param.vertical_loop_one_way_chance.label"] as MessageFn,
     description: m["param.vertical_loop_one_way_chance.description"] as MessageFn,
@@ -307,6 +307,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_split_density: {
     label: m["param.max_split_density.label"] as MessageFn,
     description: m["param.max_split_density.description"] as MessageFn,
+  },
+  max_dead_end_count: {
+    label: m["param.max_dead_end_count.label"] as MessageFn,
+    description: m["param.max_dead_end_count.description"] as MessageFn,
+  },
+  max_dead_end_density: {
+    label: m["param.max_dead_end_density.label"] as MessageFn,
+    description: m["param.max_dead_end_density.description"] as MessageFn,
   },
   max_elevator_count: {
     label: m["param.max_elevator_count.label"] as MessageFn,
@@ -634,8 +642,6 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "vertical_passage_priority.prioritized": m["param.vertical_passage_priority.option.prioritized"] as MessageFn,
   "vertical_passage_priority.neutral": m["param.vertical_passage_priority.option.neutral"] as MessageFn,
   "vertical_passage_priority.protected": m["param.vertical_passage_priority.option.protected"] as MessageFn,
-  "sample_mode.count": m["param.sample_mode.option.count"] as MessageFn,
-  "sample_mode.percent": m["param.sample_mode.option.percent"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start"] as MessageFn,
   "waypoint.finish": m["param.waypoint.option.finish"] as MessageFn,
   "waypoint.any": m["param.waypoint.option.any"] as MessageFn,
@@ -763,8 +769,6 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "vertical_passage_priority.prioritized": m["param.vertical_passage_priority.option.prioritized.explanation"] as MessageFn,
   "vertical_passage_priority.neutral": m["param.vertical_passage_priority.option.neutral.explanation"] as MessageFn,
   "vertical_passage_priority.protected": m["param.vertical_passage_priority.option.protected.explanation"] as MessageFn,
-  "sample_mode.count": m["param.sample_mode.option.count.explanation"] as MessageFn,
-  "sample_mode.percent": m["param.sample_mode.option.percent.explanation"] as MessageFn,
   "src_mode.random": m["param.src_mode.option.random.explanation"] as MessageFn,
   "src_mode.dead_end_priority": m["param.src_mode.option.dead_end_priority.explanation"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start.explanation"] as MessageFn,
@@ -831,6 +835,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
   "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
+  "one_way_chance.dead_end_to_teleport": m["param.one_way_chance.dead_end_to_teleport.label"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
@@ -843,6 +849,7 @@ export function resolveParamLabel(id: string, fallback: string, contextId?: stri
 // `paramI18n` entry. `contextId` is the owning strategy's id.
 const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.description"] as MessageFn,
   "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
   "max_connections.one_way_group_super_hub": m["param.max_connections.one_way_group_super_hub.description"] as MessageFn,
   // The cross-element proximity checks (GitHub issue #376) have no comparison operator — `distance`

@@ -1,14 +1,18 @@
-import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { ElevatorBadgeSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedToggleRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
+import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
-/** "Badges" sub-subsection of the Elevator sub-group (GitHub issue #430) — plain-weight label, not
- *  collapsible, same convention as "Marker"/"Arrow" (`VectorByWallsSettingsPanel`). Independent of
+/** "Floor badges" subsection of the Elevator sub-group (GitHub issue #430) — collapsible like
+ *  "Marker"/"Arrow" (id `vertical_elevator_badges`), with the master "Show badges" toggle at its top
+ *  level and the rest in three collapsible sub-groups: "Placement" (`elevator_badges_placement`),
+ *  "Text" (`elevator_badges_text`) and "Backplate" (`elevator_badges_backplate`), the same shape as
+ *  `MarkerIndexSection`. The parameter-links schema mirrors these names. Independent of
  *  `verticalStyle`: rendered under both the abstract and decorative elevator sub-groups, since a
  *  floor-number badge ring is its own decorative layer on top of whichever elevator look is active
  *  (`VerticalConnectionRenderer.drawElevatorBadges`). `cornerStyle` is "Shared style"-linked
@@ -18,7 +22,7 @@ import * as m from "~/paraglide/messages";
  *  `links`/`registry`/`onSetLinkEnabled`/`onAddLink` from the nearest `LinkContextProvider` via the
  *  `Linked*Row` wrappers (GitHub issue #652 follow-up) rather than taking them as props. Shared by
  *  both render modes, so `P` is generic over each mode's own `ParamPath` union. */
-export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorField, fillColorField, textColorField }: {
+export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorField, fillColorField, textColorField, isExpanded, onToggle }: {
   settings: ElevatorBadgeSettings;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
@@ -26,13 +30,15 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
   linkTargets: {
     enabled: P | null;
     labelType: P | null;
-    textFontWeight: P | null;
+    textFont?: P | null;
     placement: P | null;
     shape: P | null;
     cornerStyle: P | null;
     size: P | null;
     distance: P | null;
+    startAngle: P | null;
     evenDistribution: P | null;
+    backing: P | null;
     gap: P | null;
     gapWidth: P | null;
     fillColor: P | null;
@@ -55,30 +61,23 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
   fillColorField: ColorField;
   borderColorField: ColorField;
   textColorField: ColorField;
+  /** Reads/toggles the caller's own sections-expanded record by id — see `CollapsibleSubGroup`. */
+  isExpanded: (id: string) => boolean;
+  onToggle: (id: string) => void;
 }) {
+  const badgesOn = useGate("elevatorBadgesOn");
+  const circularLayout = useGate("elevatorBadgeCircle");
   return (
-    <div style={styles.wrap}>
-      <div style={typography.body}>{m["image_export.vector_by_walls.elevator_badges"]()}</div>
-      <div style={styles.group}>
-        <LinkedToggleRow
-          label={m["image_export.vector_by_walls.elevator_badges_enabled"]()}
-          checked={settings.enabled}
-          onChange={(enabled) => onChange({ enabled })}
-          linkTarget={linkTargets.enabled}
-        />
-        {settings.enabled && (
-          <>
-            <LinkedSelectRow
-              label={m["image_export.vector_by_walls.elevator_badges_label_type"]()}
-              value={settings.labelType}
-              options={[
-                { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
-                { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
-                { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
-              ]}
-              onChange={(labelType) => onChange({ labelType })}
-              linkTarget={linkTargets.labelType}
-            />
+    <CollapsibleSubGroup id="vertical_elevator_badges" label={m["image_export.vector_by_walls.elevator_badges"]()} isExpanded={isExpanded} onToggle={onToggle}>
+      <LinkedToggleRow
+        label={m["image_export.vector_by_walls.elevator_badges_enabled"]()}
+        checked={settings.enabled}
+        onChange={(enabled) => onChange({ enabled })}
+        linkTarget={linkTargets.enabled}
+      />
+      {badgesOn && (
+        <>
+          <CollapsibleSubGroup id="elevator_badges_placement" label={m["image_export.vector_by_walls.elevator_badges_subsection_placement"]()} isExpanded={isExpanded} onToggle={onToggle}>
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.elevator_badges_placement"]()}
               value={settings.placement}
@@ -97,11 +96,22 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               value={settings.distance}
               onChange={(distance) => onChange({ distance })}
               min={0}
-              max={30}
+              max={10}
+              preciseMax={null}
               step={1}
               format={(v) => String(v)}
               linkTarget={linkTargets.distance}
             />
+            {circularLayout && <LinkedSliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_start_angle"]()}
+              value={settings.startAngle ?? 0}
+              onChange={(startAngle) => onChange({ startAngle })}
+              min={0}
+              max={359}
+              step={1}
+              format={(v) => `${v}°`}
+              linkTarget={linkTargets.startAngle}
+            />}
             <LinkedToggleRow
               label={m["image_export.vector_by_walls.elevator_badges_even_distribution"]()}
               checked={settings.evenDistribution}
@@ -112,12 +122,45 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               label={m["image_export.vector_by_walls.elevator_badges_gap"]()}
               value={settings.gap}
               onChange={(gap) => onChange({ gap })}
-              min={0}
-              max={20}
+              min={-10}
+              max={10}
+              preciseMin={-10}
+              preciseMax={null}
               step={1}
               format={(v) => String(v)}
-              disabled={settings.placement === "full_circle" && settings.evenDistribution}
               linkTarget={linkTargets.gap}
+            />
+          </CollapsibleSubGroup>
+
+          <CollapsibleSubGroup id="elevator_badges_text" label={m["image_export.vector_by_walls.elevator_badges_subsection_text"]()} isExpanded={isExpanded} onToggle={onToggle}>
+            <LinkedSelectRow
+              label={m["image_export.vector_by_walls.elevator_badges_label_type"]()}
+              value={settings.labelType}
+              options={[
+                { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+                { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+                { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+              ]}
+              onChange={(labelType) => onChange({ labelType })}
+              linkTarget={linkTargets.labelType}
+            />
+            <TextStyleRows
+              settings={settings}
+              onChange={onChange}
+              linkTargets={linkTargets}
+              priorityColors={textColorPriority}
+              defaultColor={textColorDefault}
+              field={textColorField}
+              autoFitKind="elevator"
+            />
+          </CollapsibleSubGroup>
+
+          <CollapsibleSubGroup id="elevator_badges_backplate" label={m["image_export.vector_by_walls.elevator_badges_subsection_backplate"]()} isExpanded={isExpanded} onToggle={onToggle}>
+            <LinkedToggleRow
+              label={m["image_export.vector_by_walls.elevator_badges_backing"]()}
+              checked={(settings.backing ?? "individual") !== "individual"}
+              onChange={(merged) => onChange({ backing: merged ? "shared" : "individual" })}
+              linkTarget={linkTargets.backing}
             />
             <MarkerAppearanceRows
               settings={settings}
@@ -132,23 +175,9 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               defaultColors={{ fillColor: fillColorDefault, borderColor: borderColorDefault }}
               fields={{ fillColor: fillColorField, borderColor: borderColorField }}
             />
-            <TextStyleRows
-              settings={settings}
-              onChange={onChange}
-              linkTargets={linkTargets}
-              priorityColors={textColorPriority}
-              defaultColor={textColorDefault}
-              field={textColorField}
-              autoFitKind="elevator"
-            />
-          </>
-        )}
-      </div>
-    </div>
+          </CollapsibleSubGroup>
+        </>
+      )}
+    </CollapsibleSubGroup>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  wrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  group: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
-};

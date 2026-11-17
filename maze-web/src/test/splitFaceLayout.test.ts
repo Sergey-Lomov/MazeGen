@@ -309,6 +309,25 @@ describe("detectSplitSpecialShapeKind", () => {
     expect(detectIdentity([passage([0, 1], 4), passage([2, 3], 4)])).toBe("diagonal");
   });
 
+  it("recognizes two complementary four-face octagon halves as a divider", () => {
+    expect(detectIdentity([passage([0, 1, 2, 3], 8), passage([4, 5, 6, 7], 8)])).toBe("octagon_diagonal_divider");
+    expect(detectIdentity([passage([0, 1, 6, 7], 8), passage([2, 3, 4, 5], 8)])).toBe("octagon_diagonal_divider");
+  });
+
+  it("recognizes distinct opposite octagon pairs as a bridge", () => {
+    expect(detectIdentity([passage([0, 4], 8), passage([2, 6], 8)])).toBe("bridge");
+  });
+
+  it("recognizes three distinct opposite octagon pairs as a layered double bridge", () => {
+    expect(detectIdentity([passage([0, 4], 8), passage([1, 5], 8), passage([2, 6], 8)])).toBe("octagon_double_bridge");
+  });
+
+  it("recognizes four distinct opposite octagon pairs as a layered triple bridge", () => {
+    expect(detectIdentity([
+      passage([0, 4], 8), passage([1, 5], 8), passage([2, 6], 8), passage([3, 7], 8),
+    ])).toBe("octagon_triple_bridge");
+  });
+
   it("recognizes the Cairo divider in perimeter order", () => {
     expect(detectIdentity([passage([2, 3], 5), passage([1, 4], 5)])).toBe("cairo_diagonal_divider");
     expect(detectIdentity([passage([1, 2], 5), passage([3, 4], 5)])).toBe("cairo_adjacent_divider");

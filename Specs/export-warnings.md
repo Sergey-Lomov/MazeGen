@@ -6,7 +6,9 @@ This specification defines warnings that belong to the two image-export renderer
 These are presentation warnings, not Quality Control issues. A maze may be valid and still
 produce an export whose colors, labels, markers, or geometry are difficult to read. The warnings
 are computed by the renderer-specific pure selectors in
-`maze-web/src/pixi/selectors/exportWarnings.ts` and are displayed in the corresponding export
+`maze-web/src/pixi/selectors/exportWarnings.ts` (entry points, per-floor caching and merging; the warning groups in `exportWarningGroups.ts`; text fit in `exportTextFit.ts`,
+contrast checks in `exportContrastWarnings.ts`, teleport/elevator checks in `exportTeleportWarnings.ts`, corridor-specific
+checks in `exportCorridorWarnings.ts`) and are displayed in the corresponding export
 settings panel.
 
 ## Common rules
@@ -45,6 +47,50 @@ The implementation may group several visual roles under one warning id when they
 foreground/surface relationship. The description shown in the panel must still name the affected
 roles precisely.
 
+## Warning groups and recomputation (GitHub issue #928)
+
+Every export warning belongs to exactly one **warning group** (`WarningGroup` in `exportWarningGroups.ts`; a mode's list is
+`WALLS_WARNING_GROUPS` / `CORRIDORS_WARNING_GROUPS`). A group is a pure function of one floor's maze data (`WarningFloorEnv`) and of
+the settings fields it reads, and declares the warning ids it may emit; no id appears in two groups of a mode, and a test checks both
+that and that every emitted id is declared.
+
+- **Dependency tracking.** `computeVector*WarningsAcrossFloors` runs each (mode, group, floor) under `trackedMemo`
+  (`selectors/trackedMemo.ts`): the group reads the settings through a read-recording view, and its cached result is reused while every
+  recorded read (leaf value, key set, `in` check) still holds in the new settings. A group never lists its own settings dependencies, and
+  an edit to a field it does not read cannot recompute it — e.g. dragging a teleport connector control point
+  (`manualTeleportConnectorPaths`) recomputes only the `teleportConnectors` group. Settings are immutable (replaced, never mutated, like the store's state); a
+  group must keep no settings sub-object in its result (the tracker throws) and must not call `trackedMemo` itself (`inputMemo` is allowed).
+- **Other inputs.** The cache key of every group is the maze (`nodes`, `edges`, `cfg`, effective `start`/`finish`), the floor ids in order
+  (titles excluded), `hasGlues` and the group's own `hiddenInputs`: the text-overflow group adds the floor title and the loaded
+  label-font state (`textMetricsKey()`, MSDF atlases and browser TTF/OTF fonts), the split color groups add whether a cut line separates seam mirrors on the floor. A group that
+  reads any other state outside the settings must list it in `hiddenInputs`. Color checks read through `buildColorVisibility`, which is
+  lazy (a reader of one color field subscribes to that field and the flags gating it, not to the whole settings).
+- **Font readiness (GitHub issue #974).** The cache key sees a font that finished loading or converting, but a React memo does not: the
+  settings panels, their text fit and the font picker's own overflow warnings list `useTextMetricsKey()` (`components/features/useTextMetricsKey.ts`,
+  a subscription to `LABEL_FONT_LOADED_EVENT` returning `textMetricsKey()`) among their memo inputs, so a warning measured while the label was still
+  drawn in the fallback font is recomputed once the font lands.
+- **Order.** The merged list is ordered group by group (the group list order), floors in order within a group; a group's own order is the
+  order its warnings are emitted in. The uncached single-floor entry points (`computeVectorByWallsWarnings`,
+  `computeVectorByCorridorsWarnings`) run the same groups in the same order; they are the uncached reference the tests compare the cache against,
+  and nothing in the app calls them.
+- **Merged list.** The per-floor lists are merged into one list per mode (`inputMemo` slot `merge:<mode>`, keyed on the maze nodes and the
+  identity of every group's list): while every group hits, the same list object comes back, so a settings edit that touches no group costs
+  no merge and gives the panel no new list to re-render on. The topology list is kept the same way. A returned list is shared: callers
+  must not mutate it. The tracker keeps at most 4096 slots, least recently used first, and drops an evicted slot's counters with it.
+- **Single-group entries.** `computeTeleportConnectorWarningsAcrossFloors` (the `teleportConnectors` group) and
+  `computeTextOverflowWarningsAcrossFloors` (GitHub issue #971, the `textOverflow` group of either mode, used by the font picker) run
+  one group through the same per-group slots as the full pass, so a consumer that needs one family of warnings computes no other group.
+- **Adding a warning.** Put its id in exactly one group (a new group when no existing one reads the same settings fields), keep the group's
+  `ids` list complete, and read settings only through the group's `settings` argument. Tests: `exportWarningCache.test.ts` (partition,
+  warm-vs-cold equality under paranoid mode, recomputation).
+- **Panel and hover share the cache.** The settings panel (`useExportPanelModel`) and both renderers' hover highlight (`ExportWarningHighlight`, which only draws the warnings it is given) call the same
+  `*AcrossFloors` functions with the same `hasGlues` (`hasAnyGlue(floorTopology)`). `computeTextFitItemsAcrossFloors` is cached the same way.
+- **Topology warnings.** The glue tab and edge mark warnings (`topologyWarnings.ts`) use the same mechanism through
+  `TOPOLOGY_WARNING_GROUPS` (`glueTabs`, `edgeMarkers`, `seamAmbiguity`; slots `topology:<group>`). They concern the active floor's net, so
+  a group's cache key is the store state it reads (`activeFloorId`, `activeFieldConfig`, `floorTopology`, `floorCreases`,
+  `pngExportSettings`, `nodes`, `edges`, `floors`) instead of the maze data, and the settings are tracked the same way. The panel passes
+  the whole mode settings and lists no settings fields; `TopologyWarningHighlight` calls the same function and shares the cache.
+
 ## Vector by corridors only
 
 The corridor surface is `VectorByCorridorsSettings.color`; the canvas surface is
@@ -79,10 +125,10 @@ network.
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance
+- `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled, so the groups cannot be told apart.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
-- `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
-- `teleport_on_special_split` — a teleport endpoint lands on a specially rendered split shape.
+- `teleport_connector_covers_one_way` — see **Both renderers**.
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
 
@@ -127,15 +173,16 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance
+- `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
-- `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
-- `teleport_on_special_split` — a teleport endpoint lands on a specially rendered split shape.
-- `vertical_on_special_split` — a vertical connection marker lands on a specially rendered split
-  shape.
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
-- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity.
+- `elevator_badges_merged_labels_overlap` — floor-number glyph ink overlaps on a merged elevator
+  badge backing. Loaded TTF/OTF labels use a bounded 4x alpha-mask intersection; MSDF and unavailable
+  runtime masks use the established metric fallback.
+- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity. Slots under a marker-index
+  plate are unavailable (GitHub issue #964), so a plate lowers the capacity of the side it sits on.
 - `marker_text_overflow` / `elevator_badge_text_overflow` / `teleport_badge_text_overflow` (GitHub
   issue #707) — a start/finish caption, elevator floor-number badge or cross-floor teleport badge
   label does not fit its plate. Shared by both renderers. "Fits" means every point of the label's glyph-ink outline (boundary pixels of the baked MSDF
@@ -144,13 +191,17 @@ drawn over the floor and the floor remains the relevant base surface even when a
   the allowed size therefore depends on `shape`) shrunk by the label's text margin (`textMargin`, px per side,
   0–10 in 0.5 steps, default 1; one field of `TextStyleFields` on every text, also in Shared style as `markerTextMargin`).
   Only labels that are actually drawn count:
-  captions honor `textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
+  captions honor `markerEnabled`/`textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
   badges need `elevatorBadges.enabled`, teleport badges need a visible connector. One warning per
   id; hover highlights the offending nodes (captions, elevator markers, with cross-floor targets)
   or cells (teleport badges).
 - `marker_index_text_overflow` (GitHub issue #725) — a marker-index label does not fit its fixed
   `width` x `height` plate (same ink-outline rule and `textMargin` as the other text overflow
   warnings, against the rectangle). Only when `markerIndex.enabled`; hover highlights the plate cells.
+- `floor_label_text_overflow` — a floor label does not fit its backplate (same ink-outline rule and
+  `textMargin`). The label has no node or cell to highlight, so the warning carries the affected floors
+  in `ExportWarning.floors` (merged across floors) and its bubble shows a floor badge per floor; there
+  is no hover highlight.
 - `marker_index_covers_stop_line` (GitHub issue #744) — a marker-index plate, border included,
   overlaps the stop line (wall tick) of a one-way vertical passage marker on the same floor. The
   plate body draws above the markers, so the overlap hides part of the line and that end of the
@@ -173,6 +224,64 @@ For the following rules, the base surface is the mode's primary surface:
 - floor `floorColor` in Vector by walls.
 
 ### Color/distinguishability warnings
+
+#### Teleport connector covering a one-way indicator
+
+`teleport_connector_covers_one_way` (GitHub issue #862): a drawn teleport connector, line plus its
+floor-colored gap, passes over a one-way indicator. One-way indicators draw below the teleport layer,
+so the covered passage reads as two-way. Not emitted when `teleportConnectorStyle === "none"`.
+
+- The connector path is the one the renderer draws: the check rebuilds the renderer's marker layout,
+  marker scaler and avoidance waypoints and routes with the same `routeTeleportConnectors`. It
+  therefore also fires where routing cannot help (both teleport ends on the line through the
+  indicator), and stays silent when routing already steered around it.
+- An indicator counts as covered when its bounding circle is closer to the connector polyline than
+  `connectorWidth / 2 + connectorGapWidth`. Walls: the circle is the indicator's own extent
+  (`oneWayIndicatorSpan` without highlight padding). Corridors: the chevron row's length or width,
+  whichever is larger.
+- Hover highlights only the covered one-way passages (`nodes` and `edges` of each passage), not the
+  teleport, using the same boundary highlight as the one-way corridor warnings.
+- Teleport edges are taken without cross-floor badge spreading, like the other teleport warnings.
+- A manually authored connector path (`manualTeleportConnectorPaths`, see `teleport_connectors.md`) is the path that is checked, so
+  the warning disappears once the user routes the connector around the indicator by hand.
+
+#### Teleport connector geometry (GitHub issue #945)
+
+Warnings about how the drawn connectors look. They share one warning group with `teleport_connector_covers_one_way`
+(`teleportConnectors`; one layout and one routing per floor, `buildTeleportConnectorContext`), are computed by
+`computeTeleportConnectorWarnings` (`teleportConnectorWarnings.ts`) on the path the renderer draws (manual paths included), and
+are not emitted when `teleportConnectorStyle === "none"`. Each id is one entry; hover highlights only the offending parts of the
+connectors as `floorPolygons` (display space, one floor each, drawn by the mode renderer's `ExportWarningHighlight` for the floor it
+shows), and carries no nodes, edges or cells. The highlight is a translucent fill plus an outline, a closed contour with softened
+corners (quadratic curves, cut-in capped at half of each neighbouring edge, `POLYGON_HIGHLIGHT_RADIUS`). Because the group reads `manualTeleportConnectorPaths`, editing a manual path recomputes it.
+
+- `teleport_connectors_overlap` — two connectors run along each other: a stretch of one at least 6 reaches long stays within the
+  reach (half the connector width plus the gap) of the other's centerline, so the line drawn later hides the one below. Crossings
+  at a large angle are not reported. The highlighted stretch is always measured along the connector drawn on top (draw order of
+  `TeleportRenderer.renderGroups`).
+- `teleport_connector_endpoint_detached` — the end of a **manual** connector lies farther from its marker center than the marker's
+  drawn radius (fill, border and edge gap ring; a floor badge uses the badge's own). Automatic connectors always start on their
+  marker. Highlights the end and the marker. Editing is not restricted; the warning is the only feedback.
+- `teleport_connector_leaves_field` — `teleportAvoidFieldExit` is on and the drawn stroke (centerline offset by half the
+  connector width plus gap, like the router's own check) leaves the union of the floor's cell polygons; applies to manual and
+  automatic connectors of every style. A connector through a seam is checked on the centerline only. Highlights the part outside:
+  one polygon per outside run (a lone inside sample between two outside ones does not split it), the outline of the stroke
+  buffered by the same half-width plus gap, so both sides run parallel to the line; the inner side of a bend is mitered, the outer
+  side is a round join.
+- `teleport_connector_crosses_marker` — the line runs over a marker automatic routing avoids: a start/finish marker, a vertical
+  passage marker or another connector's endpoint marker/floor badge (radius as drawn, including border and gap ring). The
+  connector's own end markers are ignored. One-way indicators are covered by `teleport_connector_covers_one_way`; split junction
+  hubs are not checked. Highlights the marker and the crossing segments.
+- `teleport_connector_arrow_sticks_out` — a direction arrow (one-way connectors with arrows on) whose tip or tail center is off the
+  line by more than half the connector width, e.g. a curved connector bending under the arrow or a line shorter than the arrow.
+  Highlights the arrow.
+- `teleport_connector_too_short_for_arrow` — a one-way connector with arrows on whose length minus the two end markers' drawn radii
+  is under 1.5 × the arrow size (the arrow's tip-to-tail length). Highlights the connector's middle.
+- `teleport_connector_covers_arrow` — the arrow of a one-way connector (arrows on) lies **under** another connector: that connector
+  is drawn after it (group order, then connector order, as `TeleportRenderer.renderGroups` draws) and its line plus floor-colored
+  gap (half the width plus the gap) reaches the arrow triangle. An arrow drawn above the other connector is fine and not
+  reported; a connector's own arrows (a seam connector's two pieces included) are never checked against itself. Highlights the arrow.
+- `teleport_connector_degenerate` — a connector shorter than its own width (both ends in one point). Highlights the point.
 
 #### Grid vs background
 
@@ -246,11 +355,51 @@ Elevator badge text warnings highlight only
 the affected elevators; marker-index text warnings highlight only connections where an index is
 actually rendered.
 
+#### Different markers that look the same (GitHub issue #959)
+
+`markers_look_alike` (group `markersLookAlike`, `exportMarkerLookAlike.ts`): markers of different kinds whose rendered look
+matches, so a reader of the exported image cannot tell which is which. Kinds: start, finish, teleport, two-way vertical passage,
+one-way vertical passage, elevator. Markers of **every floor** are compared with one another (a start on one floor and a finish on
+another can still pass for each other), so the warning is computed once, by the first floor's pass (`projectMarkerLooks`). Only kinds
+drawn somewhere take part (start/finish when set, teleport when a teleport exists, a vertical kind when such a marker exists).
+
+- Two markers look alike when all hold: same `shape`; same `sizeAdaptation` and `size` within 15% of the bigger one (edge marks have the edge marker `size` and no adaptation); a border of the fill's own color (`hasLowContrast`) is invisible, so it is dropped and adds its width twice to the size (size 18 with border 1 is a borderless 20); fill colors closer than the shared color threshold (`hasLowContrast`); both
+  have no border, or both have one and the border colors are close too; same inner elements. Inner elements are the start/finish
+  caption (text and color, only when enabled and non-empty) and, for abstract vertical markers, the direction arrow (style, corner
+  style, color). A one-way passage always has a stop line no other marker has. Gap and corner style of the marker itself do
+  not count.
+- A teleport group takes its override fill/border/shape into account. The two ends of a one-way teleport are separate looks: the entry is
+  filled, the exit-only end is an outline (fill of the floor/corridor color) and takes part only with a border. Only the ends whose look
+  matches are highlighted. Teleport groups are never compared with each other here
+  (that is `teleport_group_ambiguous`); each is compared with the other kinds.
+- Decorative vertical style is skipped (line pictograms differ by construction). Edge alignment marks are not part of this list: they are
+  compared with these markers by `edge_marker_looks_like_marker` (see **Edge alignment markers**), and with each other by
+  `edge_marker_colors_similar`.
+- One entry per mode; `markerPairs` lists the alike kind pairs (merged across floors) and the description names them. Hover highlights
+  the nodes of every marker in those pairs.
+
+#### Invisible start / finish (GitHub issue #963)
+
+While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden — their visibility is the schema's `active` rule of the matching panel row (`startMarker.fillColor` etc., GitHub issue #965), which `colorFieldRegistry.ts` evaluates — so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
+
+`start_invisible` / `finish_invisible` (group `waypointInvisible`, both modes): the start (finish) of the floor draws nothing — no marker (`markerEnabled === false`, or size and border both `0`) and no caption (`textEnabled === false` or empty/blank `text`). One warning per endpoint, only when it is set on the floor; highlights its node. Checked by `isWaypointVisible` (`mazeSelectors/markers.ts`). In "Vector by walls" an endpoint whose external passage is on (any mode but `none`) and drawn (the cell has an outer side, GitHub issue #330) is visible even with no marker and no caption.
+
+#### External passage without an outer wall (GitHub issue #330)
+
+`start_opening_no_outer_wall` / `finish_opening_no_outer_wall` (group `waypointOpeningNoOuterWall`, "Vector by walls" only): the start (finish) external passage is on (`startOpening.mode` / `finishOpening.mode` is not `none`) but the endpoint's cell has no outer side (`listOuterFaces` is empty), so nothing is opened and no pointer is drawn. Titles: "No outer wall near the start/finish for the external passage". One warning per endpoint, only when it is set on the floor; highlights its node. See `Specs/image-export.md` ("Waypoint external passages").
+
 ### Existing non-color warnings shared by both renderers
 
 - `teleport_marker_invisible`;
+- `markers_look_alike`;
+- `start_invisible`, `finish_invisible`;
+- `start_opening_no_outer_wall`, `finish_opening_no_outer_wall` (walls only);
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
+- `teleport_connector_covers_one_way`;
+- the teleport connector geometry warnings (`teleport_connectors_overlap`, `teleport_connector_endpoint_detached`,
+  `teleport_connector_leaves_field`, `teleport_connector_crosses_marker`, `teleport_connector_arrow_sticks_out`,
+  `teleport_connector_too_short_for_arrow`, `teleport_connector_covers_arrow`, `teleport_connector_degenerate`);
 - `elevator_indistinguishable`;
 - `marker_index_covers_stop_line`.
 
@@ -263,6 +412,49 @@ Cross-floor teleport badges use their configured border color for contrast warni
 their effective border width is greater than zero. When the border width is zero, the warning
 checks the badge fill color against the active surface instead. Group customization uses the
 group's secondary color for the visible badge fill/border in both cases.
+
+### Glue tab contrast (GitHub issue #901)
+
+Both checks apply only while the glue tabs show (`glueTabs.showTabs`; the floor's glues are not checked):
+
+- `glue_tab_outline_low_contrast_fill` — outline colour vs fill colour, only when the outline thickness is above zero;
+- `glue_tab_fill_low_contrast_background` — fill colour vs background colour, only when the outline thickness is zero
+  (with an outline, the outline sets the tab apart).
+
+Fields: `glueTabFill`, `glueTabLine` (the latter hidden without an outline).
+
+### Glue tab geometry (GitHub issue #913)
+
+The checks look at the glue tabs of the active floor (`selectExportGlueTabs`) and apply only while the tabs show. They are
+computed by `computeGlueTabWarnings` (`glueTabWarnings.ts`), outside the per-mode `compute*Warnings` (which have no tab
+geometry), and, together with the edge mark warnings, appended to the mode's list by the panel (`useExportPanelModel`) through `computeTopologyWarnings` (`topologyWarnings.ts`).
+None carries nodes, edges or cells; the first two carry `polygons` (the offending tabs, display space), the third `bands`.
+
+- `glue_tabs_with_cut_lines` (GitHub issue #1014) — the glue tabs show while some glue of the floor has a cut line (`GlueTabLayout.hasCuts`: the line itself is set, whether or not it is drawn) on a tessellation other than the square one; squares never get it, because there tabs and cut lines work together. On other topologies how they should fit together cannot be stated simply, so combining them may be unstable and the warning tells the user to check every tab by eye. It carries no nodes, edges, polygons or bands: nothing is highlighted.
+- `glue_tabs_overlap` — two tabs overlap by more than a negligible depth (convex separating-axis test; touching edges or
+  corners do not count). Highlights every tab that overlaps another.
+- `glue_tab_too_thin` — the base of a tab (the part of the edge between the insets) is shorter than 10 display units (pixels at
+  scale 1, `MIN_TAB_BASE`), independent of the output mode. An inset that leaves no tab at all has nothing to highlight and is not
+  reported there (see `glue_tab_missing`). Highlights the thin tabs.
+- `glue_tab_missing` — the inset leaves nothing of a glued stretch, so it gets no tab (`glueTabOn` is `null`; stretches
+  that get none because a face is curved are not reported). Highlights the whole stretch the tab should have been on as
+  `bands`: the faces of the side the tab would be drawn on (`selectExportGlueTabLayout`'s `missingEnds`, side B for the
+  alternated ones), merged into one polyline per touching run by `mergedFacePolylines`, the glue editor's merging; for a
+  glue with a cut line, the swallowed line span itself (`missingLines`).
+
+### Edge alignment markers (GitHub issue #902)
+
+Both checks look at the markers of the active floor (`selectExportEdgeMarkers`), with colours resolved through the parameter links for that floor (`edgeMarkerStyleOf`) and apply only while they show (`edgeMarkers.mode` is not `"hidden"`). They are computed by `computeEdgeMarkerWarnings` (`edgeMarkerWarnings.ts`), outside the per-mode `compute*Warnings`, and appended to the mode's list by `useExportPanelModel`. Neither carries nodes or edges; both carry `polygons` (the square around each offending marker, display space).
+
+When alignment markers are hidden, `seam_matching_ambiguous_without_markers` (GitHub issue #920) is emitted when edge runs from different glues have the same visible wall/passage pattern (in either run direction) and lie in separate physical-net components. The components use only ordinary cell adjacency: maze walls, passages and the glues themselves do not connect them. Runs on the same connected piece of the net cannot be assembled with one another incorrectly and are ignored. It carries the ambiguous runs as display-space `bands`, and disappears as soon as alignment markers are shown, including in the `ambiguous` mode that marks exactly those runs.
+
+### Highlight of the topology warnings
+
+The hover highlight of the glue tab and edge mark warnings (`polygons`, `bands`) is not drawn by the mode renderers but by `TopologyWarningHighlight` (`pixi/imageExport/`, mounted by `MazeScene` in the layer above the cut sheet, after the crease overlay): these warnings concern the net itself, so the highlight is drawn in display space and never clipped to the cut region. It follows the cut transfer, though: the shape is drawn once per cut-plan offset whose shifted copy has its centre inside the plan's region (the copies the markers and tabs themselves are drawn in), so a half mark moved onto its twin line is highlighted there, not on the empty spot it came from. Without a cut plan the shape is drawn as is. It redraws from `computeTopologyWarnings` for the active mode when the hovered warning, the floor's geometry or the settings change. The mode renderers keep the maze highlights (nodes, cells, boundaries).
+
+- `edge_marker_colors_similar` — two markers with different keys have the same shape and colours that are too close (`hasLowContrast`); a different shape alone avoids it. The cards of the markers show the same check. The two halves of a glue's marker share a key, so they are never compared. Highlights every indistinguishable marker with a rounded square (half side = marker radius + 4); a half marker gets only the half of it on its face's side of the edge.
+- `edge_marker_looks_like_marker` (GitHub issue #959) — a mark is a plain filled shape (no border, no inner elements), so it passes for another kind of marker (start, finish, teleport, two-way/one-way passage, elevator; the kinds and the look of each are those of `markers_look_alike`, collected for the whole project by `stateMarkerLooks`, with start and finish at the effective endpoints that `computeTopologyWarnings` takes as an argument and keys its cache on) of the same shape whose fill is close to the mark's colour and which has no border and no inner element (caption, arrow). Each mark is compared on its own, so two marks of different colours can each match a different marker. The topology group reads the whole render mode's settings for this. Highlights the marks that look like another marker (same rounded square) and the markers they look like (by node: the topology highlight draws the marks, the mode renderers' cell highlight draws the nodes, which they find by key among their own warnings plus `computeTopologyWarnings`; nodes of other floors are skipped); the description names the pairs (`markerPairs`: alignment mark and the kind).
+- `edge_marker_low_contrast_background` — a marker's colour is too close to the mode's background colour. Highlights those markers with the same rounded square.
 
 ## Explicitly out of scope
 

@@ -236,7 +236,7 @@ export function setNoticeZonePaused(paused: boolean): void {
 
 // --- error zone ---------------------------------------------------------------------------------
 
-function addError(input: NotifyInput): void {
+function addError(input: NotifyInput): number {
   const key = notificationKey(input.source, input.code);
   const occurrence: ErrorOccurrence = { id: nextId++, params: input.params ?? {}, details: input.details };
   const { errors } = useNotificationStore.getState();
@@ -259,6 +259,17 @@ function addError(input: NotifyInput): void {
   }
   useNotificationStore.setState({ errors: next });
   if (!existing) announce(notificationMessage(input.code, occurrence.params), "assertive");
+  return occurrence.id;
+}
+
+/** Withdraws one occurrence of an error (its cause went away); the card goes with its last occurrence. */
+export function retractErrorOccurrence(source: string, code: string, occurrenceId: number): void {
+  const key = notificationKey(source, code);
+  useNotificationStore.setState((s) => ({
+    errors: s.errors
+      .map((c) => (c.key === key ? { ...c, occurrences: c.occurrences.filter((o) => o.id !== occurrenceId) } : c))
+      .filter((c) => c.occurrences.length > 0),
+  }));
 }
 
 export function closeErrorCard(key: string): void {
@@ -272,14 +283,15 @@ export function closeAllErrors(): void {
 // --- public API ---------------------------------------------------------------------------------
 
 /** Reports a rejected action (`notice` code) or a failed operation (`error` code). */
-export function notify(input: NotifyInput): void {
+export function notify(input: NotifyInput): number | null {
   const def = getNotificationCode(input.code);
   if (!def) {
     console.error(`notify: unregistered notification code "${input.code}"`);
-    return;
+    return null;
   }
-  if (def.category === "error") addError(input);
-  else addNotice(input, def.dedupParams);
+  if (def.severity === "error") return addError(input);
+  addNotice(input, def.dedupParams);
+  return null;
 }
 
 /** Clears both zones, the suppression list and the active clock (tests). */

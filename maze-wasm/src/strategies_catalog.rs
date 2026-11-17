@@ -2,11 +2,12 @@ use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 use maze_core::{
     quality_control::{
         AREA_MISSING_ELEVATOR_STOPS, EXCESSIVE_ELEVATOR_STOP_GAP, EXCESSIVE_SCC_COUNT,
-        INVALID_CROSS_ELEMENT_GROUP, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP,
-        INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP, INVALID_LOOP_GROUP,
-        INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION,
-        INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
-        INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
+        INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END, INVALID_DEAD_END_GROUP, INVALID_ELEVATOR,
+        INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
+        INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
+        INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP,
+        INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_SPLIT_TILE,
+        INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
         INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_ELEVATOR_HEIGHT,
         MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS,
         MISSING_ONE_WAYS, MISSING_REGIONS, MISSING_SPLIT_TILES, MISSING_TELEPORTS,
@@ -15,22 +16,24 @@ use maze_core::{
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
-        CrossElementGroupSelectStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
-        ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
-        InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy,
-        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
-        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
-        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
-        OneWayGroupSelectStrategy, OneWayToPassageStrategy, OneWayToWallStrategy,
-        PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy, RandomEndpointsStrategy,
-        ReduceSccCountStrategy, RegionShrinkSplitStrategy, RemoveElevatorStopStrategy,
-        RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy,
-        RemoveSplitStrategy, RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
+        CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
+        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, DeadEndToVerticalPassageStrategy,
+        ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy,
+        ExpandRegionPassageStrategy, FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy,
+        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
+        MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
+        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
+        MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
+        OneWayToWallStrategy, PriorityDeadEndStrategy, PriorityMissingLoopsStrategy,
+        PriorityRegionMergeStrategy, RandomEndpointsStrategy, ReduceSccCountStrategy,
+        RegionShrinkSplitStrategy, RemoveElevatorStopStrategy, RemoveElevatorStrategy,
+        RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy, RemoveSplitStrategy,
+        RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
         ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -68,6 +71,7 @@ pub enum NestedDispatchKindDto {
     Unordered,
     Weighted,
     Priority,
+    SizeThreshold,
 }
 
 fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatchKindDto {
@@ -75,6 +79,7 @@ fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatch
         maze_core::repair::NestedDispatchKind::Unordered => NestedDispatchKindDto::Unordered,
         maze_core::repair::NestedDispatchKind::Weighted => NestedDispatchKindDto::Weighted,
         maze_core::repair::NestedDispatchKind::Priority => NestedDispatchKindDto::Priority,
+        maze_core::repair::NestedDispatchKind::SizeThreshold => NestedDispatchKindDto::SizeThreshold,
     }
 }
 
@@ -320,6 +325,129 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             visibility: None,
         },
         StrategyDescriptor {
+            id: "dead_end_group_select",
+            handles: INVALID_DEAD_END_GROUP.as_str(),
+            params: strategy_params_dto(
+                <DeadEndGroupSelectStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndGroupIssue,
+                >>::params(&DeadEndGroupSelectStrategy),
+                &[],
+            ),
+            experimental: <DeadEndGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndGroupIssue,
+            >>::is_experimental(&DeadEndGroupSelectStrategy),
+            nested_suppressed_params: <DeadEndGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndGroupIssue,
+            >>::nested_suppressed_params(
+                &DeadEndGroupSelectStrategy
+            ),
+            nested_slots: nested_slots_dto(<DeadEndGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndGroupIssue,
+            >>::expected_nested(
+                &DeadEndGroupSelectStrategy
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_passage",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <DeadEndToPassageStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&DeadEndToPassageStrategy),
+                &[],
+            ),
+            experimental: <DeadEndToPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToPassageStrategy),
+            nested_suppressed_params: <DeadEndToPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToPassageStrategy
+            ),
+            nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_vertical_passage",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&DeadEndToVerticalPassageStrategy),
+                &[],
+            ),
+            experimental: <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToVerticalPassageStrategy),
+            nested_suppressed_params: <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToVerticalPassageStrategy
+            ),
+            nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_teleport",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <DeadEndToTeleportStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&DeadEndToTeleportStrategy),
+                &[("allow_cross_floor", EntityVisibility::MultiFloorOnly)],
+            ),
+            experimental: <DeadEndToTeleportStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToTeleportStrategy),
+            nested_suppressed_params: <DeadEndToTeleportStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToTeleportStrategy
+            ),
+            nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_split",
+            handles: INVALID_DEAD_END.as_str(),
+            params: vec![ParamDescriptor {
+                id: "split_config",
+                label: "Split settings",
+                kind: ParamKindDto::SplitGenerationConfig,
+                visibility: None,
+            }],
+            experimental: <DeadEndToSplitStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToSplitStrategy {
+                config: Default::default(),
+            }),
+            nested_suppressed_params: <DeadEndToSplitStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToSplitStrategy {
+                    config: Default::default(),
+                },
+            ),
+            nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
             id: "missing_loops_random",
             handles: MISSING_LOOPS.as_str(),
             params: strategy_params_dto(
@@ -433,6 +561,62 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 &MissingLoopsTeleportStrategy
             ),
             nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "priority_dead_end",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <PriorityDeadEndStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&PriorityDeadEndStrategy),
+                &[],
+            ),
+            experimental: <PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&PriorityDeadEndStrategy),
+            nested_suppressed_params: <PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &PriorityDeadEndStrategy
+            ),
+            nested_slots: nested_slots_dto(<PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::expected_nested(
+                &PriorityDeadEndStrategy
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "weighted_dead_end",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <WeightedDeadEndStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&WeightedDeadEndStrategy),
+                &[],
+            ),
+            experimental: <WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&WeightedDeadEndStrategy),
+            nested_suppressed_params: <WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &WeightedDeadEndStrategy
+            ),
+            nested_slots: nested_slots_dto(<WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::expected_nested(
+                &WeightedDeadEndStrategy
+            )),
             visibility: None,
         },
         StrategyDescriptor {
@@ -827,6 +1011,34 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 maze_core::quality_control::RegionNeedsExpansionIssue,
             >>::expected_nested(
                 &PriorityRegionMergeStrategy
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "size_threshold_region_merge",
+            handles: REGION_NEEDS_EXPANSION.as_str(),
+            params: strategy_params_dto(
+                <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::RegionNeedsExpansionIssue,
+                >>::params(&SizeThresholdRegionMergeStrategy),
+                &[],
+            ),
+            experimental: <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::is_experimental(&SizeThresholdRegionMergeStrategy),
+            nested_suppressed_params: <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::nested_suppressed_params(
+                &SizeThresholdRegionMergeStrategy
+            ),
+            nested_slots: nested_slots_dto(<SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::expected_nested(
+                &SizeThresholdRegionMergeStrategy
             )),
             visibility: None,
         },
@@ -1501,222 +1713,5 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // GitHub issue #349: `scored_endpoints`'s cross_floor_weight/elevator_stop_weight are
-    // meaningless on a single-floor maze, so the web UI hides them via this tag — pins the wiring
-    // between the strategy's own param ids and the visibility override list, since a typo in
-    // either id would silently leave the param always-visible with no compiler signal.
-    #[test]
-    fn scored_endpoints_marks_floor_weights_multi_floor_only() {
-        let strategies = available_strategies_list();
-        let scored = strategies
-            .iter()
-            .find(|s| s.id == "scored_endpoints")
-            .unwrap();
-        for id in ["cross_floor_weight", "elevator_stop_weight"] {
-            let param = scored.params.iter().find(|p| p.id == id).unwrap();
-            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
-        }
-    }
-
-    // GitHub issue #381/#349 follow-up: `missing_teleports`'s cross-floor mode/balance only
-    // matter when a teleport can actually land on a different floor.
-    #[test]
-    fn missing_teleports_marks_cross_floor_params_multi_floor_only() {
-        let strategies = available_strategies_list();
-        let strategy = strategies
-            .iter()
-            .find(|s| s.id == "missing_teleports")
-            .unwrap();
-        for id in ["cross_floor_mode", "cross_floor_balance"] {
-            let param = strategy.params.iter().find(|p| p.id == id).unwrap();
-            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
-        }
-    }
-
-    #[test]
-    fn missing_loops_teleport_exposes_ordered_loop_params() {
-        let strategy = available_strategies_list()
-            .into_iter()
-            .find(|s| s.id == "missing_loops_teleport")
-            .expect("missing_loops_teleport must be registered");
-        let ids: Vec<&str> = strategy.params.iter().map(|p| p.id).collect();
-        assert_eq!(
-            ids,
-            vec![
-                "entry_pick",
-                "exit_pick",
-                "desired_length",
-                "allow_out_of_interval",
-                "teleport_loop_one_way_chance",
-                "reserve_percent",
-                "attempts_limit",
-            ]
-        );
-
-        let entry = strategy
-            .params
-            .iter()
-            .find(|p| p.id == "entry_pick")
-            .unwrap();
-        assert!(matches!(
-            entry.kind,
-            ParamKindDto::Enum { default, .. } if default == "dead_end_priority"
-        ));
-        let exit = strategy
-            .params
-            .iter()
-            .find(|p| p.id == "exit_pick")
-            .unwrap();
-        assert!(matches!(
-            exit.kind,
-            ParamKindDto::Enum { default, .. } if default == "dead_end_priority"
-        ));
-        let one_way = strategy
-            .params
-            .iter()
-            .find(|p| p.id == "teleport_loop_one_way_chance")
-            .unwrap();
-        assert!(matches!(
-            one_way.kind,
-            ParamKindDto::Float { default, min, max }
-                if default == 50.0 && min == 0.0 && max == 100.0
-        ));
-    }
-
-    #[test]
-    fn every_other_param_is_always_visible() {
-        for strategy in available_strategies_list() {
-            for param in strategy.params {
-                if strategy.id == "scored_endpoints"
-                    && (param.id == "cross_floor_weight" || param.id == "elevator_stop_weight")
-                {
-                    continue;
-                }
-                if strategy.id == "missing_teleports"
-                    && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance")
-                {
-                    continue;
-                }
-                if (strategy.id == "invalid_loop_random" || strategy.id == "invalid_loop_scored")
-                    && param.id == "vertical_passage_priority"
-                {
-                    continue;
-                }
-                if strategy.id == "missing_loops_vertical"
-                    && param.id == "vertical_loop_one_way_chance"
-                {
-                    continue;
-                }
-                assert_eq!(
-                    param.visibility, None,
-                    "strategy {} param {} should be always-visible",
-                    strategy.id, param.id
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn loop_strategies_mark_vertical_entities_multi_floor_only() {
-        let strategies = available_strategies_list();
-
-        for strategy_id in ["invalid_loop_random", "invalid_loop_scored"] {
-            let strategy = strategies.iter().find(|s| s.id == strategy_id).unwrap();
-            let param = strategy
-                .params
-                .iter()
-                .find(|p| p.id == "vertical_passage_priority")
-                .unwrap();
-            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
-        }
-
-        let vertical = strategies
-            .iter()
-            .find(|s| s.id == "missing_loops_vertical")
-            .unwrap();
-        let param = vertical
-            .params
-            .iter()
-            .find(|p| p.id == "vertical_loop_one_way_chance")
-            .unwrap();
-        assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
-    }
-
-    // GitHub issue #349/#560 follow-up: every strategy that only makes sense with vertical passages/
-    // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs
-    // there — mirrors `only_vertical_passage_and_elevator_checks_are_multi_floor_only` in
-    // `checks_catalog.rs`.
-    #[test]
-    fn only_vertical_passage_and_elevator_strategies_are_multi_floor_only() {
-        let strategies = available_strategies_list();
-        let hidden: Vec<&str> = strategies
-            .iter()
-            .filter(|s| s.visibility == Some(EntityVisibility::MultiFloorOnly))
-            .map(|s| s.id)
-            .collect();
-        let mut hidden_sorted = hidden.clone();
-        hidden_sorted.sort();
-        assert_eq!(
-            hidden_sorted,
-            vec![
-                "add_elevator",
-                "add_elevator_height_stop",
-                "add_elevator_stop",
-                "add_elevator_stop_count",
-                "add_elevator_stop_for_gap",
-                "add_vertical_passage",
-                "elevator_group_select",
-                "elevator_region_merge",
-                "elevator_stop_group_select",
-                "missing_loops_vertical",
-                "remove_elevator",
-                "remove_elevator_stop",
-                "remove_vertical_passage",
-                "replace_elevator_with_passages",
-                "vertical_passage_group_select",
-                "vertical_passage_region_merge",
-            ],
-            "unexpected set of multi-floor-only strategies: {hidden:?}"
-        );
-    }
-
-    // GitHub issue #486: element-adding strategies surface `reserve_percent`/`attempts_limit` as
-    // dispatcher-owned when run nested. The web UI hides those rows on a nested node keyed on this
-    // list; a suppressed id that isn't in the strategy's own `params` would be a dangling
-    // reference the web can't act on, so pin the invariant.
-    #[test]
-    fn every_suppressed_param_id_is_one_of_the_strategys_own_params() {
-        for strategy in available_strategies_list() {
-            for id in strategy.nested_suppressed_params {
-                assert!(
-                    strategy.params.iter().any(|p| p.id == *id),
-                    "strategy {} suppresses param {} it does not declare",
-                    strategy.id,
-                    id
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn add_strategies_suppress_reserve_and_attempts_when_nested() {
-        let strategies = available_strategies_list();
-        for id in [
-            "missing_one_ways_from_wall",
-            "missing_one_ways_from_passage",
-            "add_vertical_passage",
-            "add_elevator_stop",
-            "add_split",
-        ] {
-            let s = strategies.iter().find(|s| s.id == id).unwrap();
-            assert_eq!(
-                s.nested_suppressed_params,
-                &["reserve_percent", "attempts_limit"],
-                "strategy {id}"
-            );
-        }
-    }
-}
+#[path = "strategies_catalog_tests.rs"]
+mod tests;

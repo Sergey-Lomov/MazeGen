@@ -1,6 +1,5 @@
-import type { FieldConfig } from "../fieldConfig";
-import { getFieldCapabilities, type FieldCapabilities, type FieldOpError } from "../wasm/mazeService";
-import * as m from "~/paraglide/messages";
+import { BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type FieldConfig, type PolyhedronShapeName, type SwitchedFieldShape } from "../fieldConfig";
+import { getFieldCapabilities, getFieldPreset, type FieldCapabilities, type FieldOpError } from "../wasm/mazeService";
 
 type TessellationConfig = FieldConfig["tessellation"];
 
@@ -37,6 +36,30 @@ export function presetParams(tessellation: TessellationConfig, key: string): { n
   return fieldCapabilities(tessellation).presets.find((preset) => preset.key === key)?.params ?? [];
 }
 
+/// Number of unfolded nets of a polyhedron preset — core publishes it as the `net` switch's max, the
+/// index of the compact print layout that follows them.
+export function polyhedronNetCount(tessellation: TessellationConfig, shape: PolyhedronShapeName): number {
+  return presetParams(tessellation, shape).find((param) => param.name === "net")?.max ?? 0;
+}
+
+/// The `net` value of the compact print layout (always by faces) of a topology preset.
+export function compactNetOf(tessellation: TessellationConfig, shape: SwitchedFieldShape): number {
+  return shape.shape === "box" ? BOX_NET_COMPACT : polyhedronNetCount(tessellation, shape.shape);
+}
+
+const faceCounts = new Map<string, number>();
+
+/// Faces of a polyhedron preset: with `side` 1 every face is one cell.
+export function polyhedronFaceCount(tessellation: TessellationConfig, shape: PolyhedronShapeName): number {
+  const key = `${JSON.stringify(tessellation)}|${shape}`;
+  let count = faceCounts.get(key);
+  if (count === undefined) {
+    count = getFieldPreset(tessellation, shape, { side: 1, net: 0, mode: 1, aspect: BOX_DEFAULT_ASPECT }).length;
+    faceCounts.set(key, count);
+  }
+  return count;
+}
+
 export function isFieldOpError(error: unknown): error is FieldOpError {
   return typeof error === "object" && error !== null && typeof (error as { kind?: unknown }).kind === "string";
 }
@@ -46,15 +69,4 @@ export function isFieldOpError(error: unknown): error is FieldOpError {
 export function asFieldOpError(error: unknown): FieldOpError {
   if (isFieldOpError(error)) return error;
   throw error;
-}
-
-/// User-facing text of a failed field operation.
-export function fieldOpErrorMessage(error: FieldOpError): string {
-  switch (error.kind) {
-    case "unavailable": return m["field.op_error.unavailable"]();
-    case "not_a_symmetry": return m["field.op_error.not_a_symmetry"]();
-    case "outside_tessellation": return m["field.op_error.outside_tessellation"]();
-    case "invalid_preset": return m["field.op_error.invalid_preset"]({ message: error.message });
-    case "invalid_request": return m["field.op_error.invalid_request"]({ message: error.message });
-  }
 }

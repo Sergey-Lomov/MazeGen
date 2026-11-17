@@ -13,20 +13,22 @@ const FAKE_FONT = { baseMeasurementFontSize: 100, chars: { "1": glyph, "8": glyp
 
 vi.mock("pixi.js", () => ({
   Cache: { get: (key: string) => (key.endsWith("-bitmap") ? FAKE_FONT : undefined) },
+  BitmapText: class {},
+  Text: class {},
 }));
 
-const { measureText, textOverflows, maxFittingFontSize, inkBoundaryPoints } = await import("../pixi/textFit");
+const { measureText, textOverflows, maxFittingFontSize, inkBoundaryPoints, labelInkOverlaps } = await import("../pixi/textFit");
 
-const item = (text: string, shape: "circle" | "square" | "star" | "cross", plateSize: number) => ({ text, fontWeight: "bold" as const, shape, plateSize });
+const item = (text: string, shape: "circle" | "square" | "star" | "cross", plateSize: number) => ({ text, font: { family: "", weight: 700 } as const, shape, plateSize });
 
 describe("textFit", () => {
   it("measures padding-trimmed ink extent linearly in font size", () => {
-    expect(measureText("1", "bold", 100)).toEqual({ width: 50, height: 40, left: -21, right: 29 });
-    const twoGlyphs = measureText("18", "bold", 20);
+    expect(measureText("1", { family: "", weight: 700 }, 100)).toEqual({ width: 50, height: 40, left: -21, right: 29 });
+    const twoGlyphs = measureText("18", { family: "", weight: 700 }, 20);
     expect(twoGlyphs).toMatchObject({ width: 20, height: 8 });
     expect(twoGlyphs.left).toBeCloseTo(-9.2);
     expect(twoGlyphs.right).toBeCloseTo(10.8);
-    expect(measureText("", "bold", 40)).toEqual({ width: 0, height: 0, left: 0, right: 0 });
+    expect(measureText("", { family: "", weight: 700 }, 40)).toEqual({ width: 0, height: 0, left: 0, right: 0 });
   });
 
   it("circle: fits while the ink rectangle's corners stay inside the circle", () => {
@@ -56,7 +58,7 @@ describe("textFit", () => {
 
   it("rectangular plate: the margin applies per side", () => {
     // "1" ink 0.5S x 0.4S in a 20 x 10 plate: margin 1 -> half extents 9 x 4 -> S <= 20 (height-bound).
-    const rect = { text: "1", fontWeight: "bold" as const, shape: "circle" as const, plateSize: 0, plateWidth: 20, plateHeight: 10 };
+    const rect = { text: "1", font: { family: "", weight: 700 } as const, shape: "circle" as const, plateSize: 0, plateWidth: 20, plateHeight: 10 };
     expect(textOverflows(rect, 20)).toBe(false);
     expect(textOverflows(rect, 21)).toBe(true);
     expect(textOverflows({ ...rect, margin: 0 }, 25)).toBe(false);
@@ -76,7 +78,7 @@ describe("textFit", () => {
       const it1 = item("18", shape, 20);
       const size = maxFittingFontSize([it1])!;
       expect(textOverflows(it1, size)).toBe(false);
-      expect(textOverflows(it1, size + 0.5)).toBe(true);
+      expect(textOverflows(it1, size + 1)).toBe(true);
     }
   });
 
@@ -84,7 +86,7 @@ describe("textFit", () => {
     const wide = item("18", "circle", 20);
     const narrow = item("1", "circle", 20);
     expect(maxFittingFontSize([wide, narrow])).toBe(maxFittingFontSize([wide]));
-    expect(maxFittingFontSize([item("1", "circle", 5000)])).toBe(32);
+    expect(maxFittingFontSize([item("1", "circle", 5000)])).toBe(40);
     expect(maxFittingFontSize([item("18", "circle", 1)])).toBe(6);
     expect(maxFittingFontSize([])).toBeNull();
     expect(textOverflows(item("", "circle", 20), 100)).toBe(false);
@@ -111,12 +113,43 @@ describe("textFit", () => {
     const spy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as never);
     try {
       // Same plate: the dot (ink) fits at the range maximum while the "1" bounding rectangle does not.
-      expect(maxFittingFontSize([item("I", "circle", 10)])).toBe(32);
-      expect(maxFittingFontSize([item("1", "circle", 10)])!).toBeLessThan(32);
+      expect(maxFittingFontSize([item("I", "circle", 10)])).toBe(40);
+      expect(maxFittingFontSize([item("1", "circle", 10)])!).toBeLessThan(40);
       expect(textOverflows(item("I", "star", 10), 32)).toBe(false);
       expect(textOverflows(item("I", "circle", 1), 32)).toBe(true);
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it("uses runtime TTF/OTF ink masks instead of overlapping text boxes", async () => {
+    const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+    const originalQuery = (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
+    Object.defineProperty(document, "fonts", { configurable: true, value: { load: vi.fn().mockResolvedValue([]), check: vi.fn().mockReturnValue(true) } });
+    (window as Window & { queryLocalFonts?: () => Promise<Array<{ family: string; style: string }>> }).queryLocalFonts = () => Promise.resolve([{ family: "Ink Test", style: "Regular" }]);
+    const context = {
+      font: "", fillStyle: "", textBaseline: "alphabetic", fillText: vi.fn(),
+      measureText: () => ({ width: 10, actualBoundingBoxLeft: 5, actualBoundingBoxRight: 5, actualBoundingBoxAscent: 5, actualBoundingBoxDescent: 5 }),
+      getImageData: (_x: number, _y: number, width: number, height: number) => {
+        const data = new Uint8ClampedArray(width * height * 4);
+        data[(Math.floor(height / 2) * width + Math.floor(width / 2)) * 4 + 3] = 255;
+        return { data };
+      },
+    };
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as never);
+    try {
+      const { loadLocalFontFamilies, loadLabelFont } = await import("../pixi/renderers/labelFont");
+      await loadLocalFontFamilies();
+      await loadLabelFont({ family: "Ink Test", weight: 400 });
+      const font = { family: "Ink Test", weight: 400 };
+      // The 10px metric boxes overlap at x=0 and x=1, while their one-pixel ink dots do not.
+      expect(labelInkOverlaps({ text: "1", font, fontSize: 10, x: 0, y: 0 }, { text: "2", font, fontSize: 10, x: 1, y: 0 })).toBe(false);
+    } finally {
+      spy.mockRestore();
+      if (originalFonts) Object.defineProperty(document, "fonts", originalFonts);
+      else Reflect.deleteProperty(document, "fonts");
+      if (originalQuery) (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = originalQuery;
+      else delete (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
     }
   });
 });

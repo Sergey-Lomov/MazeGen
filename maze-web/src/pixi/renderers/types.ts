@@ -1,5 +1,5 @@
 import type { PathCommand } from "../../wasm/mazeService";
-import type { LabelFontWeight } from "./indexLabel";
+import type { LabelFont } from "./fontChoice";
 import type { TeleportFloorBadgeSettings, ElevatorBadgeSettings } from "../../store/imageExportTypes";
 
 export type Viewport = {
@@ -58,6 +58,8 @@ export type OneWayStyleOverride = {
   /** Chevron/arrow's own line thickness — independent of `size` (geometric scale). Has no effect
    *  on the `triangle` pattern (a filled shape, no line stroke of its own). */
   thickness: number;
+  /** Arrowhead's full width — read by the `arrow` pattern only (GitHub issue #993). */
+  headWidth: number;
   join: CornerStyle;
   cap: "round" | "square";
 };
@@ -65,7 +67,8 @@ export type OneWayStyleOverride = {
 export type WallEdge = {
   a: [number, number];
   b: [number, number];
-  /** Face of `a` this wall covers; set only for a face with no neighbor (`b` equals `a`). */
+  /** Face of `a` this wall covers; set for a face with no neighbor (`b` equals `a`) and for a glued
+   *  seam face (`b` is the partner cell, and each side of the seam has its own wall edge). */
   face?: number;
   kind: PassageKind;
   style: WallStyle;
@@ -89,6 +92,12 @@ export type SplitPassage = {
   /** The split point's own `"${x},${y}"` key (GitHub issue #294) — lets `SplitJunctionRenderer`
    *  skip a point's ordinary passages when it's drawn via `SplitSpecialShape` instead. */
   pointKey: string;
+  /** Set on a share a split node on the other side of a seam mirrors onto this (unsplit) cell's
+   *  own copy of the glued face. `pointKey` is then the unsplit cell, which holds no split hub. */
+  mirrored?: boolean;
+  /** With `mirrored`: the source split point is recognized as a special shape. Drop the share
+   *  while special shapes are drawn (see `isHiddenSpecialMirror`); draw it when they are off. */
+  mirroredFromSpecial?: boolean;
   /** The split point's own tile center (GitHub issue #314 follow-up) — `VectorByCorridorsRenderer`
    *  draws each of this node's face shares as a straight line from here (never `connectors`' hub
    *  fan-out/2-share-straightening — every share always runs to the point's own center, since a
@@ -152,7 +161,7 @@ export type SplitPassage = {
  *  dedicated graph/marker anchors for the two halves. Cairo's "cairo_bridge_2x3" keeps its
  *  three-face fork as the underlay and replaces only the other node's two-face passage with the
  *  dedicated bridge deck. */
-export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
+export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "octagon_double_bridge" | "octagon_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "octagon_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
  *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`
@@ -266,10 +275,10 @@ export type MarkerData = {
    *  existed. `textColor` defaults to `color` (the marker's own fill) when unset. */
   text?: string;
   textColor?: number;
-  /** Label font weight — resolved to a baked MSDF atlas family by `msdfFontFamily`, same convention
-   *  as every other label in this codebase (floor badges, elevator badges, marker index). Defaults
-   *  to `"bold"` when unset. */
-  textFontWeight?: LabelFontWeight;
+  /** Label font (family and weight) — a baked MSDF atlas by `msdfFontFamily` while a browser font is
+   *  not loaded, same convention as every other label in this codebase. Defaults to bold Roboto
+   *  when unset. */
+  textFont?: LabelFont;
   /** Label font size in px (unified with elevator/teleport floor badges). Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
@@ -292,7 +301,9 @@ export type MarkerData = {
  * in `to` (so the arrow, which always points `from`→`to`, still reads departure→arrival) while the
  * departure end's badge occupies `from`. At most one of `toFloor`/`fromFloor` is ever set on a given
  * edge. */
-export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number; fromFloor?: number };
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number; fromFloor?: number;
+  /** Marker-layout shrink factor (GitHub issue #735) of the `from`/`to` point — `undefined` = 1. */
+  fromScale?: number; toScale?: number };
 
 /** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
  *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn
@@ -334,12 +345,9 @@ export type VerticalConnectionMarker = {
   targetFloorIndices?: number[];
   filled: boolean;
   arrowFilled: boolean;
+  /** Marker-layout shrink factor (GitHub issue #735) applied to every component — `undefined` = 1. */
+  scale?: number;
 };
-
-/** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) —
- *  resolved to a baked MSDF atlas family by `msdfFontFamily` (GitHub issue #352). Alias of the
- *  neutral `LabelFontWeight` (shared with GitHub issue #471's marker index labels). */
-export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
 
 /** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"
  *  enabled (see `TeleportGroupOverride`) this reproduces the old, now-removed `"grouped"` pattern's
@@ -398,6 +406,8 @@ export type TeleportLineStyle = {
   connectorColor: number;
   connectorWidth: number;
   connectorStyle: TeleportConnectorStyle;
+  /** Corner join for an angled connector, linked to the export mode's shared Corner style by default. */
+  connectorCornerStyle: CornerStyle;
   curveDirection?: TeleportCurveDirection;
   /** Quadratic-curve control-point offset as a fraction of the endpoint span (0..1). */
   curveStrength?: number;
@@ -425,7 +435,7 @@ export type TeleportLineStyle = {
    *  (`TeleportEdge.toFloor`/`fromFloor`) draws with this `shape`/`labelType`/`size` instead of the
    *  hardcoded circle + Arabic digit it used before. `fillColor`/`borderColor` are the badge body's
    *  own colours (GitHub issue #503 follow-up — previously locked to the connector colour); a group
-   *  override does not affect them. `textColor`/`textFontWeight`/`textSize` (px) style the label
+   *  override does not affect them. `textColor`/`textFont`/`textSize` (px) style the label
    *  independently of `floorColor` — see `TeleportFloorBadgeSettings`.
    *  The badge is a `BadgeSettings` (GitHub issue #701): it carries its own `cornerStyle`, `borderWidth`
    *  and `gapWidth` like any other marker, independent of the edge marker's. */
@@ -541,3 +551,8 @@ export type VerticalConnectionStyle = {
    *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
   elevatorBadges: ElevatorBadgeSettings;
 };
+
+/** A mirrored share whose source point is drawn as a special shape — it must not draw then. */
+export function isHiddenSpecialMirror(passage: SplitPassage, specialShapesOn: boolean): boolean {
+  return specialShapesOn && passage.mirroredFromSpecial === true;
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collectAffectedLifelineKeys } from "../pixi/postEditReplay";
+import { collectAffectedLifelineKeys } from "../pixi/postEditLifelines";
 import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../pixi/postEditReplay";
 import { buildPostEditResetLifelines } from "../pixi/postEditResetLifelines";
 import type { PostEditCommand } from "../store/postEditCommandTypes";

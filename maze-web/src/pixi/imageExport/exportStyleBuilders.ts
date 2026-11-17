@@ -1,11 +1,16 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
+import type { Viewport, MarkerData, VerticalConnectionMarker, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/types";
-import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
+import { verticalMarkerFootprint } from "../renderers/VerticalConnectionRenderer";
+import type { MarkerSettings, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
+import { withMarkerVisibility } from "../selectors/mazeSelectors/markers";
+import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } from "../selectors/mazeSelectors/markerLayout";
 import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
 import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
+import { resolveIndicatorMetrics } from "../../store/imageExportTypes";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
@@ -50,8 +55,7 @@ export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getSta
     color: settings.oneWayColor,
     gapColor: settings.floorColor,
     gapWidth: settings.oneWayGapWidth,
-    size: settings.oneWaySize,
-    thickness: settings.oneWayThickness,
+    ...resolveIndicatorMetrics(settings.oneWayPattern, settings.oneWayGeometry, DEFAULT_MAZE_RENDER_STYLE.oneWay),
     join: settings.oneWayJoin,
     cap: settings.oneWayJoin === "miter" ? "square" : "round",
   };
@@ -76,6 +80,7 @@ export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorCo
     connectorColor: settings.teleportConnectorColor,
     connectorWidth: settings.teleportConnectorWidth,
     connectorStyle: settings.teleportConnectorStyle,
+    connectorCornerStyle: settings.teleportConnectorCornerStyle ?? settings.teleportMarker.cornerStyle,
     curveDirection: settings.teleportCurveDirection ?? "inward",
     curveStrength: settings.teleportCurveStrength ?? 0.25,
     arrowMode: settings.teleportArrowMode,
@@ -151,7 +156,7 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
  *  panel's own floor color — `gapColor` always mirrors `floorColor` (GitHub issue #302 follow-up,
  *  not independently settable, same convention as the one-way indicator's own border color). */
 export function buildMarkerStyle(settings: MarkerSettings, floorColor: number): MarkerStyle {
-  return { ...settings, gapColor: floorColor };
+  return { ...withMarkerVisibility(settings), gapColor: floorColor };
 }
 
 /** Resolves the currently effective start/finish node ids — `postEditMeta`'s confirmed endpoints
@@ -216,12 +221,14 @@ export function buildMarkerIndexEndpointResolver(args: {
   teleportEdges: TeleportEdge[];
   teleportStyle: TeleportLineStyle;
   groupCustomization: boolean;
+  /** Teleport merge mode (GitHub issue #868). */
+  mergeTeleports?: boolean;
   groupOverrides: Record<string, TeleportGroupOverride>;
   verticalStyle: VerticalConnectionStyle;
 }): ResolveMarkerEndpointVisual {
-  const { teleportEdges, teleportStyle, groupCustomization, groupOverrides, verticalStyle } = args;
+  const { teleportEdges, teleportStyle, groupCustomization, mergeTeleports = true, groupOverrides, verticalStyle } = args;
 
-  const groups = groupCustomization ? buildTeleportGroups(teleportEdges) : [];
+  const groups = groupCustomization ? buildTeleportGroups(teleportEdges, mergeTeleports) : [];
   const groupKeyByPoint = new Map<string, string>();
   for (const group of groups) {
     for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
@@ -270,4 +277,30 @@ export function buildMarkerIndexEndpointResolver(args: {
     const m = kind === "elevator" ? verticalStyle.elevatorMarker : kind === "vertical" && oneWay ? verticalStyle.oneWayPassageMarker : verticalStyle.twoWayPassageMarker;
     return markerEndpointVisual(m, m.fillColor, m.borderColor, m.borderWidth ?? 0);
   };
+}
+
+/** Runs the marker positioning layer (GitHub issue #735) for an export renderer — arranges start/
+ *  finish, teleport and vertical-connection markers sharing one host (see `applyMarkerLayout`). */
+export function layoutExportMarkers(args: {
+  markers: MarkerData[];
+  teleportEdges: TeleportEdge[];
+  verticalMarkers: VerticalConnectionMarker[];
+  settings: MarkerLayoutSettingsFields & Pick<TeleportSettingsFields, "teleportMarker" | "teleportMergeMode">;
+  verticalStyle: VerticalConnectionStyle;
+  splitHostKeys: Set<string>;
+}): MarkerLayoutResult {
+  const { settings, verticalStyle } = args;
+  const tm = settings.teleportMarker;
+  return applyMarkerLayout(
+    {
+      markers: args.markers,
+      teleportEdges: args.teleportEdges,
+      verticalMarkers: args.verticalMarkers,
+      teleportRadius: tm.size / 2 + (tm.borderWidth ?? 0) + (tm.gapWidth ?? 0),
+      verticalRadius: (m) => verticalMarkerFootprint(verticalStyle, m),
+      splitHostKeys: args.splitHostKeys,
+      mergeTeleports: settings.teleportMergeMode,
+    },
+    { mode: settings.markerLayout, spacing: MARKER_LAYOUT_SPACING, scale: settings.markerScale },
+  );
 }

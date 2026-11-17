@@ -1,5 +1,6 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern, ElevatorBadgeFontWeight } from "./types";
+import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern } from "./types";
+import { DEFAULT_LABEL_FONT, type LabelFont } from "./fontChoice";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
@@ -7,7 +8,7 @@ import {
   arrowThickness, arrowMidpointFraction, oneWayTickCenteringFraction, oneWayWallTickRect, stairsArrowGeometry, stairsTickSegment,
 } from "./verticalConnectionGeometry";
 import { navigateToFloor } from "./floorNavigation";
-import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
+import { computeElevatorBadgePositions, formatElevatorBadgeLabel, type ElevatorBadgeObstacle } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
@@ -240,16 +241,200 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  the marker's own `interactive` flag is.
  *
  *  The label is an MSDF `BitmapText` (GitHub issue #352) — stays crisp at any viewport zoom, unlike
- *  the plain `Text` this used to draw. `fontWeight` picks the regular vs. bold baked atlas
- *  (`msdfFontFamily`). */
-function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
+ *  the plain `Text` this used to draw. `font` picks the baked atlas of its weight
+ *  (`msdfFontFamily`) while a browser font is not loaded. */
+function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, font: LabelFont): void {
   const g = new Graphics();
   drawMarkerWithBorder(g, shape, pos.x, pos.y, radius, rounded, fillColor, borderColor, borderWidth);
   container.addChild(g);
-  const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor);
+  drawElevatorBadgeLabel(container, pos, label, textColor, fontSize, font);
+}
+
+/** Label-only half of an elevator badge. Merged badges deliberately use this without drawing an
+ * individual body: their shared band is the complete backing. */
+function drawElevatorBadgeLabel(container: Container, pos: { x: number; y: number }, label: string, textColor: number, fontSize: number, font: LabelFont): void {
+  const text = makeCenteredLabel(label, font, fontSize, textColor);
   text.x = pos.x;
   text.y = pos.y;
   container.addChild(text);
+}
+
+/** Draws a rounded strip through neighboring badge centers. Its width is exactly the badge body's
+ * diameter, so the bodies appear to have filled only the space between adjacent slots. */
+function drawElevatorBadgeBand(g: Graphics, positions: readonly { x: number; y: number }[], fillRadius: number, borderWidth: number, fillColor: number, borderColor: number): void {
+  if (positions.length === 0) return;
+  if (positions.length === 1) {
+    g.circle(positions[0].x, positions[0].y, fillRadius + borderWidth).fill({ color: borderColor });
+    g.circle(positions[0].x, positions[0].y, fillRadius).fill({ color: fillColor });
+    return;
+  }
+  g.moveTo(positions[0].x, positions[0].y);
+  for (const pos of positions.slice(1)) g.lineTo(pos.x, pos.y);
+  if (borderWidth > 0) g.stroke({ color: borderColor, width: 2 * (fillRadius + borderWidth), join: "round", cap: "round" });
+  g.moveTo(positions[0].x, positions[0].y);
+  for (const pos of positions.slice(1)) g.lineTo(pos.x, pos.y);
+  g.stroke({ color: fillColor, width: 2 * fillRadius, join: "round", cap: "round" });
+}
+
+/** Breaks a row/column wherever an unavailable slot (such as a marker-index plate) leaves a gap.
+ * The layout's actual slot step is `2r + gap`; a skipped slot is at least twice that far away. */
+function contiguousLineGroups(positions: readonly { x: number; y: number }[], placement: ElevatorBadgeSettings["placement"], radius: number, gap: number, cx: number, cy: number): { x: number; y: number }[][] {
+  const horizontal = placement === "left_right" || placement === "right_left";
+  const sides = [-1, 1].map((sign) => positions
+    .filter((p) => ((horizontal ? p.x - cx : p.y - cy) * sign) >= 0)
+    .sort((a, b) => (horizontal ? a.y - b.y || a.x - b.x : a.x - b.x || a.y - b.y)));
+  const maxNeighborDistance = (radius * 2 + gap) * 1.5 + 1e-6;
+  return sides.flatMap((side) => {
+    const groups: { x: number; y: number }[][] = [];
+    for (const pos of side) {
+      const current = groups.at(-1);
+      if (!current || Math.hypot(pos.x - current.at(-1)!.x, pos.y - current.at(-1)!.y) > maxNeighborDistance) groups.push([pos]);
+      else current.push(pos);
+    }
+    return groups;
+  });
+}
+
+/** Adds one clockwise or counter-clockwise circular Bézier arc to the current Graphics path.
+ * Splitting only at quarter-turns keeps the curve accurate without creating a separate rendered
+ * shape for each original badge slot. */
+function appendCircularArc(g: Graphics, cx: number, cy: number, radius: number, start: number, end: number): void {
+  const sweep = end - start;
+  const segments = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2)));
+  const step = sweep / segments;
+  for (let i = 0; i < segments; i++) {
+    const from = start + step * i;
+    const to = from + step;
+    const handle = (4 / 3) * Math.tan((to - from) / 4) * radius;
+    g.bezierCurveTo(
+      cx + Math.cos(from) * radius - Math.sin(from) * handle,
+      cy + Math.sin(from) * radius + Math.cos(from) * handle,
+      cx + Math.cos(to) * radius + Math.sin(to) * handle,
+      cy + Math.sin(to) * radius - Math.cos(to) * handle,
+      cx + Math.cos(to) * radius,
+      cy + Math.sin(to) * radius,
+    );
+  }
+}
+
+/** Fills one continuous annular sector. Its boundary is exactly four arcs: outer, end cap, inner,
+ * and start cap. Unlike a collection of badge-to-badge strokes, it has no per-slot outlines. */
+function drawElevatorBadgeArcShape(g: Graphics, cx: number, cy: number, centerRadius: number, halfWidth: number, start: number, end: number, color: number): void {
+  const outerRadius = centerRadius + halfWidth;
+  const innerRadius = Math.max(0.001, centerRadius - halfWidth);
+  const endX = cx + Math.cos(end) * centerRadius;
+  const endY = cy + Math.sin(end) * centerRadius;
+  const startX = cx + Math.cos(start) * centerRadius;
+  const startY = cy + Math.sin(start) * centerRadius;
+  g.moveTo(cx + Math.cos(start) * outerRadius, cy + Math.sin(start) * outerRadius);
+  appendCircularArc(g, cx, cy, outerRadius, start, end);
+  appendCircularArc(g, endX, endY, halfWidth, end, end + Math.PI);
+  appendCircularArc(g, cx, cy, innerRadius, end, start);
+  appendCircularArc(g, startX, startY, halfWidth, start + Math.PI, start + Math.PI * 2);
+  g.closePath().fill({ color });
+}
+
+/** Draws one continuous circular backing, never a set of former badge bodies. A complete ring is
+ * one stroke; an open group is its single four-arc contour. */
+function drawElevatorBadgeArc(g: Graphics, positions: readonly { x: number; y: number }[], cx: number, cy: number, fillRadius: number, borderWidth: number, fillColor: number, borderColor: number, close: boolean): void {
+  if (positions.length < 2) return drawElevatorBadgeBand(g, positions, fillRadius, borderWidth, fillColor, borderColor);
+  const centerRadius = Math.hypot(positions[0].x - cx, positions[0].y - cy);
+  if (close) {
+    if (borderWidth > 0) g.circle(cx, cy, centerRadius).stroke({ color: borderColor, width: 2 * (fillRadius + borderWidth) });
+    g.circle(cx, cy, centerRadius).stroke({ color: fillColor, width: 2 * fillRadius });
+    return;
+  }
+  const start = Math.atan2(positions[0].y - cy, positions[0].x - cx);
+  let end = Math.atan2(positions.at(-1)!.y - cy, positions.at(-1)!.x - cx);
+  while (end <= start) end += Math.PI * 2;
+  if (borderWidth > 0) drawElevatorBadgeArcShape(g, cx, cy, centerRadius, fillRadius + borderWidth, start, end, borderColor);
+  drawElevatorBadgeArcShape(g, cx, cy, centerRadius, fillRadius, start, end, fillColor);
+}
+
+/** Splits the circular sequence only at genuinely blocked gaps. The sequence is re-rooted just
+ * after its first blocked gap, so a single marker-index gap yields one open arc rather than two
+ * arcs with an accidental second seam at the 0°/360° coordinate seam. */
+function contiguousCircleGroups(positions: readonly { x: number; y: number }[], cx: number, cy: number): { x: number; y: number }[][] {
+  if (positions.length === 0) return [];
+  const angles = positions.map((p) => Math.atan2(p.y - cy, p.x - cx));
+  const steps = angles.map((angle, i) => {
+    let step = (i === angles.length - 1 ? angles[0] : angles[i + 1]) - angle;
+    while (step < 0) step += Math.PI * 2;
+    return step;
+  });
+  const baseline = [...steps].sort((a, b) => a - b)[Math.floor(steps.length / 2)] ?? Infinity;
+  const breaks = new Set(steps.flatMap((step, i) => step > baseline * 1.5 ? [i] : []));
+  if (breaks.size === 0) return [[...positions]];
+  const firstBreak = steps.findIndex((step) => step > baseline * 1.5);
+  const start = (firstBreak + 1) % positions.length;
+  const groups: { x: number; y: number }[][] = [[]];
+  for (let offset = 0; offset < positions.length; offset++) {
+    const index = (start + offset) % positions.length;
+    groups.at(-1)!.push(positions[index]);
+    if (offset < positions.length - 1 && breaks.has(index)) groups.push([]);
+  }
+  return groups;
+}
+
+/** A missing circular slot creates one angular gap much larger than the ordinary slot interval.
+ * That gap is the only reason an otherwise complete ring must stay open. */
+function circleHasBlockedGap(positions: readonly { x: number; y: number }[], cx: number, cy: number): boolean {
+  if (positions.length < 2) return false;
+  const angles = positions.map((p) => Math.atan2(p.y - cy, p.x - cx));
+  const steps = angles.map((angle, i) => {
+    let step = (i === angles.length - 1 ? angles[0] : angles[i + 1]) - angle;
+    while (step <= 0) step += Math.PI * 2;
+    return step;
+  });
+  // A tight first/last gap is the normal signal that a contiguous arc has reached itself; it is
+  // not a marker-index obstacle. Compare only the largest interval with a lower median ordinary
+  // interval, so only a genuinely widened (blocked) sector opens the backing.
+  const sorted = [...steps].sort((a, b) => a - b);
+  const ordinary = sorted[Math.floor((sorted.length - 1) / 2)];
+  return Math.max(...steps) > ordinary * 1.5;
+}
+
+/** Whether the last and first slots are ordinary neighbours on the ring. This closes a contiguous
+ * layout once its configured spacing reaches all the way around the marker, but leaves its unused
+ * remainder open while it is still a real gap. */
+function circularEndsAreNeighbors(positions: readonly { x: number; y: number }[], cx: number, cy: number): boolean {
+  if (positions.length < 2) return false;
+  const angles = positions.map((p) => Math.atan2(p.y - cy, p.x - cx));
+  const step = (from: number, to: number) => {
+    let value = to - from;
+    while (value <= 0) value += Math.PI * 2;
+    return value;
+  };
+  const ordinarySteps = angles.slice(1).map((angle, i) => step(angles[i], angle));
+  const ordinary = [...ordinarySteps].sort((a, b) => a - b)[Math.floor(ordinarySteps.length / 2)];
+  return step(angles.at(-1)!, angles[0]) <= ordinary * 1.5;
+}
+
+/** Draws the merged badge body. Unlike the old background-only treatment, this is the badge body:
+ * individual circles and their gap rings are omitted by the caller. */
+function drawElevatorBadgeBacking(container: Container, positions: readonly { x: number; y: number }[], cx: number, cy: number, fillRadius: number, settings: ElevatorBadgeSettings, gapColor: number): void {
+  if ((settings.backing ?? "individual") === "individual" || positions.length === 0) return;
+  const g = new Graphics();
+  if (settings.placement === "full_circle") {
+    const groups = contiguousCircleGroups(positions, cx, cy);
+    const blockedGap = circleHasBlockedGap(positions, cx, cy);
+    // Even distribution always represents a complete ring. A contiguous arc closes too once its
+    // last slot meets the first. The sole exception is a gap made by a marker-index plate.
+    const close = !blockedGap && (settings.evenDistribution || circularEndsAreNeighbors(positions, cx, cy));
+    for (const group of groups) {
+      // A merged backing has one external gap/frame, not one gap ring per former badge slot.
+      if (settings.gapWidth > 0) drawElevatorBadgeArc(g, group, cx, cy, fillRadius + settings.borderWidth + settings.gapWidth, 0, gapColor, gapColor, close);
+      drawElevatorBadgeArc(g, group, cx, cy, fillRadius, settings.borderWidth, settings.fillColor, settings.borderColor, close);
+    }
+  } else {
+    for (const group of contiguousLineGroups(positions, settings.placement, fillRadius + settings.borderWidth, settings.gap, cx, cy)) {
+      // Draw the shared frame first so the backing covers its inner band, exactly like an ordinary
+      // badge's gap ring, but following the combined silhouette rather than individual slots.
+      if (settings.gapWidth > 0) drawElevatorBadgeBand(g, group, fillRadius + settings.borderWidth + settings.gapWidth, 0, gapColor, gapColor);
+      drawElevatorBadgeBand(g, group, fillRadius, settings.borderWidth, settings.fillColor, settings.borderColor);
+    }
+  }
+  container.addChild(g);
 }
 
 /** Picks one font size shared by every elevator badge across the whole render pass (round-4 GitHub
@@ -259,12 +444,12 @@ function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number
  *  reaching floor 8, e.g. `labelType: "roman"`'s `"VIII"`, since a shared badge size that changed
  *  per-elevator would look inconsistent across the maze). Starts at the baseline `radius * 1.4` and
  *  only ever scales *down* — every badge shares whatever the single worst-case label needs. */
-export function fitElevatorBadgeFontSize(labels: string[], radius: number, fontWeight: ElevatorBadgeFontWeight): number {
+export function fitElevatorBadgeFontSize(labels: string[], radius: number, font: LabelFont = DEFAULT_LABEL_FONT): number {
   const baseline = radius * 1.4;
   const targetWidth = radius * 1.6;
   let widest = 0;
   for (const label of labels) {
-    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(fontWeight), fontSize: baseline } });
+    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(font), fontSize: baseline } });
     widest = Math.max(widest, probe.width);
     probe.destroy();
   }
@@ -303,6 +488,7 @@ function drawElevatorBadges(
   gapColor: number,
   hitLayer?: Container,
   navigable?: boolean,
+  obstacles?: readonly ElevatorBadgeObstacle[],
 ): void {
   if (!settings.enabled || marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length === 0) return;
   // `settings.size` is the badge diameter in px (GitHub issue #701, like every `MarkerAppearance`);
@@ -311,13 +497,19 @@ function drawElevatorBadges(
   const badgeRadius = fillRadius + settings.borderWidth;
   const rounded = settings.cornerStyle === "round";
   const targetFloorIndices = marker.targetFloorIndices;
-  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
+  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution, obstacles, settings.startAngle);
   const labels = targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
-  for (const pos of positions) {
-    drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
-  }
-  for (const [i, label] of labels.entries()) {
-    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFontWeight);
+  const merged = (settings.backing ?? "individual") !== "individual";
+  if (merged) {
+    drawElevatorBadgeBacking(container, positions, cx, cy, fillRadius, settings, gapColor);
+    for (const [i, label] of labels.entries()) drawElevatorBadgeLabel(container, positions[i], label, settings.textColor, settings.textSize, settings.textFont);
+  } else {
+    for (const pos of positions) {
+      drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
+    }
+    for (const [i, label] of labels.entries()) {
+      drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFont);
+    }
   }
   // Click-to-switch-floor hit area per badge (GitHub issue #478 follow-up) — `computeElevatorBadgePositions`
   // returns positions in the same ascending order as `targetFloorIndices`, so `positions[i]` is the
@@ -350,6 +542,9 @@ function scaleElevatorBadges(settings: ElevatorBadgeSettings, factor: number): E
     gap: settings.gap * factor,
   };
 }
+
+/** What `VerticalConnectionRenderer.render` draws from. */
+export type VerticalConnectionRenderData = Parameters<VerticalConnectionRenderer["render"]>[0];
 
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
  *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
@@ -409,6 +604,9 @@ export class VerticalConnectionRenderer {
     interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean);
     /** Marker size adaptation (GitHub issue #819) — scales each marker's radius by its cell's factor. */
     scaler?: MarkerScaler;
+    /** Regions elevator floor badges keep clear of (GitHub issue #964) — the marker-index plates
+     *  drawn on top of the markers, whose footprint would otherwise hide a badge. */
+    badgeObstacles?: readonly ElevatorBadgeObstacle[];
   }): void {
     const scaler = data.scaler ?? NO_MARKER_SCALING;
     this.g.clear();
@@ -420,7 +618,7 @@ export class VerticalConnectionRenderer {
 
     for (const marker of data.markers) {
       if (decorative) {
-        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler);
+        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler, data.badgeObstacles);
         continue;
       }
 
@@ -434,7 +632,7 @@ export class VerticalConnectionRenderer {
             : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
       // The whole marker scales (GitHub issue #819): fill radius, border, gap ring, arrow strokes
       // and elevator badges alike.
-      const factor = scaler.factorAt(marker.pos, settings.sizeAdaptation);
+      const factor = scaler.factorAt(marker.pos, settings.sizeAdaptation) * (marker.scale ?? 1);
       const radius = (settings.size / 2) * factor;
       const cx = marker.pos[0];
       const cy = marker.pos[1];
@@ -542,7 +740,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker), data.badgeObstacles);
     }
   }
 
@@ -583,10 +781,11 @@ export class VerticalConnectionRenderer {
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
     scaler: MarkerScaler,
+    badgeObstacles?: readonly ElevatorBadgeObstacle[],
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
-    const factor = scaler.factorAt(marker.pos, lineStyle.sizeAdaptation);
+    const factor = scaler.factorAt(marker.pos, lineStyle.sizeAdaptation) * (marker.scale ?? 1);
     const radius = (lineStyle.size / 2) * factor;
     const lineWidth = lineStyle.lineWidth * factor;
     const cx = marker.pos[0];
@@ -595,7 +794,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker), badgeObstacles);
       return;
     }
 
@@ -624,4 +823,16 @@ export class VerticalConnectionRenderer {
     this.badgeLayer.destroy({ children: true });
     this.hitLayer.destroy({ children: true });
   }
+}
+
+/** Visible footprint radius (fill + border + gap) of one vertical-connection marker under
+ *  `style` — the marker layout's slot size (GitHub issue #735). Decorative pictograms use half their
+ *  line-icon `size`. */
+export function verticalMarkerFootprint(style: VerticalConnectionStyle, m: VerticalConnectionMarker): number {
+  if (style.style === "decorative") {
+    const d = m.kind === "elevator" ? style.decorativeElevator : m.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
+    return d.size / 2;
+  }
+  const ms = m.kind === "elevator" ? style.elevatorMarker : m.filled ? style.twoWayPassageMarker : style.oneWayPassageMarker;
+  return ms.size / 2 + (ms.borderWidth ?? 0) + (ms.gapWidth ?? 0);
 }

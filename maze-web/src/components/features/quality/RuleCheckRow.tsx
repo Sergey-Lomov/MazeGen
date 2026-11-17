@@ -3,7 +3,7 @@ import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
 import { Tooltip } from "../../Tooltip";
-import { RemoveIconButton } from "../../RemoveIconButton";
+import { DeleteIconButton } from "../../DeleteIconButton";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import type { CheckVM } from "../useQualityViewModel";
@@ -66,7 +66,7 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
         >
           <Switch checked={!check.disabled} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
         </div></Tooltip>
-        <RemoveIconButton
+        <DeleteIconButton
           title={m["quality.remove"]()}
           onClick={(e) => {
             e.stopPropagation();

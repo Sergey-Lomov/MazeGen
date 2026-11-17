@@ -109,8 +109,7 @@ mod tests {
                 maze.graph.add_edge(nodes[j], nodes[i], EdgeKind::Elevator);
             }
         }
-        let issue =
-            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(nodes.clone())]);
+        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(nodes)]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(
             &RemoveElevatorStrategy,
@@ -211,7 +210,7 @@ mod tests {
 
         let issue = InvalidElevatorIssue::new_from_check(
             "test",
-            vec![ElevatorNodes::new(a.clone()), ElevatorNodes::new(b.clone())],
+            vec![ElevatorNodes::new(a), ElevatorNodes::new(b.clone())],
         );
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(

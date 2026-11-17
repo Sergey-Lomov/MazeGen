@@ -58,6 +58,7 @@ export function ScreenDpiCalibrationModal({ onClose }: Props) {
           max={MAX_CSS_PPI}
           step={0.5}
           format={(v) => `${v.toFixed(0)} CSS PPI`}
+          valueWidth="13ch"
         />
 
         <span style={{ ...typography.caption, color: ui.text.secondary }}>

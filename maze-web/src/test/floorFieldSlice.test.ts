@@ -4,6 +4,12 @@ import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import { baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 
+/** Copies a floor's field onto every other floor (what the dialog's "copy to all" button submits). */
+function copyToAllFloors(sourceFloorId: string = useMazeStore.getState().activeFloorId) {
+  const { floors, copyFloorFieldToFloors } = useMazeStore.getState();
+  copyFloorFieldToFloors(sourceFloorId, floors.map((floor) => floor.id));
+}
+
 const OTHER_FLOOR_ID = "floor_other";
 
 beforeEach(() => {
@@ -18,6 +24,55 @@ beforeEach(() => {
     postEditDirty: false,
     backgroundAutoFillPreview: null,
     fieldEditConfirmation: null,
+  });
+});
+
+describe("setFieldOperation", () => {
+  function setActiveField(patch: Record<string, unknown>) {
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floorFields: { ...state.floorFields, [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], ...patch } },
+    });
+  }
+
+  it("defaults the primitive to rectangle when entering select mode", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("select");
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldOperation).toBe("select");
+    expect(field.fieldPrimitive).toBe("rectangle");
+  });
+
+  it("clears pending mirror state when entering select mode from the mirror tool", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "mirror" });
+    useMazeStore.setState({ mirrorAxisPoints: [{ x: 0, y: 0 }], mirrorPolygon: [{ x: 0, y: 0 }], mirrorPolygonFinished: true });
+    useMazeStore.getState().setFieldOperation("select");
+    const state = useMazeStore.getState();
+    expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("rectangle");
+    expect(state.mirrorAxisPoints).toEqual([]);
+    expect(state.mirrorPolygon).toEqual([]);
+    expect(state.mirrorPolygonFinished).toBe(false);
+  });
+
+  it("keeps the primitive when select mode is already active", () => {
+    setActiveField({ fieldOperation: "select", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("select");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
+  });
+
+  it("ignores operation changes while a background auto-fill preview is active", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "circle" });
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set() });
+    useMazeStore.getState().setFieldOperation("select");
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldOperation).toBe("add");
+    expect(field.fieldPrimitive).toBe("circle");
+  });
+
+  it("keeps the primitive when entering add mode", () => {
+    setActiveField({ fieldOperation: "select", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("add");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
   });
 });
 
@@ -66,6 +121,63 @@ describe("copyFloorField", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldDirty).toBe(true);
   });
 
+  it("copies the source topology by default and clears the target's when the source has none", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [OTHER_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toEqual(topology);
+
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
+  it("leaves the target's topology alone when includeTopology is false", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+  });
+
+  it("copies onto an explicit target floor and leaves the active floor untouched", () => {
+    useMazeStore.getState().copyFloorField(TEST_FLOOR_ID, true, OTHER_FLOOR_ID);
+    const { floorFields } = useMazeStore.getState();
+    expect(floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(floorFields[TEST_FLOOR_ID].fieldConfig);
+    expect(useMazeStore.getState().activeFloorId).toBe(TEST_FLOOR_ID);
+  });
+
+  it("ignores a copy of a floor onto itself", () => {
+    const before = useMazeStore.getState().floorFields;
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, true, OTHER_FLOOR_ID);
+    expect(useMazeStore.getState().floorFields).toBe(before);
+  });
+
+  it("carries includeTopology through the dirty-maze confirmation", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology }, mazeDirty: true });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().fieldEditConfirmation)
+      .toEqual({ kind: "copyFloorField", sourceFloorId: OTHER_FLOOR_ID, includeTopology: false, targetFloorId: TEST_FLOOR_ID });
+    useMazeStore.getState().confirmFieldEdit();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+  });
+
+  it("without topology, still drops glues when a custom floor receives a standard one", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({
+      floorTopology: { [TEST_FLOOR_ID]: topology },
+      floorFields: {
+        ...useMazeStore.getState().floorFields,
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[1, 2]] }), isEditingField: true,
+        }),
+      },
+    });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
   it("is a no-op for an unknown source floor id", () => {
     const before = useMazeStore.getState().floorFields;
     useMazeStore.getState().copyFloorField("not_a_real_id");
@@ -73,7 +185,129 @@ describe("copyFloorField", () => {
   });
 });
 
-describe("copyCurrentFloorFieldToAll", () => {
+describe("setFieldEditMode", () => {
+  it("drops the floor's glues when switching from a custom field to the standard one", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({
+      floorTopology: { [TEST_FLOOR_ID]: topology, [OTHER_FLOOR_ID]: topology },
+    });
+    useMazeStore.getState().setFieldEditMode("custom");
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+    useMazeStore.getState().setFieldEditMode("default");
+    const { floorTopology } = useMazeStore.getState();
+    expect(floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+    expect(floorTopology[OTHER_FLOOR_ID]).toBe(topology);
+  });
+
+  it("applies the same drop through the dirty-maze confirmation", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().setFieldEditMode("custom");
+    useMazeStore.setState({ mazeDirty: true });
+    useMazeStore.getState().setFieldEditMode("default");
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+    useMazeStore.getState().confirmFieldEdit();
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
+  it("drops the glues when setFieldConfig turns a custom floor into a standard shape", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().setFieldEditMode("custom");
+    useMazeStore.getState().setFieldConfig(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }));
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+});
+
+describe("copyFloorFieldToFloors", () => {
+  const third = { id: "floor_third", title: "Floor 3" };
+  function seedThree() {
+    useMazeStore.setState({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: OTHER_FLOOR_ID, title: "Floor 2" }, third],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }), fieldDirty: false }),
+        [OTHER_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+        [third.id]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 11, rows: 13 }) }),
+      },
+    });
+  }
+
+  it("copies only to the chosen floors", () => {
+    seedThree();
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [third.id]);
+    const { floorFields } = useMazeStore.getState();
+    expect(floorFields[third.id].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+    expect(floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+  });
+
+  it("asks for confirmation instead of copying while a generation exists, then applies on confirm", () => {
+    seedThree();
+    useMazeStore.setState({ mazeDirty: true });
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [OTHER_FLOOR_ID, third.id], false);
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({
+      kind: "copyFloorFieldToFloors", sourceFloorId: TEST_FLOOR_ID, targetFloorIds: [OTHER_FLOOR_ID, third.id], includeTopology: false,
+    });
+    expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+
+    useMazeStore.getState().confirmFieldEdit();
+    expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+    expect(useMazeStore.getState().floorFields[third.id].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+  });
+
+  it("does nothing while the background auto-fill preview is active", () => {
+    seedThree();
+    const floorFields = useMazeStore.getState().floorFields;
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([0]), mazeDirty: true });
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [OTHER_FLOOR_ID]);
+    expect(useMazeStore.getState().floorFields).toBe(floorFields);
+    expect(useMazeStore.getState().fieldEditConfirmation).toBeNull();
+  });
+
+  it("without includeTopology, drops the topology of a custom target that receives a standard field", () => {
+    seedThree();
+    const topology = { fingerprint: "square{custom}", folds: [], groups: [] };
+    useMazeStore.setState({
+      floorFields: {
+        ...useMazeStore.getState().floorFields,
+        [OTHER_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      floorTopology: { [OTHER_FLOOR_ID]: topology, [third.id]: topology },
+    });
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [OTHER_FLOOR_ID, third.id], false);
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toBeUndefined();
+    expect(useMazeStore.getState().floorTopology[third.id]).toBe(topology);
+  });
+
+  it("copies topology by default and leaves it alone without includeTopology", () => {
+    seedThree();
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    const own = { fingerprint: "square{own}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology, [third.id]: own } });
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [OTHER_FLOOR_ID, third.id], false);
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toBeUndefined();
+    expect(useMazeStore.getState().floorTopology[third.id]).toBe(own);
+
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [OTHER_FLOOR_ID, third.id]);
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toEqual(topology);
+    expect(useMazeStore.getState().floorTopology[third.id]).toEqual(topology);
+  });
+
+  it("ignores the source itself and unknown ids, and does nothing for an empty target list", () => {
+    seedThree();
+    const before = useMazeStore.getState().floorFields;
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, [TEST_FLOOR_ID, "nope"]);
+    useMazeStore.getState().copyFloorFieldToFloors(TEST_FLOOR_ID, []);
+    expect(useMazeStore.getState().floorFields).toBe(before);
+  });
+});
+
+describe("copying a field onto every other floor", () => {
+  it("uses the given floor as the source instead of the active one", () => {
+    copyToAllFloors(OTHER_FLOOR_ID);
+    const { floorFields } = useMazeStore.getState();
+    expect(floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+  });
+
   it("replaces every other floor with independent copies of the active floor field", () => {
     useMazeStore.setState({
       floors: [
@@ -95,7 +329,7 @@ describe("copyCurrentFloorFieldToAll", () => {
       },
     });
 
-    useMazeStore.getState().copyCurrentFloorFieldToAll();
+    copyToAllFloors();
 
     const { floorFields } = useMazeStore.getState();
     expect(floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[1, 2]] }));
@@ -110,6 +344,17 @@ describe("copyCurrentFloorFieldToAll", () => {
     expect(floorFields[TEST_FLOOR_ID].fieldDirty).toBe(false);
   });
 
+  it("syncs the active floor's topology to every other floor, dropping topology the source lacks", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    copyToAllFloors();
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toEqual(topology);
+
+    useMazeStore.setState({ floorTopology: { [OTHER_FLOOR_ID]: topology } });
+    copyToAllFloors();
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toBeUndefined();
+  });
+
   it("clears generated results", () => {
     useMazeStore.setState({
       nodes: [{ id: 1, x: 0, y: 0, i: 0 }],
@@ -118,7 +363,8 @@ describe("copyCurrentFloorFieldToAll", () => {
       postEditDirty: true,
     });
 
-    useMazeStore.getState().copyCurrentFloorFieldToAll();
+    copyToAllFloors();
+    useMazeStore.getState().confirmFieldEdit();
 
     expect(useMazeStore.getState().nodes).toEqual([]);
     expect(useMazeStore.getState().edges).toEqual([]);
@@ -130,7 +376,7 @@ describe("copyCurrentFloorFieldToAll", () => {
     const floorFields = useMazeStore.getState().floorFields;
     useMazeStore.setState({ backgroundAutoFillPreview: new Set([0]) });
 
-    useMazeStore.getState().copyCurrentFloorFieldToAll();
+    copyToAllFloors();
 
     expect(useMazeStore.getState().floorFields).toBe(floorFields);
   });
@@ -201,13 +447,13 @@ describe("core-backed field operations", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toBe(field.fieldPoints);
   });
 
-  it("applySymmetry reports a free axis instead of changing the field", () => {
+  it("applyMirror reports a free axis instead of changing the field", () => {
     useMazeStore.setState({
       floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[1, 0]]) },
-      symmetryScope: "everything",
-      symmetryAxisPoints: [{ x: -100, y: -100 }, { x: 100, y: -60 }],
+      mirrorScope: "everything",
+      mirrorAxisPoints: [{ x: -100, y: -100 }, { x: 100, y: -60 }],
     });
-    useMazeStore.getState().applySymmetry();
+    useMazeStore.getState().applyMirror();
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints.size).toBe(1);
     expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
   });

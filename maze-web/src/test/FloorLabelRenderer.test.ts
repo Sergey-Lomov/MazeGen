@@ -20,6 +20,16 @@ class FakeBitmapText {
   constructor(public readonly options: { text: string; style: Record<string, unknown> }) {}
 }
 
+class FakeGraphics {
+  readonly commands: { kind: string; args: number[] }[] = [];
+  rect(...args: number[]) { this.commands.push({ kind: "rect", args }); return this; }
+  moveTo(...args: number[]) { this.commands.push({ kind: "moveTo", args }); return this; }
+  lineTo(...args: number[]) { this.commands.push({ kind: "lineTo", args }); return this; }
+  arcTo(...args: number[]) { this.commands.push({ kind: "arcTo", args }); return this; }
+  closePath() { this.commands.push({ kind: "closePath", args: [] }); return this; }
+  fill(...args: unknown[]) { this.commands.push({ kind: "fill", args: args as number[] }); return this; }
+}
+
 const glyph = { xAdvance: 50, xOffset: 0, yOffset: 10, texture: { orig: { width: 58, height: 48 } } };
 const font = {
   baseMeasurementFontSize: 100,
@@ -30,7 +40,7 @@ const font = {
 
 vi.mock("pixi.js", () => ({
   Container: FakeContainer,
-  Graphics: class {},
+  Graphics: FakeGraphics,
   BitmapText: FakeBitmapText,
   Cache: { get: (key: string) => key.endsWith("-bitmap") ? font : undefined },
 }));
@@ -79,5 +89,40 @@ describe("FloorLabelRenderer", () => {
     const layer = root.children[0] as FakeContainer;
     const label = layer.children[0] as FakeBitmapText;
     expect(label.options.text).toBe("Ground");
+  });
+
+  it.each(["rectangle", "parallelogram"] as const)("keeps the %s backplate's gap and border sharp at zero corner radius", (backgroundShape) => {
+    renderer.render({
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+      backgroundShape,
+      cornerRadius: 0,
+      gap: 4,
+      borderWidth: 2,
+    }, { x: 100, y: 200 }, 0, 2, 0xffffff);
+
+    const layer = root.children[0] as FakeContainer;
+    const body = layer.children[0] as FakeGraphics;
+    if (backgroundShape === "rectangle") {
+      expect(body.commands.filter(({ kind }) => kind === "rect")).toHaveLength(3);
+    } else {
+      expect(body.commands.filter(({ kind }) => kind === "arcTo").every(({ args }) => args.at(-1) === 0)).toBe(true);
+    }
+  });
+
+  it("expands non-zero rectangular corner radii through the border and gap", () => {
+    renderer.render({
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+      backgroundShape: "rectangle",
+      cornerRadius: 3,
+      gap: 4,
+      borderWidth: 2,
+    }, { x: 100, y: 200 }, 0, 2, 0xffffff);
+
+    const layer = root.children[0] as FakeContainer;
+    const body = layer.children[0] as FakeGraphics;
+    const radii = body.commands
+      .filter(({ kind }) => kind === "arcTo")
+      .map(({ args }) => args.at(-1));
+    expect(radii).toEqual([9, 9, 9, 9, 5, 5, 5, 5, 3, 3, 3, 3]);
   });
 });

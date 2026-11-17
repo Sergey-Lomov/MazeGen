@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ToggleRow } from "../components/ToggleRow";
 import { ui } from "../styles/theme";
 
@@ -19,5 +19,14 @@ describe("ToggleRow disabled styling", () => {
     const label = screen.getByText("Cycles");
     expect(label).toHaveStyle({ color: ui.text.disabled });
     expect(label.style.opacity).toBe("");
+  });
+
+  it("disables the switch input and ignores clicks on it", () => {
+    const onChange = vi.fn();
+    render(<ToggleRow label="Cycles" checked={false} onChange={onChange} disabled />);
+    const input = screen.getByRole("checkbox");
+    expect(input).toBeDisabled();
+    fireEvent.click(input);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

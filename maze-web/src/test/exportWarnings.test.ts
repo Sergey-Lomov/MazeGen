@@ -1,5 +1,6 @@
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi } from "vitest";
-import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors, computeTextOverflowWarningsAcrossFloors, TEXT_OVERFLOW_WARNING_ID } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
@@ -8,7 +9,7 @@ import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
-import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
+import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -33,13 +34,15 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
-    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
+    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWayGeometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",
+    markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
+    startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
@@ -58,15 +61,16 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080,
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
     color: 0, thickness: 4, junctionRadius: 4, join: "round", renderStyle: "contour",
+    markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
@@ -132,6 +136,34 @@ describe("elevator_indistinguishable (GitHub issue #471)", () => {
 });
 
 describe("computeVectorByWallsWarnings", () => {
+  describe("glue tab contrast", () => {
+    const tabs = (patch: Partial<typeof DEFAULT_GLUE_TAB_STYLE>) => baseSettings({ background: 0xffffff, glueTabs: { ...DEFAULT_GLUE_TAB_STYLE, showTabs: true, fillColor: 0x202020, lineColor: 0x202020, lineWidth: 1, ...patch } });
+    const ids = (settings: VectorByWallsSettings) => computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null).map((warning) => warning.id);
+
+    it("warns when the outline matches the fill, but not about the background", () => {
+      expect(ids(tabs({}))).toContain("glue_tab_outline_low_contrast_fill");
+      expect(ids(tabs({ fillColor: 0xffffff }))).not.toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("warns about a fill matching the background only without an outline", () => {
+      const noLine = ids(tabs({ lineWidth: 0, fillColor: 0xffffff }));
+      expect(noLine).toContain("glue_tab_fill_low_contrast_background");
+      expect(noLine).not.toContain("glue_tab_outline_low_contrast_fill");
+      expect(ids(tabs({ lineWidth: 1, lineColor: 0, fillColor: 0xffffff }))).not.toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("stays silent when no floor has a glue", () => {
+      const settings = tabs({ lineWidth: 0, fillColor: 0xffffff });
+      const withoutGlues = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null, undefined, undefined, undefined, true, [], false);
+      expect(withoutGlues.some((warning) => warning.id.startsWith("glue_tab"))).toBe(false);
+      expect(ids(settings)).toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("stays silent while the tabs are hidden", () => {
+      expect(ids(tabs({ showTabs: false, lineWidth: 0, fillColor: 0xffffff })).some((id) => id.startsWith("glue_tab"))).toBe(false);
+    });
+  });
+
   describe("inner grid contrast", () => {
     it("checks the independent inner-grid color against both floor and wall surfaces", () => {
       const settings = baseSettings({ showInnerGrid: true, innerGridColor: 0, floorColor: 0, wallColor: 0 });
@@ -214,12 +246,33 @@ describe("computeVectorByWallsWarnings", () => {
     });
   });
 
+  describe("teleport_merged_without_connectors", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 1), n(2, 4, 4)];
+    const sharing = [teleport(0, 1), teleport(0, 2)];
+    const run = (edges: ReturnType<typeof teleport>[], over: Parameters<typeof baseSettings>[0]) =>
+      computeVectorByWallsWarnings(nodes, edges, squareCfg, baseSettings(over), null, null)
+        .filter((w) => w.id === "teleport_merged_without_connectors");
+
+    it("flags merged teleports when connectors are disabled", () => {
+      const matches = run(sharing, { teleportConnectorStyle: "none", teleportMergeMode: true });
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes.sort()).toEqual([0]);
+    });
+
+    it("does not flag with merge mode off, connectors on, or no shared cell", () => {
+      expect(run(sharing, { teleportConnectorStyle: "none", teleportMergeMode: false })).toHaveLength(0);
+      expect(run(sharing, { teleportConnectorStyle: "straight", teleportMergeMode: true })).toHaveLength(0);
+      expect(run([teleport(0, 1)], { teleportConnectorStyle: "none", teleportMergeMode: true })).toHaveLength(0);
+    });
+  });
+
   describe("teleport_waypoint_overlap", () => {
     it("flags when a teleport marker's footprint overlaps the start marker", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      // start sits at node 0's own position -> distance 0, definitely overlapping.
-      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      // start sits at node 0's own position; the markers are so big the layout can't fit them in the cell,
+      // so they stay stacked (distance 0) and definitely overlap.
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 200, borderWidth: 2 } });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, null);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
       expect(matches).toHaveLength(1);
@@ -229,12 +282,20 @@ describe("computeVectorByWallsWarnings", () => {
     it("collapses overlaps with both start and finish into one warning", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 200, borderWidth: 2 } });
       // Both start and finish sit exactly on the teleport's two endpoints -> two overlaps, one warning.
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, 1);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes.sort()).toEqual([0, 1]);
+    });
+
+    it("does not flag when the marker layout separates a start stacked on a teleport point (GitHub issue #735)", () => {
+      const nodes = [n(0, 0, 0), n(1, 5, 5)];
+      const edges = [teleport(0, 1)];
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, null);
+      expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(0);
     });
 
     it("does not flag when start/finish are far from any teleport endpoint", () => {
@@ -254,75 +315,32 @@ describe("computeVectorByWallsWarnings", () => {
     });
   });
 
-  describe("waypoint_on_split", () => {
-    it("flags start when it sits on a specially-rendered (bridge) split point", () => {
-      const settings = baseSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes).toEqual([0]);
+  it("does not add warnings when waypoint, teleport and vertical markers use special split anchors", () => {
+    const nodes = [...bridgeSplitNodes, n(7, 8, 8, 1)];
+    const edges: EdgeDto[] = [
+      ...bridgeSplitEdges,
+      teleport(0, 7),
+      { from: 0, to: 7, kind: "vertical_passage" },
+    ];
+    const wallsSettings = baseSettings({
+      background: 0x111111, gridColor: 0x777777, floorColor: 0x000000,
+      splitNodeColors: [0xffffff, 0x00ff00], splitSpecialShapes: true,
     });
+    const corridorsSettings = baseCorridorsSettings({
+      background: 0x111111, gridColor: 0x777777, color: 0x000000,
+      splitNodeColors: [0xffffff, 0x00ff00], splitSpecialShapes: true,
+    });
+    const wallWarnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, wallsSettings, 0, null);
+    const wallWarningsWithoutSpecialShapes = computeVectorByWallsWarnings(
+      nodes, edges, squareCfg, { ...wallsSettings, splitSpecialShapes: false }, 0, null,
+    );
+    const corridorWarnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, corridorsSettings, 0, null);
+    const corridorWarningsWithoutSpecialShapes = computeVectorByCorridorsWarnings(
+      nodes, edges, squareCfg, { ...corridorsSettings, splitSpecialShapes: false }, 0, null,
+    );
 
-    it("collapses start+finish both on special split points into one warning", () => {
-      const settings = baseSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, 4);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes.sort()).toEqual([0, 4]);
-    });
-
-    it("does not flag a plain (non-special) split point", () => {
-      const settings = baseSettings();
-      const warnings = computeVectorByWallsWarnings(plainSplitNodes, [], squareCfg, settings, 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("does not flag when splitSpecialShapes is off (special shape not actually drawn)", () => {
-      const settings = baseSettings({ splitSpecialShapes: false });
-      const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("does not flag a waypoint on an unsplit node", () => {
-      const settings = baseSettings();
-      const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 6, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("no split points in the maze at all -> no warning", () => {
-      const nodes = [n(0, 0, 0), n(1, 5, 5)];
-      const settings = baseSettings();
-      const warnings = computeVectorByWallsWarnings(nodes, [], squareCfg, settings, 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-  });
-
-  describe("teleport_on_special_split", () => {
-    it("flags a teleport endpoint sitting on a specially-rendered split point", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(0, 7)];
-      const settings = baseSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
-      const matches = warnings.filter((w) => w.id === "teleport_on_special_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes).toContain(0);
-    });
-
-    it("does not flag when splitSpecialShapes is off", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(0, 7)];
-      const settings = baseSettings({ splitSpecialShapes: false });
-      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
-      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
-    });
-
-    it("does not flag a teleport endpoint on a plain, non-special cell", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(6, 7)];
-      const settings = baseSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
-      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
-    });
+    expect(wallWarnings).toEqual(wallWarningsWithoutSpecialShapes);
+    expect(corridorWarnings).toEqual(corridorWarningsWithoutSpecialShapes);
   });
 
   describe("elevator_badges_overlap", () => {
@@ -345,33 +363,62 @@ describe("computeVectorByWallsWarnings", () => {
       // clamped to the settings-panel slider's 0.1-1 UI range, so a large value here isolates the
       // geometry from the marker radius entirely.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       const matches = warnings.filter((w) => w.id === "elevator_badges_overlap");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
-      expect(matches[0].crossFloorTargets).toEqual([
-        { nodeId: 0, targetFloorIndex: 1 },
-        { nodeId: 0, targetFloorIndex: 2 },
-        { nodeId: 0, targetFloorIndex: 3 },
-      ]);
+      // The overlap is rendered around node 0 itself, so the warning lists only that floor;
+      // reaching other floors does not make their elevator marker invalid.
+      expect(matches[0].crossFloorTargets).toEqual([{ nodeId: 0, targetFloorIndex: 0 }]);
     });
 
     it("does not flag when badges is disabled", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: false, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: false, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
     });
 
-    it("does not flag when badges have enough room (large distance, small size)", () => {
+    it("reports merged floor-label collisions separately from badge-body collisions", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, backing: "shared", placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 400, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+      expect(warnings.filter((w) => w.id === "elevator_badges_merged_labels_overlap")).toHaveLength(1);
+    });
+
+    it("does not flag when badges have enough room (large distance, small size)", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+    });
+
+    it("flags a merged uneven ring when its closing gap is tighter than its ordinary badge gaps", () => {
+      // Ring radius 8.5 (marker) + 0.5 (badge) = 9; a 17px chord steps ~144 degrees, so 3 badges leave a closing gap tighter than the others.
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, backing: "shared", placement: "full_circle", distance: 0, gap: 16, gapWidth: 0, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_merged_end_gap_too_small");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
+    });
+
+    it("warns when an uneven circular layout must fall back to even distribution", () => {
+      // A 21px chord on a ring of radius 9 needs a step of 180+ degrees, so 3 badges cannot sit in one arc.
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 20, gapWidth: 0, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_gap_falls_back_to_even_distribution");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
     });
 
     it("when only the floor-scoped source node is visible (targets' floors unresolvable), no overlap can be detected", () => {
@@ -379,7 +426,7 @@ describe("computeVectorByWallsWarnings", () => {
       // active floor) is present — the fan's targets on other floors are structurally absent, so
       // without a separate unscoped node list their floors can't resolve at all.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings([elevatorNodes[0]], elevatorEdges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
@@ -398,22 +445,18 @@ describe("computeVectorByWallsWarnings", () => {
       // Large size -> huge badgeRadius -> slotsPerRow capacity 1; 3 floors split 2/1 between
       // sides, so the 2-badge side overflows.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       const matches = warnings.filter((w) => w.id === "elevator_badges_too_many");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
-      expect(matches[0].crossFloorTargets).toEqual([
-        { nodeId: 0, targetFloorIndex: 1 },
-        { nodeId: 0, targetFloorIndex: 2 },
-        { nodeId: 0, targetFloorIndex: 3 },
-      ]);
+      expect(matches[0].crossFloorTargets).toEqual([{ nodeId: 0, targetFloorIndex: 0 }]);
     });
 
     it("never fires for full_circle", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
@@ -421,7 +464,7 @@ describe("computeVectorByWallsWarnings", () => {
 
     it("does not flag when badges fit within one row per side", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
@@ -430,80 +473,6 @@ describe("computeVectorByWallsWarnings", () => {
 });
 
 describe("computeVectorByCorridorsWarnings", () => {
-  describe("waypoint_on_split", () => {
-    it("flags start when it sits on a specially-rendered (bridge) split point", () => {
-      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes).toEqual([0]);
-    });
-
-    it("collapses start+finish both on special split points into one warning", () => {
-      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, 4);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes.sort()).toEqual([0, 4]);
-    });
-
-    it("does not flag a plain (non-special) split point", () => {
-      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("does not flag when splitSpecialShapes is off (special shape not actually drawn)", () => {
-      const settings = baseCorridorsSettings({ splitSpecialShapes: false });
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("does not flag a waypoint on an unsplit node", () => {
-      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 6, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("no split points in the maze at all -> no warning", () => {
-      const nodes = [n(0, 0, 0), n(1, 5, 5)];
-      const warnings = computeVectorByCorridorsWarnings(nodes, [], squareCfg, baseCorridorsSettings(), 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
-    });
-
-    it("no start/finish set -> no warning", () => {
-      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), null, null);
-      expect(warnings).toHaveLength(0);
-    });
-  });
-
-  describe("teleport_on_special_split", () => {
-    it("flags a teleport endpoint sitting on a specially-rendered split point", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(0, 7)];
-      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
-      const matches = warnings.filter((w) => w.id === "teleport_on_special_split");
-      expect(matches).toHaveLength(1);
-      expect(matches[0].nodes).toContain(0);
-    });
-
-    it("does not flag when splitSpecialShapes is off", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(0, 7)];
-      const settings = baseCorridorsSettings({ splitSpecialShapes: false });
-      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
-      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
-    });
-
-    it("does not flag a teleport endpoint on a plain, non-special cell", () => {
-      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
-      const edges = [...bridgeSplitEdges, teleport(6, 7)];
-      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
-      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
-      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
-    });
-  });
-
   describe("split_gap_may_shrink", () => {
     it("flags when corridor width plus both gap sides exceeds 40px", () => {
       const settings = baseCorridorsSettings({ thickness: 35, splitGapWidth: 3 });
@@ -603,6 +572,14 @@ describe("computeVectorByCorridorsWarnings", () => {
 
       expect(warning?.nodes).toEqual([0]);
       expect(warning?.edges).toEqual([]);
+    });
+
+    it("does not flag a hidden start marker, which has no extension (GitHub issue #963)", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34, startMarker: { ...defaultMarker, markerEnabled: false } });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
     });
 
     it("uses the rendered contour instead of the requested corridor thickness", () => {
@@ -709,6 +686,7 @@ describe("computeVectorByCorridorsWarnings", () => {
       const marker = { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 };
       const settings = baseCorridorsSettings({
         color: 0,
+        markerLayout: "auto", markerScale: 1,
         startMarker: marker,
         elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, enabled: true, fillColor: 0, textColor: 0 },
       });
@@ -741,6 +719,7 @@ describe("computeVectorByCorridorsWarnings", () => {
     it("keeps separate alerts for different color pairs of one warning kind", () => {
       const settings = baseCorridorsSettings({
         color: 0,
+        markerLayout: "auto", markerScale: 1,
         startMarker: { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 },
         finishMarker: { ...defaultMarker, fillColor: 0x000001, borderColor: 0x000001, borderWidth: 0 },
       });
@@ -790,6 +769,42 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) }), null, null)).toHaveLength(0);
   });
 
+  it("skips captions on hidden start and finish markers in warnings and auto-fit (GitHub issue #977)", () => {
+    const hiddenMarkers = {
+      startMarker: marker({ markerEnabled: false, textSize: 32, textMargin: 1 }),
+      finishMarker: marker({ markerEnabled: false, textSize: 32, textMargin: 1 }),
+    };
+    const settings = baseSettings(hiddenMarkers);
+    expect(overflow(settings)).toHaveLength(0);
+    expect(computeVectorByCorridorsWarnings(nodes, edges, squareCfg, baseCorridorsSettings(hiddenMarkers), 0, 1)
+      .filter((warning) => warning.id === "marker_text_overflow")).toHaveLength(0);
+    const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
+    expect(items.start).toEqual([]);
+    expect(items.finish).toEqual([]);
+  });
+
+  it("auto-fit items of a caption with its own font hold a plain copy, not a tracked settings view", () => {
+    const textFont = { family: "Georgia", weight: 700 };
+    const settings = baseSettings({ startMarker: marker({ textFont, textSize: 20 }) });
+    const [item] = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1).start;
+    expect(item.font).toEqual(textFont);
+    expect(item.font).not.toBe(textFont);
+  });
+
+  it("text-only pass (GitHub issue #971) reports the text overflow warnings of the full pass and nothing else, in both modes", () => {
+    const floors = [{ id: "f0" }];
+    const startMarker = marker({ textSize: 32, textMargin: 1 });
+    const textIds = new Set(Object.values(TEXT_OVERFLOW_WARNING_ID));
+    const walls = baseSettings({ startMarker });
+    const corridors = baseCorridorsSettings({ startMarker });
+    const fullWalls = computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, squareCfg, walls, 0, 1).filter((w) => textIds.has(w.id));
+    const onlyWalls = computeTextOverflowWarningsAcrossFloors("walls", nodes, edges, floors, squareCfg, walls, 0, 1);
+    expect(onlyWalls.map((w) => w.id)).toEqual(["marker_text_overflow"]);
+    expect(onlyWalls).toEqual(fullWalls);
+    const onlyCorridors = computeTextOverflowWarningsAcrossFloors("corridors", nodes, edges, floors, squareCfg, corridors, 0, 1);
+    expect(onlyCorridors.map((w) => w.id)).toEqual(["marker_text_overflow"]);
+  });
+
   it("reports the same caveat in corridors mode", () => {
     const settings = baseCorridorsSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) });
     const w = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null).filter((x) => x.id === "marker_text_overflow");
@@ -834,10 +849,34 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(run({ enabled: false, width: 8, height: 8, textSize: 32, textMargin: 1 })).toHaveLength(0);
   });
 
+  it("keeps the cells of every floor when merging marker index overflow warnings across floors", () => {
+    const crossNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1)];
+    const crossEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const index = baseSettings().markerIndex;
+    const settings = baseSettings({ markerIndex: { ...index, enabled: true, labelStyle: "arabic", width: 8, height: 8, textSize: 32, textMargin: 1 } });
+    const merged = computeVectorByWallsWarningsAcrossFloors(crossNodes, crossEdges, [{ id: "f0" }, { id: "f1" }], squareCfg, settings, null, null)
+      .filter((w) => w.id === "marker_index_text_overflow");
+    expect(merged).toHaveLength(1);
+    expect(new Set(merged[0].cells?.map((c) => c.floorIndex))).toEqual(new Set([0, 1]));
+  });
+
+  it("feeds the project teleport groups into marker index text-fit: a group shares one index (GitHub issue #871)", () => {
+    // Teleports 0->1 and 0->2 share the endpoint node 0, so merged they form one group.
+    const groupNodes = [n(0, 0, 0, 0), n(1, 3, 3, 0), n(2, 5, 5, 0)];
+    const groupEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0), teleport(0, 2), teleport(2, 0)];
+    const index = baseSettings().markerIndex;
+    const markerIndex = { ...index, enabled: true, labelStyle: "arabic" as const, coverage: { ...index.coverage, singleFloorTeleport: true } };
+    const texts = (teleportMergeMode: boolean) => computeTextFitItemsAcrossFloors(
+      groupNodes, groupEdges, [{ id: "f0" }], squareCfg, baseSettings({ teleportMergeMode, markerIndex }), null, null,
+    ).markerIndex.map((item) => item.text);
+    expect(new Set(texts(true))).toEqual(new Set(["1"]));
+    expect(new Set(texts(false))).toEqual(new Set(["1", "2"]));
+  });
+
   it("collects labels across floors per size control for auto-fit", () => {
     const settings = baseSettings({ startMarker: marker({}), finishMarker: marker({ text: "" }) });
     const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
-    expect(items.start).toEqual([{ text: "S", fontWeight: "bold", shape: "circle", plateSize: 20, margin: 1 }]);
+    expect(items.start).toEqual([{ text: "S", font: { family: "", weight: 700 }, shape: "circle", plateSize: 20, margin: 1 }]);
     expect(items.finish).toEqual([]);
     expect(items.elevator).toEqual([]);
     expect(items.teleport).toEqual([]);
@@ -866,6 +905,7 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
   it("attaches the label warning to the caption color and the marker fill it sits on", () => {
     const settings = baseSettings({
       background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff,
+      markerLayout: "auto", markerScale: 1,
       startMarker: { ...defaultMarker, fillColor: 0x00ff00, borderColor: 0x00ff00, textColor: 0x00ff00, text: "S" },
     });
     const warning = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, 0, null).find((w) => w.id === "label_low_contrast");
@@ -873,14 +913,35 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
   });
 
   it("attaches a split warning to the slot's own split-node field", () => {
-    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa });
+    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
     const warning = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
       .find((w) => w.id === "split_low_contrast_floor");
     expect(warning?.colorFields).toEqual(["splitNode:0", "tilesFloor"]);
   });
 
+  it("skips special-shape splits in the split/floor contrast check unless special shapes are off (issue #893)", () => {
+    const base = { floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa };
+    const on = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, baseSettings({ ...base, splitSpecialShapes: true }), null, null)
+      .find((w) => w.id === "split_low_contrast_floor");
+    expect(on).toBeUndefined();
+    const off = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, baseSettings({ ...base, splitSpecialShapes: false }), null, null)
+      .find((w) => w.id === "split_low_contrast_floor");
+    expect(off).toBeDefined();
+  });
+
+  it("flags only the split points whose own slot color clashes (GitHub issue #893)", () => {
+    // Point A (1,1) connects through slot 0 (clashing with the floor), point B (3,3) through slot 1.
+    const nodes = [n(0, 1, 1), n(1, 1, 1), n(2, 2, 1), n(3, 3, 3), n(4, 3, 3), n(5, 4, 3)];
+    const edges = [e(0, 2), e(2, 0), e(4, 5), e(5, 4)];
+    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
+    const warning = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null).find((w) => w.id === "split_low_contrast_floor");
+    expect(warning?.nodes).toEqual(expect.arrayContaining([0, 1]));
+    expect(warning?.nodes).not.toContain(3);
+    expect(warning?.nodes).not.toContain(4);
+  });
+
   it("lists every offending slot on the single pairwise split warning", () => {
-    const settings = baseSettings({ floorColor: 0xffffff, splitNodeColors: [0x123456, 0x123457], background: 0xffffff, gridColor: 0xaaaaaa });
+    const settings = baseSettings({ floorColor: 0xffffff, splitNodeColors: [0x123456, 0x123457], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
     const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
       .filter((w) => w.id === "split_colors_low_contrast_each_other");
     expect(warnings).toHaveLength(1);
@@ -912,5 +973,153 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
     expect(off.some((w) => w.id === "label_low_contrast")).toBe(false);
     const on = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({ startMarker: marker(true) }), 0, null);
     expect(on.find((w) => w.id === "label_low_contrast")?.fields).toEqual(expect.arrayContaining(["startText", "startFill"]));
+  });
+});
+
+describe("teleport_connector_covers_one_way (GitHub issue #862)", () => {
+  // Row of four cells; the 1 -> 2 passage is one-way, so its indicator sits on the wall between
+  // cells 1 and 2, exactly on the line a 0 <-> 3 teleport connector takes.
+  const row = [n(0, 0, 0), n(1, 1, 0), n(2, 2, 0), n(3, 3, 0)];
+  const rowEdges = [e(0, 1), e(1, 0), e(1, 2), e(2, 3), e(3, 2), teleport(0, 3), teleport(3, 0)];
+  const covering = (id: string) => (w: { id: string }) => w.id === id;
+
+  it("flags the covered one-way passage in Vector by walls", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings(), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].nodes.sort()).toEqual([1, 2]);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+
+  it("does not fire when the one-way passage is off the connector's path", () => {
+    const nodes = [...row, n(4, 1, 3), n(5, 2, 3)];
+    const edges = [...rowEdges, e(2, 1), e(4, 5)];
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, baseSettings(), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("does not fire when connectors are disabled", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings({ teleportConnectorStyle: "none" }), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("flags a straight connector that crosses the indicator", () => {
+    const straight = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings({ teleportConnectorStyle: "straight" }), null, null);
+    expect(straight.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(1);
+  });
+
+  it("reports one entry per passage even when several connectors cover it", () => {
+    const edges = [...rowEdges, teleport(1, 2), teleport(2, 1)];
+    const warnings = computeVectorByWallsWarnings(row, edges, squareCfg, baseSettings({ teleportConnectorStyle: "straight" }), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+
+  it("does not fire without teleports", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges.filter((x) => x.kind !== "teleport"), squareCfg, baseSettings(), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("flags the covered one-way passage in Vector by corridors", () => {
+    const warnings = computeVectorByCorridorsWarnings(row, rowEdges, squareCfg, baseCorridorsSettings(), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+});
+
+describe("start_invisible / finish_invisible (GitHub issue #963)", () => {
+  const nodes = [n(0, 0, 0), n(1, 5, 5)];
+  const shown = baseSettings().startMarker;
+  const hidden = { ...shown, markerEnabled: false, textEnabled: false, text: "S" };
+  const ids = (settings: VectorByWallsSettings) => computeVectorByWallsWarnings(nodes, [e(0, 1)], squareCfg, settings, 0, 1)
+    .filter((w) => w.id === "start_invisible" || w.id === "finish_invisible");
+
+  it("flags a start with neither marker nor caption, and only the start", () => {
+    const warnings = ids(baseSettings({ startMarker: hidden }));
+    expect(warnings.map((w) => w.id)).toEqual(["start_invisible"]);
+    expect(warnings[0].nodes).toEqual([0]);
+  });
+
+  it("flags a finish with no marker size and no caption", () => {
+    const warnings = ids(baseSettings({ finishMarker: { ...shown, size: 0, borderWidth: 0, textEnabled: false } }));
+    expect(warnings.map((w) => w.id)).toEqual(["finish_invisible"]);
+  });
+
+  it("does not flag while the caption or the marker is visible", () => {
+    expect(ids(baseSettings({ startMarker: { ...hidden, textEnabled: true } }))).toHaveLength(0);
+    expect(ids(baseSettings({ startMarker: { ...hidden, markerEnabled: true, size: 10 } }))).toHaveLength(0);
+  });
+
+  it("does not flag an empty caption as visible", () => {
+    expect(ids(baseSettings({ startMarker: { ...hidden, textEnabled: true, text: " " } })).map((w) => w.id)).toEqual(["start_invisible"]);
+  });
+});
+
+describe("hidden start/finish marker colors (GitHub issue #963)", () => {
+  const marker = { ...baseSettings().startMarker, fillColor: 0xffffff, borderColor: 0xffffff, borderWidth: 0, textColor: 0xffffff, text: "S", textEnabled: true };
+  const run = (startMarker: MarkerSettings) => computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({
+    background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff, markerLayout: "auto", markerScale: 1, startMarker,
+  }), 0, null);
+
+  it("skips the marker's own contrast warnings while the marker is off", () => {
+    expect(run(marker).some((w) => w.id.startsWith("marker_fill_low_contrast"))).toBe(true);
+    expect(run({ ...marker, markerEnabled: false }).some((w) => w.id.startsWith("marker_fill_low_contrast") || w.id.startsWith("marker_border_low_contrast"))).toBe(false);
+  });
+
+  it("checks the caption against the surface instead of the hidden fill", () => {
+    const warning = run({ ...marker, markerEnabled: false, fillColor: 0x000000, textColor: 0xffffff }).find((w) => w.id === "label_low_contrast");
+    expect(warning?.fields).toEqual(["startText", "tilesFloor"]);
+  });
+});
+
+describe("start marker of size 0 (saved before the toggle, GitHub issue #963)", () => {
+  it("compares the caption with the surface, not with the fill that is not drawn", () => {
+    const marker = { ...baseSettings().startMarker, size: 0, borderWidth: 0, fillColor: 0x545454, borderColor: 0x545454, textColor: 0x545454, text: "S", textEnabled: true };
+    const warnings = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({
+      background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff, markerLayout: "auto", markerScale: 1, startMarker: marker,
+    }), 0, null);
+    expect(warnings.some((w) => w.id === "label_low_contrast")).toBe(false);
+  });
+});
+
+describe("start_opening_no_outer_wall / finish_opening_no_outer_wall (GitHub issue #330)", () => {
+  // The full 6x6 grid, id = y * 6 + x: cell 0 = (0,0) touches the outer border, cell 21 = (3,3) is interior.
+  const nodes = Array.from({ length: 36 }, (_, i) => n(i, i % 6, Math.floor(i / 6)));
+  const run = (settings: VectorByWallsSettings, start: number | null, finish: number | null) =>
+    computeVectorByWallsWarnings(nodes, [], squareCfg, settings, start, finish)
+      .filter((w) => w.id === "start_opening_no_outer_wall" || w.id === "finish_opening_no_outer_wall");
+  const on = { mode: "both" as const, pattern: "triangle" as const, color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" as const };
+
+  it("flags an enabled opening whose cell has no outer wall, and only that endpoint", () => {
+    const warnings = run(baseSettings({ startOpening: on, finishOpening: on }), 21, 0);
+    expect(warnings.map((w) => w.id)).toEqual(["start_opening_no_outer_wall"]);
+    expect(warnings[0].nodes).toEqual([21]);
+  });
+
+  it("does not flag a border cell or a disabled opening", () => {
+    expect(run(baseSettings({ startOpening: on }), 0, null)).toHaveLength(0);
+    expect(run(baseSettings({ startOpening: { ...on, mode: "none" as const } }), 21, null)).toHaveLength(0);
+  });
+
+  it("flags every mode that works on the outer wall, whatever it does", () => {
+    for (const mode of ["opening", "pointer", "both"] as const) {
+      expect(run(baseSettings({ startOpening: { ...on, mode } }), 21, null).map((w) => w.id)).toEqual(["start_opening_no_outer_wall"]);
+    }
+  });
+
+  it("flags the finish independently", () => {
+    expect(run(baseSettings({ finishOpening: on }), null, 21).map((w) => w.id)).toEqual(["finish_opening_no_outer_wall"]);
+  });
+
+  it("a drawn opening keeps a marker-less endpoint visible; one that cannot be drawn does not", () => {
+    const hidden = { ...baseSettings().startMarker, markerEnabled: false, textEnabled: false };
+    const ids = (start: number) => computeVectorByWallsWarnings(nodes, [], squareCfg, baseSettings({ startMarker: hidden, startOpening: on }), start, null)
+      .filter((w) => w.id === "start_invisible" || w.id === "start_opening_no_outer_wall").map((w) => w.id);
+    expect(ids(0)).toEqual([]);
+    expect(ids(21)).toEqual(["start_invisible", "start_opening_no_outer_wall"]);
+    const off = computeVectorByWallsWarnings(nodes, [], squareCfg, baseSettings({ startMarker: hidden }), 0, null);
+    expect(off.map((w) => w.id)).toContain("start_invisible");
   });
 });

@@ -4,6 +4,7 @@ use super::standard_add_params::{self, attempts_limit, reserve_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
+use crate::graph::pathfinding::bfs_distances;
 use crate::ids::NodeId;
 use crate::quality_control::{MissingLoopsIssue, RepairArea};
 use crate::repair::command::MutationCommand;
@@ -12,7 +13,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
 use rand::{Rng, RngCore};
-use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
+use std::collections::{HashMap, HashSet};
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
 pub const PARAM_EXIT_PICK: &str = "exit_pick";
@@ -161,7 +162,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsTelep
             let mut failed_attempts = 0;
             while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
                 let source = take_entry(&mut pool, entry_pick, &dead_ends, rng);
-                let distances = bfs_distances(maze, source);
+                let distances = bfs_distances(&maze.graph, source);
                 let Some(destination) = pick_exit(
                     maze,
                     source,
@@ -228,20 +229,6 @@ fn take_entry(
         }
     }
     pool.swap_remove(rng.random_range(0..pool.len()))
-}
-
-fn bfs_distances<T: Tessellation>(maze: &Maze<T>, source: NodeId) -> HashMap<NodeId, usize> {
-    let mut distances = HashMap::from([(source, 0)]);
-    let mut queue = VecDeque::from([(source, 0)]);
-    while let Some((node, distance)) = queue.pop_front() {
-        for next in maze.graph.outgoing_neighbors(node) {
-            if let Entry::Vacant(entry) = distances.entry(next) {
-                entry.insert(distance + 1);
-                queue.push_back((next, distance + 1));
-            }
-        }
-    }
-    distances
 }
 
 #[allow(clippy::too_many_arguments)]

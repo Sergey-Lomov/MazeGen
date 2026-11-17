@@ -1,3 +1,4 @@
+import * as m from "~/paraglide/messages";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CopyFloorDialog } from "../components/dialogs/CopyFloorDialog";
@@ -26,25 +27,21 @@ beforeEach(() => {
 });
 
 describe("CopyFloorDialog", () => {
-  it("renders every floor, topmost first", () => {
-    render(<CopyFloorDialog onClose={vi.fn()} />);
-    const items = screen.getAllByText(/^Floor \d$/);
-    expect(items.map((el) => el.textContent)).toEqual(["Floor 3", "Floor 2", "Floor 1"]);
-  });
-
-  it("disables the active floor's own row", () => {
-    render(<CopyFloorDialog onClose={vi.fn()} />);
-    expect(screen.getByText("Floor 2").closest("button")).toBeDisabled();
+  it("lists every floor but the receiving one, topmost first, and names the receiver in the text", () => {
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={vi.fn()} />);
+    const items = screen.getAllByRole("option");
+    expect(items.map((el) => el.textContent)).toEqual(["Floor 3", "Floor 1"]);
+    expect(screen.getByText(m["field.copy_floor_text"]({ floor: "Floor 2" }))).toBeInTheDocument();
   });
 
   it("Confirm is disabled until a floor is selected", () => {
-    render(<CopyFloorDialog onClose={vi.fn()} />);
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={vi.fn()} />);
     expect(screen.getByText("Confirm")).toBeDisabled();
   });
 
   it("selecting a floor then confirming copies that floor's field into the active floor", () => {
     const onClose = vi.fn();
-    render(<CopyFloorDialog onClose={onClose} />);
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={onClose} />);
     fireEvent.click(screen.getByText("Floor 3"));
     expect(screen.getByText("Confirm")).not.toBeDisabled();
     fireEvent.click(screen.getByText("Confirm"));
@@ -52,17 +49,50 @@ describe("CopyFloorDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("clicking the disabled active-floor row does not change the selection", () => {
-    render(<CopyFloorDialog onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Floor 2"));
-    expect(screen.getByText("Confirm")).toBeDisabled();
+  it("includes topology by default and skips it when the switch is turned off", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [FLOOR_3_ID]: topology } });
+    const { unmount } = render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Floor 3"));
+    fireEvent.click(screen.getByText("Confirm"));
+    expect(useMazeStore.getState().floorTopology[FLOOR_2_ID]).toEqual(topology);
+    unmount();
+
+    useMazeStore.setState({ floorTopology: { [FLOOR_3_ID]: topology } });
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Floor 3"));
+    fireEvent.click(screen.getByLabelText("Include topology"));
+    fireEvent.click(screen.getByText("Confirm"));
+    expect(useMazeStore.getState().floorTopology[FLOOR_2_ID]).toBeUndefined();
   });
 
-  it("Cancel closes without copying", () => {
+  it("focuses the list on open, so the arrow keys walk the floors and skip the active one", () => {
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={vi.fn()} />);
+    const list = screen.getByRole("listbox");
+    expect(document.activeElement).toBe(list);
+
+    // Displayed Floor 3, Floor 2 (active, disabled), Floor 1.
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Floor 3" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Floor 1" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Confirm")).not.toBeDisabled();
+  });
+
+  it("copies onto the given target floor, not the active one", () => {
+    render(<CopyFloorDialog targetFloorId={FLOOR_3_ID} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Floor 1"));
+    fireEvent.click(screen.getByText("Confirm"));
+    expect(useMazeStore.getState().floorFields[FLOOR_3_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+    expect(useMazeStore.getState().floorFields[FLOOR_2_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }));
+  });
+
+  it("has no Cancel button; Escape closes without copying", () => {
     const onClose = vi.fn();
-    render(<CopyFloorDialog onClose={onClose} />);
+    render(<CopyFloorDialog targetFloorId={FLOOR_2_ID} onClose={onClose} />);
     fireEvent.click(screen.getByText("Floor 3"));
-    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByText("Cancel")).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
     expect(useMazeStore.getState().floorFields[FLOOR_2_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }));
   });

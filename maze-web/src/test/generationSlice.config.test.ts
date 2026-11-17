@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
+import { TRANSIENT_UI_STATE } from "../store/transientUiState";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import { baseStoreState, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
@@ -24,6 +26,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
+  computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
@@ -35,14 +38,17 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
-import { generateMaze, computeAnalytics } from "../wasm/mazeService";
+import { generateMaze, computeAnalytics, computeAnalyticsAsync } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 import { fieldOf } from "./fieldConfigFixtures";
 import { configAllCells } from "../pixi/tessellationCells";
 
 beforeEach(() => {
-  useMazeStore.setState(baseStoreState());
+  // `loadProject` waits for the registry unless it is already loaded (GitHub issue #967).
+  useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  vi.mocked(computeAnalyticsAsync).mockReset();
+  vi.mocked(computeAnalyticsAsync).mockResolvedValue(mockSnapshot);
 });
 
 describe("buildGenerateConfig — preset_start/preset_finish", () => {
@@ -310,6 +316,48 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
+  it("loadProject skips generation when the project was saved without a generated maze (GitHub issue #932)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], mazeDirty: false, postEditDirty: false });
+    const idleFile = serializeProject(useMazeStore.getState());
+    vi.mocked(generateMaze).mockClear();
+    useMazeStore.getState().loadProject(idleFile);
+    expect(generateMaze).not.toHaveBeenCalled();
+    expect(useMazeStore.getState().generationStatus).toBe("idle");
+    expect(useMazeStore.getState().openCard).toBe(idleFile.ui.openCard);
+
+    // Saved flags are restored on the skip path too, and a post-edit-only project still generates.
+    const presetsOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, presets: true } };
+    useMazeStore.getState().loadProject(presetsOnly);
+    expect(generateMaze).not.toHaveBeenCalled();
+    expect(useMazeStore.getState().presetsDirty).toBe(true);
+    const postEditOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, postEdit: true } };
+    useMazeStore.getState().loadProject(postEditOnly);
+    expect(generateMaze).toHaveBeenCalledTimes(1);
+    vi.mocked(generateMaze).mockClear();
+
+    useMazeStore.getState().generate();
+    const doneFile = serializeProject(useMazeStore.getState());
+    expect(doneFile.dirtyFlags.maze).toBe(true);
+    vi.mocked(generateMaze).mockClear();
+    useMazeStore.getState().loadProject(doneFile);
+    expect(generateMaze).toHaveBeenCalledTimes(1);
+    expect(useMazeStore.getState().generationStatus).toBe("done");
+  });
+
+  it("loadProject returns every registered transient key to its resting value (GitHub issue #946)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    const file = serializeProject(useMazeStore.getState());
+    const dirty = Object.fromEntries(Object.keys(TRANSIENT_UI_STATE).map((key) => [key, "__dirty__"]));
+    useMazeStore.setState(dirty as never);
+    useMazeStore.getState().loadProject(file);
+    const state = useMazeStore.getState() as unknown as Record<string, unknown>;
+    for (const [key, resting] of Object.entries(TRANSIENT_UI_STATE)) {
+      expect({ key, value: state[key] }).toEqual({ key, value: resting });
+    }
+  });
+
   it("loadProject restores vectorByCorridorsSettings/vectorByCorridorsSectionsExpanded from the saved file", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
@@ -327,6 +375,54 @@ describe("mazeStore generation misc actions", () => {
       join: "miter",
     });
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded).toEqual({ cells: true });
+  });
+
+  it("loadProject preserves manual paths for generated teleports", async () => {
+    const teleportSnapshot = {
+      ...mockSnapshot,
+      edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+    };
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: teleportSnapshot, debugTape: undefined });
+    vi.mocked(computeAnalyticsAsync).mockResolvedValue(teleportSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().generate();
+    useMazeStore.getState().setManualTeleportConnectorPaths({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+    const file = serializeProject(useMazeStore.getState());
+
+    await useMazeStore.getState().loadProject(file);
+
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+  });
+
+  it("loadProject preserves a manual path for a restored post-edit teleport", async () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    vi.mocked(computeAnalyticsAsync).mockResolvedValue({
+      ...mockSnapshot,
+      edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+    });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], postEditAutoConfirm: false });
+    useMazeStore.getState().generate();
+    useMazeStore.getState().addPostEditTeleport(nodeEndpoint(0), nodeEndpoint(1), "two_way");
+    useMazeStore.getState().setManualTeleportConnectorPaths({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
+    const file = serializeProject(useMazeStore.getState());
+
+    await useMazeStore.getState().loadProject(file);
+
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
   });
 
   it("loadProject restores the saved activeFloorId (GitHub issue #354)", () => {

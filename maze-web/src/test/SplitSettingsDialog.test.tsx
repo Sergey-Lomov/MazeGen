@@ -21,6 +21,13 @@ beforeEach(() => {
 });
 
 describe("SplitSettingsDialog", () => {
+  it("labels blueprint thumbnails with their template names", () => {
+    render(<SplitSettingsDialog onClose={vi.fn()} />);
+
+    expect(getTooltipControls("Bridge")).toHaveLength(1);
+    expect(getTooltipControls("Diagonal divider")).toHaveLength(1);
+  });
+
   it("removing a pattern before the one being edited re-targets the editor to the shifted index", () => {
     render(<SplitSettingsDialog onClose={vi.fn()} />);
     // Open the editor for pattern index 1 (weight 2).

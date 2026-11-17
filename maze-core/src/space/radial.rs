@@ -437,6 +437,10 @@ impl Tessellation for RadialTessellation {
     type CellId = RadialPoint;
     type Face = RadialFace;
 
+    fn cells_vary_in_size(&self) -> bool {
+        true
+    }
+
     fn is_valid_cell(&self, cell: RadialPoint) -> bool {
         if cell.ring == 0 {
             return cell.index == 0;
@@ -602,7 +606,7 @@ impl Tessellation for RadialTessellation {
         );
         let first_ring = ((dmin - GEOM_EPS).ceil() - 1.0).max(1.0);
         let last_ring = (dmax + GEOM_EPS).floor().min(f64::from(self.ring_total()));
-        let rings = (first_ring <= last_ring).then(|| first_ring as i32..=last_ring as i32);
+        let rings = (first_ring <= last_ring).then_some(first_ring as i32..=last_ring as i32);
         // Sector range `(first, len)` of ring `ring` meeting the box's angular span.
         let span = |ring: i32| -> (i64, i64) {
             let count = i64::from(self.ring_count(ring).expect("ring within the table"));

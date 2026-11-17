@@ -1,9 +1,11 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerAppearance, SizeAdaptationField, TextStyleFields } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
+import { LabelFontRow } from "./LabelFontRow";
 import { TILE_SIZE } from "../../pixi/constants";
 import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
@@ -37,7 +39,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  marker, and the elevator / teleport floor-number badges. Renders bare rows (no wrapper) so each
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
-export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
+export function MarkerAppearanceRows<P extends LinkPath>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
   settings: MarkerAppearance & Partial<SizeAdaptationField>;
   onChange: (patch: Partial<MarkerAppearance & SizeAdaptationField>) => void;
   /** `sizeAdaptation` (GitHub issue #819) is opt-in: the "Size adaptation" row is rendered only by
@@ -111,14 +113,14 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
   );
 }
 
-/** Shared text-style rows (GitHub issue #701) — font weight, absolute font size, margin and text color
+/** Shared text-style rows (GitHub issue #701) — font, absolute font size, margin and text color
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Horizontal alignment stays centered for
  *  these consumers and is exposed separately only by `FloorLabelSection`. */
-export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
+export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
-  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]: P | null };
+  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]?: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
   field: ColorField;
@@ -127,16 +129,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
 }): React.ReactElement {
   return (
     <>
-      <LinkedSelectRow
-        label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
-        value={settings.textFontWeight}
-        options={[
-          { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-          { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-        ]}
-        onChange={(textFontWeight) => onChange({ textFontWeight })}
-        linkTarget={linkTargets.textFontWeight}
-      />
+      <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={linkTargets.textFont ?? null} warningKinds={autoFitKind && [autoFitKind]} />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_text_size"]()}
         value={settings.textSize}
@@ -145,7 +138,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         max={TEXT_SIZE_RANGE.max}
         step={TEXT_SIZE_RANGE.step}
         format={(v) => String(Math.round(v * 10) / 10)}
-        linkTarget={linkTargets.textSize}
+        linkTarget={linkTargets.textSize ?? null}
         trailingAction={autoFitKind && <AutoFitButton resolve={(ctx) => ctx.fitFor(autoFitKind)} onApply={(textSize) => onChange({ textSize })} />}
       />
       <LinkedSliderRow
@@ -156,7 +149,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         max={TEXT_MARGIN_RANGE.max}
         step={TEXT_MARGIN_RANGE.step}
         format={(v) => String(v)}
-        linkTarget={linkTargets.textMargin}
+        linkTarget={linkTargets.textMargin ?? null}
       />
       <LinkedColorRow
         label={m["image_export.vector_by_walls.marker_text_color"]()}
@@ -165,7 +158,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         priorityColors={priorityColors}
         defaultColor={defaultColor}
         field={field}
-        linkTarget={linkTargets.textColor}
+        linkTarget={linkTargets.textColor ?? null}
       />
     </>
   );

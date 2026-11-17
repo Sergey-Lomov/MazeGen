@@ -289,10 +289,7 @@ fn shared_element_across_two_groups_resolves_both_in_one_call() {
     let finish = CrossElement::Finish(finish_node);
     let issue = InvalidCrossElementGroupIssue::new_from_check(
         "rule:cross",
-        vec![
-            (vec![tp.clone(), sp.clone()], 1),
-            (vec![tp.clone(), finish.clone()], 1),
-        ],
+        vec![(vec![tp.clone(), sp], 1), (vec![tp, finish], 1)],
         std::collections::HashMap::new(),
     );
     let strat = CrossElementGroupSelectStrategy {

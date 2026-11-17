@@ -28,6 +28,7 @@ pub enum RuleParamKind {
 }
 
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
+pub const PARAM_APPROXIMATE_TOPOLOGY: &str = "approximate_topology";
 pub const PARAM_VERTICAL_PASSAGE_TYPE: &str = "passage_type";
 pub const PARAM_SPLIT_PATTERNS: &str = "split_patterns";
 
@@ -59,6 +60,21 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
         ],
     },
     RuleParamDescriptor {
+        id: PARAM_APPROXIMATE_TOPOLOGY,
+        kind: RuleParamKind::Bool { default: false },
+        // GitHub issue #838: a pair on a floor with a topological-only fold has no surface
+        // distance. By default such a pair is reported as an `IndeterminateDistanceIssue`; with
+        // this set it is measured by the planar distance instead (`DistancePolicy::Approximate`).
+        applies_to: &[
+            "teleport_geometric_length",
+            "one_way_group_geometric_proximity",
+            "cross_element_geometric_proximity",
+            "split_group_geometric_proximity",
+            "elevator_stop_group_geometric_proximity",
+            "vertical_passage_group_geometric_proximity",
+        ],
+    },
+    RuleParamDescriptor {
         id: PARAM_VERTICAL_PASSAGE_TYPE,
         kind: RuleParamKind::VerticalPassageTypeEnum {
             default: VerticalPassageType::Any,
@@ -87,6 +103,7 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
 #[derive(Clone, Debug)]
 pub struct RuleParams {
     pub protect_route: bool,
+    pub approximate_topology: bool,
     pub vertical_passage_type: VerticalPassageType,
     pub split_patterns: Vec<SplitPattern>,
 }
@@ -95,6 +112,7 @@ impl Default for RuleParams {
     fn default() -> Self {
         Self {
             protect_route: default_bool(PARAM_PROTECT_ROUTE),
+            approximate_topology: default_bool(PARAM_APPROXIMATE_TOPOLOGY),
             vertical_passage_type: default_vertical_passage_type(PARAM_VERTICAL_PASSAGE_TYPE),
             split_patterns: Vec::new(),
         }

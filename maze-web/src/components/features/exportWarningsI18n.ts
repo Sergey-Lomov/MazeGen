@@ -1,6 +1,7 @@
 import * as m from "~/paraglide/messages";
 import type { ExportWarningId } from "../../pixi/selectors/exportWarnings";
 import type { ColorFieldKey } from "../../pixi/colorFieldKeys";
+import type { MarkerLookKind } from "../../pixi/selectors/exportMarkerLookAlike";
 import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
 
 /** Localized message/description per `ExportWarningId` (GitHub issue #298) — kept separate from
@@ -10,11 +11,21 @@ import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
 const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous"],
+  teleport_merged_without_connectors: m["image_export.vector_by_walls.warning_teleport_merged_without_connectors"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap"],
-  waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split"],
-  teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split"],
-  vertical_on_special_split: m["image_export.vector_by_walls.warning_vertical_on_special_split"],
+  teleport_connector_covers_one_way: m["image_export.warning.teleport_connector_covers_one_way"],
+  teleport_connectors_overlap: m["image_export.warning.teleport_connectors_overlap"],
+  teleport_connector_endpoint_detached: m["image_export.warning.teleport_connector_endpoint_detached"],
+  teleport_connector_leaves_field: m["image_export.warning.teleport_connector_leaves_field"],
+  teleport_connector_crosses_marker: m["image_export.warning.teleport_connector_crosses_marker"],
+  teleport_connector_arrow_sticks_out: m["image_export.warning.teleport_connector_arrow_sticks_out"],
+  teleport_connector_too_short_for_arrow: m["image_export.warning.teleport_connector_too_short_for_arrow"],
+  teleport_connector_covers_arrow: m["image_export.warning.teleport_connector_covers_arrow"],
+  teleport_connector_degenerate: m["image_export.warning.teleport_connector_degenerate"],
   elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap"],
+  elevator_badges_merged_labels_overlap: m["image_export.vector_by_walls.warning_elevator_badges_merged_labels_overlap"],
+  elevator_badges_merged_end_gap_too_small: m["image_export.vector_by_walls.warning_elevator_badges_merged_end_gap_too_small"],
+  elevator_badges_gap_falls_back_to_even_distribution: m["image_export.vector_by_walls.warning_elevator_badges_gap_falls_back_to_even_distribution"],
   elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many"],
   marker_text_overflow: m["image_export.vector_by_walls.warning_marker_text_overflow"],
   elevator_badge_text_overflow: m["image_export.vector_by_walls.warning_elevator_badge_text_overflow"],
@@ -26,6 +37,12 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink"],
   marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable"],
+  markers_look_alike: m["image_export.warning.markers_look_alike"],
+  start_invisible: m["image_export.warning.start_invisible"],
+  finish_invisible: m["image_export.warning.finish_invisible"],
+  start_opening_no_outer_wall: m["image_export.warning.start_opening_no_outer_wall"],
+  finish_opening_no_outer_wall: m["image_export.warning.finish_opening_no_outer_wall"],
+  edge_marker_looks_like_marker: m["image_export.warning.edge_marker_looks_like_marker"],
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background"],
   teleport_connector_low_contrast_corridor: m["image_export.warning.teleport_connector_low_contrast_corridor"],
@@ -35,10 +52,17 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_connector_low_contrast_wall: m["image_export.warning.teleport_connector_low_contrast_wall"],
   split_low_contrast_floor: m["image_export.warning.split_low_contrast_floor"],
   grid_low_contrast_background: m["image_export.warning.grid_low_contrast_background"],
+  glue_tab_outline_low_contrast_fill: m["image_export.warning.glue_tab_outline_low_contrast_fill"],
+  glue_tab_fill_low_contrast_background: m["image_export.warning.glue_tab_fill_low_contrast_background"],
+  glue_tabs_with_cut_lines: m["image_export.warning.glue_tabs_with_cut_lines"],
+  glue_tabs_overlap: m["image_export.warning.glue_tabs_overlap"],
+  glue_tab_too_thin: m["image_export.warning.glue_tab_too_thin"],
+  glue_tab_missing: m["image_export.warning.glue_tab_missing"],
+  edge_marker_colors_similar: m["image_export.warning.edge_marker_colors_similar"],
+  edge_marker_low_contrast_background: m["image_export.warning.edge_marker_low_contrast_background"],
+  seam_matching_ambiguous_without_markers: m["image_export.warning.seam_matching_ambiguous_without_markers"],
   inner_grid_low_contrast_floor: m["image_export.warning.inner_grid_low_contrast_floor"],
   inner_grid_low_contrast_wall: m["image_export.warning.inner_grid_low_contrast_wall"],
-  marker_fill_low_contrast: m["image_export.warning.marker_fill_low_contrast"],
-  marker_border_low_contrast: m["image_export.warning.marker_border_low_contrast"],
   marker_fill_low_contrast_corridor: m["image_export.warning.marker_fill_low_contrast_corridor"],
   marker_fill_low_contrast_floor: m["image_export.warning.marker_fill_low_contrast_floor"],
   marker_border_low_contrast_corridor: m["image_export.warning.marker_border_low_contrast_corridor"],
@@ -48,13 +72,10 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   vertical_arrow_low_contrast: m["image_export.warning.vertical_arrow_low_contrast"],
   vertical_one_way_arrow_low_contrast_fill: m["image_export.warning.vertical_one_way_arrow_low_contrast_fill"],
   elevator_arrow_low_contrast: m["image_export.warning.elevator_arrow_low_contrast"],
-  elevator_badge_fill_low_contrast: m["image_export.warning.elevator_badge_fill_low_contrast"],
   elevator_badge_fill_low_contrast_corridor: m["image_export.warning.elevator_badge_fill_low_contrast_corridor"],
   elevator_badge_fill_low_contrast_floor: m["image_export.warning.elevator_badge_fill_low_contrast_floor"],
-  teleport_badge_border_low_contrast: m["image_export.warning.teleport_badge_border_low_contrast"],
   teleport_badge_border_low_contrast_corridor: m["image_export.warning.teleport_badge_border_low_contrast_corridor"],
   teleport_badge_border_low_contrast_floor: m["image_export.warning.teleport_badge_border_low_contrast_floor"],
-  teleport_badge_fill_low_contrast: m["image_export.warning.teleport_badge_fill_low_contrast"],
   teleport_badge_fill_low_contrast_corridor: m["image_export.warning.teleport_badge_fill_low_contrast_corridor"],
   teleport_badge_fill_low_contrast_floor: m["image_export.warning.teleport_badge_fill_low_contrast_floor"],
   split_low_contrast_background: m["image_export.warning.split_low_contrast_background"],
@@ -75,11 +96,21 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
 const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible_description"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous_description"],
+  teleport_merged_without_connectors: m["image_export.vector_by_walls.warning_teleport_merged_without_connectors_description"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap_description"],
-  waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split_description"],
-  teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split_description"],
-  vertical_on_special_split: m["image_export.vector_by_walls.warning_vertical_on_special_split_description"],
+  teleport_connector_covers_one_way: m["image_export.warning.teleport_connector_covers_one_way_description"],
+  teleport_connectors_overlap: m["image_export.warning.teleport_connectors_overlap_description"],
+  teleport_connector_endpoint_detached: m["image_export.warning.teleport_connector_endpoint_detached_description"],
+  teleport_connector_leaves_field: m["image_export.warning.teleport_connector_leaves_field_description"],
+  teleport_connector_crosses_marker: m["image_export.warning.teleport_connector_crosses_marker_description"],
+  teleport_connector_arrow_sticks_out: m["image_export.warning.teleport_connector_arrow_sticks_out_description"],
+  teleport_connector_too_short_for_arrow: m["image_export.warning.teleport_connector_too_short_for_arrow_description"],
+  teleport_connector_covers_arrow: m["image_export.warning.teleport_connector_covers_arrow_description"],
+  teleport_connector_degenerate: m["image_export.warning.teleport_connector_degenerate_description"],
   elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap_description"],
+  elevator_badges_merged_labels_overlap: m["image_export.vector_by_walls.warning_elevator_badges_merged_labels_overlap_description"],
+  elevator_badges_merged_end_gap_too_small: m["image_export.vector_by_walls.warning_elevator_badges_merged_end_gap_too_small_description"],
+  elevator_badges_gap_falls_back_to_even_distribution: m["image_export.vector_by_walls.warning_elevator_badges_gap_falls_back_to_even_distribution_description"],
   elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many_description"],
   marker_text_overflow: m["image_export.vector_by_walls.warning_marker_text_overflow_description"],
   elevator_badge_text_overflow: m["image_export.vector_by_walls.warning_elevator_badge_text_overflow_description"],
@@ -91,6 +122,13 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink_description"],
   marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor_description"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable_description"],
+  // Needs the alike pairs; `resolveExportWarningDescription` builds it from `markerPairs`.
+  markers_look_alike: () => "",
+  start_invisible: m["image_export.warning.start_invisible_description"],
+  finish_invisible: m["image_export.warning.finish_invisible_description"],
+  start_opening_no_outer_wall: m["image_export.warning.start_opening_no_outer_wall_description"],
+  finish_opening_no_outer_wall: m["image_export.warning.finish_opening_no_outer_wall_description"],
+  edge_marker_looks_like_marker: () => "",
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor_description"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background_description"],
   teleport_connector_low_contrast_corridor: m["image_export.warning.teleport_connector_low_contrast_corridor_description"],
@@ -100,10 +138,17 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_connector_low_contrast_wall: m["image_export.warning.teleport_connector_low_contrast_wall_description"],
   split_low_contrast_floor: m["image_export.warning.split_low_contrast_floor_description"],
   grid_low_contrast_background: m["image_export.warning.grid_low_contrast_background_description"],
+  glue_tab_outline_low_contrast_fill: m["image_export.warning.glue_tab_outline_low_contrast_fill_description"],
+  glue_tab_fill_low_contrast_background: m["image_export.warning.glue_tab_fill_low_contrast_background_description"],
+  glue_tabs_with_cut_lines: m["image_export.warning.glue_tabs_with_cut_lines_description"],
+  glue_tabs_overlap: m["image_export.warning.glue_tabs_overlap_description"],
+  glue_tab_too_thin: m["image_export.warning.glue_tab_too_thin_description"],
+  glue_tab_missing: m["image_export.warning.glue_tab_missing_description"],
+  edge_marker_colors_similar: m["image_export.warning.edge_marker_colors_similar_description"],
+  edge_marker_low_contrast_background: m["image_export.warning.edge_marker_low_contrast_background_description"],
+  seam_matching_ambiguous_without_markers: m["image_export.warning.seam_matching_ambiguous_without_markers_description"],
   inner_grid_low_contrast_floor: m["image_export.warning.inner_grid_low_contrast_floor_description"],
   inner_grid_low_contrast_wall: m["image_export.warning.inner_grid_low_contrast_wall_description"],
-  marker_fill_low_contrast: m["image_export.warning.marker_fill_low_contrast_description"],
-  marker_border_low_contrast: m["image_export.warning.marker_border_low_contrast_description"],
   marker_fill_low_contrast_corridor: m["image_export.warning.marker_fill_low_contrast_corridor_description"],
   marker_fill_low_contrast_floor: m["image_export.warning.marker_fill_low_contrast_floor_description"],
   marker_border_low_contrast_corridor: m["image_export.warning.marker_border_low_contrast_corridor_description"],
@@ -113,13 +158,10 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   vertical_arrow_low_contrast: m["image_export.warning.vertical_arrow_low_contrast_description"],
   vertical_one_way_arrow_low_contrast_fill: m["image_export.warning.vertical_one_way_arrow_low_contrast_fill_description"],
   elevator_arrow_low_contrast: m["image_export.warning.elevator_arrow_low_contrast_description"],
-  elevator_badge_fill_low_contrast: m["image_export.warning.elevator_badge_fill_low_contrast_description"],
   elevator_badge_fill_low_contrast_corridor: m["image_export.warning.elevator_badge_fill_low_contrast_corridor_description"],
   elevator_badge_fill_low_contrast_floor: m["image_export.warning.elevator_badge_fill_low_contrast_floor_description"],
-  teleport_badge_border_low_contrast: m["image_export.warning.teleport_badge_border_low_contrast_description"],
   teleport_badge_border_low_contrast_corridor: m["image_export.warning.teleport_badge_border_low_contrast_corridor_description"],
   teleport_badge_border_low_contrast_floor: m["image_export.warning.teleport_badge_border_low_contrast_floor_description"],
-  teleport_badge_fill_low_contrast: m["image_export.warning.teleport_badge_fill_low_contrast_description"],
   teleport_badge_fill_low_contrast_corridor: m["image_export.warning.teleport_badge_fill_low_contrast_corridor_description"],
   teleport_badge_fill_low_contrast_floor: m["image_export.warning.teleport_badge_fill_low_contrast_floor_description"],
   split_low_contrast_background: m["image_export.warning.split_low_contrast_background_description"],
@@ -145,11 +187,28 @@ function formatHex(color: number): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, "0").toUpperCase()}`;
 }
 
+const MARKER_KIND_NAMES: Record<MarkerLookKind, () => string> = {
+  edge_marker: m["image_export.warning.marker_kind_edge_marker"],
+  start: m["image_export.warning.marker_kind_start"],
+  finish: m["image_export.warning.marker_kind_finish"],
+  teleport: m["image_export.warning.marker_kind_teleport"],
+  two_way_passage: m["image_export.warning.marker_kind_two_way_passage"],
+  one_way_passage: m["image_export.warning.marker_kind_one_way_passage"],
+  elevator: m["image_export.warning.marker_kind_elevator"],
+};
+
 export function resolveExportWarningDescription(
   id: ExportWarningId,
   colorFields?: [ColorFieldKey, ColorFieldKey],
   colorValues?: [number, number],
+  markerPairs?: [MarkerLookKind, MarkerLookKind][],
 ): string {
+  if (id === "markers_look_alike" || id === "edge_marker_looks_like_marker") {
+    const pairs = (markerPairs ?? [])
+      .map(([first, second]) => m["image_export.warning.marker_pair"]({ first: MARKER_KIND_NAMES[first](), second: MARKER_KIND_NAMES[second]() }))
+      .join("; ");
+    return m["image_export.warning.markers_look_alike_description"]({ pairs });
+  }
   // Color names come from the project-color field registry, so a warning always names the same
   // "Section: Role" label the color picker and settings panels use.
   const foreground = colorFields && resolveColorField(colorFields[0]);

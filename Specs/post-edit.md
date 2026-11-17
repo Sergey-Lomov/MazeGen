@@ -186,7 +186,7 @@ resolved **once, at command-construction time**, reading live confirmed/derived 
 itself never reads outside its own `PostEditReplayContext`/fold state:
 
 - `rotateSplitPoint.nodes`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
-  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditUtils.ts`)
+  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditRotation.ts`)
   — replay has no tessellation/field access, so a rotation's or blueprint's geometric outcome is
   computed once by the store action, not re-derived during replay. `rotateSplitPoint.nodes` is a
   COMPLETE snapshot of every affected node's own face list (`ResolvedRotateNode`, the same shape
@@ -202,6 +202,12 @@ itself never reads outside its own `PostEditReplayContext`/fold state:
   is no one-way id, minting, reuse, or lifecycle.
 
 ### Replay (`pixi/postEditReplay.ts`)
+
+`postEditReplay.ts` holds `applyPostEditCommand` and the replay entry points. The lifeline grouping, cascade, delete/reset and
+renormalization helpers built on top of it (`lifelineKeysOf`, `collectAffectedLifelines`, `cascadeRemoveLifelines`,
+`deleteCommandAt`, `resetCommandsAt`, `filterCommandsForPoint`, ...) live in `pixi/postEditLifelines.ts`; the split-point
+rotation and face-owner resolution live in `pixi/postEditRotation.ts`; `pixi/postEditUtils.ts` keeps the draft/redirect
+builders.
 
 ```typescript
 interface PostEditReplayContext {
@@ -280,7 +286,7 @@ entity ever touched"), not an implementation accident.
 commands, point, level), /* dirty */ true)`. `resetPostEdit()` (whole graph) is the trivial case:
 `replacePostEditCommands(get, set, [], /* dirty */ false)`.
 
-### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditReplay.ts`)
+### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditLifelines.ts`)
 
 Each Changes-panel row (below) carries two actions, both confirmed via `ConfirmModal` before
 running: **Reset** truncates the log to end right after that row's own command
@@ -614,7 +620,7 @@ shape). `PostEditChangesPanel.tsx` builds the real context once per render from 
 entry), with `inFieldCellsAt` computing (and caching) each floor's in-field cell set from
 `buildActiveCells`/`buildCellSet` lazily per level, since a single row's bubbles can span several
 floors (an elevator/vertical passage) each potentially needing a different floor's own field shape.
-`buildPostEditPointEntitiesAt`/`buildPostEditResetLifelinesAt` (`postEditSliceHelpers.ts`) and
+`buildPostEditPointEntitiesAt`/`buildPostEditResetLifelinesAt` (`postEditBaselineBuilders.ts`) and
 `ManageSplitNodesDialog`/`PostEditElevatorFloorDialog` build their own `cfgAt`/per-row config lookup
 the same way.
 
@@ -659,7 +665,7 @@ earlier in the same issue) had left duplicated near-verbatim across four call si
 `postEditSliceHelpers.ts`), `confirmPostEditElevatorPlacement`, and `PostEditController.tryTeleportClick`.
 Each built its own `buildMultiFloorPointNodeMap` + `resolverForNodeId` + "look up the id's own
 `level`, re-inject it onto the resolved split endpoint" chain independently — `resolveNodeIdToEndpoint(nodes,
-splitPoints, id)` (`postEditSliceHelpers.ts`) is that chain, once; all four call sites now call it
+splitPoints, id)` (`postEditBaselineBuilders.ts`) is that chain, once; all four call sites now call it
 directly. Also collapsed a matching duplication one layer up: `PostEditEntityDeleteDialog` used to
 rebuild the exact same `nodesHere`/`nodeLevel`/`nodeById`/`inFieldCellsAt`/`splitCtx` scaffolding
 `buildPostEditPointEntitiesAt` already assembles for `requestPostEditEntityDelete`/
@@ -788,7 +794,7 @@ view with the rows) narrows `postEditCommands` down to the rows belonging to one
 clear (×) button inside the field, on its right edge, that resets back to the full log. `entityIdOf
 (command)` (`pixi/postEditCommandLabels.ts`) returns the id a command is associated with — the same
 id exposed as `PostEditCommandLabel.entityId` and rendered as the row's own id bubble (`"o5"`, `"t3"`,
-... — not a lifeline key: `lifelineKeysOf` in `postEditSliceHelpers.ts` serves point-reset pruning, a
+... — not a lifeline key: `lifelineKeysOf` in `postEditLifelines.ts` serves point-reset pruning, a
 different and broader
 purpose that also covers wall/basic edges and start/finish via synthetic keys never shown to the
 user) — or `undefined` for a command kind with no id of its own (`setEdge`/`setEdgePair` on a
@@ -988,10 +994,15 @@ the Changes log records one split-template event plus one movement event per aff
 
 - **A dedicated `manage_split_nodes` tool** (toolbar button next to the vertex tools) puts left-clicks in "focus a point" mode: clicking any point sets `postEditFocusedPoint` to that point (or clears it if the click misses), opening the "Manage split nodes" panel. This does **not** touch right-click behavior for the other tools — right-click with an edge tool resets the clicked edge to its generation-time state (GitHub issue #459, see "Controller — PostEditController" below), and right-click with `set_start`/`set_finish`/a teleport tool still clears/removes as before. Works on any point, split or not — it's the only way to create a point's *first* extra node.
 - **"Manage split nodes" panel** (`ManageSplitNodesDialog.tsx`, delegating layout to the shared `SplitNodesDialogView.tsx` — GitHub issue #234 redesign, moved from a modal to a resizable docked `SidePanel.tsx` in GitHub issue #237) is the single UI surface for managing a point's extra nodes — no separate always-visible toolbar toggle. Docks to the canvas's right edge (drag-to-resize handle on its left edge, `SidePanel`'s generic shape — also used by `DebugPanel`, GitHub issue #607), so editing reads as directly manipulating the canvas rather than a modal floating over it. Stacked vertically, not side-by-side: a tile diagram on top (`TileFaceEditor.tsx`, rendered in the field's own tessellation) showing every node's faces at once, each in its own color, with a kind switcher (Passage/One-way/Wall — GitHub issue #426 added the explicit Wall button, matching every other post-edit tool panel) above it and two rotate buttons (`RotateCcw`/`RotateCw`) below it; below that, a scrolling list of the point's nodes, one card per node — color dot, title (`Node {n}`, `n` 1-based in row order — the point's original node is `Node 1`, a slot's number is its `slotId + 2`; no special "original node" label, GitHub issue #468 — or, when the point's current face configuration matches a recognized special-split topology, the node's semantic name from `splitNodeSemanticNames`, GitHub issue #487; the link-bubble coordinate suffix uses the compact `short` form of the same name), Start/Finish badges, an Active badge when active, and the node's links grouped into three sections (**Required**, always populated for a decided passage/one-way; **Undefined**, always empty for post-edit — presets are the only stage with an optional-connection concept; **Forbidden**, a `wall`-kind edge), each section showing a dash placeholder when empty. A fixed footer below the scrolling card list (outside the scroll area, always reachable) holds "+ Add node"/"Remove" (the latter disabled for the non-removable original node, confirmed via `ConfirmModal`) and a Set/Clear start/finish button pair for the active node. Clicking a non-active card makes it active. Each face owns an invisible triangular hit zone from the active node's anchor to its boundary, extended slightly past that boundary, so clicks on the active node's connector and its face select the same face. The zones move when the active node changes. Clicking a non-boundary zone applies the switcher's current kind for the active node (`wall` included); right-clicking a non-boundary zone always forbids it (`wall`) for the active node regardless of the switcher's own selection — a redundant shortcut kept alongside the explicit Wall tool, not replaced by it. Hovering a link bubble sets `postEditHoveredLink`, highlighting that specific connection on the canvas (a straight line + circle markers on each end, cell center to cell center — `NodeEdgeHighlightRenderer`, the same primitive `DebugRefHighlightOverlay` uses for its edge-ref highlight) via `PostEditRenderer`'s `linkHover` layer; unhovering clears it. A dismissible warnings strip (`splitNodeDiagnostics`, `pixi/splitNodeDiagnostics.ts`) shows under the header when the point's current node set has a dead node (only wall faces on every non-boundary side) or an unreachable node (no connection at all) — purely informational, re-opens whenever the message set changes even if previously dismissed. Renders whenever `postEditFocusedPoint !== null`, independent of the active tool — switching tools does not close it. Closes on explicit close (✕, clearing `postEditFocusedPoint` and `postEditHoveredLink`) or on leaving the post-edit card.
+When the manage-split-nodes tool selects a point whose panel is already open beneath another
+`SidePanel`, it brings that existing panel to the front instead of closing or remounting it.
+
 - **`buildNodeMap`** in `PostEditController` returns `Map<string, number[]>` (every real node at a point, in snapshot order), not one id per cell. **`resolveActiveEndpointAt(point, nodeMap, activeMap)`** resolves which endpoint edge-tool clicks on that point currently target: `activeMap[key]` if set, else the point's original node (`nodeMap`'s first entry); `null` if the point isn't in the field.
 - **Vertex tools (`set_start`/`set_finish`) on a split point's active node that isn't confirmed yet** are a no-op (not an error) — the same click works once that node is confirmed by a `confirmPostEdit`. This is a direct consequence of `PostEditEndpoint`'s unresolved-endpoint contract, not special-cased split logic: `resolveActiveEndpointAt` can return a `split` endpoint that doesn't resolve to a real id yet, and there is nothing wrong with assigning `postEditDraftMeta.start`/`.finish` to it (the endpoint itself is always valid) — it just can't be sent to WASM as a plain id until it resolves.
 
 **Active-tool lifecycle for the split-node panel (GitHub issue #699):** the panel is visible only while `manage_split_nodes` is the active post-edit tool. Selecting any other post-edit tool clears `postEditFocusedPoint` (and `postEditFocusedPointCovered`), unmounting the panel. This rule supersedes the older active-tool wording in the detailed panel description above.
+
+**Split-node diagnostics (GitHub issue #1022):** This supersedes the earlier header-strip description: the editor uses the shared `WarningsSection` above its content. Its **Warnings (N)** header is collapsed initially, remains present at zero warnings, and uses warning attention styling when diagnostics exist. Expanding it shows the current `splitNodeDiagnostics` messages as standard warning bubbles, with group spacing between the header and bubbles and a divider before the editor content.
 
 ### Split-target prompt (GitHub issue #474)
 
@@ -1019,6 +1030,12 @@ transform group (`CellGeometry.allowed_group`) that moves every canonical face t
 cell whose allowed group has no such element cannot rotate: Cairo's group is identity plus one
 reflection, so its rotate buttons are hidden (`canRotateSplit`) and `rotateFaceIndex` leaves faces
 unchanged. Owner resolution otherwise uses the ordinary existing-owner and safe-fallback tiers.
+
+Radial post-edit split tiles are the explicit exception: their controls are shown for every radial
+cell with at least two faces, even though a radial cell has no rotational symmetry. A click moves
+each real split-node connection to the next or previous position in that cell's circular face order;
+it does not rotate the cell geometry or change the tessellation's allowed transform group. Pattern
+and preset editors retain their usual geometric-rotation rules.
 
 Rotating a split point's tile (the panel's rotate buttons) shifts **every one of the point's own nodes' face-wiring independently** by one adjacent physical face around the point — not a rigid-body rotation of the whole point as a unit. Each of the point's nodes (original + every slot) that currently has a decided face keeps that face's edge but re-keys it onto the new geometric face one step further in the rotation direction; a node with no decided face on the point is untouched.
 
@@ -1120,7 +1137,7 @@ Generator auto-split (GitHub issue #222), broader serialization work (#224) beyo
 ### On `generate()`
 
 1. Runs WASM generation.
-2. Builds a fresh `postEditBaseline` via `buildPostEditBaseline(nodes, edges, revision, generatedStart, generatedFinish)` (`postEditSliceHelpers.ts`) — bumps `revision`, builds the `PostEditReplayContext` (nodes + `resolveSplit`), and derives the pristine (empty-log) `PostEditDerivedState` via the shared `buildMultiFloorPostEditDraft(nodes, edges)` (groups nodes per floor first via `groupNodesByLevel`, GitHub issue #425/#358, so a same-`(x, y)` node on a different floor is never conflated into the same point's split-slot group; also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list, GitHub issue #363). Sets `postEditCommands = []`, `postEditDerived = postEditBaseline.derived`, and mirrors the legacy draft fields via `derivedStateToLegacyFields`.
+2. Builds a fresh `postEditBaseline` via `buildPostEditBaseline(nodes, edges, revision, generatedStart, generatedFinish)` (`postEditBaselineBuilders.ts`) — bumps `revision`, builds the `PostEditReplayContext` (nodes + `resolveSplit`), and derives the pristine (empty-log) `PostEditDerivedState` via the shared `buildMultiFloorPostEditDraft(nodes, edges)` (groups nodes per floor first via `groupNodesByLevel`, GitHub issue #425/#358, so a same-`(x, y)` node on a different floor is never conflated into the same point's split-slot group; also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list, GitHub issue #363). Sets `postEditCommands = []`, `postEditDerived = postEditBaseline.derived`, and mirrors the legacy draft fields via `derivedStateToLegacyFields`.
 3. Resets `_nextPostEditTeleportId`/`_nextPostEditVerticalPassageId`/`_nextPostEditElevatorId`/`_nextSplitSlotId` to one past whatever the baseline derivation found, and `postEditTeleportPendingFrom = null`.
 4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 5. Sets `postEditDirty = false`.
@@ -1514,7 +1531,7 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` —
 ## `buildPostEditDraftEdgesFromGenerated`
 
 Shared function in `pixi/postEditUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
-(`postEditSliceHelpers.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
+(`postEditBaselineBuilders.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
 trivial `resetPostEdit` case, see "Lifecycle" above). Ignores `kind: "teleport"`, `kind:
 "vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked
 separately (see `extractPostEditTeleports` below); vertical passage/elevator edges are resent

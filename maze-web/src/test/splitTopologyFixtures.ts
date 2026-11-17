@@ -4,7 +4,7 @@ const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, 
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 
 // Point (0,0) split into node 0 (slot 0: east+west) and node 4 (slot 1: north+south) — a
-// recognized "bridge" special shape (see `mazeSelectors.test.ts`'s own bridge-topology test for
+// recognized "bridge" special shape (see `mazeSelectors.splitPassages.test.ts`'s own bridge-topology test for
 // the geometry this produces). Node 6 sits on a plain, non-split, non-special cell.
 export const bridgeSplitNodes: NodeDto[] = [
   n(0, 0, 0), n(1, 1, 0), n(2, -1, 0),

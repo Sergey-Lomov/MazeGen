@@ -1,7 +1,7 @@
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { Pos } from "../tessellationGeometry";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { getCellCenter, getSharedEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 
 export interface RegionGeometry {
@@ -11,6 +11,11 @@ export interface RegionGeometry {
    *  the edge-connected component (GitHub issue #618) so contour tracing never crosses between
    *  cells that only touch at a corner point, not a shared edge. */
   perimeterSegments: PerimeterSegment[];
+  /** Spatial component per cell coordinate. Lets renderers isolate graph-connected regions whose
+   *  cells are separated in the field by a teleport or cross-floor link. */
+  componentByCell: Map<string, number>;
+  /** Number of edge-adjacent spatial components in `cells`. */
+  componentCount: number;
 }
 
 /** One exposed side of a region, oriented with the region on its left. `polyline` is the side's
@@ -48,7 +53,7 @@ export function buildRegionGeometry(
     seenCells.add(key);
     cells.push([node.x, node.y]);
   }
-  if (cells.length === 0) return { cells, perimeterSegments: [] };
+  if (cells.length === 0) return { cells, perimeterSegments: [], componentByCell: new Map(), componentCount: 0 };
 
   const cellSet = buildCellSet(cells);
 
@@ -72,7 +77,7 @@ export function buildRegionGeometry(
       const [cx, cy] = stack.pop()!;
       // Each cell is pushed exactly once (guarded by `componentByCell.has` below), so this cache
       // is always a fresh entry, never a repeat lookup.
-      const offsets = getNeighborData(cfg, cx, cy).offsets;
+      const offsets = getCellNeighborOffsets(cfg, cx, cy);
       offsetsByCell.set(cellKey(cx, cy), offsets);
       for (const [dx, dy] of offsets) {
         const nx = cx + dx;
@@ -110,5 +115,5 @@ export function buildRegionGeometry(
     }
   }
 
-  return { cells, perimeterSegments };
+  return { cells, perimeterSegments, componentByCell, componentCount: nextComponent };
 }

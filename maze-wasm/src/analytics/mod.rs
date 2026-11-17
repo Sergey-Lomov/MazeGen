@@ -10,6 +10,7 @@ use maze_core::{Maze, graph::Graph, space::Tessellation};
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
+use maze_runner::topology_wire::install_topologies;
 use post_edit::{
     apply_split_points, build_field_from_nodes, build_graph_from_post_edit_edges,
     preset_edges_for_post_edit, resolve_preset_endpoint_for_post_edit,
@@ -170,6 +171,15 @@ where
         &xy_to_cell,
     )?;
 
+    let mut field = field;
+    install_topologies(
+        &mut field,
+        &cfg.topology,
+        tessellation.as_ref(),
+        |x, y| xy_to_cell([x, y]),
+        &cfg.tessellation,
+    )?;
+
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -314,6 +324,7 @@ mod tests {
             ComputeAnalyticsConfig {
                 tessellation: generation_config::TessellationConfig::default(),
                 level_fields: vec![vec![[0, 0], [1, 0]]],
+                topology: vec![],
                 nodes: vec![
                     NodeDto {
                         id: 1,
@@ -360,6 +371,7 @@ mod tests {
                     params: serde_json::Map::new(),
                 },
                 level_fields: vec![vec![[2, 1], [2, 3]]],
+                topology: vec![],
                 nodes: vec![
                     NodeDto {
                         id: 1,
@@ -399,6 +411,61 @@ mod tests {
             assert_eq!(snapshot.nodes.len(), 2);
             assert_eq!(snapshot.nodes[0].x, 2);
             assert_eq!(snapshot.nodes[1].y, 3);
+        }
+
+        fn two_cell_cylinder() -> maze_runner::topology_wire::TopologyDto {
+            use maze_runner::topology_wire::{FoldDto, FoldEndDto, FoldGroupDto, TopologyDto};
+            TopologyDto {
+                fingerprint: "square{}".to_string(),
+                folds: vec![FoldDto {
+                    a: FoldEndDto {
+                        cell: [1, 0],
+                        face_idx: 0,
+                    },
+                    b: FoldEndDto {
+                        cell: [0, 0],
+                        face_idx: 2,
+                    },
+                    twist: false,
+                    group: 0,
+                }],
+                groups: vec![FoldGroupDto {
+                    id: 0,
+                    folds: vec![0],
+                }],
+            }
+        }
+
+        #[test]
+        fn post_edit_analytics_installs_per_floor_topology() {
+            let mut cfg = base_cfg();
+            cfg.topology = vec![Some(two_cell_cylinder())];
+            // Two cells already neighbour each other across their shared face, so the fold on the
+            // outer faces is inactive but valid; the call must accept it.
+            assert!(run(cfg).is_ok());
+        }
+
+        #[test]
+        fn post_edit_analytics_rejects_topology_for_another_tessellation() {
+            let mut cfg = base_cfg();
+            let mut topology = two_cell_cylinder();
+            topology.fingerprint = "hex{}".to_string();
+            cfg.topology = vec![Some(topology)];
+            let error = run(cfg).map(|_| ()).unwrap_err();
+            assert!(
+                error.contains("topology[0]") && error.contains("hex{}"),
+                "{error}"
+            );
+        }
+
+        #[test]
+        fn post_edit_analytics_rejects_invalid_topology_cells() {
+            let mut cfg = base_cfg();
+            let mut topology = two_cell_cylinder();
+            topology.folds[0].a.face_idx = 7;
+            cfg.topology = vec![Some(topology)];
+            let error = run(cfg).map(|_| ()).unwrap_err();
+            assert!(error.contains("face 7"), "{error}");
         }
 
         #[test]

@@ -19,31 +19,50 @@ const MAX_CHORD_ANGLE = Math.PI / 32;
 /// last point is the arc's end, so arcs meeting at a shared vertex join exactly and trace the same
 /// polyline as the geometry used for chaining and export; the targets' own `arc` places its
 /// joints differently.
-export function tracePath(target: PathTarget, commands: readonly PathCommand[], transform: WorldTransform = IDENTITY_TRANSFORM): void {
-  let current: [number, number] | undefined;
-  const lineTo = (x: number, y: number) => {
-    target.lineTo(x, y);
-    current = [x, y];
-  };
+export function tracePath(
+  target: PathTarget,
+  commands: readonly PathCommand[],
+  transform: WorldTransform = IDENTITY_TRANSFORM,
+  maxChordAngle = MAX_CHORD_ANGLE,
+): void {
+  // Grid paths are transformed and cached in display space before they reach this function.
+  // Keeping their identity transform on the allocation-free branch avoids cloning every command
+  // and point while rebuilding a dense viewport grid.
+  const identity = transform === IDENTITY_TRANSFORM;
+  let currentX = 0;
+  let currentY = 0;
+  let hasCurrent = false;
   for (const source of commands) {
-    const command = transformCommand(transform, source);
+    const command = identity ? source : transformCommand(transform, source);
     switch (command.op) {
       case "move_to":
         target.moveTo(command.to[0], command.to[1]);
-        current = [command.to[0], command.to[1]];
+        currentX = command.to[0];
+        currentY = command.to[1];
+        hasCurrent = true;
         break;
       case "line_to":
-        lineTo(command.to[0], command.to[1]);
+        target.lineTo(command.to[0], command.to[1]);
+        currentX = command.to[0];
+        currentY = command.to[1];
+        hasCurrent = true;
         break;
       case "arc_to": {
         const [cx, cy] = command.center;
         const sweep = arcSweep(command.start_angle, command.end_angle, command.ccw);
-        const pointAt = (angle: number): [number, number] => [cx + command.radius * Math.cos(angle), cy + command.radius * Math.sin(angle)];
-        const [startX, startY] = pointAt(command.start_angle);
-        if (!current) target.moveTo(startX, startY);
-        else if (Math.hypot(current[0] - startX, current[1] - startY) > 1e-9) target.lineTo(startX, startY);
-        const chords = Math.max(1, Math.ceil(Math.abs(sweep) / MAX_CHORD_ANGLE));
-        for (let i = 1; i <= chords; i++) lineTo(...pointAt(command.start_angle + (sweep * i) / chords));
+        const startX = cx + command.radius * Math.cos(command.start_angle);
+        const startY = cy + command.radius * Math.sin(command.start_angle);
+        if (!hasCurrent) target.moveTo(startX, startY);
+        else if (Math.hypot(currentX - startX, currentY - startY) > 1e-9) target.lineTo(startX, startY);
+        const chords = Math.max(1, Math.ceil(Math.abs(sweep) / maxChordAngle));
+        const angleStep = sweep / chords;
+        for (let i = 1; i <= chords; i++) {
+          const angle = command.start_angle + angleStep * i;
+          currentX = cx + command.radius * Math.cos(angle);
+          currentY = cy + command.radius * Math.sin(angle);
+          target.lineTo(currentX, currentY);
+        }
+        hasCurrent = true;
         break;
       }
     }

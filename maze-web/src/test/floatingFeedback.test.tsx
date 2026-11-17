@@ -55,6 +55,14 @@ describe("Tooltip", () => {
     expect(description?.textContent).toBe("Locked by group colors");
   });
 
+  it("is not a tab stop when told so, yet still shows on a focus coming from its child", () => {
+    render(<Tooltip content="Why" focusable={false}><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    expect(anchor.hasAttribute("tabindex")).toBe(false);
+    fireEvent.focus(screen.getByRole("button", { name: "X" }));
+    expect(screen.getByTestId("tooltip").textContent).toBe("Why");
+  });
+
   it("is inert without content", () => {
     render(<Tooltip content={undefined}><button>X</button></Tooltip>);
     const anchor = screen.getByTestId("tooltip-anchor");
@@ -89,6 +97,47 @@ describe("Tooltip", () => {
     expect(screen.queryByTestId("tooltip")).toBeNull();
   });
 
+  it("hides on mouse press and stays hidden through the resulting focus and click", () => {
+    vi.useFakeTimers();
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerEnter(anchor, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS));
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.focus(anchor);
+    expect(screen.queryByTestId("tooltip")).toBeNull();
+  });
+
+  it("shows on keyboard focus again after a mouse press and blur", () => {
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.blur(anchor);
+    fireEvent.focus(anchor);
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
+  it("shows on keyboard focus after a press on an already focused anchor", () => {
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.pointerUp(anchor, { pointerType: "mouse" });
+    fireEvent.focus(anchor);
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
+  it("shows on hover again after a mouse press and leave", () => {
+    vi.useFakeTimers();
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.pointerLeave(anchor, { pointerType: "mouse" });
+    fireEvent.pointerEnter(anchor, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS));
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
   it("shows on tap and hides on tap outside", () => {
     render(<><Tooltip content="Why"><span>X</span></Tooltip><div data-testid="outside" /></>);
     tap(screen.getByTestId("tooltip-anchor"));
@@ -110,6 +159,18 @@ describe("Tooltip", () => {
     fireEvent.focus(screen.getByTestId("tooltip-anchor"));
     fireEvent(window, new Event("blur"));
     expect(screen.queryByTestId("tooltip")).toBeNull();
+  });
+
+  it("hides when the document becomes hidden", () => {
+    render(<Tooltip content="Why"><span>X</span></Tooltip>);
+    fireEvent.focus(screen.getByTestId("tooltip-anchor"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    try {
+      fireEvent(document, new Event("visibilitychange"));
+      expect(screen.queryByTestId("tooltip")).toBeNull();
+    } finally {
+      delete (document as { visibilityState?: string }).visibilityState;
+    }
   });
 
   it("ColorRow exposes its disabledHint through the tooltip, not the native title", () => {

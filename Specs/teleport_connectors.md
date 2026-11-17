@@ -7,12 +7,18 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 `maze-web/src/pixi/renderers/teleportConnectorAxes.ts` — bend axes per tessellation.
 `maze-web/src/pixi/renderers/teleportConnectorRouter.ts` — `TeleportConnectorRouter`, all collision-avoidance routing.
 `maze-web/src/pixi/renderers/teleportConnectorRouting.ts` — `routeStraightConnectors` (the `"straight"` style, no bends/collision-avoidance) and arrow placement.
+`maze-web/src/pixi/renderers/teleportConnectorPlan.ts` — `routeTeleportConnectors`, the single entry that picks the router for a `connectorStyle` and derives marker clearances from the line style. Shared by `TeleportRenderer` and the export warning `teleport_connector_covers_one_way`, so the warning judges the path that is drawn.
 `maze-web/src/pixi/renderers/TeleportRenderer.ts` — draws the routed result.
+
+`maze-web/src/pixi/imageExport/TeleportConnectorEditController.ts` — canvas editor of manual paths.
+`maze-web/src/pixi/sceneTypes.ts` — `isTeleportConnectorEditActive` / `isFloorLabelDragActive`, the predicates deciding whether an export edit mode owns canvas input.
+`maze-web/src/store/exportEditStateSync.ts` — `installExportEditStateSync`, drops the export edit modes' state when the export card closes.
+`maze-web/src/store/teleportConnectorPathSync.ts` — `installTeleportConnectorPathSync`, drops stale manual paths.
 
 ## Connector styles
 
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
-- `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below).
+- `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below). Its bend join has its own **Corner style** field, linked to the export mode's shared Corner style by default; it can be overridden without changing the shared style or other dependents.
 - `"curved"` — a sampled quadratic Bézier center-to-center connector. `teleportCurveDirection`
   selects `"inward"` or `"outward"` relative to the field origin and
   `teleportCurveStrength` (0..1) sets the control-point offset as a fraction of the endpoint
@@ -30,7 +36,110 @@ The router considers inward and outward radii, rejects paths that pass through o
 teleport or waypoint markers when possible, then uses `teleportCurveDirection` to break a tie.
 If either endpoint is the center, it falls back to a direct radial line.
 
+## Route through seams (GitHub issue #873)
+
+Setting `teleportThroughSeams` (default on, both "Vector by walls" and "Vector by corridors", Teleports → Connector; the row is shown only while some floor's `floorTopology` has a fold; linkable like any boolean). A connector between two teleports goes through a seam whenever that is shorter, as if the field continued beyond the glue — whatever the connector style, and whether or not the cells are neighbours.
+
+When on, `routeTeleportConnectors` (`seam` arg) post-processes every connector. In world units (`seamUnfold.ts`, `shortestSeamCrossing`): for each half-edge of each isometric seam the target is unfolded into the source side's frame with `fromPartner`; the straight line to the unfolded target must cross that half-edge's face chain (source on the cell's own side, unfolded target on the far side) and be shorter than the direct distance. The shortest such crossing wins.
+
+The connector is then routed in the unfolded frame with its own style: the edge's `to` is replaced by the unfolded target and the whole set goes through the usual router (orthogonal bends and collision offsets, curved Béziers, radial rings, straight), so the shape is the one the field-continued-beyond-the-seam would give. The routed polyline is cut at its first crossing of the glued face (`cutPolylineAtChain`): `points` = source → crossing point, `RoutedConnector.partnerPoints` = the same point on the partner face (inverse of `fromPartner`) followed by the rest of the path mapped back, ending exactly on the target. Nothing is drawn between the two crossing points, so after assembling along the seam the pieces form the usual connector. If the routed shape never crosses that face (an orthogonal path can skirt it), the connector falls back to the two straight pieces of the straight line through the seam. The unfolded target takes part in the orthogonal router's collision weighting like any endpoint, although it lies in the other side's frame.
+
+A topological-only seam has no transform, so the unfold is built from its chain ends (`Seam.endpoints`, `seamUnfold.ts`): the rigid motion that lays the partner's face chain on this face chain with matching ends, choosing the variant that puts the partner's cell on the far side of the glue (a mirror one when needed). Everything above then applies unchanged. Edges without a shorter way through a seam and cross-floor badge points are unchanged. Each piece is stroked, gapped and given arrows on its own (`center`/`double` arrows therefore repeat per piece). The export warning `teleport_connector_covers_one_way` is given the same `seam` context and checks both pieces of a split connector. The shape is cut at its first crossing of any face glued by the same unfold (`SeamCrossing.chains`), since a routed shape (e.g. an orthogonal bend) may leave the field through a neighbouring face of the same glue. The renderers pass only `{ cfg }` as the `seam` context when the setting is on (`teleportThroughSeams !== false`, so a missing value counts as on); the seam model comes from `getSeamModel(cfg)`.
+
+## Manual connector paths (GitHub issue #301)
+
+An export connector can carry a user-authored path, identified by its unordered pair of underlying
+teleport node ids. Every manual path has `nodes` (polyline vertices and cubic anchors), plus
+optional `controls` (two cubic Bezier controls per consecutive node pair), and a `mode`.
+`"polyline"` joins nodes and ignores controls. `"curve"` uses nodes and controls as ordinary
+cubic Bezier segments. Switching to curve mode creates straight controls only when they do not
+exist; switching back leaves controls persisted but ignored. A manual path is drawn exactly as
+authored. New controls sit up to one-and-a-half tiles from their anchors along the local path
+tangent, so the initial curve is smooth. The distance is capped at a third of the segment length so
+short segments never curl into a loop; a node without a direction of its own (coincident neighbours,
+backtracking path) uses the segment direction, and a zero-length segment gets controls on its anchors. Dragging an anchor translates its adjacent controls;
+dragging one control rotates its paired control around their common anchor while preserving that
+paired control's length, keeping a G1 join. Controls and dotted control-to-anchor guides are shown
+only for the selected anchor. Inserting a node on a curve splits its cubic segment with the
+de Casteljau construction, preserving the drawn path; deleting an interior node regenerates the
+remaining segment controls. A manual path never receives an automatic bend choice or corridor offset.
+Its intermediate points are
+nevertheless supplied to the automatic router's avoidance set, so subsequent automatic connectors
+do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
+not route through seams.
+
+A manual path whose teleport pair no longer exists among the maze's teleport edges (the teleport was
+deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops it whenever the store's
+`edges` change, so every way a teleport can disappear (post-edit, preset, regeneration) is covered in
+one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
+edges at all.
+
+A cross-floor teleport (endpoints on different floors, GitHub issue #989) is drawn on each floor
+from its own marker to a floor badge, so one shared path cannot fit both floors. Each floor's piece
+is its own manual path under the key `<pair>@<node id of the endpoint on that floor>`
+(`crossFloorSegmentKey`, e.g. `3:7@7`), authored in that floor's own coordinates — floors with
+different field sizes need nothing extra. `teleportConnectorKey` picks the key from the edge's
+`toFloor`/`fromFloor`; same-floor keys are unchanged. A segment is otherwise an ordinary manual path
+(modes, editing, warnings, export, cut transfers, project save/load); its ends are stored as authored
+and are not re-anchored when the marker or badge later moves, as for a same-floor path. The editor
+list shows one row per segment, naming the connector's own two ends: for a cross-floor piece the
+teleport node on that floor and the floor badge cell on the same floor (`buildTeleportConnectorSegments`,
+built like the export renderers' per-floor teleport edges), for a same-floor connector its two nodes.
+The arrow between the bubbles is the standard `->` for a one-way teleport and `<->` for a two-way one;
+the badge side of a one-way piece is its far end on that floor (`from` on the arrival floor). The
+pieces of one cross-floor teleport are listed together (at the place of the first piece authored),
+marked by a link icon centered on the divider between them (tooltip: the two segments are parts of the
+connector of one cross-floor teleport); each row hovers and focuses on its own. Hovering
+a node bubble highlights that node's cell, a badge bubble highlights the badge cell
+(`hoveredTeleportCells`, drawn by the mode renderer next to `hoveredTeleportNodeIds`), and the arrow
+or the row highlights both. Clicking a bubble or the row switches to the segment's floor. Staleness is judged per segment:
+a pair that crosses floors keeps only its two segment keys, so a legacy plain-pair path for such a
+pair is dropped, as is any segment whose pair disappeared or no longer crosses floors
+(`retainLiveTeleportConnectorPaths` takes the nodes to read their levels).
+
+Project loading restores manual paths after the saved post-edit command log has been replayed and
+confirmed (GitHub issue #955). This ordering retains a path belonging to a teleport created by that
+log: it is not present in the regenerated baseline, but is present in the final loaded maze. Paths
+whose pairs remain absent from that final maze are still discarded.
+
+Connector editing belongs to the export feature (GitHub issue #947). The editor owns canvas input
+only while `isTeleportConnectorEditActive` holds: `teleportConnectorEdit` is set, the open card is
+`image_export` and the active render mode is the edited one. The controller router
+(`MazeScene.getController`), the editor's own pointer handler, its hit plane and the
+Escape/Delete keys all use this one predicate, so switching to another feature hands canvas input
+to that feature. `installExportEditStateSync` additionally drops the edit state when the
+open card changes away from `image_export`, so returning to export starts with editing off. The
+floor-label drag follows the same rule (`isFloorLabelDragActive`: export card, the drag's render
+mode and floor; its state is dropped by the same sync).
+
+The connector editor explains these interactions in place: left-click a point to select it or a path
+to insert a point; right-click a point to delete it; and hold the platform modifier while moving a
+point to snap it to a field anchor. In Cubic curve mode, holding Alt while moving a handle adjusts
+it independently, while holding Shift adjusts its paired handles symmetrically. Holding P
+hides every point marker and guide so the connectors render as they will in the maze (GitHub issue #998);
+the editor ignores pointer presses meanwhile, and releasing P (or losing window focus) restores the
+markers. A preview still held when editing ends is dropped, so the next session starts with the
+markers shown. The left- and right-button hints use LMB/RMB keycaps.
+
+When a manually authored connector path is hovered on the canvas, its corresponding editor row is
+highlighted and scrolled into view as needed (GitHub issue #1005). Selecting a connector point is
+canvas-only and does not affect the list. Hovering an automatic connector does not materialize a path
+or affect the list. The hover zone includes each teleport endpoint's visible marker, not only the
+connector line.
+
+The editor panel also shows the connector geometry warnings (GitHub issue #952) as a collapsible "Warnings (N)"
+section above the connector list, always visible even at N = 0 and expanded by default; its expanded state is persisted in
+`vectorByWallsSectionsExpanded` under `teleportConnectorEditorWarnings`. The entries are the same `ExportWarningBubble`s
+as in the export settings panel, produced by `computeTeleportConnectorWarningsAcrossFloors`: it runs only the
+`teleportConnectors` warning group (through the shared per-group cache) and `useModeWarnings` feeds it, so the
+list is recomputed from the current settings and updates as paths change. Hovering one
+highlights the offending parts. The warnings cover all connectors of the project.
+
 ## Bend axes
+
+**Brick exception (GitHub issue #940).** Unlike the face-normal rule below, brick uses the three
+axes {0°, 45°, 135°}. Horizontal routes stay within a row; the two diagonals route between rows
+shifted by half a cell without a vertical leg across their half-edges.
 
 An orthogonal connector's single bend must run along an axis *perpendicular* to the tessellation's own cell faces (a connector crossing a wall head-on, not running alongside it):
 
@@ -52,6 +161,10 @@ Selection is **greedy**, not a global optimum:
 3. Capped at a small fixed count rather than iterating to a fixpoint — can still settle into a local optimum, or in principle oscillate, but empirically resolves what a single pass leaves on the table.
 
 "Best" candidate = fewest weighted collisions (see below), ties broken toward shorter total path length, remaining ties toward axis-pair order (earlier pairing wins).
+
+## Badge end tie-break (GitHub issue #897)
+
+A cross-floor badge end (`TeleportEdge.toFloor`/`fromFloor`) is recorded on every candidate as `OrthogonalPath.badgeEnd`. A marker displaced by the marker layout sits off its cell center while the badge sits exactly on one, so two candidates of equal length can differ in where the long leg runs. After collision count and total length, `bestAgainst` prefers the candidate whose leg ending at the badge is longer (`badgeLegLength`), so that leg runs through the badge center instead of along the displaced marker line past the badge edge. Collisions and length still win over this tie-break. The badge flag is part of the router cache key. Radial orthogonal routing (`routeRadialConnectors`) applies the same preference, but ranks it above total length (its two candidates never tie on length): collisions first, then the longer badge-end leg, then length. Straight and curved connectors are unaffected.
 
 ## Collision weighting
 

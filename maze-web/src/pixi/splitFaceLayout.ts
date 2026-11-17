@@ -80,8 +80,8 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
 /** Recognizes a split point's topology by its cell's shape template (`binding`; a cell without one
  *  is never recognized). `localFaceKindsByNode` is in the cell's `faces_of` order; recognition runs
  *  on the template's canonical faces, so it holds for every cell of the template. The `regular:4`
- *  template: a two-node topology as `"bridge"` (each node an opposite-face pair) or `"diagonal"` (each node an
- *  adjacent-face pair) — GitHub issue #294 — or
+ *  template and four-face radial ring template: a two-node topology as `"bridge"` (each node an
+ *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294/#845 — or
  *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
  *  `"hex_bridge"` (two nodes, each an opposite-face pair), `"hex_triple_bridge"` (three nodes, all
  *  opposite-face pairs), `"hex_diagonal"` (two nodes, neither an opposite-face pair — adjacent
@@ -124,7 +124,25 @@ export function detectSplitSpecialShapeKind(
       (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
       ? "cairo_adjacent_divider" : null;
   }
-  if (binding.shape !== "regular:4" && binding.shape !== "regular:6") return null;
+  if (binding.shape === "regular:8") {
+    const connected = faceKindsByNode.map(connectedIndicesOf);
+    const isOppositePair = (faces: number[]) => faces.length === 2 && circularDist(faces[0], faces[1], 8) === 4;
+    const distinctPairs = new Set(connected.map((faces) => faces.join(","))).size === connected.length;
+    if (nodeCount === 4) return connected.every(isOppositePair) && distinctPairs ? "octagon_triple_bridge" : null;
+    if (nodeCount === 3) return connected.every(isOppositePair) && distinctPairs ? "octagon_double_bridge" : null;
+    if (nodeCount !== 2) return null;
+    if (connected.every(isOppositePair) && distinctPairs) return "bridge";
+    const isHalf = (faces: number[]) => faces.length === 4 && Array.from({ length: 8 }, (_, start) =>
+      [0, 1, 2, 3].every((offset) => faces.includes((start + offset) % 8)),
+    ).some(Boolean);
+    return connected.every(isHalf) && new Set(connected.flat()).size === 8
+      ? "octagon_diagonal_divider" : null;
+  }
+  // Radial ring cells with one inner and one outer neighbor have the same four-face topology as
+  // a square: outer/inner and previous/next form the two opposite pairs. Reuse the square bridge
+  // and diagonal-divider treatment while keeping every other registered template opt-in.
+  const isFourFaceTemplate = binding.shape === "regular:4" || binding.shape === "radial:ring_1_1";
+  if (!isFourFaceTemplate && binding.shape !== "regular:6") return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 
@@ -266,6 +284,10 @@ export interface SplitFaceSegment {
    *  caller's own join/cap style instead of the always-`"butt"` internal-division ends. */
   atFaceStart: boolean;
   atFaceEnd: boolean;
+  /** The share's span as fractions (0..1) of the face's length along `v0 -> v1`; lets a seam's
+   *  partner side map the same share onto its own copy of the face. */
+  t0: number;
+  t1: number;
 }
 
 export interface SplitFaceLayout {
@@ -333,6 +355,8 @@ export function computeSplitFaceLayouts(
         mid: pointAlongPolyline(boundary, (i + 0.5) / n),
         atFaceStart: i === 0,
         atFaceEnd: i === n - 1,
+        t0: i / n,
+        t1: (i + 1) / n,
       };
     });
 

@@ -417,6 +417,15 @@ pub enum VertexBasedEvent {
         balance: f64,
         other_floor_preferred: bool,
     },
+    /// A chance roll was intentionally not consumed because this source cell's configured type
+    /// forbids the generated element. `element` and `cell_type` are stable configuration keys,
+    /// so the debug tree explains the exact matrix entry that blocked the roll.
+    #[wire(tag = 45)]
+    ElementRollSkipped {
+        src: NodeId,
+        element: String,
+        cell_type: String,
+    },
 }
 
 pub const VISITED: &str = "visited";

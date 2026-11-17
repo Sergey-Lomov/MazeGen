@@ -2,6 +2,8 @@ import type { StateCreator } from "zustand";
 import type { MazeStore, FloorsState, FloorsActions, FloorState, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { defaultFloorFieldConfig, defaultTessellationOf, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock, buildResetDownstreamState } from "../storeHelpers";
+import { topologyCopiedTo } from "../presetTopology";
+import { creasesCopiedTo } from "../creases";
 
 export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
@@ -13,6 +15,9 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   floors: [initialFloor],
   nextFloorNumber: 2,
   activeFloorId: initialFloor.id,
+  floorTopology: {},
+  floorCreases: {},
+  edgeMarkerOrder: {},
   // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
   // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
   floorFields: { [initialFloor.id]: defaultFloorFieldConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
@@ -30,6 +35,9 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       floors: [...state.floors, floor],
       nextFloorNumber: state.nextFloorNumber + 1,
       floorFields: { ...state.floorFields, [floor.id]: { ...belowField } },
+      // The copied field carries its topology and creases along (GitHub issue #921).
+      floorTopology: topologyCopiedTo(state.floorTopology, belowFloor.id, [floor.id]),
+      floorCreases: creasesCopiedTo(state.floorCreases, belowFloor.id, [floor.id]),
     };
   }),
 
@@ -42,6 +50,8 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const next = floors.filter((f) => f.id !== id);
     const nextFloorFields: Record<string, FloorFieldConfig> = { ...floorFields };
     delete nextFloorFields[id];
+    const { [id]: _removedTopology, ...nextFloorTopology } = state.floorTopology;
+    const { [id]: _removedCreases, ...nextFloorCreases } = state.floorCreases;
     // Presets on the removed floor are dropped entirely; presets on every floor above it shift
     // their `level` down by one to keep tracking the same floor's new array position (GitHub
     // issue #340) — mirrors `nextFloorFields` deleting the removed id's own entry above.
@@ -50,9 +60,13 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       ...buildResetDownstreamState(),
       floors: next,
       floorFields: nextFloorFields,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      floorTopology: nextFloorTopology,
+      floorCreases: nextFloorCreases,
+      creaseDraft: null,
+      creaseHover: null,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
       // The active floor may be the one just removed — fall back to the bottom floor rather than
       // leaving `activeFloorId` pointing at a floor that no longer exists.
       activeFloorId: activeFloorId === id ? next[0].id : activeFloorId,
@@ -94,7 +108,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   setActiveFloorId: (id) => {
     const { floors } = get();
     if (!floors.some((f) => f.id === id)) return;
-    set({ activeFloorId: id, symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false });
+    set({ activeFloorId: id, mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false, creaseDraft: null, creaseHover: null });
   },
   };
 };

@@ -44,8 +44,68 @@ rejects the file instead of falling back to `square`. Failures are
 (`file_load.read_failed`), invalid JSON (`file_load.invalid_json`), a file of another kind
 (`project.load_error_quality_preset` / `project.load_error_visual_preset`) or a validation error
 (`project.load_error`, validator message in the toast details). Validation runs before
-`loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
+`loadProject`, so a rejected file changes no state.
+
+GitHub issue #967. `loadProject` first waits for the strategy registry: unless `registryLoaded` is
+already true it awaits `loadRegistry()`, which joins a load in flight or retries a failed one. Without
+this, a file applied before the startup load finished would be interpreted without `availableStrategies`,
+and the first registry load would then replace the loaded rules with the defaults. If the registry still
+is not loaded, the file is refused before any state change with an `error` toast
+(`project.load_error_engine_not_loaded`, source `project_load`) telling the user the engine is not
+loaded and to reload the page and try again. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
+
+GitHub issue #946. Loading ends every UI mode, pending placement, prompt, hover and open panel of the
+previous session before the saved project's own UI state is restored. The reset is not a list inside
+`loadProject`: each store slice declares its own resting values next to its state (`<slice>TransientUi`
+in `tessellationSlice`, `floorFieldSlice`, `generationSlice`, `analyticsOverlaySlice`,
+`presetConnectionsSlice`, `postEditSlice`, `imageExportSlice`; the topology editor's `initialTopologyState`),
+spread into that slice's initial state, and `store/transientUiState.ts` (`TRANSIENT_UI_STATE`) only composes
+them. A new mode is added in its slice and is reset on load without touching `loadProject`.
+`transientUiState.test.ts` fails on a store state key that is neither in the registry nor listed in the
+test's `NOT_TRANSIENT` groups with its reason (restored from the file, rebuilt by regeneration, app-wide,
+owned by a controller), so a new key cannot be forgotten. A load test dirties every registered key and asserts each returns to its resting value.
+
+GitHub issue #932. Load runs generation only when the file's `dirtyFlags` say a generation existed at
+save time (`hasGeneration`: `maze` or `postEdit`). Otherwise the project stays ungenerated
+(`generationStatus: "idle"`, no maze, no post-edit replay); the saved dirty flags and open card are
+still restored. A file without a `dirtyFlags` section predates the flags and always regenerated, so
+`validate.ts` defaults its `maze` flag to `true`; a present section with a missing `maze` key
+defaults to `false`.
+
+During a successful project load, feature maze canvases remain hidden while the saved post-edit
+command log is replayed and its analytics snapshot is recomputed. The saved feature card is opened
+only after that work completes, so the first visible maze frame includes the restored post-edit
+result rather than briefly exposing the regenerated baseline.
+
+## Topology (`floorTopology`)
+
+GitHub issue #836. Optional section `floorTopology?: Record<floorId, WireTopology>` (`types.ts`); a
+floor without folds has no entry, and a file saved before this section loads with no topology, so
+`CURRENT_VERSION` is unchanged. The wire shape and fingerprint are specified in `Specs/topology.md`,
+"Wire form". The store keeps it as `floorTopology` (`FloorsState`), sends it as the `topology` key of
+the generate and compute-analytics configs, and clears it when the tessellation kind or params
+change (a topology is authored for one config) and when its floor is removed. A field edit keeps it: fold
+activity is recomputed (GitHub issue #839, `Specs/topology.md`, "Web authoring").
+
+On load `validate.ts` computes the fingerprint of the file's `tessellation` and calls
+`validateWireTopology` (`store/topologyWire.ts`) for every entry of a floor present in `floors`
+(entries of unknown floors are dropped). A fingerprint mismatch rejects the file with
+`floorTopology.<floorId>: topology was authored for tessellation `…`, current is `…``; so do
+structural violations (face glued to itself or in two folds, a fold in no or several groups, unknown
+group or fold references, malformed ends), each naming the fold or group. Cell validity and face
+ranges need the tessellation and are checked by core when the topology is installed on a floor.
+
+## Creases (`floorCreases`)
+
+GitHub issue #898. Optional section `floorCreases?: Record<floorId, Crease[]>` (`types.ts`): the floor's
+topological crease lines, each `{ id, a: [x, y], b: [x, y] }` in core world units
+(`Specs/topology.md`, "Creases"). A floor without creases has no entry, and a file saved before this
+section loads with none, so `CURRENT_VERSION` is unchanged. Not tied to the tessellation fingerprint:
+a crease refers to no cell. On load `validateCreases` rejects a non-array entry, a non-integer or
+duplicate `id`, a non-numeric end and equal ends, naming the path; entries of unknown floors are dropped.
+The store keeps it as `floorCreases` and clears it with the topology when the tessellation kind or
+params change.
 
 ## Visual preset (style file)
 
@@ -89,7 +149,7 @@ Quality card (`QualityFeature.tsx`).
 
 - Content: JSON `QualityPresetFile` (`types.ts`) — `kind: "maze-quality-preset"`,
   `version: QUALITY_PRESET_VERSION`, and `quality`: exactly the project file's `quality` section
-  (`ProjectFileQuality` — rules, stages, `strategyParams`, `repairMaxIterations`,
+  (`ProjectFileQuality` — rules, stages, `repairMaxIterations`,
   `repairTimeBudgetSecs`), built by the shared `serializeQuality(state)` and validated by the shared
   `validateQuality` (`validateSections.ts`).
 - Extension: `QUALITY_PRESET_FILE_EXTENSION = ".mazequality"`, with the same iOS/iPadOS `accept`
@@ -113,7 +173,7 @@ Quality card (`QualityFeature.tsx`).
   - an unknown top-level strategy becomes "no fix";
   - a nested strategy entry with an unknown strategy, or in a slot its parent strategy doesn't
     declare (listed as `<parent strategy id>.<slot id>`), is removed with its own nested chain;
-  - `strategyParams` of unknown strategies are dropped silently.
+  - strategy params of an unknown top-level strategy are dropped with that rule assignment.
 
   Before the registry is loaded no filtering is done.
 - File kind mix-up: `parseQualityPreset` rejects a visual preset (by `kind`) and a project file (no

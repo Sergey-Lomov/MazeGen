@@ -5,6 +5,7 @@ vi.mock("../pixi/tessellationGeometry", () => ({
   getCellVertices: () => [],
   getCellPath: () => [],
   getNeighborData: () => ({ offsets: [] }),
+  getCellNeighborOffsets: () => [],
 }));
 
 vi.mock("../pixi/renderers/floorNavigation", () => ({

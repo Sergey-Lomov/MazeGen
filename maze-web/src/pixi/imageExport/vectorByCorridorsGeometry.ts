@@ -49,7 +49,7 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
   const seen = new Set<string>();
   const markers: MarkerData[] = [];
   for (const e of teleportEdges) {
-    for (const pos of [e.from, e.to]) {
+    for (const [pos, sc = 1] of [[e.from, e.fromScale], [e.to, e.toScale]] as const) {
       const key = `${pos[0]},${pos[1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -58,13 +58,13 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
       markers.push({
         pos,
         color: 0,
-        radius: isBadge ? badgeRadius : radius,
+        radius: (isBadge ? badgeRadius : radius) * sc,
         shape: isBadge ? settings.teleportFloorBadge.shape : (override?.shape ?? settings.teleportMarker.shape),
         // The badge is its own marker (GitHub issue #701): corner style, border and gap come from
         // `teleportFloorBadge`, matching `TeleportRenderer`'s badge draw.
         cornerStyle: isBadge ? settings.teleportFloorBadge.cornerStyle : settings.teleportMarker.cornerStyle,
-        borderWidth: isBadge ? settings.teleportFloorBadge.borderWidth : settings.teleportMarker.borderWidth,
-        gapWidth: isBadge ? settings.teleportFloorBadge.gapWidth : settings.teleportMarker.gapWidth,
+        borderWidth: (isBadge ? settings.teleportFloorBadge.borderWidth : settings.teleportMarker.borderWidth) * sc,
+        gapWidth: (isBadge ? settings.teleportFloorBadge.gapWidth : settings.teleportMarker.gapWidth) * sc,
       });
     }
   }
@@ -88,14 +88,15 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
 export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], settings: VectorByCorridorsSettings): MarkerData[] {
   return markers.map((marker) => {
     const markerSettings = marker.kind === "elevator" ? settings.elevatorMarker : marker.filled ? settings.twoWayPassageMarker : settings.oneWayPassageMarker;
+    const sc = marker.scale ?? 1;
     return {
       pos: marker.pos,
       color: 0,
-      radius: markerSettings.size / 2,
+      radius: markerSettings.size / 2 * sc,
       shape: markerSettings.shape,
       cornerStyle: markerSettings.cornerStyle,
-      borderWidth: markerSettings.borderWidth,
-      gapWidth: markerSettings.gapWidth,
+      borderWidth: markerSettings.borderWidth * sc,
+      gapWidth: markerSettings.gapWidth * sc,
     };
   });
 }

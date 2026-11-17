@@ -3,8 +3,9 @@ use super::edge_ops::try_add_edge_kind;
 use super::split_logic::StartReassignment;
 use super::vertex_based::{
     GenState, VertexBasedEvent, add_edge_and_detect_direction, add_to_frontier,
+    element_roll_allowed,
 };
-use super::{ElementsConfig, PresetState};
+use super::{ElementsConfig, GeneratedElementKind, PresetState};
 use crate::event_log::ScopeGuard;
 use crate::graph::{EdgeKind, Graph};
 use crate::ids::{IdGenerator, NodeId};
@@ -105,14 +106,42 @@ pub(super) fn mark_connected(
 /// Rolls the split event's shared teleport connection once for the whole event (not per-node, in
 /// either mode) — anchored to a uniformly random resulting node, added alongside whatever each
 /// node's own corridor/junction/cyclic logic decided.
-pub(super) fn apply_split_teleport(
+pub(super) fn apply_split_teleport<T: Tessellation>(
     graph: &mut Graph,
+    field: &MultiLevelField<T>,
     elements: &ElementsConfig,
     preset_state: &PresetState,
     state: &mut GenState,
     nodes: &[NodeId],
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
+    let anchors: Vec<NodeId> = nodes
+        .iter()
+        .copied()
+        .filter(|node| state.allows(field, GeneratedElementKind::Teleport, *node))
+        .collect();
+    let destinations_available = state.all_nodes.iter().any(|node| {
+        !state.visited.contains(node) && state.allows(field, GeneratedElementKind::Teleport, *node)
+    });
+    if anchors.is_empty() || !destinations_available {
+        let blocked_anchor = nodes
+            .iter()
+            .find(|node| !state.allows(field, GeneratedElementKind::Teleport, **node));
+        let blocked_destination = state.all_nodes.iter().find(|node| {
+            !state.visited.contains(node)
+                && !state.allows(field, GeneratedElementKind::Teleport, **node)
+        });
+        if let Some(&blocked) = blocked_anchor.or(blocked_destination) {
+            let _ = element_roll_allowed(
+                state,
+                field,
+                blocked,
+                GeneratedElementKind::Teleport,
+                scope.as_deref_mut(),
+            );
+        }
+        return;
+    }
     let roll = state.rng.random::<f64>();
     let fired = roll < elements.teleport_chance;
     if !fired {
@@ -126,7 +155,7 @@ pub(super) fn apply_split_teleport(
         }
         return;
     }
-    let anchor = nodes[state.rng.random_range(0..nodes.len())];
+    let anchor = anchors[state.rng.random_range(0..anchors.len())];
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::SplitTeleportRolled {
             roll,
@@ -139,7 +168,9 @@ pub(super) fn apply_split_teleport(
         .all_nodes
         .iter()
         .copied()
-        .filter(|n| !state.visited.contains(n))
+        .filter(|n| {
+            !state.visited.contains(n) && state.allows(field, GeneratedElementKind::Teleport, *n)
+        })
         .collect();
     if unvisited.is_empty() {
         return;

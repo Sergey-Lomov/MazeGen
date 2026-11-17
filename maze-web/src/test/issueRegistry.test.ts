@@ -40,6 +40,7 @@ describe("resolveIssue", () => {
       "cycle_analysis_overflowed",
       "excessive_scc_count",
       "region_needs_expansion",
+      "indeterminate_distance",
     ];
     for (const kind of knownKinds) {
       const info = resolveIssue(kind);

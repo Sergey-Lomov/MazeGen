@@ -5,13 +5,15 @@ import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
-import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
+import { arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { TeleportConnectorRouter } from "./teleportConnectorRouter";
+import { routeTeleportConnectors } from "./teleportConnectorPlan";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import type { ManualTeleportConnectorPath } from "./teleportConnectorManual";
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's
@@ -36,6 +38,7 @@ export class TeleportRenderer {
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
   private selectionGroupCustomization = false;
   private selectionEdges: TeleportEdge[] = [];
+  private selectionPointScales: Map<string, number> = new Map();
   // Cross-floor points (GitHub issue #337) — a point present here draws a floor-number badge
   // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
   // `resolvePointFillState`, recomputed alongside it in `renderLine`.
@@ -45,6 +48,7 @@ export class TeleportRenderer {
   private selectionFloorNavigable = false;
   // Marker size adaptation (GitHub issue #819): per-cell radius factors for markers and badges.
   private selectionScaler: MarkerScaler = NO_MARKER_SCALING;
+  private mergeTeleports = true;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
   // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
@@ -57,6 +61,11 @@ export class TeleportRenderer {
     container.addChild(this.view);
     this.overlayLayer = new Container();
     container.addChild(this.overlayLayer);
+  }
+
+  /** Exact polylines from the most recent draw, for the non-exported edit overlay. */
+  getConnectorPaths(): readonly { edge: TeleportEdge; points: readonly number[] }[] {
+    return this.selectionConnectors.map(({ edge, routed }) => ({ edge, points: routed.points }));
   }
 
   /** `lineStyle` defaults to the pre-#293 fixed look (every caller except `VectorByWallsRenderer`).
@@ -94,7 +103,15 @@ export class TeleportRenderer {
     /** Marker size adaptation (GitHub issue #819) — scales each endpoint marker's and floor badge's
      *  radius by its cell's factor; border/gap/connector widths stay as configured. */
     scaler?: MarkerScaler;
+    /** Teleport merge mode (GitHub issue #868) — `false` makes every teleport its own group, so
+     *  teleports whose endpoints coincide are not merged. Defaults to `true`. */
+    mergeTeleports?: boolean;
+    /** Glued pairs of the floor (GitHub issue #873) — present only when "Route through seams" is on.
+     *  A connector between two cells glued by a seam is then drawn as two pieces through the seam. */
+    seam?: { cfg: FieldConfig };
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>;
   }): void {
+    this.mergeTeleports = data.mergeTeleports ?? true;
     this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -112,6 +129,8 @@ export class TeleportRenderer {
       data.avoidFieldExit ?? false,
       data.fieldCells ?? [],
       data.floorNavigable ?? false,
+      data.seam,
+      data.manualPaths,
     );
   }
 
@@ -125,23 +144,30 @@ export class TeleportRenderer {
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
     floorNavigable: boolean,
+    seam?: { cfg: FieldConfig },
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>,
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
     // color overrides) is on — a group's own connectors are drawn immediately before its own
     // points, then the next group's connectors, etc. (see `renderGroups`), so `groupCustomization`
     // only gates whether `groupOverrides` are applied, not the grouping/ordering itself.
-    const groups = buildTeleportGroups(edges);
+    const groups = buildTeleportGroups(edges, this.mergeTeleports);
     this.selectionGroups = groups;
     this.selectionStyle = style;
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionGroupCustomization = groupCustomization;
     this.selectionEdges = edges;
+    this.selectionPointScales = new Map();
+    for (const e of edges) {
+      if (e.fromScale !== undefined) this.selectionPointScales.set(coordKey(e.from[0], e.from[1]), e.fromScale);
+      if (e.toScale !== undefined) this.selectionPointScales.set(coordKey(e.to[0], e.to[1]), e.toScale);
+    }
     this.selectionFloorBadges = computeFloorBadges(edges);
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
       style.connectorStyle !== "none"
-        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells)
+        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells, seam, manualPaths)
         : [];
 
     this.renderGroups();
@@ -158,8 +184,10 @@ export class TeleportRenderer {
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
+    seam?: { cfg: FieldConfig },
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>,
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
-    const groups = groupCustomization ? buildTeleportGroups(edges) : [];
+    const groups = groupCustomization ? buildTeleportGroups(edges, this.mergeTeleports) : [];
     const groupKeyByPoint = new Map<string, string>();
     for (const group of groups) {
       for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
@@ -169,34 +197,10 @@ export class TeleportRenderer {
       return groupKey !== undefined ? groupOverrides[groupKey] : undefined;
     };
 
-    // Includes the gap once (not doubled) — two adjacent connectors' gaps are allowed to
-    // overlap a bit, only their core lines need to stay visually distinct.
-    const gap = (style.connectorWidth + style.connectorGapWidth) * 1.5;
-    // `edgeGapWidth` (GitHub issue #302) folded into `markerBorderWidth` here — the marker's real
-    // visual footprint that `endpointCollisionRadius`/corridor-offset clamping must stay clear of is
-    // `size + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
-    // just `size + borderWidth` — omitting the gap ring here would let another connector's
-    // routed path visually cut through it even though it correctly avoids the marker/border proper.
-    const endpointRadius = (style.size / 2) * this.selectionScaler.maxFactor;
-    const endpointStyle: EndpointMarkerStyle = {
-      markerRadius: endpointRadius,
-      markerBorderWidth: style.borderWidth + style.edgeGapWidth,
-      connectorGapWidth: style.connectorGapWidth,
-      connectorWidth: style.connectorWidth,
-    };
-    const markerAvoidanceRadius =
-      (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
-    const routed =
-      style.connectorStyle === "curved"
-        ? routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints)
-        :
-      cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal"
-        ? routeRadialConnectors(edges, markerAvoidanceRadius, waypoints)
-        : style.connectorStyle === "orthogonal"
-        ? this.connectorRouter.route(
-            edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
-          )
-        : routeStraightConnectors(edges);
+    const routed = routeTeleportConnectors({
+      router: this.connectorRouter, edges, style, cfg, waypoints, avoidFieldExit, fieldCells,
+      markerMaxFactor: this.selectionScaler.maxFactor, seam, manualPaths,
+    });
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
     edges.forEach((e, i) => {
@@ -214,6 +218,12 @@ export class TeleportRenderer {
       result.push({ edge: e, routed: routed[i], color: connectorColor });
     });
     return result;
+  }
+
+  /** Marker-layout shrink factor (GitHub issue #735) of the point at (`px`, `py`) — 1 when the point
+   *  isn't in a multi-marker host. */
+  private pointScale(px: number, py: number): number {
+    return this.selectionPointScales.get(coordKey(px, py)) ?? 1;
   }
 
   /** Draws every point of one group's floor-colored gap ring (`style.edgeGapWidth`, GitHub issue
@@ -235,7 +245,8 @@ export class TeleportRenderer {
     // `edgeGapWidth`-wide band visible.
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
-      const markerR = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation);
+      const sc = this.pointScale(px, py);
+      const markerR = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation) * sc;
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
         // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
         // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
@@ -251,7 +262,7 @@ export class TeleportRenderer {
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
-      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, style.borderWidth + style.edgeGapWidth, style.floorColor, style.borderWidth);
+      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, (style.borderWidth + style.edgeGapWidth) * sc, style.floorColor, style.borderWidth * sc);
     }
   }
 
@@ -294,7 +305,7 @@ export class TeleportRenderer {
           shape: style.floorBadge.shape,
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
-          fontWeight: style.floorBadge.textFontWeight,
+          font: style.floorBadge.textFont,
           fontSize: style.floorBadge.textSize * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation),
           borderWidth: style.floorBadge.borderWidth,
           rounded: style.floorBadge.cornerStyle === "round",
@@ -305,9 +316,10 @@ export class TeleportRenderer {
         continue;
       }
       const fillState = resolvePointFillState(edges, px, py);
+      const sc = this.pointScale(px, py);
       this.drawMarker(
-        g, overlay, shape, style.cornerStyle, r, px, py,
-        color, borderColor, style.borderWidth, style.floorColor,
+        g, overlay, shape, style.cornerStyle, r * sc, px, py,
+        color, borderColor, style.borderWidth * sc, style.floorColor,
         fillState === "filled", fillState === "mixed",
       );
     }
@@ -352,16 +364,20 @@ export class TeleportRenderer {
    *  on top — so the gap wraps the arrowheads too, not just the line. `color` (GitHub issue #293
    *  follow-up) is passed separately from `style` since a group override can replace it. */
   private drawRoutedConnector(g: Graphics, routed: RoutedConnector, style: TeleportLineStyle, color: number, oneWay: boolean): void {
-    const pts = routed.points;
-    const placements = oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE, style.arrowSize) : [];
+    // A connector through a seam (GitHub issue #873) is two pieces, each stroked and given arrows on
+    // its own — "center"/"double" arrows therefore appear once/twice per piece.
+    const pieces = routed.partnerPoints ? [routed.points, routed.partnerPoints] : [routed.points];
+    const placements = pieces.map((pts) => (oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE, style.arrowSize) : []));
 
     const draw = (width: number, drawColor: number, arrowSize: number) => {
-      g.moveTo(pts[0], pts[1]);
-      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
-      g.stroke({ width, color: drawColor, cap: "round" });
-      for (const p of placements) {
-        drawDirectionArrow(g, p.x, p.y, p.dx, p.dy, arrowSize, drawColor);
-      }
+      pieces.forEach((pts, pieceIdx) => {
+        g.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+        g.stroke({ width, color: drawColor, cap: "round", join: style.connectorCornerStyle });
+        for (const p of placements[pieceIdx]) {
+          drawDirectionArrow(g, p.x, p.y, p.dx, p.dy, arrowSize, drawColor);
+        }
+      });
     };
 
     if (style.connectorGapWidth > 0) {

@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
-import { drawEdge, type RenderEdge } from "../BaseGraphRenderer";
+import { drawEdge } from "../BaseGraphRenderer";
+import { hopPieces, type SeamHopContext } from "../graphSeams";
 import { NODE_RADIUS } from "../renderConstants";
 
 export interface SequenceHighlightData {
@@ -13,6 +14,8 @@ export interface SequenceHighlightData {
   sequence: number[];
   color: number;
   cfg: FieldConfig;
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 /** Draws a `DebugValueKind.Sequence` debug value (GitHub issue #131's follow-up, e.g.
@@ -44,7 +47,7 @@ export class SequenceHighlightRenderer {
 
   render(data: SequenceHighlightData): void {
     this.g.clear();
-    const { nodes, sequence, color, cfg } = data;
+    const { nodes, sequence, color, cfg, seam } = data;
     if (sequence.length === 0 || nodes.length === 0) return;
 
     if (this.cachedNodes !== nodes || this.cachedCfg !== cfg) {
@@ -54,11 +57,7 @@ export class SequenceHighlightRenderer {
     }
     const nodePos = this.nodePos;
     for (let i = 0; i < sequence.length - 1; i++) {
-      const from = nodePos.get(sequence[i]);
-      const to = nodePos.get(sequence[i + 1]);
-      if (!from || !to) continue;
-      const edge: RenderEdge = { path: [from, to], hasReverse: false };
-      drawEdge(this.g, edge, color);
+      for (const piece of hopPieces(sequence[i], sequence[i + 1], nodePos, seam)) drawEdge(this.g, { ...piece, hasReverse: false }, color);
     }
 
     for (const id of sequence) {

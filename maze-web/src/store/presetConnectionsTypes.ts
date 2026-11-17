@@ -4,6 +4,7 @@ import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../pixi/pointEntities";
 import type { EntityToolPurpose } from "../pixi/entityToolKinds";
+import type { PendingPresetEdit } from "./presetEditGuard";
 
 export function isPresetLockTool(tool: PresetConnectionTool): boolean {
   return tool === "lock_in" || tool === "lock_out" || tool === "full_lock";
@@ -53,6 +54,9 @@ export interface PresetConnectionsState {
   autoLockedNodes: Set<string>;
   /** True after any preset connection change since the last confirmTessellation. */
   presetsDirty: boolean;
+  /** Preset edit parked while the user decides whether to discard the generation and post-edit
+   *  it would invalidate (GitHub issue #922). */
+  presetEditConfirmation: PendingPresetEdit | null;
   /** Every preset teleport across every floor, flat (GitHub issue #340) — same rationale as
    * `presetConnections` above; a teleport's `from`/`to` can already carry independent `level`s. */
   presetTeleports: PresetTeleportEntry[];
@@ -359,6 +363,9 @@ export interface PresetConnectionsActions {
    *  `removePresetPointEntity` on it directly (no dialog, matches the pre-#540 single-entity
    *  behavior), more than 1 opens `presetEntityDeletePrompt`. Closes `presetSplitTargetPrompt` if it
    *  happens to be open (the two prompts are mutually exclusive). */
+  /** Resets generation and post-edit, then replays the parked preset edit. */
+  confirmPresetEdit: () => void;
+  cancelPresetEdit: () => void;
   requestPresetEntityDelete: (point: [number, number], level: number | undefined, scope: PresetPointEntityScope, bulk?: boolean) => void;
   cancelPresetEntityDelete: () => void;
   /** Removes exactly one entity by its descriptor (`kind`+`id`) — the single code path both a

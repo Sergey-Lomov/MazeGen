@@ -147,15 +147,24 @@ pub fn run_generate<T: Tessellation + 'static>(
     config: &GenerateConfig,
     cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
     cell_from_xy: impl Fn(i32, i32) -> T::CellId,
+    progress: &dyn Fn(u8),
 ) -> Result<GenerateResult, JsValue> {
     use maze_core::generation::pipeline::build_maze;
 
+    progress(5);
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
     }
 
-    let gen_config = build_generation_config(config);
+    let mut gen_config = build_generation_config(config);
+    gen_config.element_placement_rules = Some(
+        maze_core::generation::ElementPlacementRules::from_overrides(
+            field.tessellation(),
+            &config.elements.cell_type_restrictions,
+        )
+        .map_err(|e| JsValue::from_str(&e))?,
+    );
 
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
@@ -199,6 +208,10 @@ pub fn run_generate<T: Tessellation + 'static>(
         debug_node_ledger.as_mut(),
     )
     .map_err(|e| JsValue::from_str(&e))?;
+    progress(15);
+    // MissingEndpoints runs during repair; preserve the resolved generation rules so its
+    // automatic start/finish choices obey the same cell-type matrix.
+    preset_state.element_placement_rules = gen_config.element_placement_rules.clone();
     let preset_setup_source = preset_setup_log.filter(|log| !log.is_empty()).map(|log| {
         maze_core::event_log::TapeSource {
             scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME,
@@ -222,6 +235,7 @@ pub fn run_generate<T: Tessellation + 'static>(
             .ok_or_else(|| JsValue::from_str("start node not found"))?,
     };
 
+    progress(20);
     let (
         generation_source,
         generation_kind,
@@ -240,6 +254,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         config.qc_experiment,
         config.debug_events,
     );
+    progress(65);
     if let Some(ledger) = debug_node_ledger.as_mut() {
         for (id, point) in generation_node_points {
             ledger.note(id, point);
@@ -308,6 +323,7 @@ pub fn run_generate<T: Tessellation + 'static>(
 
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let limits = build_repair_limits(config).map_err(|e| JsValue::from_str(&e))?;
+    progress(70);
     let (mut maze, issues, mut timing) = build_maze(
         field,
         graph,
@@ -320,6 +336,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         qc_log.as_mut(),
         debug_node_ledger.as_mut(),
     );
+    progress(90);
     timing.initial_build_ms = initial_build_ms;
 
     // Fresh generation has no removal history yet — a node's position within `nodes_at(point)`
@@ -342,6 +359,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     .map_err(|e| JsValue::from_str(&e))?;
     timing.snapshot_ms = maze_core::generation::pipeline::now_ms() - snapshot_start;
     snapshot.timing = Some(timing_to_dto(timing));
+    progress(98);
 
     // Union coordinate set (GitHub issue #271) — every node that ever existed during this run,
     // including ones removed/replaced by QC/repair. Built only when `debug_events` produced a
@@ -389,13 +407,15 @@ pub fn run_generate<T: Tessellation + 'static>(
         qc_tape,
     );
 
-    Ok(build_generate_result(
+    let result = build_generate_result(
         snapshot_js,
         debug_tape,
         debug_value_names,
         sources,
         debug_all_nodes_js,
-    ))
+    );
+    progress(100);
+    Ok(result)
 }
 
 /// Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169, extended by #225's

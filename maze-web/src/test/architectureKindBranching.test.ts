@@ -28,7 +28,7 @@ const WEB_ALLOWED = ["pixi/geometry/tessellationUi.ts", "fieldConfig.ts", "store
 describe("no tessellation-kind branching outside factories and registries", () => {
   it("web (editor, renderers, export, store)", () => {
     const offenders = branches(join(web))
-      .map((file) => file.slice(web.length + 1))
+      .map((file) => file.slice(web.length + 1).replace(/\\/g, "/"))
       .filter((file) => !file.startsWith("test/") && !WEB_ALLOWED.some((allowed) => file.startsWith(allowed)));
     expect(offenders).toEqual([]);
   });

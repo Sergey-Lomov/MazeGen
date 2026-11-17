@@ -1,6 +1,7 @@
 import { getFieldPreset, getFieldPresetExtents, type FieldOpError } from "../wasm/mazeService";
-import { type FieldConfig, type ResolvedField } from "../fieldConfig";
-import { normalizePrimitiveCells } from "./primitiveGeometry";
+import { type FieldConfig, type ResolvedField, requiresExactCells } from "../fieldConfig";
+import { presetParams } from "./fieldOps";
+import { normalizeCells } from "./primitiveGeometry";
 
 /**
  * The cells of a field config. Preset shapes are built by `maze-core` (`field_preset`, GitHub
@@ -11,15 +12,31 @@ export function configAllCells(cfg: FieldConfig, smooth = false): [number, numbe
   if (shape.shape === "custom") return shape.points.map(([x, y]) => [x, y]);
   const { shape: preset, ...params } = shape;
   // Core rejects sizes below 1; an unset (0) dimension is an empty field.
-  if (Object.values(params).some((value) => value < 1)) return [];
+  if (belowMinimum(cfg, preset, params)) return [];
+  if (requiresExactCells(shape)) smooth = false;
   const key = JSON.stringify([cfg.tessellation, preset, params]);
   const cached = presetCache.get(key);
-  if (cached) return smooth ? normalizePrimitiveCells(copyCells(cached), cfg, true) : copyCells(cached);
+  if (cached) return smooth ? smoothPreset(copyCells(cached), cfg) : copyCells(cached);
   const cells = buildPresetCells(cfg, preset, params);
   if (presetCache.size >= PRESET_CACHE_LIMIT) presetCache.delete(presetCache.keys().next().value!);
   presetCache.set(key, cells);
   const result = copyCells(cells);
-  return smooth ? normalizePrimitiveCells(result, cfg, true) : result;
+  return smooth ? smoothPreset(result, cfg) : result;
+}
+
+/** Core rejects a param below its minimum; an unset (0) size is an empty field. */
+export function belowMinimum(cfg: FieldConfig, preset: string, params: Record<string, number>): boolean {
+  // Only a zero-or-below value can violate a minimum, so ordinary shapes skip the capabilities lookup.
+  if (Object.values(params).every((value) => value >= 1)) return false;
+  return presetParams(cfg.tessellation, preset).some(({ name, min }) => params[name] < min);
+}
+
+/** A one-cell preset is a valid field, so it is not stripped as an isolated cell. A preset that
+ * smoothing would peel away entirely (a one-cell-thick strip) is kept as chosen. */
+function smoothPreset(cells: [number, number][], cfg: FieldConfig): [number, number][] {
+  if (cells.length < 2) return cells;
+  const smoothed = normalizeCells(cells, cfg, true);
+  return smoothed.length === 0 ? cells : smoothed;
 }
 
 /** Callers may mutate what they get, so the cache never hands out its own arrays. */
@@ -44,17 +61,20 @@ function buildPresetCells(cfg: FieldConfig, preset: string, params: Record<strin
 /**
  * Extent of a preset shape along two world directions (`[min, max]` each), measured by core
  * without materializing the cells. `null` for a custom shape or one core refuses (empty field).
+ * With `smooth` the cells smoothing removes (`smoothPreset`) do not count; core applies the same
+ * rule (`maze_core::space::normalize_cells`, GitHub issue #957).
  */
 export function presetShapeExtents(
   cfg: FieldConfig,
   directions: [[number, number], [number, number]],
+  smooth = false,
 ): [[number, number], [number, number]] | null {
   const { shape } = cfg;
   if (shape.shape === "custom") return null;
   const { shape: preset, ...params } = shape;
-  if (Object.values(params).some((value) => value < 1)) return null;
+  if (belowMinimum(cfg, preset, params)) return null;
   try {
-    return getFieldPresetExtents(cfg.tessellation, preset, params, directions);
+    return getFieldPresetExtents(cfg.tessellation, preset, params, directions, smooth && !requiresExactCells(shape));
   } catch (error) {
     if ((error as FieldOpError | undefined)?.kind === "invalid_preset") return null;
     throw error;

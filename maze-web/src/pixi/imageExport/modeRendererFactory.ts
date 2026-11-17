@@ -4,6 +4,10 @@ import { VectorByCorridorsRenderer } from "./VectorByCorridorsRenderer";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import type { ExportMargin } from "./exportMargins";
+import type { TeleportEdge } from "../renderers/types";
+
+/** See `ModeRenderer.setRenderPass`. */
+export type RenderPass = "full" | "backdrop" | "content" | "overlay" | "foreground";
 
 export interface ModeRenderer extends ViewportListener {
   /** World-space required margin around the maze's raw cell-boundary bounding box, per side —
@@ -16,6 +20,20 @@ export interface ModeRenderer extends ViewportListener {
    * `resolveBackgroundColor`. Used to pick a contrasting color for canvas-drawn UI (e.g. the
    * print-mode export frame) that must stay visible against it. */
   getBackgroundColor(): number;
+  /** Which part of the picture is drawn: the backdrop (background fill and grid, over the whole viewport), the
+   * content above it, the overlay (everything that must stay above the content of every cut copy: split shapes,
+   * widen patches, teleports, markers, index labels), or all of them. A cut sheet (GitHub issue #859) draws the
+   * backdrop once, unclipped, then the content of every copy, then the overlay of every copy, each shifted and
+   * clipped to the sheet's region (GitHub issue #888). A mode with nothing to lift above the content leaves its
+   * overlay empty. `"foreground"` is the content and the overlay together, without the backdrop. */
+  setRenderPass(pass: RenderPass): void;
+  /** The content and the overlay as separate containers, so a caller drawing several shifted copies can stack the
+   * content of all copies below the overlay of all copies without the mode building its geometry twice. They start
+   * as children of the container given to `createModeRenderer`, and may be moved elsewhere (GitHub issue #888). */
+  readonly layers: { readonly content: Container; readonly overlay: Container; readonly highlight: Container };
+  /** Whether the mode puts anything in its `"overlay"` pass; a cut export skips the empty pass. */
+  readonly hasOverlay: boolean;
+  getTeleportConnectorPaths?(): readonly { edge: TeleportEdge; points: readonly number[] }[];
   destroy(): void;
 }
 

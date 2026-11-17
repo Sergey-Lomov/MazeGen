@@ -15,9 +15,9 @@ land (more color models, practicality checks, presets).
 |---|---|
 | `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`) + optional `onOpen?: () => void` / `onCancel?: () => void` (#666, see "Cancel and parameter links" below). Clicking / activating opens `ColorPickerPanel`. |
 | `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. #503 adds an optional `priorityColors?: ProjectColorEntry[]` threaded straight through to `ColorSwatch` → `ColorPickerPanel` (the call site's own "these sibling colors matter for this decision" list). `onOpen?` / `onCancel?` (#666) forward straight through to `ColorSwatch`. |
-| `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { key: string; name: string; color: number }` (`key` = the stable `ColorField.key`, GitHub issue #717). `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `field` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
+| `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { key: string; name: string; color: number }` (`key` = the stable `ColorField.key`, GitHub issue #717). `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border, `edgeMarkers.overrides` colours of every floor as "Topology: Alignment mark N (L1)"). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `field` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
 | `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape, then calls `onCancel?.()` (#666) before `onClose()`. |
-| `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. `distributeOklchHues(base, count)` (`store/colorMath.ts`, GitHub issue #728) — `count` colors sharing the base's OKLCH lightness/chroma with hue spread evenly over 360° from the base's own hue (first = base); chroma capped per color at `oklchMaxChroma` so out-of-gamut hues keep exact lightness/hue, used by the teleport group "Auto fills"/"Auto borders" buttons. |
+| `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. `distributeHueGroups(base, count, lightnessOffset?)` (`store/colorMath.ts`, GitHub issue #903) — the same distribution for more than 8 colours: the fewest equal groups of at most 8, each group's lightness shifted by 20 L per group step and its hues by half a hue step, both centred on the base (used by the glue colours and the edge markers' "Auto colours" button). `distributeOklchHues(base, count)` (`store/colorMath.ts`, GitHub issue #728) — `count` colors sharing the base's OKLCH lightness/chroma with hue spread evenly over 360° from the base's own hue (first = base); chroma capped per color at `oklchMaxChroma` so out-of-gamut hues keep exact lightness/hue, used by the teleport group "Auto fills"/"Auto borders" buttons. |
 | `RgbModelEditor.tsx` (`components/RgbModelEditor.tsx`) | The RGB editing model (#500): three channel sliders (0-255) with per-channel gradient tracks + paired numeric inputs. Reads the working color, calls `onChange` with the new packed color on every edit. |
 | `HslModelEditor.tsx` (`components/HslModelEditor.tsx`) | The HSL editing model (#501): a 2D saturation/lightness area with a draggable crosshair, a vertical hue strip with a draggable marker, three `GradientSlider`s (H 0-360, S 0-100, L 0-100), and three numeric inputs. Reads the working color (HSL reconstructed from the stored RGB), calls `onChange` with the new packed color on every edit. Drag plumbing and area geometry are shared with `OklchModelEditor` via `usePickerDrag` / `pickerAreaStyles`. |
 | `OklchModelEditor.tsx` (`components/OklchModelEditor.tsx`) | The OKLCH editing model (#502): a 2D chroma/lightness area (X = C, Y = L inverted) with a draggable crosshair, painted per-pixel from a small `<canvas>` bitmap (every cell its gamut-clamped sRGB color, area not marked; repainted on hue change), a vertical hue strip with a draggable marker, three `GradientSlider`s (L 0-100%, C 0-`OKLCH_MAX_CHROMA`, H 0-360°) with per-channel gradient tracks + paired numeric inputs (C shown to 4 decimals). The C track hatches/dims the region past the sRGB gamut for the current L and H; a centered badge below the sliders is always mounted and swaps between "Converts to sRGB precisely" and "Converts to sRGB imprecisely" (no show/hide reflow) depending on whether the current OKLCH is inside the gamut. OKLCH is held in local state as the source of truth (re-seeded from `color` only on an outside change via `useChannelInputs`); the committed value is always the gamut-clamped sRGB color, so reopening reconstructs OKLCH from the stored RGB and channels may shift slightly after a clamp. Drag plumbing and area geometry are shared with `HslModelEditor` via `usePickerDrag` / `pickerAreaStyles`. |
@@ -226,7 +226,9 @@ Rows come from two sources, shown as two groups split by a divider:
     meaningful default (`defaultColor` unset).
   - Then `priorityColors` (threaded as `priorityColors?: ProjectColorEntry[]`), in the given
     order — the sibling colors that matter for *that* color decision (e.g. the other marker's
-    fill/border, the floor or corridor color). May be empty.
+    fill/border, the floor or corridor color). May be empty. In Vector by corridors, every
+    text-color association also includes `Background: Fill`, because the text can be read against
+    the export background.
 - **Bottom group** — the color fields of the currently active export profile
   (`selectActiveProfileColors`), i.e. the profile the picker was opened from.
 
@@ -235,13 +237,27 @@ what a color field *is* (GitHub issue #717): `pixi/selectors/colorFieldRegistry.
 holds `STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef>` — for every field its
 `visible(ctx)` predicate, `get(settings)` value reader and `set(settings, color)` writer. Because it
 is a `Record` over the key union, a field without a predicate, getter or setter does not compile.
+**A field that has a settings-panel row takes its `visible` from the parameter link schema** (GitHub
+issue #965): `schemaField(path, { get, set })` stores the row's `LinkPath` in `ColorFieldDef.path` and
+evaluates `isPathActive(path, mode, ctx.activity, ctx.settings)`, so the panel row, the parameter-links
+dialog, the "Project colors" list and the export warnings cannot disagree about whether the color
+exists. A path declared only for the other render mode is hidden (`isSchemaPathInMode`). A new
+activity condition of such a field is added once, as a rule in `parameterLinkRules.ts`; the registry
+needs no change. `ctx.activity` is a `ParamActivityContext` over the whole project (a floor switch
+never changes it): the glue gate is "some floor has a glue", and the floor-scoped flags
+(`hasAreaSpread`, `hasSeams`, `hasCreases`) throw when read, so a color field cannot map a path whose
+rule depends on them. The only static fields without a `path` are `bgGrid` and `innerGrid`: the
+panel always shows their rows so a color can be chosen before the grid is switched on, but a grid
+that is not drawn must stay out of warnings, so they keep their own `visible` (`showGrid` /
+`showInnerGrid`). `parameterLinkPanels.test.tsx` renders both panels over every scenario and fails
+when a mapped field's `visible` differs from the schema's `active`.
 `PC.*` (`projectColorsSelector.ts`) adds only the localized names and `ColorField.isVisible(ctx)`
 (delegating to the registry). `ctx` is a `ColorVisibilityContext` from
 `buildColorVisibility({ nodes, edges, floors }, settings)`, built from the *unscoped* project graph
 (a floor switch never changes the answer) plus the settings that gate rows. Predicates cover: mode
 (`tilesFloor`/`tilesWall`/`innerGrid`/decorative fields exist only in Vector by walls, `corridorFill`
 only in Vector by corridors); grid color when `showGrid` off; `Ячейки: Стена` when
-`randomWallColorMode !== "off"`; one-way indicator color with no directional edge; every teleport
+`randomWallColorMode !== "off"`; glue-tab fill (`glueTabFill`) while the tabs are off, the outline (`glueTabLine`) also at zero outline thickness; one-way indicator color with no directional edge; every teleport
 color when no `teleport` edge; connector color when `teleportConnectorStyle === "none"`; floor-badge
 colors without a cross-floor teleport; split slot `i` when `i >= slotCount`; per-group teleport
 overrides unless `teleportGroupCustomization`; vertical colors per two-way/one-way/elevator presence
@@ -272,7 +288,7 @@ unless `elevatorBadges.enabled`; the marker-index section when the maze has no t
   cannot disagree. Panels never test `settings.verticalStyle` themselves. The own enable toggles of
   marker indices / elevator badges stay as the controls' state; the renderers read settings directly
   to draw (not forbiddable by type), but visibility questions go through the registry.
-  Dynamic keys (`splitNode:<i>`, `teleportGroup:<i>:<role>`) are decoded in one place,
+  Dynamic keys (`splitNode:<i>`, `teleportGroup:<i>:<role>`, `edgeMarker:<floorId>|<markerKey>`) are decoded in one place,
   `parseColorFieldKey` (`pixi/colorFieldKeys.ts`).
 - **The list and the live preview**: `selectActiveProfileColors` walks `STATIC_FIELD_ORDER`
   (three key tables around the two dynamic groups: per-group teleport overrides and split-node
@@ -296,7 +312,7 @@ button at the end that collapses it again. Button absent when the bottom group i
 export const PC = { bgFill, bgGrid, corridorFill, tilesFloor, tilesWall, startFill, startBorder,
   teleportEdge, elevatorBadgeText, markerIndexFill, /* … ~40 keys … */ splitNode(i) };
 // each field:  PC.<key>.key: ColorFieldKey         -> stable, never translated (the property name;
-//                                                     `splitNode:<i>`, `teleportGroup:<i>:<fill|border>`)
+//                                                     `splitNode:<i>`, `teleportGroup:<i>:<fill|border>`, `edgeMarker:<floorId>|<markerKey>`)
 //              PC.<key>.name(): string            -> localized "Section: Role"
 //              PC.<key>.at(color): ProjectColorEntry  ({ key, name, color })
 // resolveColorField(key): ColorField | null        -> registry lookup by key
@@ -388,7 +404,9 @@ bubble appearance, but omit the info button and are not clickable (there is no d
 block is separate from the export settings panel's Problems section; its visibility follows
 `showColorWarnings` and it supports both vector renderers.
 
-When enabled, the picker renders this content in its own collapsible "Warnings (N)" section. The
+When enabled, the picker renders this content in its own collapsible "Warnings (N)" section
+(`PickerWarningsSection`, shared with the font picker, `Specs/font-picker.md`; its empty note is the
+neutral `picker.no_export_warnings` message). The
 section remains visible with `N = 0`, uses the warning attention color when `N > 0`, starts collapsed,
 and indents its bubbles like other section content. When `showColorWarnings` is disabled, the whole
 section is hidden.
@@ -466,19 +484,20 @@ swatches from the base color's OKLCH triple (`colorToOklch`):
   (Hue) and Monochromatic (Lightness) tools, adding Chroma as a third case. A `SelectRow` picks the
   **scale** (Hue / Lightness / Chroma — `color_picker.tools.scale.*`), the other two OKLCH channels
   stay fixed at the base's own values. Two independent rows, labeled "+" / "-", each with its own
-  shared `count` (1-10) and `step` slider (range and format depend on the scale: degrees for Hue,
-  0-50 for Lightness, `0..OKLCH_MAX_CHROMA/2` to 3 decimals for Chroma). Row *N* holds `count`
+  shared `count` (1-10) and `step` slider (range and format depend on the scale: 1-180° for Hue,
+  0-100 for Lightness, `0..OKLCH_MAX_CHROMA` to 3 decimals for Chroma). Row *N* holds `count`
   swatches at `step, 2*step, … count*step` off the base on that row's side of the chosen scale
   (`divergenceOffsets`); the base itself is not a swatch in either row. Hue only gets an auto-fit
   button (`Maximize2` icon, in the step slider's `resetButton` slot) that sets
   `step = min(60, 180 / count)` — the largest step that still fits `count` steps within 180° from
-  the base, capped at the slider's own max (`autoFitHueStep`); Lightness and Chroma have no natural
+  the base, independently capped at 60° (`autoFitHueStep`); Lightness and Chroma have no natural
   full-span target the way Hue's 180°-opposite point does, so they have no auto-fit control.
 - **Range split** ("Range split (OKLCH)" / "Разбиение диапазона (OKLCH)") — generalizes the old
   Tonal ramp (Lightness only). A `SelectRow` picks the **scale**; a `count` slider (3-12, default 7)
   and, for Lightness/Chroma, **min/max sliders** (each with a `RotateCcw`-icon reset-to-auto
   button, `color_picker.tools.reset_auto`) set the split range — defaulting to an auto range per
-  scale (`RANGE_SPLIT_AUTO_MIN`/`MAX`: L 15-95, C 0-`OKLCH_MAX_CHROMA`). Hue has no min/max
+  scale (`RANGE_SPLIT_AUTO_MIN`/`MAX`: L 15-95, C 0-`OKLCH_MAX_CHROMA`). Lightness min/max are
+  bounded to 0-100%; Chroma min/max are bounded to 0-`OKLCH_MAX_CHROMA`. Hue has no min/max
   sliders — its range is always the full 0-360° circle starting at the base hue (wrapping), so the
   base's own hue is implicitly one endpoint. `count` swatches are spaced evenly across
   `[min, max]` inclusive (`rangeSteps`) — the base's own value isn't necessarily one of them.
@@ -557,3 +576,7 @@ free-text param.
 
 Further color models, palette generation,
 contrast / distinguishability / color-blindness checks, presets.
+
+### Edge alignment marker fields (GitHub issue #902)
+
+The static `edgeMarker` field is the shared marker colour (`edgeMarkers.color`, section "Topology", visible while the markers show); the dynamic `edgeMarker:<floorId>|<markerKey>` is a marker's own colour (`PC.edgeMarkerAt(floorId, markerKey, level, levelCount)`, named "Topology: Glue mark N" or "Topology: Crease mark N": `N` is the glue's or crease's own number from the marker key, the same as in the marker's card title; ` (L1)`, ` (L2)`… the floor's level + 1, appended only when the project has several floors). The "Project colors" list holds the own colours of every floor, bottom floor first, in `MazeState.edgeMarkerOrder` (the card order; the sorted key position for a floor never active); only overrides that hold a colour are listed. A marker card's swatch lists, as its associated colours, only the other own colours of the *active* floor, in card order, so other floors' colours appear in the project colours but not in the associated ones. Writing the field sets the override's colour and `linkBroken.color`, like the teleport group fields.

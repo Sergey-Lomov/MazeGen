@@ -7,6 +7,9 @@ use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, convex_cells, param,
     triangle_cells,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, period_rect_cells, validate_rect_topology,
+};
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, ShapeDescriptor, Tessellation,
     validate_preset,
@@ -200,8 +203,14 @@ pub(super) fn anchor_cells<T>(
     )
 }
 
-/// Preset field shapes, in UI order.
-pub(super) const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+/// Preset field shapes, in UI order: the rectangle is also glued into a cylinder or torus.
+pub(super) const TOPOLOGY_PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// Cells of the `rect`, `circle` or `triangle` preset around `origin`; `rect` builds its own
 /// cells, `triangle` uses `triangle_inclusion`.
@@ -213,9 +222,13 @@ pub(super) fn preset_cells<T: Tessellation>(
     triangle_inclusion: Inclusion,
     rect: impl FnOnce() -> Result<Vec<T::CellId>, FieldOpError>,
 ) -> Result<Vec<T::CellId>, FieldOpError> {
-    validate_preset(&PRESETS, key, params)?;
+    validate_preset(tessellation.presets(), key, params)?;
     match key {
-        "rect" => rect(),
+        "rect" | "cylinder" | "torus" => {
+            let cells = rect()?;
+            validate_rect_topology(tessellation, &cells, key, params)?;
+            Ok(cells)
+        }
         "circle" => circle_cells(
             tessellation,
             origin,
@@ -259,6 +272,24 @@ pub(super) fn lattice_rect_cells<T: Tessellation>(
     )
 }
 
+/// The cells of the `rect`, `cylinder` or `torus` preset: `rect` is `lattice_rect_cells`, a
+/// cylinder or torus is made of whole lattice periods starting at `phase` (`period_rect_cells`),
+/// so it closes up.
+pub(super) fn rect_or_period_cells<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: PresetParams<'_>,
+    origin: Point,
+    pitch: Point,
+    phase: Point,
+) -> Result<Vec<T::CellId>, FieldOpError> {
+    if key == "rect" {
+        lattice_rect_cells(tessellation, params, origin, pitch)
+    } else {
+        period_rect_cells(tessellation, params, origin, phase)
+    }
+}
+
 /// Keeps the anchor cells and every other cell bordering a kept anchor cell: one cut off from all
 /// anchor cells of the shape would not be reachable from the rest of the field. Errors when
 /// nothing is left.
@@ -286,6 +317,21 @@ pub(super) fn retain_attached<T: Tessellation>(
         ));
     }
     Ok(())
+}
+
+/// `retain_attached` for the presets that need it: every preset except `cylinder` and `torus`,
+/// which are made of whole lattice periods and so hold every cell their gluing needs. Keeping this
+/// decision in one place stops a tessellation from applying the check to `rect` only.
+pub(super) fn retain_attached_for_preset<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    cells: &mut Vec<T::CellId>,
+    is_anchor_cell: impl Fn(T::CellId) -> bool,
+) -> Result<(), FieldOpError> {
+    if matches!(key, "cylinder" | "torus") {
+        return Ok(());
+    }
+    retain_attached(tessellation, cells, is_anchor_cell)
 }
 
 #[cfg(test)]
@@ -416,7 +462,8 @@ mod tests {
         assert!(anchor_cells(0..=1, |_| 0..=1, 2, 7, make).is_none());
         assert_eq!(anchor_cells(0..=1, |_| 0..=1, 2, 8, make).unwrap().len(), 8);
         // An empty inner range (end before start) holds no anchors and counts as zero.
-        assert_eq!(anchor_cells(0..=1, |_| 1..=0, 2, 0, make), Some(vec![]));
+        let empty = |_| std::ops::RangeInclusive::new(1, 0);
+        assert_eq!(anchor_cells(0..=1, empty, 2, 0, make), Some(vec![]));
     }
 
     #[test]
@@ -434,5 +481,30 @@ mod tests {
 
         let mut lonely = vec![far];
         assert!(retain_attached(&t, &mut lonely, |c| c.is_dodecagon()).is_err());
+    }
+
+    #[test]
+    fn retain_attached_for_preset_skips_only_the_glued_presets() {
+        use crate::space::{
+            TruncatedHexagonalKind as K, TruncatedHexagonalPoint as P,
+            TruncatedHexagonalTessellation,
+        };
+        let t = TruncatedHexagonalTessellation;
+        let far = P::new(9, 9, K::TriangleUp);
+        let all = vec![P::dodecagon(0, 0), far];
+        for key in ["rect", "circle", "triangle"] {
+            let mut cells = all.clone();
+            retain_attached_for_preset(&t, key, &mut cells, |c| c.is_dodecagon()).unwrap();
+            assert_eq!(
+                cells,
+                vec![P::dodecagon(0, 0)],
+                "{key} drops detached cells"
+            );
+        }
+        for key in ["cylinder", "torus"] {
+            let mut cells = all.clone();
+            retain_attached_for_preset(&t, key, &mut cells, |c| c.is_dodecagon()).unwrap();
+            assert_eq!(cells, all, "{key} keeps whole periods untouched");
+        }
     }
 }

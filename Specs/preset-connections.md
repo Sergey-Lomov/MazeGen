@@ -285,6 +285,10 @@ On the Rust side: `PresetVerticalPassage { from: PresetEndpoint, to: PresetEndpo
 
 Every node touched by either loop is added to `preset_connected`/`preset_edges` — **not** `preset_teleports`.
 
+## Editing after generation (GitHub issue #922)
+
+A preset edit invalidates the generated maze and the post-edit state built on it. While `mazeDirty` or `postEditDirty` is set, every action that commits preset data (edges, markers, locks, teleports, vertical passages, elevators, split nodes, default edge state, auto-lock, bulk entity delete) is parked in `presetEditConfirmation` instead of running, and `PresetConnectionsFeature` shows a `ConfirmModal` ("Changing presets resets the current generation and post-edit results"). Confirming (`confirmPresetEdit`) runs `buildResetDownstreamState()` and then replays the parked call; cancelling (`cancelPresetEdit`) drops it. Edits arriving while a confirmation is open are ignored. Selection, hover, tool choice, prompts, placement-in-progress actions and generation settings (`setGenerationSourceMode`, edited outside this card) are not guarded. The guard fires on the call, not on an actual change, so a call that would turn out to be a no-op still asks. The guard is applied in one place, `guardPresetEdits` (`presetEditGuard.ts`), which wraps the listed actions of the composed store.
+
 ## Default edge state
 
 `defaultEdgeState: "undefined" | "wall" | "passage"` controls the implicit state of all edges not explicitly set by the user. It is one maze-wide toggle, not per-floor — toggling it while any floor is active applies to every floor's edges (GitHub issue #434).
@@ -414,7 +418,7 @@ Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as 
 
 `lockedNodes: Map<PresetEndpointKey, NodeLockKind>` stores explicitly locked nodes. `NodeLockKind` is `"in" | "out" | "both"`. Lock tools open the split-node picker on a split point, so the selected original node or slot is locked explicitly.
 
-`autoLockedNodes: Set<"x,y">` is recomputed whenever `presetConnections` changes (if `autoLock` is enabled). A node is auto-locked when all its interior edges have a preset entry with `state !== "undefined"`. Edges with `state: "undefined"` are treated as undecided and prevent auto-lock. Auto-locked nodes always use `"both"` kind.
+`autoLockedNodes: Set<"x,y">` is recomputed whenever `presetConnections` changes (if `autoLock` is enabled). A node is auto-locked when all its interior edges have a preset entry with `state !== "undefined"`. Edges with `state: "undefined"` are treated as undecided and prevent auto-lock. Auto-locked nodes always use `"both"` kind. Only cells mentioned as an endpoint of some preset entry on that floor can lock, so `computeAutoLockedNodes` examines those cells and not the whole field; their neighbor geometry is loaded in one `prefetchCellGeometries` batch (GitHub issue #890).
 
 For a declared split point (see "Split nodes" below), auto-lock checks **every one of its nodes** (the original node plus each declared slot), not just the original's own edges — `computeAutoLockedNodes` takes an extra `presetSplitPoints` parameter for this. A split point auto-locks only once every one of its nodes has every interior face decided; then an exact key is emitted for each node, so generation locks all split nodes. One node with an undecided/missing face on any side keeps the whole split unlocked.
 
@@ -554,6 +558,9 @@ The shared, endpoint-type-agnostic slot-list bookkeeping (`addSlot`/`removeSlot`
 
 **`manage_split_nodes` tool** (`PresetConnectionTool`): left-click on any in-field point opens the "Manage split nodes" panel for that point (`presetFocusedPoint`), reusing the same `SidePanel`-docked shape as post-edit's — see `Specs/post-edit.md`'s "Split Points" section for the UI description (add/remove/set-active affordances, one card per node, fixed footer, diagnostics warnings strip). The preset-stage adapter (`PresetSplitNodesDialog`) has no `NodeId`/confirmed-snapshot concept to resolve against (presets run before generation) — a card's "links" are built directly from `presetConnections`/`presetTeleports`, comparing endpoints structurally (`presetEndpointsEqual`), not resolved ids.
 
+If its target panel is already open beneath another `SidePanel`, the same tool brings the existing
+panel to the front instead of closing or remounting it.
+
 Hovering a link bubble sets `presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null`, highlighting that specific connection on the canvas via `PresetConnectionsRenderer`'s `linkHover` layer (`buildLinkHoverHighlight`, `pixi/selectors/presetSelectors.ts`) — same `NodeEdgeHighlightRenderer` primitive post-edit's own `postEditHoveredLink` uses (GitHub issue #237). Unlike post-edit's variant (which resolves through `NodeDto`/`NodeId` to each node's real hub point when the point is split), the preset variant deliberately draws from each endpoint's plain cell center regardless of `slotId` — presets have no confirmed-snapshot node list to resolve a hub position against, and the highlight only needs to say "these two cells", not distinguish which of a split point's several nodes.
 
 Removing one slot of a split point (`removePresetSplitNode`, used by the "Manage split nodes" panel) is rejected if that slot is currently assigned as `presetStart`/`presetFinish`/`presetGenSource` (same "reassign first" guard post-edit's `removeSplitNode` uses for start/finish); otherwise it strips every `presetConnections`/`presetTeleports` entry referencing that node. `applyPresetSplitBlueprint` has the same `presetGenSource` guard.
@@ -596,7 +603,7 @@ Preset markers and edges use the same node-position geometry as generated and po
 
 The shared geometric algorithm (face division among connected nodes, hub-point fan-out, the 2-passage straightening exception (dropped when the line is nearly parallel to a face, issue #791), active-node z-order, one-way arrow placement on the connector rather than the along-face segment) lives in `pixi/splitFaceLayout.ts`, used by both `buildSplitPassagesCore` (canvas) and `TileFaceEditor` (the "Manage split nodes" panel's tile diagram) so the two never drift apart.
 
-**Panel link sections.** Each node's card in "Manage split nodes" groups its links into three sections: **Required** (a decided passage/one-way — the connection *will* exist), **Undefined** (preset's optional/undecided faces — *may* exist, not forced either way; always empty for post-edit, which has no such concept), **Forbidden** (`wall` — this node's face is explicitly closed here). An empty section shows a dash placeholder.
+**Panel link sections.** Each node's card in "Manage split nodes" groups its links into three sections: **Required** (a decided passage/one-way — the connection *will* exist), **Undefined** (preset's optional/undecided faces — *may* exist, not forced either way; always empty for post-edit, which has no such concept), **Forbidden** (`wall` — this node's face is explicitly closed here). An empty section shows a dash placeholder. A link in the **Undefined** and **Forbidden** sections is always drawn bidirectional (`<->`): a wall and an optional connection are undirected edge states, so the arrow never follows the direction the preset entry happens to be stored in. Only **Required** links can be one-way.
 
 ### Split-target prompt (GitHub issue #474)
 

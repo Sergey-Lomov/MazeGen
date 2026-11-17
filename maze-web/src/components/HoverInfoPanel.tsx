@@ -5,7 +5,10 @@ import type { HoverInfo } from "../pixi/hoverTypes";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveCellInspection } from "../pixi/cellInspectionResolver";
 import { ui, typography, muted, inset, spacing } from "../styles/theme";
+import type { FieldPrimitive } from "../store/tessellationTypes";
 import { Tooltip } from "./Tooltip";
+import * as m from "~/paraglide/messages";
+import { EMPTY_FIELD_SIZE_READOUT, formatCellsSize, type FieldSizeReadout } from "../pixi/fieldSizeReadout";
 
 interface HoverInfoPanelProps {
   scene: MazeScene | null;
@@ -14,6 +17,14 @@ interface HoverInfoPanelProps {
 export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [scale, setScale] = useState<number>(1);
+  const [sizes, setSizes] = useState<FieldSizeReadout>(EMPTY_FIELD_SIZE_READOUT);
+  // Same condition as the print sheet frame (`ExportFrameOverlay`): the zoom is meaningless only
+  // while the sheet layout is on screen.
+  const isPrintSheetShown = useMazeStore((s) =>
+    s.openCard === "image_export"
+    && s.openExportFormatSettings === "png"
+    && !s.exportFormatSettingsCovered
+    && s.pngExportSettings.outputMode === "print");
 
   useEffect(() => {
     if (!scene) { setHover(null); return; }
@@ -25,6 +36,12 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
     if (!scene) return;
     scene.setViewportScaleListener(setScale);
     return () => scene.setViewportScaleListener(null);
+  }, [scene]);
+
+  useEffect(() => {
+    if (!scene) { setSizes(EMPTY_FIELD_SIZE_READOUT); return; }
+    scene.setFieldSizeListener(setSizes);
+    return () => scene.setFieldSizeListener(null);
   }, [scene]);
 
   // Cell inspector (GitHub issue #353) — one status-bar readout shared by every feature-renderer
@@ -77,7 +94,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
 
   return (
     <div style={styles.bar}>
-      {scene && (
+      {scene && !isPrintSheetShown && (
         <Tooltip content="Reset zoom to 100% (Shift+1)"><span
           role="button"
           tabIndex={0}
@@ -96,8 +113,27 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
         </span></Tooltip>
       )}
       {hoverText && <span style={styles.label}>{hoverText}</span>}
+      {sizes.selection && (
+        <span style={styles.label}>{m["status.field_selection_size"]({ size: formatCellsSize(sizes.selection) })}</span>
+      )}
+      {sizes.shape && (
+        <span style={styles.label}>{m["status.field_shape_size"]({ shape: shapeLabel(sizes.shape.primitive), size: formatCellsSize(sizes.shape) })}</span>
+      )}
     </div>
   );
+}
+
+function shapeLabel(primitive: FieldPrimitive): string {
+  switch (primitive) {
+    case "rectangle": return m["field.shape.rectangle"]();
+    case "circle": return m["field.shape.circle"]();
+    case "triangle": return m["field.shape.right_triangle"]();
+    case "equilateral_triangle": return m["field.shape.equilateral_triangle"]();
+    case "hexagon": return m["field.shape.hexagon"]();
+    case "parallelogram": return m["field.shape.parallelogram"]();
+    case "polygon": return m["field.shape.polygon"]();
+    default: return m["field.shape.point"]();
+  }
 }
 
 const styles: Record<string, React.CSSProperties> = {

@@ -13,7 +13,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual, buildLogicalCandidates, resolvePartnerForPlacement, resolveEndpointToHoverPoint } from "./postEditEndpoint";
-import { getNeighborData } from "./tessellationGeometry";
+import { resolveFaceNeighbors } from "./faceNeighbors";
 import { splitNodeSemanticNames } from "./splitNodeNames";
 import { splitShapeBinding } from "./splitShape";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
@@ -79,12 +79,9 @@ function facesOf(
   point: [number, number],
   endpoint: PostEditEndpoint,
 ): TileFace[] {
-  const { offsets } = getNeighborData(ctx.cfgAt(level), point[0], point[1]);
-  const inFieldCells = ctx.inFieldCellsAt(level);
-  return offsets.map(([dx, dy]) => {
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-    const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-    if (boundary) return { kind: "wall" as TileFaceKind, boundary };
+  return resolveFaceNeighbors(ctx.cfgAt(level), point, ctx.inFieldCellsAt(level)).map((neighbor) => {
+    const boundary = neighbor === null;
+    if (neighbor === null) return { kind: "wall" as TileFaceKind, boundary };
     if (!ctx.draftEdges) return { kind: "wall" as TileFaceKind, boundary };
 
     const neighborActive = resolveConnectedNeighborAt(ctx, floorNodes, level, neighbor, endpoint);

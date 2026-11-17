@@ -178,27 +178,30 @@ fn candidate_cells_cover_the_box_and_respect_the_limit() {
 }
 
 #[test]
-fn rect_preset_holds_the_hexagons_and_the_triangles_between_them() {
+fn rect_preset_holds_the_hexagons_and_the_triangles_around_them() {
     let t = TrihexagonalTessellation;
     let cells = t.build_preset("rect", &[("cols", 3), ("rows", 3)]).unwrap();
     let hexagons = cells.iter().filter(|c| c.is_hexagon()).count();
     assert_eq!(hexagons, 9);
     assert!(cells.contains(&TrihexagonalPoint::hexagon(0, 0)));
-    // Every kept triangle has all three hexagons in the field.
-    for &c in cells.iter().filter(|c| !c.is_hexagon()) {
-        for &f in t.faces_of(c) {
-            assert!(cells.contains(&t.neighbor(c, f).unwrap().0), "{c:?}");
-        }
-    }
+    // The triangles above the top row and below the bottom one are cells too, so the top and
+    // bottom edges are straight: a kept triangle may border a hexagon outside the field.
     assert!(cells.iter().any(|c| c.kind == TrihexagonalKind::Up));
     assert!(cells.iter().any(|c| c.kind == TrihexagonalKind::Down));
 }
 
 #[test]
-fn single_hexagon_rect_has_no_triangles() {
+fn single_hexagon_rect_keeps_its_outer_triangles() {
     let t = TrihexagonalTessellation;
     let cells = t.build_preset("rect", &[("cols", 1), ("rows", 1)]).unwrap();
-    assert_eq!(cells, [TrihexagonalPoint::hexagon(0, 0)]);
+    assert_eq!(
+        cells,
+        [
+            TrihexagonalPoint::up(0, -1),
+            TrihexagonalPoint::hexagon(0, 0),
+            TrihexagonalPoint::down(0, 0),
+        ]
+    );
 }
 
 #[test]

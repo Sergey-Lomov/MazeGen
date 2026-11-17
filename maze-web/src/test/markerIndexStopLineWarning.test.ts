@@ -1,3 +1,4 @@
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
@@ -33,13 +34,14 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
-    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
+    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWayGeometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, oneWayJoin: "round", markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
+    startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
@@ -58,15 +60,15 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080,
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
     color: 0, thickness: 4, junctionRadius: 4, join: "round", renderStyle: "contour",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
-    oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
+    oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round", markerLayout: "auto", markerScale: 1,
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
@@ -152,13 +154,14 @@ describe("marker_index_covers_stop_line", () => {
   });
 
   it("counts a plate of another link in the same cell, not only the passage's own", () => {
-    // The passage itself is not indexed; a cross-floor teleport sharing its cell is.
+    // The passage itself is not indexed; a cross-floor teleport sharing its cell is. Both nodes sit
+    // on their own split hub points (#896), so the plate must be large enough to reach the other hub's stop line.
     const nodes = [...crossNodes, n(2, 0, 0, 0), n(3, 1, 0, 1)];
     const edges: EdgeDto[] = [...oneWayEdges, { from: 2, to: 3, kind: "teleport" }, { from: 3, to: 2, kind: "teleport" }];
     const coverage = { ...DEFAULT_MARKER_INDEX_SETTINGS.coverage, verticalPassage: false };
     const run = (crossFloorTeleport: boolean) => computeVectorByWallsWarningsAcrossFloors(
       nodes, edges, [{ id: "f0" }, { id: "f1" }], squareCfg,
-      baseSettings({ markerIndex: index({ offset: 0, coverage: { ...coverage, crossFloorTeleport } }) }), null, null,
+      baseSettings({ markerIndex: index({ offset: 0, width: 30, height: 30, coverage: { ...coverage, crossFloorTeleport } }) }), null, null,
     ).filter((w) => w.id === ID);
     expect(run(true).flatMap((w) => w.nodes)).toContain(0);
     expect(run(false)).toHaveLength(0);

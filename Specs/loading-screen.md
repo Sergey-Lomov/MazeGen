@@ -1,0 +1,9 @@
+# Loading screen
+
+Maze Studio presents one visually consistent loading screen from the initial HTML response until the Pixi canvas and its default MSDF font are ready. `index.html` owns the screen before JavaScript runs; the React `LoadingScreen` immediately replaces it after the app module mounts and fades out after readiness. Both use the app background and matching text line heights, colors, and spacing so this ownership handoff does not darken or compress the layout.
+
+The screen reports these sequential stages: WASM engine, interface, graphics, and label fonts. The WASM stage tees the response body: one branch reports downloaded bytes when `Content-Length` is available, while the other preserves wasm-bindgen's streaming compilation. If the server omits that header, the same bar is indeterminate. The remaining stages use an indeterminate indicator because module evaluation and WebGL setup have no meaningful byte total.
+
+If the WASM stage fails (network error, blocked or missing binary), the screen stays up: the progress bar is replaced by a red `loading.wasm_failed` message and a `loading.retry` button (`showBootScreenError`, `startup/bootScreen.ts`). The reason goes to the console only. Clicking the button restores the loading state and `main.tsx` tries again, repeating until the engine loads; the app is never mounted without it, because the store builds its initial field through WASM at module load. If the screen elements are missing, `showBootScreenError` waits one second before resolving so the retry loop cannot spin.
+
+Registry loading is deliberately outside this readiness gate. It runs in the background, and its existing notification/retry flow reports a failure without preventing use of the editor, except for loading a project: `loadProject` waits for the registry and is refused with an error toast if it cannot be loaded (GitHub issue #967, see `Specs/project-file.md`).

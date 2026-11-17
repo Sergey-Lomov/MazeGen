@@ -5,19 +5,19 @@ import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { SectionHeader } from "./SectionHeader";
 import { ColorEyedropperOverlay } from "./ColorEyedropperOverlay";
-import { ui, radius, typography, spacing, font, controlRowHeight, indent } from "../styles/theme";
+import { ui, radius, typography, spacing, font, indent } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
 import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
 import { Tooltip } from "./Tooltip";
+import { FlatIconButton } from "./FlatIconButton";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
-import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
-import { ExportWarningBubble } from "./features/ExportWarningBubble";
-import { resolveExportWarningsSectionTitle } from "./features/exportWarningsI18n";
+import { computeActiveModeWarnings } from "../pixi/selectors/activeModeWarnings";
+import { PickerWarningsSection } from "./PickerWarningsSection";
 import type { MazeState } from "../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -88,7 +88,6 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
   const [showAllProjectColors, setShowAllProjectColors] = useState(false);
-  const [colorWarningsExpanded, setColorWarningsExpanded] = useState(false);
   // Canvas eyedropper (GitHub issue #507) — sampling mode is purely local UI state; the actual
   // pixel read goes through `colorSampleBridge.ts` (the panel has no scene access of its own).
   const [sampling, setSampling] = useState(false);
@@ -103,6 +102,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const nodes = useMazeStore((s: MazeState) => s.nodes);
   const edges = useMazeStore((s: MazeState) => s.edges);
   const floors = useMazeStore((s: MazeState) => s.floors);
+  const floorTopology = useMazeStore((s: MazeState) => s.floorTopology);
   const showColorWarnings = useMazeStore((s: MazeState) => s.showColorWarnings);
   const cfg = useMazeStore((s: MazeState) => s.activeFieldConfig);
   const start = useMazeStore((s: MazeState) => s.start);
@@ -115,6 +115,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
       nodes,
       edges,
       floors,
+      floorTopology,
     } as MazeState);
     // Drop the edited field's own row.
     const isSelf = (key: string) => field !== undefined && key === field.key;
@@ -128,19 +129,17 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
       ? [{ key: DEFAULT_ROW_KEY, name: m["color_picker.project_colors_default"](), color: defaultColor }, ...priority]
       : priority;
     return buildProjectColorGroups(withDefault, all.filter((e) => !isSelf(e.key)));
-  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, priorityColors, defaultColor, field]);
+  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, priorityColors, defaultColor, field]);
 
   const colorWarnings = useMemo(() => {
     if (!showColorWarnings || !field || !openMode) return [];
-    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeFieldConfig: cfg, start, finish } as MazeState;
+    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, floorTopology, activeFieldConfig: cfg, start, finish } as MazeState;
     const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
-    const warnings = openMode === "vector_by_walls"
-      ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish)
-      : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish);
+    const warnings = computeActiveModeWarnings(openMode, overridden as MazeState["vectorByWallsSettings"], { nodes, edges, floors, floorTopology, cfg, start, finish });
     // The preview ran with the working color, so any warning attached to this field is about it.
     return warnings.filter((warning) => warning.fields?.includes(field.key));
-  }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
+  }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish, working]);
 
   /** The color in effect when the picker opened. Captured once — with live preview (#513) the
    *  `color` prop tracks each previewed change (the call site's `onChange` also writes the store),
@@ -253,17 +252,17 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
             isValid={(raw) => HEX_COLOR_RE.test(raw)}
             onChange={handleHexChange}
             resetButton={
-              <Tooltip content={m["color_picker.eyedropper"]()}><button
-                type="button"
-                className="hoverable"
-                aria-label={m["color_picker.eyedropper"]()}
+              <FlatIconButton
+                title={m["color_picker.eyedropper"]()}
+                withTooltip={false}
                 aria-pressed={sampling}
-                style={{ ...styles.eyedropperBtn, ...(sampling ? styles.eyedropperBtnActive : {}) }}
+                active={sampling}
+                layoutStyle={sampling ? { "--flat-icon-active-bg": ui.state.selected, "--flat-icon-active-color": ui.text.primary } as React.CSSProperties : undefined}
                 onClick={() => setSampling((v) => !v)}
                 data-testid="color-picker-eyedropper"
               >
                 <Pipette size={14} />
-              </button></Tooltip>
+              </FlatIconButton>
             }
           />
           <div style={styles.modelSwitcher}>
@@ -299,20 +298,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
             </>
           )}
           <div style={styles.projectColorsDivider} />
-          {showColorWarnings && <div data-testid="color-picker-export-warnings">
-            <SectionHeader
-              label={<span className={colorWarnings.length > 0 ? "problem-section-attention" : undefined}>
-                {resolveExportWarningsSectionTitle(colorWarnings.length)}
-              </span>}
-              expanded={colorWarningsExpanded}
-              onToggle={() => setColorWarningsExpanded((expanded) => !expanded)}
-            />
-            {colorWarningsExpanded && <div style={styles.colorWarningsBlock}>
-              {colorWarnings.length === 0
-                ? <span style={styles.colorWarningsEmpty}>{m["color_picker.no_export_warnings"]()}</span>
-                : colorWarnings.map((warning) => <ExportWarningBubble key={warning.key} warning={warning} interactive={false} />)}
-            </div>}
-          </div>}
+          {showColorWarnings && <PickerWarningsSection warnings={colorWarnings} testId="color-picker-export-warnings" />}
           <ToolsSection seedColor={originalColor} workingColor={working} onPick={pickProjectColor} />
           {projectColorGroups.total > 0 && (
             <div style={styles.projectColors}>
@@ -407,29 +393,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: radius.md,
     boxSizing: "border-box",
   },
-  eyedropperBtn: {
-    ...typography.icon,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: controlRowHeight,
-    height: controlRowHeight,
-    flexShrink: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    borderRadius: radius.sm,
-    color: ui.text.tertiary,
-    cursor: "default",
-    boxSizing: "border-box",
-  },
-  eyedropperBtnActive: {
-    background: ui.state.selected,
-    color: ui.text.primary,
-    border: `1px solid ${ui.state.selected}`,
-  },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
-  colorWarningsBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, marginTop: spacing.itemGap },
-  colorWarningsEmpty: { ...typography.body, color: ui.text.secondary },
   recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   recentColorsLabel: { fontSize: font.lg, color: ui.text.primary },
   swatchRow: { display: "flex", gap: spacing.itemGap, flexWrap: "wrap" },

@@ -112,7 +112,7 @@ mod tests {
     fn merge_shortfall_always_wins_over_surplus_regardless_of_side() {
         let mut a = issue("min_region_count_1", RegionClass::Trap, -3);
         let b = issue("min_region_count_2", RegionClass::Trap, 2);
-        a.merge(b.clone());
+        a.merge(b);
         assert_eq!(
             a.balance_by_class,
             HashMap::from([(RegionClass::Trap, -3)]),

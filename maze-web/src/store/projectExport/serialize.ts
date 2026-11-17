@@ -54,6 +54,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       triOrientation: state.triOrientation,
     },
     floorFields,
+    floorTopology: state.floorTopology,
+    ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
     generation: {
       seed: state.seed,
       randomSeed: state.randomSeed,
@@ -94,6 +96,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       maze: state.mazeDirty,
     },
     analytics: {
+      showGridOverlay: state.showGridOverlay,
       showMazeOverlay: state.showMazeOverlay,
       showComponentsOverlay: state.showComponentsOverlay,
       showGraphOverlay: state.showGraphOverlay,
@@ -144,7 +147,6 @@ export function serializeQuality(state: MazeState): ProjectFileQuality {
     // comment in storeTypes.ts.
     rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
     stages: state.stages,
-    strategyParams: state.strategyParams,
     repairMaxIterations: state.repairMaxIterations,
     repairTimeBudgetSecs: state.repairTimeBudgetSecs,
   };

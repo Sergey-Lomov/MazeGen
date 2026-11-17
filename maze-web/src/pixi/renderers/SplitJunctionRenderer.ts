@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride } from "./types";
+import { isHiddenSpecialMirror, type SplitPassage, type SplitSpecialShape, type SplitStyleOverride, type WallStyleOverride } from "./types";
 import { drawDirectionArrow } from "./wallUtils";
 import { chainSegmentsAtSharedVertices } from "./WallRenderer";
 import { WALL_THICKNESS } from "../renderConstants";
@@ -245,7 +245,8 @@ export class SplitJunctionRenderer {
     // (`specialShapes` unset) so every split-drawing feature — not just `VectorByWallsRenderer`, the
     // only caller that ever passes an explicit override — skips them here automatically; pass
     // `{ specialShapes: false }` to opt out (then those points fall back to ordinary passages).
-    const specialShapes = splitStyleOverride?.specialShapes !== false ? data.specialShapes ?? [] : [];
+    const specialShapesOn = splitStyleOverride?.specialShapes !== false;
+    const specialShapes = specialShapesOn ? data.specialShapes ?? [] : [];
     const specialPointKeys = new Set(specialShapes.map((s) => s.pointKey));
 
     // Width follows `wallFaceStyleOverride` same as `wallFaces`/special shapes — only a passage's
@@ -282,7 +283,7 @@ export class SplitJunctionRenderer {
     const freeEndCap = isSharpStyle ? "butt" : "round";
 
     for (const passage of data.passages) {
-      if (specialPointKeys.has(passage.pointKey)) continue;
+      if (specialPointKeys.has(passage.pointKey) || isHiddenSpecialMirror(passage, specialShapesOn)) continue;
 
       // Computed once per passage, not per segment/connector — `disabledOfNumber` round-trips
       // through hex/HSL conversion, and every share of the same node always disables to the same

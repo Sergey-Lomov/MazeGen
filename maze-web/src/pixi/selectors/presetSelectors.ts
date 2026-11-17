@@ -4,14 +4,37 @@ import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../re
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
-import { buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { buildNodePositions, getCellCenter, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
+import { getSeamModel } from "./seams";
+import { resolveFaceNeighbors } from "../faceNeighbors";
+import { seamCellSlots, seamStubHighlights, type SeamPairsContext } from "../graphSeams";
+import { logicalEdgeSegments } from "./seamEdges";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
+import { hostKey } from "./mazeSelectors/markerLayout";
 import { splitSlotColor } from "../colorUtils";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
+
+const pairKey = (a: [number, number], b: [number, number]): string =>
+  a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? `${a[0]},${a[1]}|${b[0]},${b[1]}` : `${b[0]},${b[1]}|${a[0]},${a[1]}`;
+
+/** Strongest decided entry (passage, then one-way, then wall) per unordered cell pair, over every
+ *  node of the two cells; undecided entries are left out. Built once so each seam face looks its
+ *  pair up directly instead of scanning all connections. */
+function strongestEntryByCellPair(connections: Map<string, PresetConnectionEntry>): Map<string, PresetConnectionEntry> {
+  const rank = (entry: PresetConnectionEntry): number => (entry.state === "passage" ? 3 : entry.state === "wall" ? 1 : 2);
+  const best = new Map<string, PresetConnectionEntry>();
+  for (const entry of connections.values()) {
+    if (entry.state === "undefined") continue;
+    const key = pairKey(entry.from.point, entry.to.point);
+    const current = best.get(key);
+    if (current === undefined || rank(entry) > rank(current)) best.set(key, entry);
+  }
+  return best;
+}
 
 export function buildPresetWallGroups(
   cells: [number, number][],
@@ -26,14 +49,48 @@ export function buildPresetWallGroups(
   const undecided: WallEdge[] = [];
   const preset: WallEdge[] = [];
   const invalidPassages: WallEdge[] = [];
+  const seams = getSeamModel(cfg);
+  let splitPairs: Map<string, PresetConnectionEntry> | undefined;
 
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
-    const { offsets } = getNeighborData(cfg, x, y);
+    const offsets = getCellNeighborOffsets(cfg, x, y);
     for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
       const neighborless = dx === 0 && dy === 0;
+      const half = seams.halfEdgeAt([x, y], face);
+      if (half) {
+        // A glued face is drawn by each side as its own wall edge, from the one logical connection.
+        const [px, py] = half.partnerCell;
+        if (!cellSet.has(`${px},${py}`)) {
+          preset.push({ a: [x, y], b: [px, py], face, kind: "none", style: "solid" });
+          continue;
+        }
+        // A split partner's connections are keyed by its nodes (original or slot), so look the pair
+        // up by cell: any open passage across the face leaves this side open too.
+        const entry = splitPointKeys.has(`${px},${py}`)
+          ? (splitPairs ??= strongestEntryByCellPair(connections)).get(pairKey([x, y], [px, py]))
+          : connections.get(edgeKey([x, y], [px, py]));
+        if (!entry || entry.state === "undefined") {
+          undecided.push({ a: [x, y], b: [px, py], face, kind: "none", style: "faint" });
+        } else if (entry.state === "wall") {
+          preset.push({ a: [x, y], b: [px, py], face, kind: "none", style: "solid" });
+        } else if (entry.state !== "passage") {
+          const isForward = entry.state === "one_way_forward";
+          const ownIsFrom = entry.from.point[0] === x && entry.from.point[1] === y;
+          const edge = getFaceEdgeSegment([x, y], face, cfg);
+          const center = getCellCenter(x, y, cfg);
+          const len = edge ? Math.hypot(edge.contact.x - center.x, edge.contact.y - center.y) : 0;
+          // Out of this cell when this cell is the source of the allowed direction, else into it.
+          const sign = isForward === ownIsFrom ? 1 : -1;
+          const oneWayDir = edge && len > 0
+            ? { dx: (sign * (edge.contact.x - center.x)) / len, dy: (sign * (edge.contact.y - center.y)) / len }
+            : undefined;
+          preset.push({ a: [x, y], b: [px, py], face, kind: isForward ? "forward" : "backward", style: "solid", oneWayDir });
+        }
+        continue;
+      }
       if (neighborless || !cellSet.has(`${nx},${ny}`)) {
         // boundary wall — always solid
         preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
@@ -84,11 +141,13 @@ export function buildPresetWallGroups(
   // per-node walls.ts), so no dedup is needed.
   for (const [x, y] of cells) {
     if (!splitPointKeys.has(`${x},${y}`)) continue;
-    const { offsets } = getNeighborData(cfg, x, y);
+    const offsets = getCellNeighborOffsets(cfg, x, y);
     for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
       const neighborless = dx === 0 && dy === 0;
+      // A glued face is drawn by `buildPresetSplitPassages` (or the seam's own wall), never a field edge.
+      if (seams.halfEdgeAt([x, y], face)) continue;
       if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
       preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
@@ -168,10 +227,9 @@ export function buildPresetSplitPassages(
     addNode(presetEndpoint([x, y]));
     for (const slotId of [...presetSplitPoints[key]].sort((a, b) => a - b)) addNode(presetEndpoint([x, y], slotId));
 
-    const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
-      const nx = x + dx, ny = y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) continue;
+    for (const neighbor of resolveFaceNeighbors(cfg, [x, y], cellSet)) {
+      if (neighbor === null) continue;
+      const [nx, ny] = neighbor;
       addNode(presetEndpoint([nx, ny]));
       // The neighbor may itself be a declared split point with its own slots — register all of
       // them too, not just its original node, otherwise `buildSplitPassagesCore`'s per-node
@@ -271,6 +329,24 @@ export function presetEndpointScreenPos(
   if (anchored) return [anchored.x, anchored.y];
   const center = getCellCenter(endpoint.point[0], endpoint.point[1], cfg);
   return [center.x, center.y];
+}
+
+/** Marker-layout host keys (GitHub issue #735) of every preset split node — the hub and each slot
+ *  of a split point own only part of their cell, so the layout bounds their group more tightly. */
+export function buildPresetSplitHostKeys(
+  presetSplitPoints: Record<string, number[]>,
+  nodePositions: Map<string, { x: number; y: number }>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [pointKey, slotIds] of Object.entries(presetSplitPoints)) {
+    if (slotIds.length === 0) continue;
+    const [x, y] = pointKey.split(",").map(Number);
+    for (const slotId of [undefined, ...slotIds]) {
+      const p = nodePositions.get(presetEndpointKey(presetEndpoint([x, y], slotId)));
+      if (p) out.add(hostKey([p.x, p.y]));
+    }
+  }
+  return out;
 }
 
 export function buildPresetMarkers(
@@ -427,16 +503,18 @@ export function buildInvalidEdgeHighlights(
   for (const key of invalidKeys) {
     const entry = connections.get(key);
     if (!entry) continue;
-    const seg = getSharedEdgeSegment(entry.from.point, entry.to.point, cfg);
-    if (seg) {
-      result.push({
-        from: [seg.v0.x, seg.v0.y] as [number, number],
-        to: [seg.v1.x, seg.v1.y] as [number, number],
-        path: seg.path,
-        color: canvas.preset.invalid,
-        alpha: 0.9,
-        width: WALL_THICKNESS * 2.5,
-      });
+    const segs = logicalEdgeSegments(entry.from.point, entry.to.point, cfg);
+    if (segs.length > 0) {
+      for (const seg of segs) {
+        result.push({
+          from: [seg.v0.x, seg.v0.y] as [number, number],
+          to: [seg.v1.x, seg.v1.y] as [number, number],
+          path: seg.path,
+          color: canvas.preset.invalid,
+          alpha: 0.9,
+          width: WALL_THICKNESS * 2.5,
+        });
+      }
     } else {
       const cA = getCellCenter(entry.from.point[0], entry.from.point[1], cfg);
       const cB = getCellCenter(entry.to.point[0], entry.to.point[1], cfg);
@@ -458,16 +536,14 @@ export function buildHoverEdgeHighlight(
   color: number = canvas.fieldEditor.hover,
 ): EdgeHL[] {
   if (!edge) return [];
-  const seg = getSharedEdgeSegment(edge.from, edge.to, cfg);
-  if (!seg) return [];
-  return [{
+  return logicalEdgeSegments(edge.from, edge.to, cfg).map((seg) => ({
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
     path: seg.path,
     color,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
-  }];
+  }));
 }
 
 /** Highlight for `presetHoveredLink` (GitHub issue #237) — same "node-to-node" style
@@ -479,14 +555,18 @@ export function buildHoverEdgeHighlight(
 export function buildLinkHoverHighlight(
   link: { from: PresetEndpoint; to: PresetEndpoint } | null,
   cfg: FieldConfig,
+  seam?: SeamPairsContext,
 ): NodeEdgeHighlight[] {
   if (!link) return [];
-  return [{
+  const line: NodeEdgeHighlight = {
     from: getCellCenter(link.from.point[0], link.from.point[1], cfg),
     to: getCellCenter(link.to.point[0], link.to.point[1], cfg),
     color: canvas.fieldEditor.hover,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
     nodeRadius: NODE_RADIUS,
-  }];
+  };
+  // A link across a glue breaks at the glue's contour: two stubs, not a line across the whole field.
+  const slots = seam ? seamCellSlots(link.from.point, link.to.point, seam) : null;
+  return seamStubHighlights(line, slots);
 }

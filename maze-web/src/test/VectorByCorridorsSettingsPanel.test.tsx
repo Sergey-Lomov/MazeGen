@@ -3,8 +3,9 @@ import { act, render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { pickColorForLabel } from "./colorTestHelpers";
+import { pickColorForLabel, swatchForLabel } from "./colorTestHelpers";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
+import { PC } from "../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -146,7 +147,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.join).toBe("miter");
   });
 
-  it("disables the Bow slider for miter corridor style", () => {
+  it("hides the Bow slider for miter corridor style", () => {
     useMazeStore.setState((state) => ({
       nodes: [{ id: 1, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 }],
       vectorByCorridorsSettings: { ...state.vectorByCorridorsSettings, join: "miter", splitSpecialShapes: true },
@@ -154,9 +155,8 @@ describe("VectorByCorridorsSettingsPanel", () => {
     }));
     render(<VectorByCorridorsSettingsPanel />);
 
-    const label = screen.getByText(m["image_export.vector_by_corridors.split_diagonal_bow_amount"]());
-    const slider = label.parentElement?.querySelector('input[type="range"]');
-    expect(slider).toBeDisabled();
+    expect(screen.queryByText(m["image_export.vector_by_corridors.split_diagonal_bow_amount"]())).not.toBeInTheDocument();
+    expect(screen.queryAllByText(m["image_export.vector_by_corridors.split_gap_width"]()).length).toBeGreaterThan(0);
   });
 
   describe("round-join rendering controls", () => {
@@ -239,6 +239,13 @@ describe("VectorByCorridorsSettingsPanel", () => {
   });
 
   it("renders the waypoints section's Start and Finish sub-groups when expanded", () => {
+    useMazeStore.setState((state) => ({
+      vectorByCorridorsSettings: {
+        ...state.vectorByCorridorsSettings,
+        startMarker: { ...state.vectorByCorridorsSettings.startMarker, markerEnabled: true },
+        finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, markerEnabled: true },
+      },
+    }));
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.markers_finish"]())).toBeInTheDocument();
@@ -259,7 +266,49 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
   });
 
-  it("shows a warning bubble when a waypoint sits on a specially-rendered (bridge) split point", () => {
+  it("prioritizes the background fill for Start and Finish caption colors", () => {
+    useMazeStore.setState((state) => ({
+      vectorByCorridorsSettings: {
+        ...state.vectorByCorridorsSettings,
+        startMarker: { ...state.vectorByCorridorsSettings.startMarker, textEnabled: true },
+        finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, textEnabled: true },
+      },
+      vectorByCorridorsSectionsExpanded: {
+        ...state.vectorByCorridorsSectionsExpanded,
+        markers_start_text: true,
+        markers_finish_text: true,
+      },
+      openRenderModeSettings: "vector_by_corridors",
+    }));
+    render(<VectorByCorridorsSettingsPanel />);
+
+    for (const label of screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())) {
+      fireEvent.click(swatchForLabel(label));
+      fireEvent.click(screen.getByText(/^Project colors/));
+      expect(screen.getByText(PC.bgFill.name())).toBeInTheDocument();
+      fireEvent.click(screen.getByText(m["common.cancel"]()));
+    }
+  });
+
+  it("prioritizes the background fill for teleport floor-badge text", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      activeFloorId: "f1",
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 1, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "teleport" }],
+      vectorByCorridorsSectionsExpanded: { teleports: true },
+      openRenderModeSettings: "vector_by_corridors",
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+    expandTeleportSubsections();
+
+    const label = screen.getByText(m["image_export.vector_by_walls.marker_text_color"]());
+    fireEvent.click(swatchForLabel(label));
+    fireEvent.click(screen.getByText(/^Project colors/));
+    expect(screen.getByText(PC.bgFill.name())).toBeInTheDocument();
+  });
+
+  it("does not show a warning bubble solely because a waypoint uses a special split anchor", () => {
     // Point (0,0) split into node 0 (east+west) and node 4 (north+south) — a recognized "bridge"
     // topology, same fixture shape as `exportWarnings.test.ts`'s own `bridgeSplitNodes`.
     useMazeStore.setState({
@@ -279,7 +328,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, warnings: true },
     });
     render(<VectorByCorridorsSettingsPanel />);
-    expect(screen.getByText(m["image_export.vector_by_walls.warning_waypoint_on_split"]())).toBeInTheDocument();
+    expect(screen.queryByText(/split point/i)).not.toBeInTheDocument();
   });
 
   describe("Teleports section (GitHub issue #313)", () => {
@@ -312,7 +361,14 @@ describe("VectorByCorridorsSettingsPanel", () => {
           markers_start_marker: true, markers_finish_marker: true,
         },
       });
-      render(<VectorByCorridorsSettingsPanel />);
+      useMazeStore.setState((state) => ({
+        vectorByCorridorsSettings: {
+          ...state.vectorByCorridorsSettings,
+          startMarker: { ...state.vectorByCorridorsSettings.startMarker, markerEnabled: true },
+          finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, markerEnabled: true },
+        },
+      }));
+render(<VectorByCorridorsSettingsPanel />);
       expandTeleportSubsections();
       // The Teleports section's own "Size" label — the last of the matching labels in document
       // order, same disambiguation convention as `VectorByWallsSettingsPanel`'s own teleport-size test.

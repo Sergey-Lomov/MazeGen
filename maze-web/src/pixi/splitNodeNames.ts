@@ -62,6 +62,10 @@ const lowerBridge = (): SemanticName => ({
   full: m["post_edit.split_node_name_lower_bridge"](),
   short: m["post_edit.split_node_name_lower_bridge_short"](),
 });
+const middleBridge = (): SemanticName => ({
+  full: m["post_edit.split_node_name_middle_bridge"](),
+  short: m["post_edit.split_node_name_middle_bridge_short"](),
+});
 const upperBridge = (): SemanticName => ({
   full: m["post_edit.split_node_name_upper_bridge"](),
   short: m["post_edit.split_node_name_upper_bridge_short"](),
@@ -135,10 +139,17 @@ export function splitNodeSemanticNamesFromKinds(
     case "hex_diagonal_divider":
       return [forkN(1), forkN(2)];
 
+    case "octagon_diagonal_divider":
+      return [forkN(1), forkN(2)];
+
     case "hex_triple_bridge":
+    case "octagon_double_bridge":
       // Node 0 is the through corridor (never drawn as a bridge); the other two are bridges, named
       // by row order per the user's spec (lower then upper).
       return [corridor(), lowerBridge(), upperBridge()];
+
+    case "octagon_triple_bridge":
+      return [corridor(), lowerBridge(), middleBridge(), upperBridge()];
 
     case "hex_triple_corridor": {
       // The single opposite-face pair is the through/middle corridor; the two adjacent-face nodes
@@ -186,6 +197,8 @@ export function splitPointShapeName(kind: SplitSpecialShapeKind): string {
       return m["post_edit.split_shape_name_diagonal"]();
     case "hex_diagonal_divider":
       return m["post_edit.split_shape_name_diagonal_divider"]();
+    case "octagon_diagonal_divider":
+      return m["post_edit.split_shape_name_diagonal_divider"]();
     case "cairo_diagonal_divider":
       return m["post_edit.split_shape_name_cairo_divider_2x2"]();
     case "cairo_adjacent_divider":
@@ -193,7 +206,10 @@ export function splitPointShapeName(kind: SplitSpecialShapeKind): string {
     case "cairo_bridge_2x3":
       return m["post_edit.split_shape_name_cairo_bridge_2x3"]();
     case "hex_triple_bridge":
+    case "octagon_double_bridge":
       return m["post_edit.split_shape_name_triple_bridge"]();
+    case "octagon_triple_bridge":
+      return m["split_pattern_title.triple_bridge"]();
     case "hex_triple_corridor":
       return m["post_edit.split_shape_name_triple_corridor"]();
     default: {

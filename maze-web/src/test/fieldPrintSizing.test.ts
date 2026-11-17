@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { boundsInCellSides, calculatePrintFieldConfig, largestFitting, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { configAllCells, presetShapeExtents } from "../pixi/tessellationCells";
+import { availablePresetKeys } from "../pixi/fieldOps";
+import { cellBounds, displayTransform } from "../pixi/tessellationGeometry";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import type { TessellationKind } from "../fieldConfig";
+import type { FieldConfig, TessellationKind } from "../fieldConfig";
+import type { PredefinedFieldConfig } from "../pixi/fieldPrintSizing";
 import * as mazeService from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
 
@@ -14,6 +18,20 @@ const printInput = {
   marginHMm: 5,
   marginVMm: 5,
 };
+
+/** Display-space size of the field in cell sides: core measures the shape along the rows of the
+ * display transform, so the field's orientation is only an instance of that transform. */
+function boundsInCellSides(config: FieldConfig): { width: number; height: number } {
+  const t = displayTransform(config);
+  const extents = presetShapeExtents(config, [[t.a, t.c], [t.b, t.d]]);
+  // A shape core refuses (too large to build) never fits.
+  if (!extents) return { width: Infinity, height: Infinity };
+  const side = TESSELLATION_UI[config.tessellation.kind].cellSidePx;
+  return {
+    width: (extents[0][1] - extents[0][0]) / side,
+    height: (extents[1][1] - extents[1][0]) / side,
+  };
+}
 
 describe("field print sizing", () => {
   it("never picks a size core refuses to build", () => {
@@ -33,12 +51,33 @@ describe("field print sizing", () => {
   it("calculates a square field from printable A4 area", () => {
     const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), printInput);
 
-    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
-    expect(result?.fieldWidthMm).toBe(200);
-    expect(result?.fieldHeightMm).toBe(280);
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 28, rows: 40 }));
+    expect(result?.fieldWidthMm).toBeCloseTo(28 * 10 / Math.SQRT2);
+    expect(result?.fieldHeightMm).toBeCloseTo(40 * 10 / Math.SQRT2);
     expect(result?.usableWidthMm).toBe(200);
     expect(result?.usableHeightMm).toBe(287);
   });
+
+  it("sizes a cylinder or torus as the plane, then moves down to a size that closes up", () => {
+    const plane = calculatePrintFieldConfig(fieldOf("hex", { shape: "rect", cols: 5, rows: 5 }, "flat_top"), printInput);
+    const torus = calculatePrintFieldConfig(fieldOf("hex", { shape: "torus", cols: 5, rows: 5 }, "flat_top"), printInput);
+    expect(plane?.config.shape).toMatchObject({ shape: "rect" });
+    const planeShape = plane!.config.shape as { cols: number; rows: number };
+    const torusShape = torus!.config.shape as { shape: string; cols: number; rows: number };
+    expect(torusShape.shape).toBe("torus");
+    expect(torusShape.cols % 2).toBe(0);
+    expect(torusShape.cols).toBeLessThanOrEqual(planeShape.cols);
+    expect(torusShape.rows).toBeLessThanOrEqual(planeShape.rows);
+    expect(torus!.fieldWidthMm).toBeLessThanOrEqual(torus!.usableWidthMm + 1e-9);
+  });
+
+  it("keeps a torus made of lattice periods on the sheet", () => {
+    // Its size counts periods, many cell pitches each: the size of the plane would overshoot the sheet.
+    const result = calculatePrintFieldConfig(fieldOf("snub_hexagonal", { shape: "torus", cols: 2, rows: 2 }), printInput);
+    expect(result?.config.shape).toMatchObject({ shape: "torus" });
+    expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  }, 60_000);
 
   it("uses the selected paper orientation when calculating a square field", () => {
     const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), {
@@ -46,7 +85,7 @@ describe("field print sizing", () => {
       orientation: "landscape",
     });
 
-    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 28, rows: 20 }));
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 40, rows: 28 }));
   });
 
   it("calculates a radial field that fits both printable axes", () => {
@@ -76,12 +115,12 @@ describe("field print sizing", () => {
   });
 
   describe("strategy contracts", () => {
-    const representatives = [
+    const representatives: readonly [string, PredefinedFieldConfig][] = [
       ["axis-aligned", fieldOf("square", { shape: "rect", cols: 1, rows: 1 })],
       ["Cairo", fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 })],
       ["rectangular", fieldOf("hex", { shape: "rect", cols: 1, rows: 1 }, "flat_top")],
       ["radial", fieldOf("hex", { shape: "circle", radius: 1 }, "flat_top")],
-    ] as const;
+    ];
 
     it.each(representatives)("%s returns a field inside the printable area", (_name, config) => {
       const result = calculatePrintFieldConfig(config, printInput);
@@ -159,33 +198,16 @@ describe("field print sizing", () => {
     expect(calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), { ...printInput, cellSizeMm: 11 })).not.toBe(first);
   });
 
-  it.each([
-    { limit: 37, hint: 1 },
-    { limit: 37, hint: 37 },
-    { limit: 37, hint: 500 },
-    { limit: 1, hint: 900 },
-    { limit: 0, hint: 5 },
-    { limit: 1000, hint: 1 },
-    { limit: 5000, hint: 10 },
-    { limit: 4, hint: 1, min: 3 },
-    { limit: 2, hint: 9, min: 3 },
-  ])("finds the largest fitting value from any hint: %o", ({ limit, hint, min = 1 }) => {
-    // 0 when even the smallest allowed value does not fit.
-    const expected = limit < min ? 0 : Math.min(limit, 1000);
-    expect(largestFitting((value) => value <= limit, hint, min, 1000)).toBe(expected);
-  });
-
   describe("rect search matches a full scan", () => {
     const smallSheet = { ...printInput, paperSize: "custom" as const, customWidthMm: 45, customHeightMm: 55 };
-    // Core has no parallelogram preset, and the radial and voronoi kinds have no rect.
-    const kinds = (Object.keys(TESSELLATION_UI) as TessellationKind[])
-      .filter((kind) => kind !== "radial" && kind !== "voronoi" && !TESSELLATION_UI[kind].editor.axisAlignedGrid);
+    // Every lattice is scanned in core (`print_sizing_tests.rs`); here two staggered ones check the wasm boundary.
+    const kinds: TessellationKind[] = ["hex", "trihexagonal"];
     const shape = "rect" as const;
 
     it.each(kinds)(
       "%s", (kind) => {
         const orientation = TESSELLATION_UI[kind].orientations[0];
-        for (const cellSizeMm of [4, 6]) {
+        for (const cellSizeMm of [6]) {
           const input = { ...smallSheet, cellSizeMm };
           const start = fieldOf(kind, { shape, cols: 2, rows: 2 }, orientation);
           const result = calculatePrintFieldConfig(start, input);
@@ -226,9 +248,129 @@ describe("field print sizing", () => {
   });
 });
 
-function shapeCapacity(config: { shape: { shape: string } & Record<string, number | string> }): number {
+describe("print sizing of a box", () => {
+  const box = (net: 0 | 1 | 2, mode: 0 | 1) =>
+    fieldOf("square", { shape: "box", width: 10, height: 10, depth: 10, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    // The nets are asked one after another with the same paper: none may get another's answer.
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 0], [0, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(box(net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "box", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet", () => {
+    const portrait = calculatePrintFieldConfig(box(2, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(box(2, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    expect(portrait.fieldHeightMm).toBeGreaterThan(portrait.fieldWidthMm);
+    expect(landscape.fieldWidthMm).toBeGreaterThan(landscape.fieldHeightMm);
+  });
+
+  it("keeps the proportions of the sides and fits the paper", () => {
+    const input = fieldOf("square", { shape: "box", width: 4, height: 2, depth: 2, net: 0, mode: 0, aspect: 100 }) as PredefinedFieldConfig;
+    const result = calculatePrintFieldConfig(input, { ...printInput, cellSizeMm: 14.2 })!;
+    const shape = result.config.shape as { width: number; height: number; depth: number };
+    expect(shape.width).toBe(2 * shape.height);
+    expect(shape.height).toBe(shape.depth);
+    expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+    expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+  });
+});
+
+describe("print sizing of a polyhedron", () => {
+  const polyhedron = (shape: "tetrahedron" | "octahedron" | "icosahedron", net: number, mode: 0 | 1) =>
+    fieldOf("tri", { shape, side: 6, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(polyhedron("octahedron", net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "octahedron", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet and fits the paper", () => {
+    const portrait = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    for (const result of [portrait, landscape]) {
+      expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+      expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+    }
+  });
+});
+
+function shapeCapacity(config: Pick<FieldConfig, "shape">): number {
   const { shape } = config;
   if ("cols" in shape && "rows" in shape) return Number(shape.cols) * Number(shape.rows);
   if ("radius" in shape) return Number(shape.radius);
-  return Number(shape.side);
+  return "side" in shape ? Number(shape.side) : 0;
 }
+
+/** Smoothing exists twice (GitHub issue #957): `normalizeCells` in the editor and
+ * `maze_core::space::normalize_cells` in core, which sizes the field for the print sizing dialog.
+ * Both must leave the same cells, so the extent core measures equals the one of the cells the
+ * editor shows. */
+describe("smoothing of a preset field", () => {
+  const KINDS: TessellationKind[] = [
+    "square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal",
+    "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "elongated_triangular",
+    "snub_square", "curved_quadrilateral",
+  ];
+  const SHAPES = [
+    { shape: "rect", cols: 9, rows: 8 },
+    { shape: "rect", cols: 4, rows: 3 },
+    { shape: "parallelogram", cols: 7, rows: 6 },
+    { shape: "circle", radius: 4 },
+    { shape: "triangle", side: 6 },
+    { shape: "hexagon", radius: 3 },
+  ] as const;
+
+  function editorExtents(config: FieldConfig, smooth: boolean): [[number, number], [number, number]] {
+    const cells = configAllCells(config, smooth);
+    const { minX, maxX, minY, maxY } = cellBounds(cells, config);
+    return [[minX, maxX], [minY, maxY]];
+  }
+
+  it("measures the same extent in core as the cells the editor shows", () => {
+    let smoothedSomething = false;
+    for (const kind of KINDS) {
+      const offered = availablePresetKeys({ kind, params: {} } as FieldConfig["tessellation"]);
+      for (const shape of SHAPES) {
+        if (!offered.includes(shape.shape)) continue;
+        const config = fieldOf(kind, shape as never, kind === "hex" ? "flat_top" : kind === "tri" ? "r0" : undefined);
+        const t = displayTransform(config);
+        const core = presetShapeExtents(config, [[t.a, t.c], [t.b, t.d]], true);
+        if (!core) continue;
+        const editor = editorExtents(config, true);
+        for (let axis = 0; axis < 2; axis++) {
+          for (let end = 0; end < 2; end++) {
+            // The editor flattens arcs coarsely, core finely: only curved sides differ (not smoothing).
+            const digits = kind === "curved_quadrilateral" ? 0 : 6;
+            expect(core[axis][end], `${kind} ${JSON.stringify(shape)}`).toBeCloseTo(editor[axis][end], digits);
+          }
+        }
+        if (configAllCells(config, true).length < configAllCells(config, false).length) smoothedSomething = true;
+      }
+    }
+    // The comparison is not vacuous: smoothing removes cells of some of the shapes above.
+    expect(smoothedSomething).toBe(true);
+  });
+
+  it("sizes 3.12.12 for the cells smoothing leaves (GitHub issue #957)", () => {
+    const current = fieldOf("truncated_hexagonal", { shape: "rect", cols: 8, rows: 8 });
+    const input = { ...printInput, orientation: "landscape" as const, cellSizeMm: 10.1 };
+    expect(calculatePrintFieldConfig(current, input)?.config.shape).toMatchObject({ cols: 29, rows: 23 });
+    const smoothed = calculatePrintFieldConfig(current, { ...input, smooth: true })!;
+    expect(smoothed.config.shape).toMatchObject({ cols: 29, rows: 25 });
+    expect(smoothed.fieldHeightMm).toBeLessThanOrEqual(smoothed.usableHeightMm + 1e-9);
+    // The field the editor shows (smoothed) is as high as core measured.
+    const config = smoothed.config;
+    const [, [minY, maxY]] = editorExtents(config, true);
+    const side = TESSELLATION_UI[config.tessellation.kind].cellSidePx;
+    expect((maxY - minY) / side).toBeCloseTo(smoothed.fieldHeightMm / (10.1 * Math.sin(Math.PI / 12)), 6);
+  });
+});

@@ -1,6 +1,7 @@
 import { render, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Modal } from "../components/Modal";
+import { NumberInput } from "../components/NumberInput";
 
 describe("Modal Escape-to-close", () => {
   it("closes on Escape", () => {
@@ -121,6 +122,23 @@ describe("Modal Enter/Space confirmation shortcut", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves Enter in a NumberInput to commit the value instead of confirming", () => {
+    const onConfirm = vi.fn();
+    const onBlurCommit = vi.fn();
+    render(
+      <Modal title="Dialog" onClose={vi.fn()} onConfirm={onConfirm}>
+        <NumberInput value="5" onChange={vi.fn()} onBlurCommit={onBlurCommit} />
+      </Modal>,
+    );
+
+    const input = screen.getByRole("spinbutton");
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onBlurCommit).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("lets Enter insert a newline in a textarea instead of confirming", () => {
     const onConfirm = vi.fn();
     render(
@@ -148,5 +166,20 @@ describe("Modal Enter/Space confirmation shortcut", () => {
     fireEvent.keyDown(slider, { key: " " });
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Modal initial focus", () => {
+  it("takes focus itself so Enter/Space reach its shortcuts, not the opening trigger", () => {
+    render(<Modal title="Dialog" onClose={vi.fn()}>content</Modal>);
+
+    expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+    expect(screen.getByText("content").closest("[tabindex='-1']")).toBe(document.activeElement);
+  });
+
+  it("leaves focus on a child that already took it on mount", () => {
+    render(<Modal title="Dialog" onClose={vi.fn()}><input aria-label="first" autoFocus /></Modal>);
+
+    expect(document.activeElement).toBe(screen.getByLabelText("first"));
   });
 });

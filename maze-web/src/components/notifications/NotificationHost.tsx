@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { useLocale } from "../../i18n/useLocale";
 import { useMazeStore } from "../../store/mazeStore";
-import { notificationMessage } from "../../notifications/notificationRegistry";
+import { getNotificationCode, notificationMessage } from "../../notifications/notificationRegistry";
 import {
   ERROR_VISIBLE_CARDS,
   closeAllErrors,
@@ -16,9 +16,9 @@ import {
   type ErrorCard,
   type NoticeItem,
 } from "../../notifications/notificationStore";
-import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
+import { embeddedNotificationStyle, notificationPalette, type NotificationSeverity } from "../EmbeddedNotification";
 import { overlay, radius, spacing, typography } from "../../styles/theme";
-import { Tooltip } from "../Tooltip";
+import { FlatIconButton } from "../FlatIconButton";
 import * as m from "~/paraglide/messages";
 
 export const NOTIFICATION_ZONE_OFFSET = 16;
@@ -95,13 +95,13 @@ function NoticeZone({ notices, queuedCount }: { notices: NoticeItem[]; queuedCou
       onMouseLeave={() => setNoticeZonePaused(false)}
     >
       {notices.map((n) => (
-        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle("warning") }}>
-          <span style={styles.message}>{notificationMessage(n.code, n.params)}</span>
-          <CloseButton onClick={() => closeNotice(n.id)} />
+        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle(noticeSeverity(n.code)) }}>
+          <span style={{ ...styles.message, ...styles.toastMessage }}>{notificationMessage(n.code, n.params)}</span>
+          <CloseButton onClick={() => closeNotice(n.id)} layoutStyle={styles.toastClose} />
           <CountdownBar key={n.expiresAt} notice={n} paused={paused} />
         </div>
       ))}
-      {notices.length + queuedCount >= 2 && <CloseAllButton severity="warning" onClick={closeAllNotices} />}
+      {notices.length + queuedCount >= 2 && <CloseAllButton severity={notices.every((n) => noticeSeverity(n.code) === "info") ? "info" : "warning"} onClick={closeAllNotices} />}
     </section>
   );
 }
@@ -129,13 +129,13 @@ function ErrorZone({ cards }: { cards: ErrorCard[] }) {
             : m["notifications.more_errors_plural"]({ count: hiddenCount })}
         </button>
       )}
-      {shown.map((card) => <ErrorCardView key={card.key} card={card} />)}
+      {shown.map((card) => <ErrorCardView key={card.key} card={card} severity="critical" />)}
       {cards.length >= 2 && <CloseAllButton severity="critical" onClick={closeAllErrors} />}
     </section>
   );
 }
 
-function ErrorCardView({ card }: { card: ErrorCard }) {
+function ErrorCardView({ card, severity }: { card: ErrorCard; severity: NotificationSeverity }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const latest = card.occurrences[card.occurrences.length - 1];
   const count = card.occurrences.length;
@@ -146,43 +146,46 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
     const message = notificationMessage(card.code, o.params);
     return { id: o.id, message, ownMessage: message !== headline ? message : null, details: o.details };
   });
+  const copyText = entries.map((e) => e.details ? `${e.message}\n${e.details}` : e.message).join("\n\n");
   const expandable = entries.some((e) => e.details || e.ownMessage);
   return (
-    <div data-testid="error-card" style={{ ...styles.toast, ...paletteStyle("critical"), flexDirection: "column", alignItems: "stretch" }}>
+    <div data-testid="error-card" style={{ ...styles.toast, ...paletteStyle(severity), flexDirection: "column", alignItems: "stretch" }}>
       <div style={styles.cardHeader}>
         <span style={styles.message}>{headline}</span>
         {count > 1 && <span data-testid="error-count" style={styles.counter}>×{count}</span>}
-        <CloseButton onClick={() => closeErrorCard(card.key)} />
+        <CloseButton onClick={() => closeErrorCard(card.key)} layoutStyle={styles.toastClose} />
       </div>
       {card.source === "generation" && card.code === "generation.registry_load_failed" && (
         <RegistryRetryButton cardKey={card.key} />
       )}
       {expandable && (
-        <div>
-          <button
-            type="button"
-            className="hoverable"
-            aria-expanded={detailsOpen}
-            style={styles.disclosureBtn}
-            onClick={() => setDetailsOpen((v) => !v)}
-          >
-            {detailsOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-            {m["notifications.details"]()}
-          </button>
+        <div style={styles.detailsSection}>
+          <div style={styles.detailsHeader}>
+            <button
+              type="button"
+              className="hoverable"
+              aria-expanded={detailsOpen}
+              style={styles.disclosureBtn}
+              onClick={() => setDetailsOpen((v) => !v)}
+            >
+              {detailsOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+              {m["notifications.details"]()}
+            </button>
+            {detailsOpen && <span style={styles.detailsCopy}><CopyButton text={copyText} /></span>}
+          </div>
+          {detailsOpen && (
+            <ul data-testid="error-details" style={{ ...styles.details, ...toastScrollbarStyle(severity) }}>
+              {entries.map((e, i) => (
+                <li key={e.id} style={i > 0 ? { ...styles.occurrence, ...styles.occurrenceSeparated } : styles.occurrence}>
+                  <div style={styles.occurrenceText}>
+                    {e.ownMessage && <span style={styles.message}>{e.ownMessage}</span>}
+                    {e.details && <pre style={styles.detailsText}>{e.details}</pre>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
-      {expandable && detailsOpen && (
-        <ul data-testid="error-details" style={styles.details}>
-          {entries.map((e, i) => (
-            <li key={e.id} style={i > 0 ? { ...styles.occurrence, ...styles.occurrenceSeparated } : styles.occurrence}>
-              <div style={styles.occurrenceText}>
-                {e.ownMessage && <span style={styles.message}>{e.ownMessage}</span>}
-                {e.details && <pre style={styles.detailsText}>{e.details}</pre>}
-              </div>
-              <CopyButton text={e.details ? `${e.message}\n${e.details}` : e.message} />
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   );
@@ -220,15 +223,13 @@ function CopyButton({ text }: { text: string }) {
   }, [copied]);
   const label = m["notifications.copy"]();
   return (
-    <Tooltip content={label}><button
-      type="button"
-      className="hoverable"
-      style={styles.iconBtn}
-      aria-label={label}
+    <FlatIconButton
+      title={label}
+      variant="contextual"
       onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {}); }}
     >
       {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-    </button></Tooltip>
+    </FlatIconButton>
   );
 }
 
@@ -261,21 +262,21 @@ function CountdownBar({ notice, paused }: { notice: NoticeItem; paused: boolean 
   );
 }
 
-function CloseButton({ onClick }: { onClick: () => void }) {
+function CloseButton({ onClick, layoutStyle }: { onClick: () => void; layoutStyle?: React.CSSProperties }) {
   return (
-    <Tooltip content={m["notifications.close"]()}><button
-      type="button"
-      className="hoverable"
-      aria-label={m["notifications.close"]()}
-      style={styles.iconBtn}
+    <FlatIconButton
+      title={m["notifications.close"]()}
+      variant="contextual"
+      layoutStyle={{ margin: 0 }}
+      tooltipLayoutStyle={layoutStyle}
       onClick={onClick}
     >
       <X size={14} />
-    </button></Tooltip>
+    </FlatIconButton>
   );
 }
 
-function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical"; onClick: () => void }) {
+function CloseAllButton({ severity, onClick }: { severity: NotificationSeverity; onClick: () => void }) {
   return (
     <div style={styles.zoneHeader}>
       <button type="button" className="hoverable" style={{ ...styles.closeAll, ...paletteStyle(severity) }} onClick={onClick}>
@@ -285,11 +286,22 @@ function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical
   );
 }
 
+function noticeSeverity(code: string): NotificationSeverity {
+  return getNotificationCode(code)?.severity === "info" ? "info" : "warning";
+}
+
 /** Same pairing as `WarningBubble`: dark palette background, light palette text and border.
  *  Everything inside a toast inherits the text color — no colors of its own. */
-function paletteStyle(severity: "warning" | "critical"): React.CSSProperties {
+function paletteStyle(severity: NotificationSeverity): React.CSSProperties {
   const { bg, text } = notificationPalette(severity);
   return { background: bg, color: text, borderColor: text };
+}
+
+function toastScrollbarStyle(severity: NotificationSeverity): React.CSSProperties {
+  const { bg, text } = notificationPalette(severity);
+  return {
+    scrollbarColor: `${text} ${bg}`,
+  };
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -336,27 +348,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "flex-start",
     gap: spacing.rowGap,
+    paddingRight: 30,
   },
   message: {
     flex: 1,
     minWidth: 0,
     overflowWrap: "anywhere",
   },
+  toastMessage: { paddingRight: 30 },
+  toastClose: { position: "absolute", top: 3, right: 3, zIndex: 1 },
   counter: {
     ...typography.caption,
     color: "inherit",
     flexShrink: 0,
-  },
-  iconBtn: {
-    background: "none",
-    border: "none",
-    color: "inherit",
-    cursor: "default",
-    padding: 0,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    borderRadius: radius.sm,
   },
   disclosureBtn: {
     ...typography.caption,
@@ -369,6 +373,20 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 2,
+  },
+  detailsSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.elementsGap,
+  },
+  detailsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.elementsGap,
+  },
+  detailsCopy: {
+    marginLeft: "auto",
+    display: "flex",
   },
   retryButton: {
     ...typography.caption,
@@ -396,7 +414,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.groupGap,
-    maxHeight: 240,
+    maxHeight: 48,
     overflowY: "auto",
   },
   occurrence: {
@@ -417,6 +435,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detailsText: {
     ...typography.caption,
+    lineHeight: "16px",
     color: "inherit",
     margin: 0,
     whiteSpace: "pre-wrap",

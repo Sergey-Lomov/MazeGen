@@ -2,6 +2,7 @@ import type { CheckDescriptor, StrategyDescriptor } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
 import type { QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
 import type { ProjectFileQcRule } from "../projectExport/types";
+import { withExplicitBoundsInSlots } from "../sizeThresholdIntervals";
 import * as m from "~/paraglide/messages";
 
 // Rule-kind matching across the store (addCheck/newRule below, RulesColumn's candidate filter,
@@ -85,12 +86,27 @@ export function defaultRuleName(kind: string): string {
   return fn?.() ?? kind;
 }
 
+// A size-threshold entry without `max_size` would show the UI's default span while maze-core
+// treats it as unbounded, so the stored value is made explicit on every load (project and quality
+// preset both end up in `rulesFromFile`). Skipped for strategies the registry doesn't know yet.
+function withBoundsExplicit<T extends { slotId: string; strategyId: string; params: Record<string, string>; nested: T[] }>(
+  nested: T[], parentId: string, availableStrategies: StrategyDescriptor[],
+): T[] {
+  const sizeSlots = new Set(
+    availableStrategies.find((s) => s.id === parentId)?.nested_slots
+      .filter((d) => d.dispatch_kind === "size_threshold").map((d) => d.slot_id) ?? [],
+  );
+  return withExplicitBoundsInSlots(nested, sizeSlots)
+    .map((n) => ({ ...n, nested: withBoundsExplicit(n.nested, n.strategyId, availableStrategies) }));
+}
+
 /** Store rules from a saved `quality.rules` list (project file or quality preset).
  *  `nextLocalCheckId` is not saved, so it is recomputed here — see CheckInstance's doc comment in
  *  storeTypes.ts. */
-export function rulesFromFile(rules: ProjectFileQcRule[]): QcRuleState[] {
+export function rulesFromFile(rules: ProjectFileQcRule[], availableStrategies: StrategyDescriptor[] = []): QcRuleState[] {
   return rules.map((rule) => ({
     ...rule,
+    nestedStrategies: rule.strategyId === null ? rule.nestedStrategies : withBoundsExplicit(rule.nestedStrategies, rule.strategyId, availableStrategies),
     nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
   }));
 }
@@ -102,7 +118,7 @@ export function rulesFromFile(rules: ProjectFileQcRule[]): QcRuleState[] {
 // (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
 // collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
 // not already in use among the member checks passed in at creation).
-export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
+export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[], strategyParams?: Record<string, string>): QcRuleState {
   return {
     id: `rule_${crypto.randomUUID()}`,
     name: null,
@@ -110,6 +126,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
     checks,
     nextLocalCheckId: checks.length,
     strategyId,
+    strategyParams: strategyId ? (strategyParams ?? defaultParamsFor({ params: availableStrategies.find((s) => s.id === strategyId)?.params ?? [] })) : {},
     disabled,
     ruleDisabled: false,
     nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],
@@ -123,6 +140,16 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
 // rules; later stages fall back to "Stage N" by creation-order position, not renumbered on
 // rename/reorder. `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
 // doc comment.
+// Index passed to `newStage` for the next "Stage N": highest "Stage N" suffix in use, not
+// `stages.length`, so removing a middle stage never reproduces an already-used name.
+export function nextStageIndex(stages: RepairStageState[]): number {
+  const used = stages
+    .map((s) => /^Stage (\d+)$/.exec(s.name)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number);
+  return used.length > 0 ? Math.max(...used) : stages.length;
+}
+
 export function newStage(index: number, ruleIds: string[] = []): RepairStageState {
   return {
     id: `stage_${crypto.randomUUID()}`,

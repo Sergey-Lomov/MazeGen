@@ -2,9 +2,13 @@ import { useState } from "react";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
+import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { messageForTitleKey } from "../../pixi/splitPatternTitles";
+import { Tooltip } from "../Tooltip";
+import { WarningsSection } from "../WarningsSection";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -134,6 +138,7 @@ interface Props<E> {
   /** Rotates every node's connections by one geometric face, clockwise (`1`) or counter-clockwise
    * (`-1`) — see `rotatePostEditSplitPoint`/`rotatePresetSplitPoint`. */
   onRotate: (direction: 1 | -1) => void;
+  allowFaceReassignmentRotation?: boolean;
   /** Dry-runs a rotate and reports whether it would break a neighboring split point's currently
    *  recognized special shape (bridge/diagonal/etc. — GitHub issue #588), so `onRotate` can be
    *  gated behind a `ConfirmModal` instead of silently degrading the neighbor's rendering. Optional
@@ -194,7 +199,7 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape, notificationSource,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, allowFaceReassignmentRotation, wouldBreakNeighborShape, notificationSource,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
   onTopChange,
 }: Props<E>) {
@@ -226,6 +231,9 @@ export function SplitNodesDialogView<E>({
     fitted: fittingRotation(bp, (faceIndex) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false, orientations),
   }));
   const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
+  const blueprintName = (blueprint: SplitNodeBlueprint) => blueprint.titleKey
+    ? messageForTitleKey(blueprint.titleKey)
+    : m["post_edit.split_blueprint_unnamed"]({ number: blueprintNumber(blueprint) });
 
   const markEdited = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
     setHasManualEdit(true);
@@ -246,15 +254,22 @@ export function SplitNodesDialogView<E>({
 
   return (
     <>
-    <SidePanel title={title} onClose={onClose} warnings={warnings} onTopChange={onTopChange}>
+    <SidePanel
+      title={title}
+      stackKey={notificationSource === "post_edit" ? "post-edit-split-nodes" : "preset-split-nodes"}
+      onClose={onClose}
+      onTopChange={onTopChange}
+    >
+      <div style={styles.warningsSection}>
+        <WarningsSection warnings={warnings} testId="split-node-warnings" />
+      </div>
       <div style={styles.tileArea}>
         {blueprints && blueprints.length > 0 && (
           <Stack gap="itemGap">
             <span style={typography.body}>{m["post_edit.split_blueprints_label"]()}</span>
             <div style={styles.blueprintStrip}>
               {fittedBlueprints.map(({ original, fitted }) => (
-                <button
-                  key={original.id}
+                <Tooltip key={original.id} content={blueprintName(original)}><button
                   data-testid={`blueprint-thumb-${original.id}`}
                   className={fitted ? "hoverable" : undefined}
                   style={{ ...styles.blueprintThumb, ...(!fitted ? sharedStyles.btnDisabled : {}) }}
@@ -276,7 +291,7 @@ export function SplitNodesDialogView<E>({
                     point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
-                </button>
+                </button></Tooltip>
               ))}
             </div>
             {anyDisabled && <span style={typography.caption}>{m["post_edit.split_blueprint_disabled_hint"]()}</span>}
@@ -296,6 +311,7 @@ export function SplitNodesDialogView<E>({
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
+          allowFaceReassignmentRotation={allowFaceReassignmentRotation}
           showFaceIndices notificationSource={notificationSource}
         />
       </div>
@@ -329,14 +345,13 @@ export function SplitNodesDialogView<E>({
                         <span style={typography.body}>{SECTION_LABEL[category]()}</span>
                         <div style={styles.linksCell}>
                           {links.map((link, i) => (
-                              <span
+                              <Bubble
                                 key={i}
-                                style={styles.bubble}
                                 onMouseEnter={onHoverLink ? () => onHoverLink(row, link) : undefined}
                                 onMouseLeave={onUnhoverLink}
                               >
                                 {row.ownLabel} {link.arrow} {link.otherLabel}
-                              </span>
+                              </Bubble>
                             ))}
                         </div>
                       </div>
@@ -356,27 +371,26 @@ export function SplitNodesDialogView<E>({
                               const floorClickable = floor !== undefined && floor !== currentLevel;
                               return (
                               <span key={j} style={styles.bubbleGroup}>
-                                {j === 0 && element.showArrow && <span style={styles.arrow}>{element.arrow}</span>}
-                                <span
-                                  style={{ ...styles.bubble, ...(floorClickable ? styles.clickableBubble : {}) }}
+                                {j === 0 && element.showArrow && <BubbleArrow>{element.arrow}</BubbleArrow>}
+                                <Bubble
+                                  interactive={floorClickable}
                                   onClick={floorClickable ? (event) => {
                                     event.stopPropagation();
                                     onUnhoverElement?.();
                                     onUnhoverLink?.();
                                     navigateToFloor(floor);
                                   } : undefined}
-                                >{bubble}</span>
+                                >{bubble}</Bubble>
                               </span>
                               );
                             })}
                             {element.entityId !== undefined && (
-                              <span
+                              <IdBubble
+                                id={element.entityId}
+                                interactive={onEntityIdClick !== undefined}
                                 className={onEntityIdClick ? "hoverable" : undefined}
-                                style={{ ...styles.idBubble, ...(onEntityIdClick ? styles.clickableBubble : {}) }}
                                 onClick={onEntityIdClick ? (event) => { event.stopPropagation(); onEntityIdClick(element.entityId!); } : undefined}
-                              >
-                                id: {element.entityId}
-                              </span>
+                              />
                             )}
                           </span>
                         ))}
@@ -536,6 +550,12 @@ export const dialogPanelStyles: Record<string, React.CSSProperties> = {
 
 const styles: Record<string, React.CSSProperties> = {
   ...dialogPanelStyles,
+  // Separate the warnings header from the panel chrome; SidePanel's body has no intrinsic top
+  // padding, so without this inset the header row touches the panel header.
+  warningsSection: { paddingTop: spacing.groupGap },
+  // `WarningsSection` owns the breathing room above its divider. Do not add a second top inset
+  // here: blueprints should begin directly after that section rather than reading as a new pane.
+  tileArea: { ...dialogPanelStyles.tileArea, paddingTop: 0 },
   // Horizontally scrolling strip of small blueprint thumbnails (GitHub issue #235) — each button
   // renders `TileFaceEditor` at a fixed small size instead of a text label, so a blueprint reads
   // as a preview of what it'll produce rather than a name to guess from.
@@ -569,37 +589,12 @@ const styles: Record<string, React.CSSProperties> = {
     paddingLeft: indent.tree,
     marginTop: 2,
   },
-  // Same shape as `DebugRefBubble`'s coordinate bubble — reused for visual consistency, not its
-  // hover/click behavior (this dialog's bubbles are plain, non-interactive labels).
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
-    whiteSpace: "nowrap",
-  },
-  clickableBubble: { cursor: "pointer" },
   badge: {
     ...typography.control,
     fontSize: 11,
     padding: "0 6px",
     borderRadius: radius.sm,
     whiteSpace: "nowrap",
-  },
-  startBadge: {
-    background: ui.text.success,
-    color: ui.text.inverse,
-  },
-  finishBadge: {
-    background: ui.text.error,
-    color: ui.text.inverse,
   },
   elementsSection: {
     display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap,
@@ -608,12 +603,6 @@ const styles: Record<string, React.CSSProperties> = {
   elementRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.rowGap },
   elementTitle: { ...muted(typography.body), whiteSpace: "nowrap" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.rowGap },
-  idBubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex",
-    alignItems: "center", borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`, background: ui.bg.success, borderColor: ui.text.success,
-    color: ui.text.success, whiteSpace: "nowrap",
-  },
   lockBadge: {
     background: ui.text.secondary,
     color: ui.bg.app,

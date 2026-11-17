@@ -22,7 +22,7 @@ beforeEach(() => {
           { localId: 0, typeId: "c1", params: {}, disabled: false },
           { localId: 1, typeId: "c2", params: {}, disabled: true },
         ],
-        nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
+        nextLocalCheckId: 2, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
         collapsed: false,
       },
     ],
@@ -73,7 +73,7 @@ describe("useQualityViewModel", () => {
       rules: [{
         id: "g1", name: "Rule 1", kind: "missing_loops",
         checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }],
-        nextLocalCheckId: 1, strategyId: "priority_missing_loops", disabled: false, ruleDisabled: false, params: {},
+        nextLocalCheckId: 1, strategyId: "priority_missing_loops", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
         nestedStrategies: [{ slotId: "seed", strategyId: "missing_one_ways_from_wall", params: {}, nested: [] }],
         collapsed: false,
       }],
@@ -95,7 +95,7 @@ describe("useQualityViewModel", () => {
       rules: [{
         id: "g1", name: null, kind: "missing_loops",
         checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }],
-        nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
+        nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
         collapsed: false,
       }],
         availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [] }],

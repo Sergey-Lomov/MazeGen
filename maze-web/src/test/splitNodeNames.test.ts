@@ -81,6 +81,14 @@ describe("splitNodeSemanticNames", () => {
     expect(names?.map((n) => n.full)).toEqual(["Fork 1", "Fork 2"]);
   });
 
+  it("names an octagon diagonal divider by its two four-face halves", () => {
+    const names = namesIdentity([
+      N(["passage", "passage", "passage", "passage", "wall", "wall", "wall", "wall"]),
+      N(["wall", "wall", "wall", "wall", "passage", "passage", "passage", "passage"]),
+    ]);
+    expect(names?.map((n) => n.full)).toEqual(["Fork 1", "Fork 2"]);
+  });
+
   it("names a hex triple bridge: Corridor / Lower bridge / Upper bridge by row order", () => {
     const names = namesIdentity([
       N(["passage", "wall", "wall", "passage", "wall", "wall"]),
@@ -88,6 +96,25 @@ describe("splitNodeSemanticNames", () => {
       N(["wall", "wall", "passage", "wall", "wall", "passage"]),
     ]);
     expect(names?.map((n) => n.full)).toEqual(["Corridor", "Lower bridge", "Upper bridge"]);
+  });
+
+  it("names an octagon double bridge: Corridor / Lower bridge / Upper bridge", () => {
+    const names = namesIdentity([
+      N(["passage", "wall", "wall", "wall", "passage", "wall", "wall", "wall"]),
+      N(["wall", "passage", "wall", "wall", "wall", "passage", "wall", "wall"]),
+      N(["wall", "wall", "passage", "wall", "wall", "wall", "passage", "wall"]),
+    ]);
+    expect(names?.map((n) => n.full)).toEqual(["Corridor", "Lower bridge", "Upper bridge"]);
+  });
+
+  it("names an octagon triple bridge: Corridor / Lower / Middle / Upper bridge", () => {
+    const names = namesIdentity([
+      N(["passage", "wall", "wall", "wall", "passage", "wall", "wall", "wall"]),
+      N(["wall", "passage", "wall", "wall", "wall", "passage", "wall", "wall"]),
+      N(["wall", "wall", "passage", "wall", "wall", "wall", "passage", "wall"]),
+      N(["wall", "wall", "wall", "passage", "wall", "wall", "wall", "passage"]),
+    ]);
+    expect(names?.map((n) => n.full)).toEqual(["Corridor", "Lower bridge", "Middle bridge", "Upper bridge"]);
   });
 
   it("names a hex triple corridor: through pair Middle, adjacent pairs Side 1/2 by lowest face", () => {

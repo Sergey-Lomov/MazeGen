@@ -1,12 +1,12 @@
 import { useRef } from "react";
-import { Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ui } from "../../styles/theme";
 import { Stack, Inline } from "../Layout";
-import { SidePanel } from "../SidePanel";
-import { HoverIconButton } from "../HoverIconButton";
+import { bringSidePanelToFront, SidePanel } from "../SidePanel";
+import { ExportTopologyPanel } from "./ExportTopologyPanel";
+import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
 import { downloadPngExport } from "./pngExport";
@@ -24,10 +24,10 @@ const VISUAL_PRESET_LOAD_CODES = {
   qualityPreset: "image_export.visual_preset.load_error_quality_preset",
 } as const;
 for (const code of Object.values(VISUAL_PRESET_LOAD_CODES)) {
-  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+  registerNotificationCode(code, { severity: "error", message: () => m[code]() });
 }
 
-export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: PngExportSettings) => Promise<Blob | null> }) {
+export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () => {} }: { onExportPng: (settings: PngExportSettings) => Promise<Blob | null>; onFocusTeleportConnector?: (points: readonly [number, number][]) => void }) {
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const setActiveRenderMode = useMazeStore((s) => s.setActiveRenderMode);
   const openRenderModeSettings = useMazeStore((s) => s.openRenderModeSettings);
@@ -38,18 +38,19 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const loadVisualPreset = useMazeStore((s) => s.loadVisualPreset);
   const presetInputRef = useRef<HTMLInputElement>(null);
+  const exportTopologyOpen = useMazeStore((s) => s.exportTopologyOpen);
+  const teleportConnectorEdit = useMazeStore((s) => s.teleportConnectorEdit);
+  const finishTeleportConnectorEdit = useMazeStore((s) => s.finishTeleportConnectorEdit);
 
   function handleClick(mode: RenderModeId) {
-    if (mode === activeRenderMode) {
-      setOpenRenderModeSettings(openRenderModeSettings === mode ? null : mode);
-    } else {
-      setActiveRenderMode(mode);
-      setOpenRenderModeSettings(mode);
-    }
+    bringSidePanelToFront("image-export-render-mode");
+    if (mode !== activeRenderMode) setActiveRenderMode(mode);
+    setOpenRenderModeSettings(mode);
   }
 
   function handleFormatGearClick(format: ExportFormatId) {
-    setOpenExportFormatSettings(openExportFormatSettings === format ? null : format);
+    bringSidePanelToFront("image-export-format");
+    setOpenExportFormatSettings(format);
   }
 
   async function handleExportClick(format: ExportFormatId) {
@@ -104,28 +105,27 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
       {EXPORT_FORMATS.map((format) => (
-        <Inline key={format.id} gap="itemGap">
+        <Stack key={format.id} gap="itemGap">
+          {format.id === "png" && (
+            <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={() => handleFormatGearClick(format.id)}>
+              {m["image_export.format.settings"]()}
+            </Button>
+          )}
           <Button
             variant="primary"
-            layoutStyle={{ flex: 1 }}
+            layoutStyle={{ width: "100%" }}
             disabled={activeRenderMode === null}
+            title={activeRenderMode === null ? m["image_export.no_renderer_hint"]() : undefined}
             onClick={() => handleExportClick(format.id)}
           >
             {format.label()}
           </Button>
-          <HoverIconButton
-            stretch
-            onClick={() => handleFormatGearClick(format.id)}
-            title={m["image_export.format.settings_tooltip"]({ format: format.label() })}
-          >
-            <Settings size={16} />
-          </HoverIconButton>
-        </Inline>
+        </Stack>
       ))}
 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
-      <Inline gap="itemGap">
+      <Inline gap="itemGap" align="stretch">
         <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadVisualPresetFile(useMazeStore.getState())}>
           {m["image_export.visual_preset.save"]()}
         </Button>
@@ -143,16 +143,20 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       />
 
       {openMode && (
-        <SidePanel title={openMode.label()} onClose={() => setOpenRenderModeSettings(null)}>
+        <SidePanel title={openMode.label()} stackKey="image-export-render-mode" onClose={() => setOpenRenderModeSettings(null)}>
           {openMode.SettingsPanel ? <openMode.SettingsPanel /> : (
             <span>{m["image_export.settings_empty"]()}</span>
           )}
         </SidePanel>
       )}
 
+      {exportTopologyOpen && <ExportTopologyPanel />}
+      {teleportConnectorEdit && <TeleportConnectorEditorPanel onClose={finishTeleportConnectorEdit} onFocusPath={onFocusTeleportConnector} />}
+
       {openFormat && (
         <SidePanel
           title={openFormat.label()}
+          stackKey="image-export-format"
           onClose={() => setOpenExportFormatSettings(null)}
           onTopChange={(isTop) => setExportFormatSettingsCovered(!isTop)}
         >

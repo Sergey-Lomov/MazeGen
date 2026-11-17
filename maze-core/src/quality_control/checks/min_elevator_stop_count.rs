@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(issues[0].missing.len(), 1);
         let (elevator, deficit, available) = &issues[0].missing[0];
         assert_eq!(elevator.0, {
-            let mut v = nodes.clone();
+            let mut v = nodes;
             v.sort_unstable();
             v
         });

@@ -17,9 +17,9 @@
 use super::exact_tiling::{Template, Tiling, Vertex, add, half, scale, sub, unit};
 use super::field_ops::Inclusion;
 use super::multi_shape::{
-    AnchoredPoint, CellFace, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind,
-    is_opposite_face, lattice_rect_cells, polygon_faces, preset_cells, regular_cell_shape,
-    regular_polygon_area, regular_shapes, retain_attached,
+    AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
+    is_opposite_face, polygon_faces, preset_cells, rect_or_period_cells, regular_cell_shape,
+    regular_polygon_area, regular_shapes, retain_attached_for_preset,
 };
 use super::square::cell_range;
 use super::{
@@ -239,6 +239,13 @@ impl Tessellation for TruncatedTrihexagonalTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-2.366025403784438, -4.098076211353316),
+            Point::new(2.366025403784439, -4.098076211353316),
+        ])
+    }
+
     fn center(&self, cell: TruncatedTrihexagonalPoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }
@@ -275,7 +282,7 @@ impl Tessellation for TruncatedTrihexagonalTessellation {
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
-        &PRESETS
+        &TOPOLOGY_PRESETS
     }
 
     fn build_preset(
@@ -286,9 +293,16 @@ impl Tessellation for TruncatedTrihexagonalTessellation {
         let origin = self.center(TruncatedTrihexagonalPoint::dodecagon(0, 0));
         // `cols × rows` dodecagon pitches, centered on the origin dodecagon.
         let mut cells = preset_cells(self, key, params, origin, Inclusion::Center, || {
-            lattice_rect_cells(self, params, origin, Point::new(PITCH, ROW))
+            rect_or_period_cells(
+                self,
+                key,
+                params,
+                origin,
+                Point::new(PITCH, ROW),
+                GLUED_PHASE,
+            )
         })?;
-        retain_attached(self, &mut cells, |c| c.is_dodecagon())?;
+        retain_attached_for_preset(self, key, &mut cells, |c| c.is_dodecagon())?;
         cells.sort();
         Ok(cells)
     }
@@ -297,6 +311,9 @@ impl Tessellation for TruncatedTrihexagonalTessellation {
         regular_polygon_area(cell.kind.face_count())
     }
 }
+
+/// Where the rectangle of a cylinder or torus starts: the position with the least jagged outline.
+const GLUED_PHASE: Point = Point::new(0.0730, 0.1400);
 
 /// Center distance of neighboring dodecagons, `3 + √3`.
 const PITCH: f64 = 3.0 + SQRT_3;

@@ -12,6 +12,7 @@ mod result;
 mod runner;
 pub mod strategies_catalog;
 mod tessellation_dispatch;
+mod topology;
 
 use generation_config::GenerateConfig;
 use result::GenerateResult;
@@ -22,21 +23,36 @@ pub use analytics::compute_analytics;
 pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
 pub use field_ops::{
-    field_capabilities, field_preset, field_preset_extents, field_reflect_cells,
-    field_translate_cells,
+    field_capabilities, field_cell_sizes, field_preset, field_print_sizing, field_preset_creases, field_preset_extents,
+    field_preset_topology, field_reflect_cells, field_translate_cells, tessellation_cell_type_sizes,
 };
 pub use geometry::{
-    geometry_cell_at, geometry_cells_in_region, geometry_snapshot, tessellation_shapes,
+    geometry_cell_at, geometry_cells_in_region, geometry_region_edges, geometry_snapshot,
+    tessellation_shapes,
 };
 pub use strategies_catalog::available_strategies;
+pub use topology::{topology_edit, topology_info};
 
 #[wasm_bindgen]
 pub fn generate(seed: u64, config: JsValue) -> Result<GenerateResult, JsValue> {
+    generate_inner(seed, config, |_| {})
+}
+
+/// Runs generation while reporting completed pipeline stages. The callback is deliberately
+/// synchronous: a worker can forward these messages even while the WASM call is still running.
+#[wasm_bindgen]
+pub fn generate_with_progress(seed: u64, config: JsValue, progress: js_sys::Function) -> Result<GenerateResult, JsValue> {
+    generate_inner(seed, config, |value| {
+        let _ = progress.call1(&JsValue::NULL, &JsValue::from_f64(value.into()));
+    })
+}
+
+fn generate_inner(seed: u64, config: JsValue, progress: impl Fn(u8)) -> Result<GenerateResult, JsValue> {
     let config: GenerateConfig = if config.is_null() || config.is_undefined() {
         GenerateConfig::default()
     } else {
         serde_wasm_bindgen::from_value(config)
             .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
     };
-    dispatch_generate(seed, &config)
+    dispatch_generate(seed, &config, &progress)
 }

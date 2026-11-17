@@ -4,7 +4,7 @@ import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 
 
-const { fitMazeViewport } = await import("../pixi/viewportFit");
+const { fitMazeViewport, fitBoundsViewport } = await import("../pixi/viewportFit");
 const { fitFieldViewport } = await import("../pixi/FieldEditorOverlay");
 
 const small: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
@@ -91,5 +91,19 @@ describe("fitFieldViewport", () => {
     const worldXCentered = (500 - centered.x) / centered.scale;
     const worldXWithSibling = (500 - withBigSibling.x) / withBigSibling.scale;
     expect(worldXCentered).toBeCloseTo(worldXWithSibling, 5);
+  });
+});
+
+describe("fitBoundsViewport", () => {
+  it("centers the box on the screen and leaves the fit padding around it", () => {
+    const box = { minX: 100, minY: 40, maxX: 300, maxY: 140 };
+    const { x, y, scale } = fitBoundsViewport(box, 1000, 500);
+    expect(scale).toBeCloseTo(Math.min(VIEWPORT_FIT_PADDING * 1000 / 200, VIEWPORT_FIT_PADDING * 500 / 100), 9);
+    expect(x + scale * 200).toBeCloseTo(500, 9);
+    expect(y + scale * 90).toBeCloseTo(250, 9);
+  });
+
+  it("falls back to the screen centre for an empty box", () => {
+    expect(fitBoundsViewport({ minX: 0, minY: 0, maxX: 0, maxY: 0 }, 800, 600)).toEqual({ x: 400, y: 300, scale: 1 });
   });
 });

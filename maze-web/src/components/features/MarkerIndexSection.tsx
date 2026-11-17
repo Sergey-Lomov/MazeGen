@@ -1,9 +1,12 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { indent, spacing, typography } from "../../styles/theme";
+import { indent, spacing } from "../../styles/theme";
+import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { TILE_SIZE } from "../../pixi/constants";
 import { MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
 import { TextStyleRows } from "./MarkerFieldRows";
@@ -15,10 +18,10 @@ import * as m from "~/paraglide/messages";
  *  plate under the marker.
  *
  *  Only the master "Show marker indices" toggle sits at the section's top level. Everything else
- *  is nested one indent deep: a "Coverage" sub-group of per-connection-kind toggles, then a
- *  "Settings" sub-group with the plate's appearance. All geometric fields are in px (GitHub issue
- *  #681 — `height`/`offset`/`cornerRadius`/`paddingX` were previously fractions of `TILE_SIZE`). */
-export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorField, textColorField, borderColorField }: {
+ *  is nested one indent deep in three collapsible sub-groups ("Coverage" per-connection-kind
+ *  toggles, "Caption" text style, "Backplate" plate appearance). All geometric fields are in px
+ *  (GitHub issue #681 — `height`/`offset`/`cornerRadius`/`paddingX` were previously fractions of `TILE_SIZE`). */
+export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorField, textColorField, borderColorField, isExpanded, onToggle }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
   /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
@@ -31,7 +34,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
     coverageVerticalPassage: P | null;
     coverageElevator: P | null;
     labelStyle: P | null;
-    textFontWeight: P | null;
+    textFont?: P | null;
     width: P | null;
     textSize: P | null;
     textMargin: P | null;
@@ -60,7 +63,13 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
   fillColorField: ColorField;
   textColorField: ColorField;
   borderColorField: ColorField;
+  /** Reads/toggles the caller's own generic sections-expanded record by id (same convention as
+   *  `MarkerSettingsGroup`) — ids `marker_index_coverage`/`marker_index_caption`/
+   *  `marker_index_backplate`. */
+  isExpanded: (id: string) => boolean;
+  onToggle: (id: string) => void;
 }) {
+  const indexOn = useGate("markerIndexOn");
   const cov = settings.coverage;
   const setCoverage = (patch: Partial<MarkerIndexSettings["coverage"]>) =>
     onChange({ coverage: { ...cov, ...patch } });
@@ -73,11 +82,9 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
         onChange={(enabled) => onChange({ enabled })}
         linkTarget={linkTargets.enabled}
       />
-      {settings.enabled && (
+      {indexOn && (
         <>
-          <div style={styles.subGroupWrap}>
-            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_coverage"]()}</div>
-            <div style={styles.subGroup}>
+          <CollapsibleSubGroup id="marker_index_coverage" label={m["image_export.vector_by_walls.marker_index_subsection_coverage"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"]()}
                 checked={cov.singleFloorTeleport}
@@ -102,12 +109,9 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(elevator) => setCoverage({ elevator })}
                 linkTarget={linkTargets.coverageElevator}
               />
-            </div>
-          </div>
+          </CollapsibleSubGroup>
 
-          <div style={styles.subGroupWrap}>
-            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_caption"]()}</div>
-            <div style={styles.subGroup}>
+          <CollapsibleSubGroup id="marker_index_caption" label={m["image_export.vector_by_walls.marker_index_subsection_caption"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedSelectRow
                 label={m["image_export.vector_by_walls.marker_index_label_style"]()}
                 value={settings.labelStyle}
@@ -122,18 +126,15 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
               <TextStyleRows
                 settings={settings}
                 onChange={onChange}
-                linkTargets={{ textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
+                linkTargets={{ textFont: linkTargets.textFont ?? null, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
                 priorityColors={textColorPriority}
                 defaultColor={textColorDefault}
                 field={textColorField}
                 autoFitKind="markerIndex"
               />
-            </div>
-          </div>
+          </CollapsibleSubGroup>
 
-          <div style={styles.subGroupWrap}>
-            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_backplate"]()}</div>
-            <div style={styles.subGroup}>
+          <CollapsibleSubGroup id="marker_index_backplate" label={m["image_export.vector_by_walls.marker_index_subsection_backplate"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_width"]()}
                 value={settings.width}
@@ -186,7 +187,6 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(borderWidth) => onChange({ borderWidth: Math.round(borderWidth) })}
                 min={0} max={10} step={1}
                 format={(v) => String(Math.round(v))}
-                disabled={settings.borderWidthFromMarker}
                 linkTarget={linkTargets.borderWidth}
               />
               <LinkedColorRow
@@ -208,14 +208,12 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 label={m["image_export.vector_by_walls.marker_index_border_color"]()}
                 color={settings.borderColor}
                 onChange={(borderColor) => onChange({ borderColor })}
-                disabled={settings.borderColorFromMarker}
                 priorityColors={borderColorPriority}
                 defaultColor={borderColorDefault}
                 field={borderColorField}
                 linkTarget={linkTargets.borderColor}
               />
-            </div>
-          </div>
+          </CollapsibleSubGroup>
         </>
       )}
     </div>
@@ -224,7 +222,4 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
 
 const styles: Record<string, React.CSSProperties> = {
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
-  subGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  subHeader: { ...typography.body },
-  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };

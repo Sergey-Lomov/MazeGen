@@ -279,7 +279,7 @@ fn issue13_post_edit_no_extra_nav_nodes() {
     }
 
     // All graph nodes must appear either as nav nodes or in nav edge paths
-    let mut covered: std::collections::HashSet<u64> = nav_node_ids.clone();
+    let mut covered: std::collections::HashSet<u64> = nav_node_ids;
     for e in nav.edges() {
         for &n in &e.path {
             covered.insert(n);

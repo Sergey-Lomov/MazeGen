@@ -1,5 +1,4 @@
 use super::debug_state::DebugGenerationState;
-use super::edge_ops::try_add_edge;
 use super::split_logic::StartReassignment;
 use super::split_pattern::SplitGenerationConfig;
 use super::split_shared::{
@@ -7,7 +6,7 @@ use super::split_shared::{
     sync_all_nodes,
 };
 use super::vertex_based::{
-    GenState, VertexBasedEvent, add_edge_and_detect_direction, run_ordinary_step_body_for_node,
+    GenState, VertexBasedEvent, run_ordinary_step_body_for_node, try_add_regular_edge,
 };
 use super::{ElementsConfig, GenerationParams, PresetState};
 use crate::event_log::ScopeGuard;
@@ -65,9 +64,16 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     );
 
     if let Some(bridge) = bridge {
-        let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
-            try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng)
-        });
+        let added = try_add_regular_edge(
+            graph,
+            field,
+            bridge,
+            src,
+            elements,
+            preset_state,
+            state,
+            scope.as_deref_mut(),
+        );
         if let Some((from, to, bidirectional)) = added
             && let Some(log) = scope.as_deref_mut()
         {
@@ -167,9 +173,16 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     );
     for (i, dst) in assignments {
         let node = nodes[i];
-        let added = add_edge_and_detect_direction(graph, node, dst, |g| {
-            try_add_edge(g, node, dst, elements, preset_state, &mut state.rng)
-        });
+        let added = try_add_regular_edge(
+            graph,
+            field,
+            node,
+            dst,
+            elements,
+            preset_state,
+            state,
+            scope.as_deref_mut(),
+        );
         if let Some((from, to, bidirectional)) = added
             && let Some(log) = scope.as_deref_mut()
         {
@@ -181,7 +194,7 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         }
     }
 
-    apply_split_teleport(graph, elements, preset_state, state, &nodes, scope);
+    apply_split_teleport(graph, field, elements, preset_state, state, &nodes, scope);
 }
 
 #[cfg(test)]

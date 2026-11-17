@@ -10,6 +10,7 @@ use crate::repair::strategies::group_select::{
 };
 use crate::repair::strategy::{NestedSlot, NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
+use rand::seq::SliceRandom;
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
 
@@ -123,15 +124,15 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitRouteIssue> for SplitRouteCu
                 })
                 .collect();
 
-            let Some((cut_id, _)) = pick_candidate(&candidates, &pending, priority, rng) else {
+            // Candidates are tried in priority order until one is actually cuttable (a preset can
+            // protect the preferred edge), so a blocked top pick falls through to the rest.
+            let cut_commands = order_candidates(candidates, &pending, priority, rng)
+                .into_iter()
+                .map(|(cut_id, _)| cmd_remove_edge_with_reverse(&maze.graph, cut_id, preset_state))
+                .find(|commands| !commands.is_empty());
+            let Some(cut_commands) = cut_commands else {
                 continue;
             };
-
-            let cut_commands = cmd_remove_edge_with_reverse(&maze.graph, cut_id, preset_state);
-
-            if cut_commands.is_empty() {
-                continue;
-            }
             any_succeeded = true;
 
             let removed: HashSet<EdgeId> = removed_edge_ids(&cut_commands).into_iter().collect();
@@ -159,30 +160,32 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitRouteIssue> for SplitRouteCu
 
 crate::impl_erased_repair_strategy!(SplitRouteCutStrategy, InvalidSplitRouteIssue);
 
-/// Picks one candidate edge to cut from `candidates` (already filtered by `edge_scope`) — `None`
-/// if there's nothing eligible. `random` picks uniformly; `problematic` picks the candidate
-/// appearing in the most routes among `other_pending_routes`, ties broken by ascending `EdgeId`.
-fn pick_candidate(
-    candidates: &[SplitRouteEdge],
+/// Orders `candidates` (already filtered by `edge_scope`) by the order they should be tried in:
+/// the preferred pick first, every other candidate behind it so a blocked pick falls back to the
+/// rest. `random` shuffles all candidates; `problematic` sorts by how many `other_pending_routes`
+/// contain the edge, descending, ties by ascending `EdgeId`.
+fn order_candidates(
+    mut candidates: Vec<SplitRouteEdge>,
     other_pending_routes: &[Vec<SplitRouteEdge>],
     priority: &str,
     rng: &mut dyn RngCore,
-) -> Option<SplitRouteEdge> {
+) -> Vec<SplitRouteEdge> {
     if candidates.is_empty() {
-        return None;
+        return candidates;
     }
     if priority != PRIORITY_PROBLEMATIC {
-        let idx = rng.random_range(0..candidates.len());
-        return Some(candidates[idx]);
+        candidates.shuffle(rng);
+        return candidates;
     }
 
-    candidates.iter().copied().max_by_key(|&(id, _)| {
+    candidates.sort_by_key(|&(id, _)| {
         let overlap = other_pending_routes
             .iter()
             .filter(|route| route.iter().any(|&(other_id, _)| other_id == id))
             .count();
-        (overlap, std::cmp::Reverse(id))
-    })
+        (std::cmp::Reverse(overlap), id)
+    });
+    candidates
 }
 
 #[cfg(test)]

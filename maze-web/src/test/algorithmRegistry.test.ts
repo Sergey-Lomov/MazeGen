@@ -325,6 +325,13 @@ describe("adapterFor(\"vertex_based\")", () => {
     expect(adapter.scopeLabel("step 1", [])).not.toBe("");
     expect(adapter.scopeLabel("reserve_search", [])).not.toBe(adapter.scopeLabel("step 1", []));
   });
+
+  it("narrates skipped element rolls with quoted, localized lowercase names", () => {
+    expect(adapter.narrationTokensFor({ kind: "ElementRollSkipped", src: 7n, element: "teleport", cellType: "square" })).toEqual([
+      { kind: "text", text: "\"teleport\" chance roll skipped: cell type \"square\" forbids this element: " },
+      { kind: "node", id: 7n },
+    ]);
+  });
 });
 
 describe("adapterFor — one adapter instance per kind, stable identity", () => {

@@ -5,7 +5,8 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { QcRuleState, CheckInstance, FloorFieldConfig, MazeStore } from "../store/storeTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { replayPostEditCommands } from "../pixi/postEditReplay";
-import { buildPostEditBaseline, derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
+import { derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
+import { buildPostEditBaseline } from "../store/slices/postEditBaselineBuilders";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 import { fieldOf } from "./fieldConfigFixtures";
 
@@ -39,7 +40,7 @@ export function makeRule(overrides: Partial<QcRuleState> = {}): QcRuleState {
   return {
     id: "g1", name: "Rule 1", kind: "k1",
     checks: [], nextLocalCheckId: 0,
-    strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
+    strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
     collapsed: false,
     ...overrides,
   };

@@ -85,7 +85,7 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
     borderColorFromMarker: false,
     borderWidthFromMarker: false,
     borderWidth: 2,
-    textFontWeight: "bold",
+    textFont: { family: "", weight: 700 },
     coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true },
     ...patch,
   };
@@ -93,6 +93,8 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
 
 const label = (patch: Partial<MarkerIndexLabel> = {}): MarkerIndexLabel => ({
   pos: [100, 200],
+  nodeId: 1,
+  kind: "teleport",
   label: "1",
   markerOuterRadius: 10,
   markerBorderWidth: 2,

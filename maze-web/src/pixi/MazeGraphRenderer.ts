@@ -8,6 +8,7 @@ import { MSDF_FONT_FAMILY } from "./renderers/msdfFont";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
+import type { SeamHopContext } from "./graphSeams";
 
 const LABEL_STYLE = { fontFamily: MSDF_FONT_FAMILY, fontSize: 9, fill: hexToNumber(base.textInverse) };
 
@@ -36,6 +37,8 @@ export interface MazeGraphData {
    *  separately so `buildCrossFloorMarkers` can still draw a floor badge for each one. Only their
    *  endpoints are read; they are never rendered as ordinary edge lines. */
   crossFloorEdges?: EdgeDto[];
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
@@ -56,7 +59,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       || data.resolveNodeLevel !== prev.resolveNodeLevel
       || data.resolveNodeCell !== prev.resolveNodeCell
       || data.activeFloorIndex !== prev.activeFloorIndex
-      || data.crossFloorEdges !== prev.crossFloorEdges;
+      || data.crossFloorEdges !== prev.crossFloorEdges
+      || data.seam !== prev.seam;
     const debugChanged = !prev
       || data.showNodeIds !== prev.showNodeIds
       || data.showCoords !== prev.showCoords;
@@ -78,7 +82,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   }
 
   private renderGraph(data: MazeGraphData): void {
-    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdges } = data;
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdges, seam } = data;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
@@ -86,7 +90,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
     const nodePos = buildNodePositions(nodes, cfg, directedPairs);
 
-    const renderEdges = buildPairedRenderEdges(edges, nodePos);
+    const renderEdges = buildPairedRenderEdges(edges, nodePos, seam);
     this.drawEdges(renderEdges, canvas.edge.default);
 
     const renderNodes: RenderNode[] = nodes.map(n => ({ id: n.id, pos: nodePos.get(n.id)! }));

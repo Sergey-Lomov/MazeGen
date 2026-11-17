@@ -90,6 +90,21 @@ describe("buildMarkerIndexEndpointResolver", () => {
     expect(resolve(10, "teleport").borderMatchColor).toBe(0xcccccc); // no border -> edgeColor
   });
 
+  it("with merge off, a coinciding teleport endpoint resolves against its own group's override", () => {
+    const edges: TeleportEdge[] = [
+      { from: [1, 1], to: [4, 4], oneWay: false, fromNode: 10, toNode: 11 },
+      { from: [1, 1], to: [9, 9], oneWay: false, fromNode: 10, toNode: 12 },
+    ];
+    const resolve = buildMarkerIndexEndpointResolver({
+      teleportEdges: edges, teleportStyle: teleportStyle({ borderWidth: 0 }),
+      groupCustomization: true, mergeTeleports: false,
+      groupOverrides: { "10-11": { fillColor: 0x111111, borderColor: 0x111111 }, "10-12": { fillColor: 0x222222, borderColor: 0x222222 } },
+      verticalStyle: verticalStyle(),
+    });
+    expect(resolve(11, "teleport").borderMatchColor).toBe(0x111111);
+    expect(resolve(12, "teleport").borderMatchColor).toBe(0x222222);
+  });
+
   it("applies a TeleportGroupOverride covering the endpoint's own cell", () => {
     const edges: TeleportEdge[] = [{ from: [1, 1], to: [4, 4], oneWay: false, fromNode: 10, toNode: 11 }];
     // The resolver keys overrides by `TeleportGroup.key` (a sorted edge-key join). Rather than

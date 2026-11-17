@@ -1,39 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  canonicalize,
-  edgeKey,
-  computeInvalidKeysFromCells,
-  computeAutoLockedNodes,
-  applyTool,
-  computeInvalidTeleportIds,
-  computeInvalidMarkers,
-  computeInvalidEndpoint,
-  computeInvalidLockedNodeKeys,
-  cycleTeleportDirection,
-  removeTeleport,
-  moveTeleportEndpoint,
-  presetTeleportEntryToState,
-  pickEdgeAtPosition,
-  presetEdgeKey,
-  rotatePresetSplitPoint,
-  rotatePresetSplitPointBreaksNeighborShape,
-  resolvePresetPartnerAt,
-  allNodesAt,
-  presetSplitNodeFaceKinds,
-  presetConnectionsOnLevel,
-  cellExistsAt,
-  computeInvalidVerticalPassageIds,
-  computeInvalidElevatorIds,
-  cycleVerticalPassageDirection,
-  moveVerticalPassageEndpoint,
-  moveElevatorEndpoint,
-  presetVerticalPassageDirectionToDto,
-  pickTeleportEndpointAt,
-  pickVerticalPassageEndpointAt,
-  pickElevatorEndpointAt,
-  lockedNodesWithMovedLock,
-} from "../pixi/fieldEditUtils";
+import { canonicalize, edgeKey, computeInvalidKeysFromCells, computeAutoLockedNodes, applyTool, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, presetTeleportEntryToState, pickEdgeAtPosition, presetConnectionsOnLevel, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, cycleVerticalPassageDirection, moveVerticalPassageEndpoint, moveElevatorEndpoint, presetVerticalPassageDirectionToDto, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, lockedNodesWithMovedLock } from "../pixi/fieldEditUtils";
+import { presetEdgeKey, rotatePresetSplitPoint, rotatePresetSplitPointBreaksNeighborShape, resolvePresetPartnerAt, allNodesAt, presetSplitNodeFaceKinds } from "../pixi/presetSplitResolve";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
@@ -410,6 +378,27 @@ describe("computeAutoLockedNodes", () => {
     ]);
     const result = computeAutoLockedNodes(connections, squareLevelFields);
     expect(result.has("-1,-1")).toBe(true);
+  });
+
+  it("an entry whose cell is outside the field locks nothing", () => {
+    const connections = new Map([[edgeKey([5, 5], [6, 5]), entry(5, 5, 6, 5)]]);
+    expect(computeAutoLockedNodes(connections, squareLevelFields).size).toBe(0);
+  });
+
+  it("locks the corner on its own floor only, keyed with the level suffix", () => {
+    const upper: LevelField = { level: 1, cfg: squareCfg };
+    const at = (fx: number, fy: number, tx: number, ty: number, level: number): PresetConnectionEntry => ({
+      from: presetEndpoint([fx, fy], undefined, level),
+      to: presetEndpoint([tx, ty], undefined, level),
+      state: "passage",
+      source: "user",
+    });
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([-1, -1], undefined, 1), presetEndpoint([0, -1], undefined, 1)), at(-1, -1, 0, -1, 1)],
+      [presetEdgeKey(presetEndpoint([-1, -1], undefined, 1), presetEndpoint([-1, 0], undefined, 1)), at(-1, -1, -1, 0, 1)],
+    ]);
+    const result = computeAutoLockedNodes(connections, [{ level: undefined, cfg: squareCfg }, upper]);
+    expect([...result]).toEqual(["-1,-1@1"]);
   });
 
   it("corner node with only one interior edge defined is not locked", () => {

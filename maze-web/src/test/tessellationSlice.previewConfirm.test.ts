@@ -9,6 +9,8 @@ import { presetParams } from "../pixi/fieldOps";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldPresetTopology: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPresetTopology,
+  getFieldPresetCreases: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPresetCreases,
   getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
   translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
   reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
@@ -78,7 +80,7 @@ describe("mazeStore preview/confirm flow", () => {
       tessellationKind: "square",
       availableChecks: [{ id: "split_pattern_shape", label: "", description: "", issue_kinds: ["invalid_split_tile"], params: [{ id: "patterns", label: "", kind: { type: "pattern_list", with_weights: false } }] }],
       rules: [{
-        id: "r", name: null, kind: "invalid_split_tile", nextLocalCheckId: 1, strategyId: null, disabled: false,
+        id: "r", name: null, kind: "invalid_split_tile", nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false,
         ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false,
         checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square, hex]) }, disabled: false }],
       }],
@@ -181,7 +183,7 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.edges).toHaveLength(0);
     expect(s.start).toBeNull();
     expect(s.finish).toBeNull();
-    expect(s.pngExportSettings.print.scaleAutoFit).toBe(true);
+    expect(s.pngExportSettings.print.scaleAutoFit).toBe(false);
   });
 
   it("confirmTessellation with different kind clears all incompatible presets", () => {
@@ -227,6 +229,69 @@ describe("mazeStore preview/confirm flow", () => {
     expect([s.floorFields[TEST_FLOOR_ID].fieldConfig.tessellation.kind, s.floorFields[TEST_FLOOR_ID].fieldConfig.shape.shape]).toEqual(["hex", "hexagon"]);
     expect(s.floorFields[otherFloorId].isEditingField).toBe(false);
     expect([s.floorFields[otherFloorId].fieldConfig.tessellation.kind, s.floorFields[otherFloorId].fieldConfig.shape.shape]).toEqual(["hex", "hexagon"]);
+  });
+
+  it("confirmTessellation with an unchanged tessellation keeps every floor's field (GitHub issue #881)", () => {
+    const otherFloorId = "floor_2";
+    const s0 = useMazeStore.getState();
+    const other = baseFloorFieldConfig({ isEditingField: true, fieldPoints: new Set([1, 2, 3]) });
+    useMazeStore.setState({
+      previewKind: s0.tessellationKind,
+      previewParams: s0.tessellationParams,
+      previewHexOrientation: s0.hexOrientation,
+      previewTriOrientation: s0.triOrientation,
+      floorFields: { ...s0.floorFields, [otherFloorId]: other },
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.floorFields[TEST_FLOOR_ID]).toBe(s0.floorFields[TEST_FLOOR_ID]);
+    expect(s.floorFields[otherFloorId]).toBe(other);
+  });
+
+  it("confirmTessellation with a changed orientation still rebuilds the field", () => {
+    const s0 = useMazeStore.getState();
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      previewKind: "hex",
+      hexOrientation: "flat_top",
+      previewHexOrientation: "pointy_top",
+    });
+    useMazeStore.getState().confirmTessellation();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID]).not.toBe(s0.floorFields[TEST_FLOOR_ID]);
+  });
+
+  it("a changed orientation reports data loss and clears the maze and presets", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      previewKind: "hex",
+      hexOrientation: "flat_top",
+      previewHexOrientation: "pointy_top",
+      presetsDirty: true,
+      mazeDirty: true,
+      presetStart: { point: [0, 0] },
+    });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(true);
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toBeNull();
+    expect(s.mazeDirty).toBe(false);
+  });
+
+  it("a params change reports data loss and clears the maze and presets", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    useMazeStore.getState().confirmTessellation();
+    useMazeStore.setState({ presetsDirty: true, mazeDirty: true, presetStart: { point: [0, 0] } });
+    useMazeStore.getState().setPreviewParams({ first_ring_cells: 15, ring_layout: "classic", max_cells: 3000 });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(true);
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toBeNull();
+    expect(s.mazeDirty).toBe(false);
+  });
+
+  it("an orientation of an unused slot does not count as a change", () => {
+    useMazeStore.setState({ tessellationKind: "square", previewKind: "square", presetsDirty: true, previewHexOrientation: "pointy_top", hexOrientation: "flat_top" });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(false);
   });
 });
 

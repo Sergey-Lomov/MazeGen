@@ -2,6 +2,7 @@ use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells,
     hexagon_cells, param, triangle_cells,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, validate_rect_topology};
 use super::square::{cell_range, grid_candidates};
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
@@ -51,6 +52,8 @@ pub enum CairoTileKind {
 
 static CAIRO_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
     LazyLock::new(|| [ShapeDescriptor::cairo_pentagon()]);
+
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("pentagon")];
 
 // `faces_of` per orientation: the canonical counter-clockwise order starting at `Twin` (the long
 // side) — the face slots are not in the same circular order on every orientation.
@@ -217,6 +220,11 @@ impl Tessellation for CairoTessellation {
     type CellId = CairoPoint;
     type Face = CairoFace;
 
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
+
     fn is_valid_cell(&self, cell: CairoPoint) -> bool {
         CairoTessellation::is_valid_cell(cell)
     }
@@ -268,6 +276,11 @@ impl Tessellation for CairoTessellation {
     }
 
     /// Area centroid of the cell's pentagon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        use std::f64::consts::SQRT_2;
+        Some([Point::new(-SQRT_2, -SQRT_2), Point::new(SQRT_2, -SQRT_2)])
+    }
+
     fn center(&self, cell: CairoPoint) -> Point {
         let vertices = cairo_vertices(cell);
         let (mut cx, mut cy, mut doubled_area) = (0.0, 0.0, 0.0);
@@ -324,7 +337,7 @@ impl Tessellation for CairoTessellation {
         // `(0, 0)` is not a Cairo cell; the lattice origin is still the natural center.
         let origin = Point::default();
         let mut cells = match key {
-            "rect" => {
+            "rect" | "cylinder" | "torus" => {
                 centered_cairo_rect(param(params, "cols") as i32, param(params, "rows") as i32)
             }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
@@ -333,6 +346,9 @@ impl Tessellation for CairoTessellation {
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            validate_rect_topology(self, &cells, key, params)?;
+        }
         Ok(cells)
     }
 
@@ -413,8 +429,14 @@ pub fn cairo_rect(cols: usize, rows: usize) -> Vec<CairoPoint> {
 }
 
 /// Preset field shapes of the Cairo grid, in UI order.
-const CAIRO_PRESETS: [PresetDescriptor; 4] =
-    [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET, HEXAGON_PRESET];
+const CAIRO_PRESETS: [PresetDescriptor; 6] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    HEXAGON_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// `CairoTessellation::rect` translated around the origin by whole fundamental blocks. Cairo's
 /// checkerboard repeats after two blocks, so the block offset keeps an even parity sum; otherwise a

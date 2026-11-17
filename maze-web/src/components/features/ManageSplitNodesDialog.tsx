@@ -5,7 +5,7 @@ import {
   resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, resolveEndpointToHoverPoint,
   buildLogicalCandidates, resolvePartnerForPlacement,
 } from "../../pixi/postEditEndpoint";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbor, resolveFaceNeighbors } from "../../pixi/faceNeighbors";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
@@ -14,9 +14,10 @@ import { postEditTargetLabel, type SplitLabelContext } from "../../pixi/postEdit
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditUtils";
+import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditRotation";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
-import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";
+import { bringSidePanelToFront } from "../SidePanel";
+import { buildPostEditPointEntities, postEditNodesAt } from "../../pixi/postEditPointEntities";
 import type { TileFace, TileFaceKind } from "./TileFaceEditor";
 import { resolveActiveSplitEndpoint, splitPointKey, useSplitDialogFieldCells, useSplitNodesDialogOrchestration } from "./splitNodesOrchestration";
 import * as m from "~/paraglide/messages";
@@ -136,7 +137,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const entityOriginal = nodes.find((n) => n.x === point[0] && n.y === point[1]);
   const entityNodes: PostEditEndpoint[] = entityOriginal
-    ? [nodeEndpoint(entityOriginal.id), ...slots.map((slotId) => splitEndpoint(point, slotId, level))]
+    ? postEditNodesAt(entityOriginal.id, point, slots, level)
     : [];
   const pointElements = buildPostEditPointEntities(
     entityNodes, slots,
@@ -209,11 +210,9 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
   // named special-split topology for `semanticNames` below.
   const facesOf = (endpoint: PostEditEndpoint): TileFace[] => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    return offsets.map(([dx, dy]) => {
-      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-      if (boundary) return { kind: "wall" as TileFaceKind, boundary };
+    return resolveFaceNeighbors(cfg, point, inFieldCells).map((neighbor) => {
+      const boundary = neighbor === null;
+      if (neighbor === null) return { kind: "wall" as TileFaceKind, boundary };
       if (!draftEdges) return { kind: "wall" as TileFaceKind, boundary };
 
       const neighborActive = resolveConnectedNeighborAt(neighbor, endpoint);
@@ -290,9 +289,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     if (!draftEdges) return null;
     const activeEndpoint = activeSplitNode[key] ?? originalEndpoint;
     if (!activeEndpoint) return null;
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    const [dx, dy] = offsets[offsetIndex];
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighbor = resolveFaceNeighbor(cfg, point, offsetIndex, inFieldCells);
+    if (neighbor === null) return null;
     const neighborActive = resolveConnectedNeighborAt(neighbor, activeEndpoint);
     return neighborActive ? { point: activeEndpoint, neighbor: neighborActive } : null;
   };
@@ -328,6 +326,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
+      allowFaceReassignmentRotation={cfg.tessellation.kind === "radial"}
       wouldBreakNeighborShape={(direction) => draftEdges !== null && rotateSplitPointBreaksNeighborShape(
         draftEdges, point, slots, direction, cfg, inFieldCells, nodes, activeSplitNode, splitPoints, level,
       )}
@@ -346,6 +345,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onEntityIdClick={(id) => {
         setPostEditHoveredEntity(null);
         setPostEditChangesEntityFilter(id);
+        bringSidePanelToFront("post-edit-changes");
         setPostEditChangesOpen(true);
       }}
       blueprints={blueprints}

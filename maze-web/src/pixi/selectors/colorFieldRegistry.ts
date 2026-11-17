@@ -1,12 +1,15 @@
 import type { MazeState } from "../../store/storeTypes";
-import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
+import { resolveGroupOverrides } from "../../store/teleportGroupLinks";
+import { lazyOverlay } from "../../store/lazyOverlay";
+import { withResolvedEdgeMarkerFloors } from "../../store/edgeMarkerLinks";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/imageExportTypes";
-import type { EdgeDto } from "../../wasm/types";
 import { splitSlotColor } from "../colorUtils";
 import { canvas } from "../colorTokens";
 import { parseColorFieldKey, type ColorFieldKey, type StaticColorFieldKey } from "../colorFieldKeys";
 import { maxSplitNodeCount } from "./mazeSelectors";
-import { hasCrossFloorTeleport } from "./mazeSelectors/teleport";
+import { buildProjectActivity, memoized, type ProjectMaze } from "./projectActivity";
+import { isPathActive, type ParamActivityContext } from "../../store/parameterLinksActivity";
+import { isSchemaPathInMode, type LinkPath } from "../../store/parameterLinkSchema";
 
 // The single source of truth for *what a color field is*, minus its display name: when it is
 // visible, where its value lives in the settings, and where an edit writes back (GitHub issue
@@ -32,89 +35,67 @@ export interface ColorVisibilityContext {
   /** Number of split-node color slots (largest split node's arity). */
   slotCount: number;
   grid: boolean;
-  /** `wallColor` — hidden when the random-wall-color palette replaces the single wall color. */
-  wall: boolean;
   innerGrid: boolean;
-  oneWayIndicator: boolean;
-  teleports: boolean;
-  crossFloorTeleports: boolean;
-  /** `teleportConnectorColor` — the connector subsection is hidden when the style is `"none"`. */
-  teleportConnector: boolean;
+  /** `edgeMarkers.color` and the per-marker colours (GitHub issue #902) — shown while the markers are. */
+  edgeMarkers: boolean;
+  /** Each floor's edge marker keys in display order: the number of a marker's colour field (see {@link ColorVisibilityMaze}). */
+  edgeMarkerOrder: MazeState["edgeMarkerOrder"];
+  /** The floor ids bottom to top: a floor's level is its position. */
+  floorIds: string[];
   /** Per-group teleport fill/border overrides — only applied while group customization is on. */
   teleportGroupOverrides: boolean;
-  twoWayPassages: boolean;
-  oneWayPassages: boolean;
-  elevators: boolean;
   /** The whole "Vertical connections" section wrapper. */
   vertical: boolean;
   /** `"decorative"` only exists in Vector by walls; corridors always draw the abstract style. */
   verticalStyle: "abstract" | "decorative";
-  /** The maze has at least one marker that could ever show an index (teleport, vertical passage
-   *  or elevator) — independent of the coverage settings. The whole "Marker indices" section is
-   *  hidden without it. */
-  markerIndexAvailable: boolean;
   /** The "Marker indices" layer's colors — hidden when the section is hidden or the layer is disabled. */
   markerIndex: boolean;
-  /** `markerIndex.borderColor` — hidden when the plate border color follows the marker. */
-  markerIndexBorder: boolean;
   floorLabel: boolean;
-  floorLabelBackground: boolean;
-  floorLabelBorder: boolean;
-}
-
-function hasDirectionalBasicEdge(edges: EdgeDto[]): boolean {
-  const basic = edges.filter((e) => e.kind === "basic");
-  const forward = new Set(basic.map((e) => `${e.from}->${e.to}`));
-  return basic.some((e) => !forward.has(`${e.to}->${e.from}`));
-}
-
-function verticalVisibility(edges: EdgeDto[], replaceTwoFloorElevatorsWithStairs: boolean) {
-  const passageEdges = edges.filter((e) => e.kind === "vertical_passage");
-  const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
-  const oneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-  const elevators = edges.some((e) => e.kind === "elevator");
-  const twoWayPassages =
-    passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
-    (replaceTwoFloorElevatorsWithStairs && elevators);
-  return { twoWayPassages, oneWayPassages, elevators };
+  /** The maze-derived gates the parameter link schema's rules read (GitHub issue #965), over the whole project. */
+  activity: ParamActivityContext;
 }
 
 /** Project-wide input of {@link buildColorVisibility} — the unscoped maze graph. */
-export interface ColorVisibilityMaze {
-  nodes: MazeState["nodes"];
-  edges: EdgeDto[];
-  floors: MazeState["floors"];
+export interface ColorVisibilityMaze extends ProjectMaze {
+  /** Each floor's edge marker keys in display order (`MazeState.edgeMarkerOrder`, GitHub issue #902): a marker's number on its floor. */
+  edgeMarkerOrder?: MazeState["edgeMarkerOrder"];
 }
 
+/** Whether some floor has a glue (GitHub issue #901): the `hasGlues` input of {@link buildColorVisibility}. */
+export function hasAnyGlue(floorTopology: MazeState["floorTopology"]): boolean {
+  return Object.values(floorTopology).some((topology) => topology.groups.length > 0);
+}
+
+/** The visibility context of `rawSettings` over the unscoped maze. Lazy (GitHub issue #928): `settings` is an
+ *  overlay that resolves group/edge-marker overrides when first read, and every flag is a getter computed on
+ *  access (maze scans memoized), so over dependency-tracked settings a reader of one color field subscribes only
+ *  to that field and the flags gating it. */
 export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: ExportSettings): ColorVisibilityContext {
-  const s = withResolvedGroupOverrides(rawSettings);
-  const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs);
-  const walls = "verticalStyle" in s;
-  const teleports = maze.edges.some((e) => e.kind === "teleport");
-  const markerIndexAvailable = teleports || elevators || maze.edges.some((e) => e.kind === "vertical_passage");
+  const s = lazyOverlay<ExportSettings>(rawSettings, {
+    teleportGroupOverrides: () => resolveGroupOverrides(rawSettings),
+    edgeMarkers: () => withResolvedEdgeMarkerFloors(rawSettings.edgeMarkers, rawSettings.links),
+  });
+  const walls = memoized(() => "verticalStyle" in s);
+  const slotCount = memoized(() => maxSplitNodeCount(maze.nodes));
+  const floorIds = memoized(() => maze.floors.map((floor) => floor.id));
+  const activity = buildProjectActivity(maze, s.replaceTwoFloorElevatorsWithStairs);
   return {
+    activity,
     settings: s,
-    mode: walls ? "walls" : "corridors",
-    slotCount: maxSplitNodeCount(maze.nodes),
-    grid: s.showGrid,
-    innerGrid: "showInnerGrid" in s && s.showInnerGrid,
-    wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
-    oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
-    teleports,
-    crossFloorTeleports: hasCrossFloorTeleport(maze.nodes, maze.edges),
-    teleportConnector: s.teleportConnectorStyle !== "none",
-    teleportGroupOverrides: s.teleportGroupCustomization,
-    twoWayPassages,
-    oneWayPassages,
-    elevators,
-    vertical: twoWayPassages || oneWayPassages || elevators || maze.floors.length > 1,
-    verticalStyle: walls ? (s as VectorByWallsSettings).verticalStyle : "abstract",
-    markerIndexAvailable,
-    markerIndex: markerIndexAvailable && s.markerIndex.enabled,
-    markerIndexBorder: !s.markerIndex.borderColorFromMarker,
-    floorLabel: maze.floors.length > 1 && s.floorLabel.enabled,
-    floorLabelBackground: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none",
-    floorLabelBorder: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none" && s.floorLabel.borderWidth > 0,
+    get mode() { return walls() ? "walls" : "corridors"; },
+    get slotCount() { return slotCount(); },
+    get grid() { return s.showGrid; },
+    get innerGrid() { return "showInnerGrid" in s && s.showInnerGrid; },
+    get edgeMarkers() { return s.edgeMarkers.mode !== "hidden"; },
+    edgeMarkerOrder: maze.edgeMarkerOrder ?? {},
+    get floorIds() { return floorIds(); },
+    get teleportGroupOverrides() { return s.teleportGroupCustomization; },
+    get vertical() {
+      return activity.hasVerticalSection || activity.hasMultipleFloors;
+    },
+    get verticalStyle() { return walls() ? (s as VectorByWallsSettings).verticalStyle : "abstract"; },
+    get markerIndex() { return activity.hasMarkerIndexSource && s.markerIndex.enabled; },
+    get floorLabel() { return activity.hasMultipleFloors && s.floorLabel.enabled; },
   };
 }
 
@@ -137,20 +118,22 @@ export function isLayoutGateOpen(gate: LayoutGateKey, ctx: ColorVisibilityContex
   return LAYOUT_GATES[gate](ctx);
 }
 
-const always: Visible = () => true;
-const twoWayAbstract: Visible = (c) => LAYOUT_GATES.verticalAbstract(c) && c.twoWayPassages;
-const oneWayAbstract: Visible = (c) => LAYOUT_GATES.verticalAbstract(c) && c.oneWayPassages;
-const elevatorAbstract: Visible = (c) => LAYOUT_GATES.verticalAbstract(c) && c.elevators;
-const twoWayDecor: Visible = (c) => LAYOUT_GATES.verticalDecorative(c) && c.twoWayPassages;
-const oneWayDecor: Visible = (c) => LAYOUT_GATES.verticalDecorative(c) && c.oneWayPassages;
-const elevatorDecor: Visible = (c) => LAYOUT_GATES.verticalDecorative(c) && c.elevators;
-const elevatorBadge: Visible = (c) => c.vertical && c.elevators && c.settings.elevatorBadges.enabled;
-const abstractShared: Visible = LAYOUT_GATES.verticalAbstract;
+/** Visibility taken from the parameter link schema (GitHub issue #965): the field is shown exactly when its
+ *  settings-panel row `path` is, so the panel and the color consumers cannot disagree. A path of the other render
+ *  mode has no row there, so the field is hidden. */
+const schemaField = (path: LinkPath, def: Omit<ColorFieldDef, "visible" | "path">): ColorFieldDef => ({
+  ...def,
+  path,
+  visible: (c) => isSchemaPathInMode(path, c.mode) && isPathActive(path, c.mode, c.activity, c.settings),
+});
 
 /** Everything the system knows about one static color field except its display name. */
 export interface ColorFieldDef {
   /** Is the field shown/drawn under the context — see {@link ColorVisibilityContext}. */
   visible: Visible;
+  /** The settings-panel row this field is edited in, when it has one: `visible` is then derived from the
+   *  parameter link schema (GitHub issue #965), and a consistency test checks it against the panel. */
+  path?: LinkPath;
   /** The color currently stored for the field, or `undefined` when it has none (e.g. an unset
    *  start/finish caption color, or a walls-only field read from a corridors profile). */
   get: (s: ExportSettings) => number | undefined;
@@ -161,7 +144,9 @@ export interface ColorFieldDef {
 /** The registry of every static color field. A `Record` over {@link StaticColorFieldKey}: adding a
  *  key without a definition (visibility, getter, setter) does not compile. */
 export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
-  bgFill: { visible: always, get: (s) => s.background, set: (s, v) => { s.background = v; } },
+  bgFill: schemaField("background", { get: (s) => s.background, set: (s, v) => { s.background = v; } }),
+  // The grid colors keep their own rule (GitHub issue #965): the panel always shows their rows so a color can be
+  // picked before the grid is switched on, but a grid that is not drawn must not take part in warnings.
   bgGrid: { visible: (c) => c.grid, get: (s) => s.gridColor, set: (s, v) => { s.gridColor = v; } },
   innerGrid: {
     visible: (c) => c.mode === "walls" && c.innerGrid,
@@ -169,126 +154,126 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
     set: (s, v) => { if ("innerGridColor" in s) s.innerGridColor = v; },
   },
 
-  corridorFill: {
-    visible: (c) => c.mode === "corridors",
+  cutLines: schemaField("cutLinesColor", { get: (s) => s.cutLinesColor, set: (s, v) => { s.cutLinesColor = v; } }),
+
+  glueTabFill: schemaField("glueTabs.fillColor", { get: (s) => s.glueTabs.fillColor, set: (s, v) => { s.glueTabs.fillColor = v; } }),
+  glueTabLine: schemaField("glueTabs.lineColor", { get: (s) => s.glueTabs.lineColor, set: (s, v) => { s.glueTabs.lineColor = v; } }),
+  edgeMarker: schemaField("edgeMarkers.color", { get: (s) => s.edgeMarkers.color, set: (s, v) => { s.edgeMarkers.color = v; } }),
+
+  corridorFill: schemaField("color", {
     get: (s) => ("color" in s ? s.color : undefined),
     set: (s, v) => { if ("color" in s) s.color = v; },
-  },
+  }),
 
-  tilesFloor: {
-    visible: (c) => c.mode === "walls",
+  tilesFloor: schemaField("floorColor", {
     get: (s) => ("floorColor" in s ? s.floorColor : undefined),
     set: (s, v) => { if ("floorColor" in s) s.floorColor = v; },
-  },
-  tilesWall: {
-    visible: (c) => c.mode === "walls" && c.wall,
+  }),
+  tilesWall: schemaField("wallColor", {
     get: (s) => ("wallColor" in s ? s.wallColor : undefined),
     set: (s, v) => { if ("wallColor" in s) s.wallColor = v; },
-  },
+  }),
 
-  oneWaysMarker: { visible: (c) => c.oneWayIndicator, get: (s) => s.oneWayColor, set: (s, v) => { s.oneWayColor = v; } },
+  oneWaysMarker: schemaField("oneWayColor", { get: (s) => s.oneWayColor, set: (s, v) => { s.oneWayColor = v; } }),
 
-  startFill: { visible: always, get: (s) => s.startMarker.fillColor, set: (s, v) => { s.startMarker.fillColor = v; } },
-  startBorder: { visible: always, get: (s) => s.startMarker.borderColor, set: (s, v) => { s.startMarker.borderColor = v; } },
-  startText: {
-    visible: (c) => c.settings.startMarker.textEnabled !== false,
+  startFill: schemaField("startMarker.fillColor", { get: (s) => s.startMarker.fillColor, set: (s, v) => { s.startMarker.fillColor = v; } }),
+  startBorder: schemaField("startMarker.borderColor", { get: (s) => s.startMarker.borderColor, set: (s, v) => { s.startMarker.borderColor = v; } }),
+  startText: schemaField("startMarker.textColor", {
     get: (s) => s.startMarker.textColor,
     set: (s, v) => { s.startMarker.textColor = v; },
-  },
-  finishFill: { visible: always, get: (s) => s.finishMarker.fillColor, set: (s, v) => { s.finishMarker.fillColor = v; } },
-  finishBorder: { visible: always, get: (s) => s.finishMarker.borderColor, set: (s, v) => { s.finishMarker.borderColor = v; } },
-  finishText: {
-    visible: (c) => c.settings.finishMarker.textEnabled !== false,
+  }),
+  finishFill: schemaField("finishMarker.fillColor", { get: (s) => s.finishMarker.fillColor, set: (s, v) => { s.finishMarker.fillColor = v; } }),
+  finishBorder: schemaField("finishMarker.borderColor", { get: (s) => s.finishMarker.borderColor, set: (s, v) => { s.finishMarker.borderColor = v; } }),
+  finishText: schemaField("finishMarker.textColor", {
     get: (s) => s.finishMarker.textColor,
     set: (s, v) => { s.finishMarker.textColor = v; },
-  },
+  }),
+  // Start/finish opening arrows (GitHub issue #330, "Vector by walls" only).
+  startOpeningArrow: schemaField("startOpening.color", {
+    get: (s) => ("startOpening" in s ? s.startOpening.color : undefined),
+    set: (s, v) => { if ("startOpening" in s) s.startOpening.color = v; },
+  }),
+  finishOpeningArrow: schemaField("finishOpening.color", {
+    get: (s) => ("finishOpening" in s ? s.finishOpening.color : undefined),
+    set: (s, v) => { if ("finishOpening" in s) s.finishOpening.color = v; },
+  }),
 
-  teleportEdge: { visible: (c) => c.teleports, get: (s) => s.teleportMarker.fillColor, set: (s, v) => { s.teleportMarker.fillColor = v; } },
-  teleportEdgeBorder: { visible: (c) => c.teleports, get: (s) => s.teleportMarker.borderColor, set: (s, v) => { s.teleportMarker.borderColor = v; } },
-  teleportConnector: {
-    visible: (c) => c.teleports && c.teleportConnector,
+  teleportEdge: schemaField("teleportMarker.fillColor", { get: (s) => s.teleportMarker.fillColor, set: (s, v) => { s.teleportMarker.fillColor = v; } }),
+  teleportEdgeBorder: schemaField("teleportMarker.borderColor", { get: (s) => s.teleportMarker.borderColor, set: (s, v) => { s.teleportMarker.borderColor = v; } }),
+  teleportConnector: schemaField("teleportConnectorColor", {
     get: (s) => s.teleportConnectorColor,
     set: (s, v) => { s.teleportConnectorColor = v; },
-  },
-  teleportBadgeFill: {
-    visible: (c) => c.teleports && c.crossFloorTeleports,
+  }),
+  teleportBadgeFill: schemaField("teleportFloorBadge.fillColor", {
     get: (s) => s.teleportFloorBadge.fillColor,
     set: (s, v) => { s.teleportFloorBadge.fillColor = v; },
-  },
-  teleportBadgeBorder: {
-    visible: (c) => c.teleports && c.crossFloorTeleports,
+  }),
+  teleportBadgeBorder: schemaField("teleportFloorBadge.borderColor", {
     get: (s) => s.teleportFloorBadge.borderColor,
     set: (s, v) => { s.teleportFloorBadge.borderColor = v; },
-  },
-  teleportBadgeText: {
-    visible: (c) => c.teleports && c.crossFloorTeleports,
+  }),
+  teleportBadgeText: schemaField("teleportFloorBadge.textColor", {
     get: (s) => s.teleportFloorBadge.textColor,
     set: (s, v) => { s.teleportFloorBadge.textColor = v; },
-  },
+  }),
 
   // Decorative-style vertical connection colors (Vector by walls only).
-  decorLineTwoWay: {
-    visible: twoWayDecor,
+  decorLineTwoWay: schemaField("decorativeStairsTwoWay.lineColor", {
     get: (s) => ("decorativeStairsTwoWay" in s ? s.decorativeStairsTwoWay.lineColor : undefined),
     set: (s, v) => { if ("decorativeStairsTwoWay" in s) s.decorativeStairsTwoWay.lineColor = v; },
-  },
-  decorLineOneWay: {
-    visible: oneWayDecor,
+  }),
+  decorLineOneWay: schemaField("decorativeStairsOneWay.lineColor", {
     get: (s) => ("decorativeStairsOneWay" in s ? s.decorativeStairsOneWay.lineColor : undefined),
     set: (s, v) => { if ("decorativeStairsOneWay" in s) s.decorativeStairsOneWay.lineColor = v; },
-  },
-  decorLineElevator: {
-    visible: elevatorDecor,
+  }),
+  decorLineElevator: schemaField("decorativeElevator.lineColor", {
     get: (s) => ("decorativeElevator" in s ? s.decorativeElevator.lineColor : undefined),
     set: (s, v) => { if ("decorativeElevator" in s) s.decorativeElevator.lineColor = v; },
-  },
-  decorArrowTwoWay: {
-    visible: twoWayDecor,
+  }),
+  decorArrowTwoWay: schemaField("decorativeStairsArrowColor", {
     get: (s) => ("decorativeStairsArrowColor" in s ? s.decorativeStairsArrowColor : undefined),
     set: (s, v) => { if ("decorativeStairsArrowColor" in s) s.decorativeStairsArrowColor = v; },
-  },
-  decorArrowOneWay: {
-    visible: oneWayDecor,
+  }),
+  decorArrowOneWay: schemaField("decorativeStairsOneWayArrowColor", {
     get: (s) => ("decorativeStairsOneWayArrowColor" in s ? s.decorativeStairsOneWayArrowColor : undefined),
     set: (s, v) => { if ("decorativeStairsOneWayArrowColor" in s) s.decorativeStairsOneWayArrowColor = v; },
-  },
+  }),
 
   // GitHub issue #701 — "Shared style" > "Markers" fill / border sources.
-  sharedMarkerFill: { visible: always, get: (s) => s.markerFillColor, set: (s, v) => { s.markerFillColor = v; } },
-  sharedMarkerBorder: { visible: always, get: (s) => s.markerBorderColor, set: (s, v) => { s.markerBorderColor = v; } },
+  sharedMarkerFill: schemaField("markerFillColor", { get: (s) => s.markerFillColor, set: (s, v) => { s.markerFillColor = v; } }),
+  sharedMarkerBorder: schemaField("markerBorderColor", { get: (s) => s.markerBorderColor, set: (s, v) => { s.markerBorderColor = v; } }),
 
   // "Vertical connections" section's own "Shared style" colors (GitHub issue #668).
-  verticalFill: { visible: abstractShared, get: (s) => s.verticalFillColor, set: (s, v) => { s.verticalFillColor = v; } },
-  verticalArrow: { visible: abstractShared, get: (s) => s.verticalArrowColor, set: (s, v) => { s.verticalArrowColor = v; } },
-  verticalDecorLine: {
-    visible: LAYOUT_GATES.verticalDecorative,
+  verticalFill: schemaField("verticalFillColor", { get: (s) => s.verticalFillColor, set: (s, v) => { s.verticalFillColor = v; } }),
+  verticalBorder: schemaField("verticalBorderColor", { get: (s) => s.verticalBorderColor, set: (s, v) => { s.verticalBorderColor = v; } }),
+  verticalArrow: schemaField("verticalArrowColor", { get: (s) => s.verticalArrowColor, set: (s, v) => { s.verticalArrowColor = v; } }),
+  verticalDecorLine: schemaField("verticalDecorativeLineColor", {
     get: (s) => ("verticalDecorativeLineColor" in s ? s.verticalDecorativeLineColor : undefined),
     set: (s, v) => { if ("verticalDecorativeLineColor" in s) s.verticalDecorativeLineColor = v; },
-  },
+  }),
 
-  twoWayFill: { visible: twoWayAbstract, get: (s) => s.twoWayPassageMarker.fillColor, set: (s, v) => { s.twoWayPassageMarker.fillColor = v; } },
-  twoWayBorder: { visible: twoWayAbstract, get: (s) => s.twoWayPassageMarker.borderColor, set: (s, v) => { s.twoWayPassageMarker.borderColor = v; } },
-  twoWayArrow: { visible: twoWayAbstract, get: (s) => s.twoWayArrowColor, set: (s, v) => { s.twoWayArrowColor = v; } },
-  oneWayFill: { visible: oneWayAbstract, get: (s) => s.oneWayPassageMarker.fillColor, set: (s, v) => { s.oneWayPassageMarker.fillColor = v; } },
-  oneWayBorder: { visible: oneWayAbstract, get: (s) => s.oneWayPassageMarker.borderColor, set: (s, v) => { s.oneWayPassageMarker.borderColor = v; } },
-  oneWayArrow: { visible: oneWayAbstract, get: (s) => s.oneWayArrowColor, set: (s, v) => { s.oneWayArrowColor = v; } },
-  elevatorFill: { visible: elevatorAbstract, get: (s) => s.elevatorMarker.fillColor, set: (s, v) => { s.elevatorMarker.fillColor = v; } },
-  elevatorBorder: { visible: elevatorAbstract, get: (s) => s.elevatorMarker.borderColor, set: (s, v) => { s.elevatorMarker.borderColor = v; } },
-  elevatorArrow: { visible: elevatorAbstract, get: (s) => s.elevatorArrowColor, set: (s, v) => { s.elevatorArrowColor = v; } },
-  elevatorBadgeFill: { visible: elevatorBadge, get: (s) => s.elevatorBadges.fillColor, set: (s, v) => { s.elevatorBadges.fillColor = v; } },
-  elevatorBadgeBorder: { visible: elevatorBadge, get: (s) => s.elevatorBadges.borderColor, set: (s, v) => { s.elevatorBadges.borderColor = v; } },
-  elevatorBadgeText: { visible: elevatorBadge, get: (s) => s.elevatorBadges.textColor, set: (s, v) => { s.elevatorBadges.textColor = v; } },
+  twoWayFill: schemaField("twoWayPassageMarker.fillColor", { get: (s) => s.twoWayPassageMarker.fillColor, set: (s, v) => { s.twoWayPassageMarker.fillColor = v; } }),
+  twoWayBorder: schemaField("twoWayPassageMarker.borderColor", { get: (s) => s.twoWayPassageMarker.borderColor, set: (s, v) => { s.twoWayPassageMarker.borderColor = v; } }),
+  twoWayArrow: schemaField("twoWayArrowColor", { get: (s) => s.twoWayArrowColor, set: (s, v) => { s.twoWayArrowColor = v; } }),
+  oneWayFill: schemaField("oneWayPassageMarker.fillColor", { get: (s) => s.oneWayPassageMarker.fillColor, set: (s, v) => { s.oneWayPassageMarker.fillColor = v; } }),
+  oneWayBorder: schemaField("oneWayPassageMarker.borderColor", { get: (s) => s.oneWayPassageMarker.borderColor, set: (s, v) => { s.oneWayPassageMarker.borderColor = v; } }),
+  oneWayArrow: schemaField("oneWayArrowColor", { get: (s) => s.oneWayArrowColor, set: (s, v) => { s.oneWayArrowColor = v; } }),
+  elevatorFill: schemaField("elevatorMarker.fillColor", { get: (s) => s.elevatorMarker.fillColor, set: (s, v) => { s.elevatorMarker.fillColor = v; } }),
+  elevatorBorder: schemaField("elevatorMarker.borderColor", { get: (s) => s.elevatorMarker.borderColor, set: (s, v) => { s.elevatorMarker.borderColor = v; } }),
+  elevatorArrow: schemaField("elevatorArrowColor", { get: (s) => s.elevatorArrowColor, set: (s, v) => { s.elevatorArrowColor = v; } }),
+  elevatorBadgeFill: schemaField("elevatorBadges.fillColor", { get: (s) => s.elevatorBadges.fillColor, set: (s, v) => { s.elevatorBadges.fillColor = v; } }),
+  elevatorBadgeBorder: schemaField("elevatorBadges.borderColor", { get: (s) => s.elevatorBadges.borderColor, set: (s, v) => { s.elevatorBadges.borderColor = v; } }),
+  elevatorBadgeText: schemaField("elevatorBadges.textColor", { get: (s) => s.elevatorBadges.textColor, set: (s, v) => { s.elevatorBadges.textColor = v; } }),
 
-  markerIndexFill: { visible: (c) => c.markerIndex, get: (s) => s.markerIndex.fillColor, set: (s, v) => { s.markerIndex.fillColor = v; } },
-  markerIndexText: { visible: (c) => c.markerIndex, get: (s) => s.markerIndex.textColor, set: (s, v) => { s.markerIndex.textColor = v; } },
-  markerIndexBorder: {
-    visible: (c) => c.markerIndex && c.markerIndexBorder,
+  markerIndexFill: schemaField("markerIndex.fillColor", { get: (s) => s.markerIndex.fillColor, set: (s, v) => { s.markerIndex.fillColor = v; } }),
+  markerIndexText: schemaField("markerIndex.textColor", { get: (s) => s.markerIndex.textColor, set: (s, v) => { s.markerIndex.textColor = v; } }),
+  markerIndexBorder: schemaField("markerIndex.borderColor", {
     get: (s) => s.markerIndex.borderColor,
     set: (s, v) => { s.markerIndex.borderColor = v; },
-  },
-  floorLabelFill: { visible: (c) => c.floorLabelBackground, get: (s) => s.floorLabel.fillColor, set: (s, v) => { s.floorLabel.fillColor = v; } },
-  floorLabelBorder: { visible: (c) => c.floorLabelBorder, get: (s) => s.floorLabel.borderColor, set: (s, v) => { s.floorLabel.borderColor = v; } },
-  floorLabelText: { visible: (c) => c.floorLabel, get: (s) => s.floorLabel.textColor, set: (s, v) => { s.floorLabel.textColor = v; } },
+  }),
+  floorLabelFill: schemaField("floorLabel.fillColor", { get: (s) => s.floorLabel.fillColor, set: (s, v) => { s.floorLabel.fillColor = v; } }),
+  floorLabelBorder: schemaField("floorLabel.borderColor", { get: (s) => s.floorLabel.borderColor, set: (s, v) => { s.floorLabel.borderColor = v; } }),
+  floorLabelText: schemaField("floorLabel.textColor", { get: (s) => s.floorLabel.textColor, set: (s, v) => { s.floorLabel.textColor = v; } }),
 };
 
 /** Display order of the "Project colors" list, split around the two dynamic groups (per-group
@@ -296,14 +281,14 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
  *  appears in exactly one table — enforced by a test. */
 export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
   [
-    "bgFill", "bgGrid", "innerGrid", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
+    "bgFill", "bgGrid", "innerGrid", "cutLines", "glueTabFill", "glueTabLine", "edgeMarker", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
     "sharedMarkerFill", "sharedMarkerBorder",
-    "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText",
+    "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText", "startOpeningArrow", "finishOpeningArrow",
     "teleportEdge", "teleportEdgeBorder", "teleportConnector",
     "teleportBadgeFill", "teleportBadgeBorder", "teleportBadgeText",
   ],
   [
-    "verticalDecorLine", "verticalFill", "verticalArrow",
+    "verticalDecorLine", "verticalFill", "verticalBorder", "verticalArrow",
     "twoWayFill", "twoWayBorder", "twoWayArrow",
     "oneWayFill", "oneWayBorder", "oneWayArrow",
     "elevatorFill", "elevatorBorder", "elevatorArrow",
@@ -346,6 +331,7 @@ function rawValue(ctx: ColorVisibilityContext, key: ColorFieldKey): number | und
       const override = s.teleportGroupOverrides[sortedGroupKeys(ctx)[parsed.index]];
       return parsed.role === "fill" ? override?.fillColor : override?.borderColor;
     }
+    case "edgeMarker": return s.edgeMarkers.overrides[parsed.floorId]?.[parsed.markerKey]?.color;
     case "static": return STATIC_FIELD_DEFS[parsed.key]?.get(s);
   }
 }
@@ -355,7 +341,8 @@ export function isColorFieldVisible(key: ColorFieldKey, ctx: ColorVisibilityCont
   const parsed = parseColorFieldKey(key);
   switch (parsed.kind) {
     case "split": return parsed.index < ctx.slotCount;
-    case "teleportGroup": return ctx.teleports && ctx.teleportGroupOverrides;
+    case "teleportGroup": return ctx.activity.hasTeleports && ctx.teleportGroupOverrides;
+    case "edgeMarker": return ctx.edgeMarkers && ctx.activity.hasGlues;
     case "static": {
       const def = STATIC_FIELD_DEFS[parsed.key];
       return def !== undefined && def.visible(ctx);
@@ -394,6 +381,13 @@ export function writeColorField(ctx: ColorVisibilityContext, settings: ExportSet
       const role = parsed.role === "fill" ? "fillColor" : "borderColor";
       override[role] = color;
       override.linkBroken = { ...override.linkBroken, [role]: true };
+      return true;
+    }
+    case "edgeMarker": {
+      const override = settings.edgeMarkers.overrides[parsed.floorId]?.[parsed.markerKey];
+      if (!override) return false;
+      override.color = color;
+      override.linkBroken = { ...override.linkBroken, color: true };
       return true;
     }
     case "static": {

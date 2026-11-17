@@ -1,6 +1,6 @@
 use super::elevator_core::elevator_groups;
 use crate::Maze;
-use crate::graph::cycles::density_per_100;
+use crate::graph::cycles::rounded_excess_over_density;
 use crate::quality_control::check::Check;
 use crate::quality_control::{ElevatorNodes, InvalidElevatorGroupIssue};
 use crate::space::Tessellation;
@@ -61,11 +61,7 @@ impl<T: Tessellation> Check<T, InvalidElevatorGroupIssue> for MaxElevatorDensity
 
 impl MaxElevatorDensityCheck {
     fn to_remove_for(count: usize, field_cells: usize, max_density: f64) -> u32 {
-        if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
-            return 0;
-        }
-        let target_count = (max_density * field_cells as f64 / 100.0).round() as usize;
-        count.saturating_sub(target_count) as u32
+        rounded_excess_over_density(count, field_cells, max_density)
     }
 }
 

@@ -82,3 +82,25 @@ describe("buildTeleportGroups", () => {
     expect(buildTeleportGroups(edges)[0].key).toBe(buildTeleportGroups(reversed)[0].key);
   });
 });
+
+describe("buildTeleportGroups merge mode off", () => {
+  const edges: TeleportEdge[] = [
+    { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
+    { from: [5, 5], to: [9, 9], oneWay: true, fromNode: 2, toNode: 3 },
+  ];
+
+  it("keeps teleports sharing an endpoint coordinate in separate groups", () => {
+    const groups = buildTeleportGroups(edges, false);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.edgeKeys)).toEqual([[teleportEdgeKey(edges[0])], [teleportEdgeKey(edges[1])]]);
+    expect(groups[0].links).toEqual([{ from: 1, to: 2, oneWay: false }]);
+  });
+
+  it("matches merged grouping when nothing is shared", () => {
+    const apart: TeleportEdge[] = [
+      { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [9, 9], to: [3, 3], oneWay: false, fromNode: 10, toNode: 11 },
+    ];
+    expect(buildTeleportGroups(apart, false)).toEqual(buildTeleportGroups(apart, true));
+  });
+});

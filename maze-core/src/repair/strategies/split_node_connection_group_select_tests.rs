@@ -434,3 +434,57 @@ fn apply_fixes_to_remove_edges_from_a_single_group_in_one_call() {
         "to_remove=2 must fix exactly 2 edges of the group in one apply() call"
     );
 }
+
+#[test]
+fn shared_edge_across_two_groups_is_reproducible_and_never_over_removed() {
+    // e2 sits in both groups. Selection is random: either e2 goes first (one removal retires both
+    // budgets) or another edge goes first and the second group is then served separately. Never
+    // fewer than 1 or more than 2 removals, and identical for a repeated seed.
+    let build = || {
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let p = SquarePoint { x: 5, y: 0 };
+        let slot0 = field.node_at(field_level, p).unwrap();
+        let extra1 = field.add_node_at(field_level, p, &mut ids);
+        let extra2 = field.add_node_at(field_level, p, &mut ids);
+        let mut g = Graph::new();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let neighbor = field
+            .node_at(field_level, SquarePoint { x: 4, y: 0 })
+            .unwrap();
+        let e1 = g.add_edge(slot0, neighbor, EdgeKind::Basic);
+        let e2 = g.add_edge(extra1, neighbor, EdgeKind::Basic);
+        let e3 = g.add_edge(extra2, neighbor, EdgeKind::Basic);
+        (Maze::new(field, g), e1, e2, e3)
+    };
+    let (_, e1, e2, e3) = build();
+    let issue = group_issue(vec![(vec![e1, e2], 1), (vec![e2, e3], 1)]);
+    let nested = fix_target_nested();
+    let run = |seed: u64| {
+        let (mut maze, ..) = build();
+        let mut rng = MazeRng::seed_from_u64(seed);
+        let result = apply_and_commit(
+            &SplitNodeConnectionGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[(PARAM_PROTECT_ORIGINAL, "false")]),
+            &PresetState::empty(),
+            &nested,
+        );
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        [e1, e2, e3]
+            .into_iter()
+            .filter(|&id| maze.graph.edge(id).is_none())
+            .collect::<Vec<EdgeId>>()
+    };
+    for seed in 0..8 {
+        let removed = run(seed);
+        assert!((1..=2).contains(&removed.len()), "seed {seed}: {removed:?}");
+        assert_eq!(removed, run(seed), "seed {seed} must be reproducible");
+    }
+}

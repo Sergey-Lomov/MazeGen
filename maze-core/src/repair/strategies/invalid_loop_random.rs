@@ -41,7 +41,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
     /// no valid-cycle entry in `owners` is ever read. `invalid_sources` isn't read at all. A
     /// re-indexed `all` containing only the invalid cycles produces the identical result — so the
     /// `VALID_CYCLES` layer is never needed.
-    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        _nested: &[NestedStrategyConfig<T>],
+    ) -> InvalidLoopRequirement {
         InvalidLoopRequirement::empty()
     }
 
@@ -83,7 +87,7 @@ crate::impl_erased_repair_strategy!(InvalidLoopRandomStrategy, InvalidLoopIssue)
 /// reverse), standing in for what an earlier cut's real mutation would otherwise have made
 /// observable through `maze.graph.edge`/`edge_between` under the old in-place contract.
 fn apply_cuts<T: Tessellation>(
-    all: &[Vec<EdgeId>],
+    all: &[std::sync::Arc<[EdgeId]>],
     short: &[usize],
     maze: &Maze<T>,
     rng: &mut dyn RngCore,

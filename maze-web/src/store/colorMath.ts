@@ -229,6 +229,34 @@ export function distributeOklchHues(base: number, count: number): number[] {
   });
 }
 
+/** Most colors one lightness group of `distributeHueGroups` holds. */
+export const HUE_GROUP_MAX_SIZE = 8;
+/** Lightness distance (OKLCH L, 0-100) between neighbouring groups of `distributeHueGroups`. */
+export const HUE_GROUP_LIGHTNESS_STEP = 20;
+
+/** `count` colors from `base` (GitHub issue #903): split into the fewest equal groups of at most `HUE_GROUP_MAX_SIZE`
+ *  (sizes differ by one at most, larger first); a group spreads its hues evenly (`distributeOklchHues`) from `base` with its
+ *  lightness shifted. The shifts are centred on `base`, `HUE_GROUP_LIGHTNESS_STEP` apart (two groups: -10 and +10; three: -20, 0, +20),
+ *  and its hues are shifted likewise by half a hue step (360 / group size) between neighbours (two groups of 6: -15° and +15°).
+ *  `lightnessOffset` shifts every group further (a hover highlight). */
+export function distributeHueGroups(base: number, count: number, lightnessOffset = 0): number[] {
+  if (count <= 0) return [];
+  const groups = Math.ceil(count / HUE_GROUP_MAX_SIZE);
+  const { l, c, h } = colorToOklch(base);
+  const colors: number[] = [];
+  for (let g = 0; g < groups; g++) {
+    const size = Math.floor(count / groups) + (g < count % groups ? 1 : 0);
+    const groupL = Math.max(0, Math.min(100, l + lightnessOffset + (g - (groups - 1) / 2) * HUE_GROUP_LIGHTNESS_STEP));
+    // Neighbouring groups are also half a hue step apart (centred on `base`'s hue), so no two colors share a hue.
+    const hueShift = ((g - (groups - 1) / 2) * 360) / size / 2;
+    for (let i = 0; i < size; i++) {
+      const hue = h + hueShift + (360 * i) / size;
+      colors.push(oklchToColor({ l: groupL, c: Math.min(c, oklchMaxChroma(groupL, hue)), h: hue }));
+    }
+  }
+  return colors;
+}
+
 /** Pack an OKLCH triple into a 24-bit RGB number, gamut-clamped to sRGB. `l` clamps to 0-100, `c`
  *  to 0+, `h` wraps mod 360; the resulting sRGB channels are clamped to 0-255 by `rgbToColor`. */
 export function oklchToColor({ l, c, h }: Oklch): number {

@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { buildRegionGeometry } from "../selectors/issueHighlightSelectors";
+import { buildRegionGeometry, type PerimeterSegment } from "../selectors/issueHighlightSelectors";
 import { drawCellHighlightAt, getCellHighlightInset, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
 import { buildRegionContours, renderRegionContours } from "./regionContours";
 import { cellBoundaryKey, drawCellBoundaryHighlight } from "./wallUtils";
@@ -44,12 +44,19 @@ export interface RegionHighlightData {
   boundaryBorderWidth?: number;
 }
 
+type SpatialPart = {
+  component: number;
+  cells: [number, number][];
+  perimeterSegments: PerimeterSegment[];
+  contours: { x: number; y: number }[][];
+};
+
 /** Draws region fill + perimeter for one or more SCC regions — same API contract as
- *  `EdgeHighlightRenderer` (owns a persistent `Graphics`, `render()` clears+redraws) so both
- *  feature-owners (`IssueHighlightOverlay` for Analytics, `DebugRefHighlightOverlay` for
- *  GitHub issue #130's debug-tree refs) hold their own instance with a consistent lifecycle.
- *  Geometry itself comes from `buildRegionGeometry` (pure, unit-tested); this class only draws
- *  it. */
+ * `EdgeHighlightRenderer` (owns a persistent `Graphics`, `render()` clears+redraws) so both
+ * feature-owners (`IssueHighlightOverlay` for Analytics, `DebugRefHighlightOverlay` for
+ * GitHub issue #130's debug-tree refs) hold their own instance with a consistent lifecycle.
+ * Geometry itself comes from `buildRegionGeometry` (pure, unit-tested); this class only draws
+ * it. */
 export class RegionHighlightRenderer {
   private readonly g: Graphics;
 
@@ -67,27 +74,21 @@ export class RegionHighlightRenderer {
     if (regionGroups.length === 0 && cells.length === 0 && boundaryEdges.length === 0 && (!groups || groups.every((group) => group.regionGroups.length === 0))) return;
 
     for (const style of renderGroups) for (const group of style.regionGroups) {
-      const { cells, perimeterSegments } = buildRegionGeometry(group, nodes, cfg);
+      const geometry = buildRegionGeometry(group, nodes, cfg);
       const splitInset = (style.insetMode ?? insetMode) === "outset" ? -Math.abs(inset) : inset;
-
-      const contours = buildRegionContours(perimeterSegments);
-      if (contours.length > 0) {
-        renderRegionContours(this.g, contours, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth);
-      } else for (const [x, y] of cells) {
-        drawCellHighlightAt(this.g, x, y, cfg, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth);
-      }
-
-      if (skipPerimeter) continue;
-      for (const seg of perimeterSegments) {
-        this.g.moveTo(seg.polyline[0].x, seg.polyline[0].y);
-        for (let i = 1; i < seg.polyline.length; i++) this.g.lineTo(seg.polyline[i].x, seg.polyline[i].y);
-        this.g.stroke({ width, color, alpha });
+      const parts = spatialParts(geometry);
+      // Pixi's hole cutting is order-sensitive when a graph region has remote spatial islands.
+      // Draw the parts with holes/more contours first, then simpler islands (#988). The common
+      // one-island case takes the same single contour-build path as before.
+      parts.sort((a, b) => b.contours.length - a.contours.length
+        || b.perimeterSegments.length - a.perimeterSegments.length
+        || a.component - b.component);
+      for (const part of parts) {
+        this.renderSpatialPart(part, cfg, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth, skipPerimeter, width, alpha);
       }
     }
     const cellsInset = insetMode === "outset" ? -Math.abs(inset) : inset;
-    for (const [x, y] of cells) {
-      drawCellHighlightAt(this.g, x, y, cfg, color, REGION_FILL_ALPHA, cellsInset, cornerStyle, borderWidth);
-    }
+    for (const [x, y] of cells) drawCellHighlightAt(this.g, x, y, cfg, color, REGION_FILL_ALPHA, cellsInset, cornerStyle, borderWidth);
     if (boundaryEdges.length > 0) {
       const nodeById = new Map(nodes.map((node) => [node.id, node]));
       const drawnEdges = new Set<string>();
@@ -110,4 +111,48 @@ export class RegionHighlightRenderer {
   destroy(): void {
     this.g.destroy();
   }
+
+  private renderSpatialPart(
+    { cells, perimeterSegments, contours }: SpatialPart,
+    cfg: FieldConfig,
+    color: number,
+    fillAlpha: number,
+    inset: number,
+    cornerStyle: CellHighlightCornerStyle,
+    borderWidth: number,
+    skipPerimeter: boolean,
+    width: number,
+    alpha: number,
+  ): void {
+    if (contours.length > 0) {
+      renderRegionContours(this.g, contours, color, fillAlpha, inset, cornerStyle, borderWidth);
+    } else for (const [x, y] of cells) {
+      drawCellHighlightAt(this.g, x, y, cfg, color, fillAlpha, inset, cornerStyle, borderWidth);
+    }
+    if (skipPerimeter) return;
+    for (const seg of perimeterSegments) {
+      this.g.moveTo(seg.polyline[0].x, seg.polyline[0].y);
+      for (let i = 1; i < seg.polyline.length; i++) this.g.lineTo(seg.polyline[i].x, seg.polyline[i].y);
+      this.g.stroke({ width, color, alpha });
+    }
+  }
+}
+
+function spatialParts(geometry: ReturnType<typeof buildRegionGeometry>): SpatialPart[] {
+  if (geometry.componentCount <= 1) return [{
+    component: 0,
+    cells: geometry.cells,
+    perimeterSegments: geometry.perimeterSegments,
+    contours: buildRegionContours(geometry.perimeterSegments),
+  }];
+  const byComponent = new Map<number, SpatialPart>();
+  for (const [x, y] of geometry.cells) {
+    const component = geometry.componentByCell.get(`${x},${y}`)!;
+    const part = byComponent.get(component) ?? { component, cells: [], perimeterSegments: [], contours: [] };
+    part.cells.push([x, y]);
+    byComponent.set(component, part);
+  }
+  for (const segment of geometry.perimeterSegments) byComponent.get(segment.component)!.perimeterSegments.push(segment);
+  for (const part of byComponent.values()) part.contours = buildRegionContours(part.perimeterSegments);
+  return [...byComponent.values()];
 }

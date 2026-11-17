@@ -1,8 +1,8 @@
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::ids::NodeId;
 use crate::quality_control::InvalidSplitNodeIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
 use std::collections::{HashMap, HashSet};

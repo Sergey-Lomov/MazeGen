@@ -100,10 +100,40 @@ const HEX_TITLES: SplitPatternTitleEntry[] = [
   },
 ];
 
+const OCTAGON_TITLES: SplitPatternTitleEntry[] = [{
+  topology: [
+    [PASSAGE, PASSAGE, PASSAGE, PASSAGE, WALL, WALL, WALL, WALL],
+    [WALL, WALL, WALL, WALL, PASSAGE, PASSAGE, PASSAGE, PASSAGE],
+  ],
+  titleKey: "split_pattern_title.diagonal_divider",
+}, {
+  topology: [
+    [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+    [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+  ],
+  titleKey: "split_pattern_title.bridge",
+}, {
+  topology: [
+    [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+    [WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL],
+    [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+  ],
+  titleKey: "split_pattern_title.double_bridge",
+}, {
+  topology: [
+    [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+    [WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL],
+    [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+    [WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE],
+  ],
+  titleKey: "split_pattern_title.triple_bridge",
+}];
+
 const TITLES_BY_DEGREE: Record<number, SplitPatternTitleEntry[]> = {
   3: TRIANGLE_TITLES,
   4: SQUARE_TITLES,
   6: HEX_TITLES,
+  8: OCTAGON_TITLES,
 };
 
 function requirementEquals(a: SplitFaceRequirement, b: SplitFaceRequirement): boolean {
@@ -136,6 +166,7 @@ const TITLE_MESSAGES: Record<string, () => string> = {
   "split_pattern_title.bridge": () => m["split_pattern_title.bridge"](),
   "split_pattern_title.diagonal_divider": () => m["split_pattern_title.diagonal_divider"](),
   "split_pattern_title.double_bridge": () => m["split_pattern_title.double_bridge"](),
+  "split_pattern_title.triple_bridge": () => m["split_pattern_title.triple_bridge"](),
   "split_pattern_title.triple_corridor": () => m["split_pattern_title.triple_corridor"](),
   "split_pattern_title.parallel_divider": () => m["split_pattern_title.parallel_divider"](),
   "split_pattern_title.adjacent_divider": () => m["split_pattern_title.adjacent_divider"](),

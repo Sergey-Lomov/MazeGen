@@ -163,6 +163,12 @@ fn old_write_call_sequence(
     let after_pattern = &old_text[arm_start..];
     let body_start = after_pattern.find("=> {")? + "=> {".len();
     let body = &after_pattern[body_start..];
+    // `rustfmt` compacts an empty arm from `=> {\n}` to `=> {}`. Without this fast path the
+    // newline search below skips into the following arm and mistakes its field writes for this
+    // unit variant's payload.
+    if body.starts_with('}') {
+        return Some(Vec::new());
+    }
     let body_end = body.find("\n            }")?;
     let arm_body = &body[..body_end];
 
@@ -261,6 +267,23 @@ mod tests {
         let old_text = "pub const A: u16 = 1;\n";
         let src = source(vec![unit_variant("A", 1)]);
         assert!(detect_breaking_changes(old_text, &src).is_empty());
+    }
+
+    #[test]
+    fn detects_no_layout_change_for_a_rustfmt_compacted_empty_arm() {
+        let old_text = r#"
+            TestEvent::DeadEnd => wire_tags::DEAD_END,
+            TestEvent::Other => wire_tags::OTHER,
+            TestEvent::DeadEnd => {}
+            TestEvent::Other(__field0) => {
+                write_node_id(out, *__field0);
+            }
+        "#;
+
+        assert_eq!(
+            old_write_call_sequence(old_text, "TestEvent", "DeadEnd"),
+            Some(Vec::new())
+        );
     }
 
     fn newtype_variant(name: &str, tag: u16, field_name: &str, ty: FieldType) -> Variant {

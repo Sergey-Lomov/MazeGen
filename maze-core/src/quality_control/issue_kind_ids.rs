@@ -45,9 +45,14 @@ impl IssueKind {
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
             IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
             IssueKind::InvalidCrossElement => "invalid_cross_element",
+            IssueKind::IndeterminateDistance => "indeterminate_distance",
+            IssueKind::InvalidDeadEnd => "invalid_dead_end",
+            IssueKind::InvalidDeadEndGroup => "invalid_dead_end_group",
         }
     }
 
+    /// Not `FromStr`: an unknown id is `None`, not an error value, and callers match on that.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "missing_endpoints" => Some(IssueKind::MissingEndpoints),
@@ -91,6 +96,9 @@ impl IssueKind {
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
             "invalid_cross_element" => Some(IssueKind::InvalidCrossElement),
+            "indeterminate_distance" => Some(IssueKind::IndeterminateDistance),
+            "invalid_dead_end" => Some(IssueKind::InvalidDeadEnd),
+            "invalid_dead_end_group" => Some(IssueKind::InvalidDeadEndGroup),
             _ => None,
         }
     }

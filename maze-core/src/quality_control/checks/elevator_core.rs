@@ -37,7 +37,10 @@ pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator> {
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut groups = Vec::new();
 
-    for &start in adjacency.keys() {
+    // Sorted starts and component walk keep group and edge order reproducible across runs.
+    let mut starts: Vec<NodeId> = adjacency.keys().copied().collect();
+    starts.sort_unstable();
+    for start in starts {
         if visited.contains(&start) {
             continue;
         }
@@ -57,7 +60,9 @@ pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator> {
 
         let mut seen_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut edges = Vec::new();
-        for &node in &component {
+        let mut ordered: Vec<NodeId> = component.iter().copied().collect();
+        ordered.sort_unstable();
+        for &node in &ordered {
             for &(neighbor, eid) in adjacency.get(&node).into_iter().flatten() {
                 let key = if node < neighbor {
                     (node, neighbor)
@@ -157,7 +162,7 @@ mod tests {
         assert_eq!(groups.len(), 1);
         let mut stops = groups[0].stops.clone();
         stops.sort_unstable();
-        let mut expected = nodes.clone();
+        let mut expected = nodes;
         expected.sort_unstable();
         assert_eq!(stops, expected);
         assert_eq!(groups[0].edges.len(), 3, "3 stops -> 3 unordered pairs");

@@ -13,11 +13,11 @@ import type {
   ProjectFileFloorField,
   ProjectFileQuality,
 } from "./types";
-import { availablePresetKeys } from "../../pixi/fieldOps";
-import { tessellationConfigOf, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
+import { availablePresetKeys, polyhedronNetCount } from "../../pixi/fieldOps";
+import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type RectAxis, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
-  assertStringRecord, assertStringRecordRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
+  assertStringRecord, assertStringRecordRecord, optEnum, optNumber, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
@@ -29,11 +29,18 @@ function validateAbsoluteFlag(v: unknown, path: string): { absolute?: true } {
   return { absolute: true };
 }
 
-/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`). */
+/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`, `box`). */
 export function validatePresetFieldShape(v: unknown, path: string): PresetFieldShape {
   const shape = validateFieldShape(v, path);
   if (shape.shape === "custom") throw new Error(`${path}.shape: expected a preset shape`);
   return shape;
+}
+
+/** A preset switch `0..=max`; absent (older project files) means `0`. */
+function assertSwitch<T extends number>(v: unknown, path: string, max: number): T {
+  if (v === undefined) return 0 as T;
+  if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > max) throw new Error(`${path}: expected 0..${max}`);
+  return v as T;
 }
 
 export function validateFieldShape(v: unknown, path: string): FieldShape {
@@ -41,13 +48,39 @@ export function validateFieldShape(v: unknown, path: string): FieldShape {
   const shape = assertString(obj.shape, `${path}.shape`);
   switch (shape) {
     case "rect":
+    case "torus":
     case "parallelogram":
       return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`) };
+    case "cylinder":
+      return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`), axis: assertSwitch<RectAxis>(obj.axis, `${path}.axis`, 1) };
     case "circle":
     case "hexagon":
       return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };
     case "triangle":
       return { shape, side: assertNumber(obj.side, `${path}.side`) };
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": {
+      // Polyhedra are triangle-tessellation presets.
+      const compactNet = polyhedronNetCount(tessellationConfigOf("tri"), shape);
+      const net = assertSwitch<number>(obj.net, `${path}.net`, compactNet);
+      // The compact layout is always by faces.
+      const mode = net === compactNet ? 1 : assertSwitch<BoxMode>(obj.mode, `${path}.mode`, 1);
+      return { shape, side: assertNumber(obj.side, `${path}.side`), net, mode, aspect: optNumber(obj, "aspect", BOX_DEFAULT_ASPECT) };
+    }
+    case "box":
+      const net = assertSwitch<BoxNet>(obj.net, `${path}.net`, 2);
+      // The compact layout is always by faces.
+      const mode = net === BOX_NET_COMPACT ? 1 : assertSwitch<BoxMode>(obj.mode, `${path}.mode`, 1);
+      return {
+        shape,
+        width: assertNumber(obj.width, `${path}.width`),
+        height: assertNumber(obj.height, `${path}.height`),
+        depth: assertNumber(obj.depth, `${path}.depth`),
+        net,
+        mode,
+        aspect: optNumber(obj, "aspect", BOX_DEFAULT_ASPECT),
+      };
     case "custom":
       return {
         shape,
@@ -493,10 +526,11 @@ export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   // Absent entirely for project files saved before rule-level params existed (GitHub issue
   // #253) — same recovery pattern `nestedStrategies` above uses.
   const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
+  const strategyParams = assertStringRecord(obj.strategyParams ?? {}, `${path}.strategyParams`);
   // `collapsed` defaults to `false` for files saved before rule collapsing existed (GitHub issue
   // #320) — same recovery pattern `ruleDisabled` above uses.
   const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params, collapsed };
+  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id
@@ -597,7 +631,17 @@ export function validateQuality(v: unknown, path: string): ProjectFileQuality {
       if (!seenInStage.has(r.id)) throw new Error(`${path}.stages: rule id ${r.id} is not assigned to any stage`);
     }
   }
-  const strategyParams = assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`);
+  // Project files written before #774 kept top-level strategy params keyed by strategy id.
+  // Copy each legacy value to every rule using that strategy on load; subsequent saves use the
+  // rule-local field and no longer retain this ambiguous shared map.
+  const legacyStrategyParams = "strategyParams" in qualObj
+    ? assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`)
+    : {};
+  const normalizedRules = rules.map((rule) => (
+    Object.keys(rule.strategyParams).length > 0 || rule.strategyId === null
+      ? rule
+      : { ...rule, strategyParams: legacyStrategyParams[rule.strategyId] ?? {} }
+  ));
   // Optional — files saved before this setting existed (key absent entirely) default to the same
   // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
   // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
@@ -609,5 +653,5 @@ export function validateQuality(v: unknown, path: string): ProjectFileQuality {
   const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
     ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
     : 10;
-  return { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs };
+  return { rules: normalizedRules, stages, repairMaxIterations, repairTimeBudgetSecs };
 }

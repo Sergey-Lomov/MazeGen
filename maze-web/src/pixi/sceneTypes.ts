@@ -1,7 +1,7 @@
 import type { MazeState } from "../store/storeTypes";
 
 export interface ViewportListener {
-  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void;
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number, navigation?: "layout" | "canvas"): void;
 }
 
 /** Whether the active editor can route canvas interaction to the shared underlay controller. */
@@ -19,12 +19,27 @@ export function backgroundImageEditMode(state: MazeState): "transform" | "crop" 
   return state.backgroundImageCropping ? "crop" : state.backgroundImageManualPositioning ? "transform" : null;
 }
 
+/** The connector editor owns canvas input only while its own feature (export, in the mode being
+ * edited) is visible; the stored edit state alone never claims input (GitHub issue #947). */
+export function isTeleportConnectorEditActive(state: Pick<MazeState, "teleportConnectorEdit" | "openCard" | "activeRenderMode">): boolean {
+  const edit = state.teleportConnectorEdit;
+  return !!edit && state.openCard === "image_export" && state.activeRenderMode === edit.renderMode;
+}
+
+/** The floor-label drag owns canvas input only on the export card, in the drag's render mode and floor. */
+export function isFloorLabelDragActive(state: Pick<MazeState, "floorLabelDrag" | "openCard" | "activeRenderMode" | "activeFloorId">): boolean {
+  const drag = state.floorLabelDrag;
+  return !!drag && state.openCard === "image_export" && state.activeRenderMode === drag.renderMode && state.activeFloorId === drag.floorId;
+}
+
 export interface PointerHandler {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean, clickCount?: number): void;
-  onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean): void;
+  onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean): void;
   onPointerUp(button?: number): void;
   cancelPointerGesture(): void;
   clearHover?(): void;
+  /** True while this controller owns a viewport pan rather than an editing gesture. */
+  readonly isViewportPanning?: boolean;
 }
 
 /** Shared drag-to-pan math, reused for the default viewport pan and as FieldEditController's pan callback target. */

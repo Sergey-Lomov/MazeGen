@@ -7,7 +7,7 @@
       "Bash(cargo build *)",
       "Bash(cargo test *)",
       "Bash(TRYBUILD=overwrite cargo test -p maze-core --test compile_fail_test)",
-      "Bash(powershell -Command \"./wasm-rebuild.ps1\")",
+      "Bash(powershell -Command \"./scripts/windows/wasm-rebuild.ps1\")",
       "Bash(npx vitest *)",
       "Bash(gh project *)",
       "mcp__code-index__set_project_path",

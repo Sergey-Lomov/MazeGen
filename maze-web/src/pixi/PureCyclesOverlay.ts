@@ -4,6 +4,7 @@ import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { buildNodePositions } from "./tessellationGeometry";
+import type { SeamHopContext } from "./graphSeams";
 import { BaseGraphRenderer, buildCrossFloorMarkers, buildPathRenderEdges } from "./BaseGraphRenderer";
 import type { NodeCellResolver, Pos } from "./BaseGraphRenderer";
 
@@ -32,12 +33,14 @@ export interface PureCyclesData {
   resolveNodeCell?: NodeCellResolver;
   /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
   activeFloorIndex?: number;
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 export class PureCyclesOverlay extends BaseGraphRenderer {
   render(data: PureCyclesData): void {
     this.resetContainers();
-    const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, seam } = data;
     if (nodes.length === 0) return;
 
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
@@ -51,7 +54,7 @@ export class PureCyclesOverlay extends BaseGraphRenderer {
     // `hasReverse` is checked against the *full* nav-edge graph (`reverseCheckEdges`), not just
     // the pure-cycle subset — a pure-cycle edge's reverse direction can exist among nav edges
     // without itself being part of the pure-cycle set, and should still suppress the one-way arrow.
-    const renderEdges = buildPathRenderEdges(pureCycleNavEdges, nodePos, navEdges);
+    const renderEdges = buildPathRenderEdges(pureCycleNavEdges, nodePos, navEdges, seam);
     this.drawEdges(renderEdges, PURE_EDGE_COLOR);
 
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {

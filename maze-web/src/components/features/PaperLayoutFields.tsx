@@ -6,6 +6,7 @@ import { Inline } from "../Layout";
 import { Tooltip } from "../Tooltip";
 import { buttonClass, buttonStyle, sharedStyles } from "../../styles/shared";
 import { controlRowHeight, typography } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import * as m from "~/paraglide/messages";
 
 export const PAPER_SIZE_OPTIONS: { value: PaperSize; label: string; disabled?: boolean }[] = [
@@ -132,6 +133,6 @@ const styles = {
   shortLabel: { ...typography.body },
   labelDisabled: { opacity: 0.4 },
   input: { width: 70, height: controlRowHeight, boxSizing: "border-box" as const },
-  inputDisabled: { opacity: 0.4, cursor: "not-allowed" as const },
+  inputDisabled: { opacity: 0.4, cursor: notAllowedCursor },
   iconToggle: { flex: "none" as const, width: controlRowHeight, height: controlRowHeight, padding: 0, display: "flex" as const, alignItems: "center" as const, justifyContent: "center" as const },
 } as const;

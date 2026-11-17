@@ -23,7 +23,7 @@ beforeEach(() => {
   useMazeStore.setState({
     availableChecks: [checkDescriptor],
     availableStrategies: [],
-    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
@@ -45,7 +45,7 @@ describe("QualityCanvas", () => {
     const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false }],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     } as Partial<ReturnType<typeof useMazeStore.getState>>);
     render(<QualityCanvas />);
@@ -57,8 +57,8 @@ describe("QualityCanvas", () => {
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false },
-        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false },
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     } as Partial<ReturnType<typeof useMazeStore.getState>>);

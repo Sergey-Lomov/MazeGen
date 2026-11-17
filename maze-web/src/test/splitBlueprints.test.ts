@@ -14,6 +14,22 @@ describe("blueprintsFor", () => {
     expect(blueprintsFor(null, 4)).toHaveLength(2);
     expect(blueprintsFor(null, 5)).toHaveLength(3);
     expect(blueprintsFor(null, 6)).toHaveLength(7);
+    expect(blueprintsFor(null, 8)).toHaveLength(4);
+  });
+
+  it("includes the octagon's canonical four-face divider", () => {
+    expect(blueprintsFor("regular:8", 8)).toContainEqual({
+      id: 0, degree: 8, nodeFaces: [[0, 1, 2, 3], [4, 5, 6, 7]],
+      titleKey: "split_pattern_title.diagonal_divider",
+    });
+  });
+
+  it("includes octagon bridge and double-bridge templates", () => {
+    expect(blueprintsFor("regular:8", 8)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nodeFaces: [[0, 4], [2, 6]], titleKey: "split_pattern_title.bridge" }),
+      expect.objectContaining({ nodeFaces: [[0, 4], [1, 5], [2, 6]], titleKey: "split_pattern_title.double_bridge" }),
+      expect.objectContaining({ nodeFaces: [[0, 4], [1, 5], [2, 6], [3, 7]], titleKey: "split_pattern_title.triple_bridge" }),
+    ]));
   });
 
   it("includes the hex diagonal divider with two opposite adjacent-face triples", () => {

@@ -5,17 +5,30 @@ import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import { availablePresetKeys, presetParams } from "../pixi/fieldOps";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
-import { computeAutoLockedNodes, presetEdgeKey } from "../pixi/fieldEditUtils";
+import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
+import { presetEdgeKey } from "../pixi/presetSplitResolve";
+import { tessellationFingerprint } from "./topologyWire";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
 import type {
   MazeState, TessellationKind, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";
+import { withPresetCreases, withPresetTopology } from "./presetTopology";
 
 /** The active floor's own field-shape state — the per-floor scoping point every field-editing
  * helper below reads/writes through (GitHub issue #338). */
 export function activeFloorField(state: MazeState): FloorFieldConfig {
   return state.floorFields[state.activeFloorId];
+}
+
+/** `floorTopology` without the given floors' glues. Glues belong to the custom field they were
+ * drawn on, so a floor leaving custom editing drops them. Returns the same object when there is
+ * nothing to drop. */
+export function withoutFloorTopology(floorTopology: MazeState["floorTopology"], floorIds: string[]): MazeState["floorTopology"] {
+  if (!floorIds.some((id) => floorTopology[id] !== undefined)) return floorTopology;
+  const next = { ...floorTopology };
+  for (const id of floorIds) delete next[id];
+  return next;
 }
 
 /** Replaces the active floor's FloorFieldConfig, keyed by `state.activeFloorId`. */
@@ -223,11 +236,16 @@ export function selectedShapeFor(cfg: FieldConfig, previous?: PresetFieldShapeNa
 const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetFieldShapeName, PresetFieldShape>>> = {
   square: {
     rect: { shape: "rect", cols: 11, rows: 11 },
+    cylinder: { shape: "cylinder", cols: 11, rows: 11, axis: 0 },
+    torus: { shape: "torus", cols: 11, rows: 11 },
     circle: { shape: "circle", radius: 10 },
     triangle: { shape: "triangle", side: 20 },
+    box: { shape: "box", width: 10, height: 10, depth: 10, net: 0, mode: 0, aspect: 100 },
   },
   hex: {
     rect: { shape: "rect", cols: 10, rows: 10 },
+    cylinder: { shape: "cylinder", cols: 10, rows: 10, axis: 0 },
+    torus: { shape: "torus", cols: 10, rows: 10 },
     parallelogram: { shape: "parallelogram", cols: 10, rows: 10 },
     hexagon: { shape: "hexagon", radius: 8 },
     circle: { shape: "circle", radius: 8 },
@@ -235,63 +253,90 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
   },
   tri: {
     rect: { shape: "rect", cols: 10, rows: 10 },
+    cylinder: { shape: "cylinder", cols: 10, rows: 10, axis: 0 },
+    torus: { shape: "torus", cols: 10, rows: 10 },
     triangle: { shape: "triangle", side: 12 },
     hexagon: { shape: "hexagon", radius: 10 },
     circle: { shape: "circle", radius: 10 },
+    tetrahedron: { shape: "tetrahedron", side: 8, net: 0, mode: 0, aspect: 100 },
+    octahedron: { shape: "octahedron", side: 6, net: 0, mode: 0, aspect: 100 },
+    icosahedron: { shape: "icosahedron", side: 4, net: 0, mode: 0, aspect: 100 },
   },
   cairo: {
     rect: { shape: "rect", cols: 10, rows: 10 },
+    cylinder: { shape: "cylinder", cols: 10, rows: 10, axis: 0 },
+    torus: { shape: "torus", cols: 10, rows: 10 },
     circle: { shape: "circle", radius: 12 },
     triangle: { shape: "triangle", side: 20 },
     hexagon: { shape: "hexagon", radius: 12 },
   },
   square_octagon: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 8, rows: 8, axis: 0 },
+    torus: { shape: "torus", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   brick: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 8, rows: 8, axis: 0 },
+    torus: { shape: "torus", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   trihexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 8, rows: 8, axis: 0 },
+    torus: { shape: "torus", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   snub_hexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 2, rows: 2, axis: 0 },
+    torus: { shape: "torus", cols: 2, rows: 2 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   rhombitrihexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 3, rows: 3, axis: 0 },
+    torus: { shape: "torus", cols: 3, rows: 3 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   truncated_hexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 3, rows: 3, axis: 0 },
+    torus: { shape: "torus", cols: 3, rows: 3 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   truncated_trihexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 3, rows: 3, axis: 0 },
+    torus: { shape: "torus", cols: 3, rows: 3 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   elongated_triangular: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 8, rows: 8, axis: 0 },
+    torus: { shape: "torus", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   snub_square: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 4, rows: 4, axis: 0 },
+    torus: { shape: "torus", cols: 4, rows: 4 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
   curved_quadrilateral: {
     rect: { shape: "rect", cols: 8, rows: 8 },
+    cylinder: { shape: "cylinder", cols: 8, rows: 8, axis: 0 },
+    torus: { shape: "torus", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
@@ -322,7 +367,21 @@ export function defaultTessellationOf(kind: TessellationKind): TessellationConfi
 
 /** Whether two tessellation configs build the same cell set. */
 export function sameTessellation(a: TessellationConfig, b: TessellationConfig): boolean {
-  return a.kind === b.kind && JSON.stringify(a.params) === JSON.stringify(b.params);
+  return tessellationFingerprint(a.kind, a.params) === tessellationFingerprint(b.kind, b.params);
+}
+
+interface TessellationSettings {
+  tessellation: TessellationConfig;
+  hexOrientation: HexOrientation;
+  triOrientation: TriOrientation;
+}
+
+/** Whether two settings sets build the same field: same tessellation and the same orientation in
+ *  the slot the kind uses (an orientation of an unused slot never matters). */
+export function sameTessellationSettings(a: TessellationSettings, b: TessellationSettings): boolean {
+  return sameTessellation(a.tessellation, b.tessellation)
+    && orientationFor(a.tessellation.kind, a.hexOrientation, a.triOrientation)
+      === orientationFor(b.tessellation.kind, b.hexOrientation, b.triOrientation);
 }
 
 /** The maze-wide `{ kind, params }` config held by `state` (a fresh object per call). */
@@ -556,6 +615,12 @@ export function withRecomputedAutoLock<T extends { presetConnections: Map<string
   return { ...patch, autoLockedNodes: recomputeAutoLock(state, patch), debugStale: debugStaleOf(state) };
 }
 
+/** True once the user has generated a maze (or edited on top of one) since the last reset: the
+ *  results that any input change would invalidate. */
+export function hasGeneration(state: Pick<MazeState, "mazeDirty" | "postEditDirty">): boolean {
+  return state.mazeDirty || state.postEditDirty;
+}
+
 /** Shared "wipe maze + derived analytics" fields, used by tessellation-kind switches, reset, and project load. */
 export function buildResetMazeState() {
   return {
@@ -580,6 +645,7 @@ export function buildResetDownstreamState() {
     ...buildResetMazeState(),
     error: null,
     generationStatus: "idle" as const,
+    generationProgress: null,
     fieldEditConfirmation: null,
     debugArena: null, debugStep: 0, debugStale: false,
     postEditCommands: [], postEditBaseline: null, postEditDerived: null,
@@ -635,6 +701,8 @@ export function setSelectedShapeState(shape: PresetFieldShapeName) {
     const cfg = buildPredefinedConfig(tessellationOf(state), shape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { selectedShape: shape, fieldConfig: cfg, fieldDirty: true }),
+      floorTopology: withPresetTopology(state.floorTopology, state.activeFloorId, cfg),
+      floorCreases: withPresetCreases(state.floorCreases, state.activeFloorId, cfg),
       ...buildResetDownstreamState(),
       error: null,
       debugStale: debugStaleOf(state),

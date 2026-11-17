@@ -1,6 +1,8 @@
-import { Assets, BitmapText, Cache } from "pixi.js";
+import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import type { LabelFontWeight } from "./indexLabel";
+import { VECTOR_FONT_FAMILY, msdfFace, type LabelFont } from "./fontChoice";
+import { canvasInkCentreOffset, makeLabelText, usesCanvasText } from "./labelFont";
+import { loadMsdfFamily } from "./msdfLoader";
 
 /** MSDF (multi-channel signed distance field) bitmap fonts for canvas labels (GitHub issue #352).
  *
@@ -8,43 +10,30 @@ import type { LabelFontWeight } from "./indexLabel";
  *  zooms past it. An MSDF `BitmapText` stays crisp at any zoom because the GPU reconstructs the
  *  glyph edges from the distance field.
  *
- *  pixi.js v8 has no runtime MSDF generator — the atlases are baked offline
+ *  pixi.js v8 has no runtime MSDF generator — the bundled atlases are baked offline
  *  (`tools/msdf/generate.mjs`, `npm run gen:msdf`) from `tools/msdf/Roboto-{Regular,Bold}.ttf` and
  *  committed under `public/fonts/` as `.fnt` (AngelCode XML — pixi's bitmap-font loader only
  *  recognizes `.fnt`/`.xml` by extension; a `.json` atlas loads as a plain object and `BitmapText`
- *  silently falls back to a blurry runtime canvas font). This module only loads them.
+ *  silently falls back to a blurry runtime canvas font). `msdfLoader.ts` loads them on demand (GitHub
+ *  issue #982); this module loads the default one at startup.
  *
- *  Two weights are baked (MSDF glyph shapes can't be synthesized bold at runtime), so the label
- *  `fontWeight` setting actually switches. Every canvas-label call site (`floorBadge`,
+ *  Each font bakes its own set of weights (MSDF glyph shapes can't be synthesized bold at runtime;
+ *  `fontChoice.ts`'s `MSDF_FONTS` lists them), so the chosen weight actually switches. Every canvas-label call site (`floorBadge`,
  *  `MarkerIndexRenderer`, `VerticalConnectionRenderer`, `MazeGraphRenderer`) picks its font name
  *  via {@link msdfFontFamily}. A new label that needs a glyph outside the baked charset must
  *  extend `tools/msdf/generate.mjs`'s `CHARSET` and re-run `npm run gen:msdf` (see
  *  `maze-web/CLAUDE.md`). */
 
-/** Paths (relative to the served root) of the baked atlas descriptors. `Assets.load` picks up each
- *  sibling `.png` via the `pages` field inside it. */
-const MSDF_FONT_URLS = [
-  "/fonts/roboto-regular-msdf.fnt",
-  "/fonts/roboto-bold-msdf.fnt",
-] as const;
-
-/** `BitmapText`'s `style.fontFamily` value per weight — the `face` recorded in each baked atlas
- *  (its source `.ttf`'s font-face name). Use {@link msdfFontFamily} rather than indexing this
- *  directly at call sites. */
-const MSDF_FONT_FAMILY_BY_WEIGHT: Record<LabelFontWeight, string> = {
-  regular: "Roboto-Regular",
-  bold: "Roboto-Bold",
-};
-
-/** The installed MSDF font-family name for a label weight — pass as `BitmapText`'s
- *  `style.fontFamily`. */
-export function msdfFontFamily(weight: LabelFontWeight): string {
-  return MSDF_FONT_FAMILY_BY_WEIGHT[weight];
+/** `BitmapText`'s `style.fontFamily` value for `font` — the `face` recorded in the baked atlas of its
+ *  nearest baked weight (its source `.ttf`'s font-face name). Use this rather than literal names at
+ *  call sites. */
+export function msdfFontFamily(font: LabelFont): string {
+  return msdfFace(font).atlasName;
 }
 
-/** The regular-weight family name — for call sites that draw a single fixed weight (debug node
+/** The regular-weight Roboto atlas name — for call sites that draw a single fixed weight (debug node
  *  labels). */
-export const MSDF_FONT_FAMILY = MSDF_FONT_FAMILY_BY_WEIGHT.regular;
+export const MSDF_FONT_FAMILY = msdfFontFamily({ family: "", weight: 400 });
 
 /** How far `text`'s glyph-ink centre sits *below* a `BitmapText`'s transform origin when it's
  *  drawn with `anchor.set(0.5)` — scaled to `fontSize`, in local pixels. Feed straight into
@@ -89,21 +78,18 @@ function inkCentreOffset(text: string, fontFamily: string, fontSize: number): nu
 /** Creates a label `BitmapText` centred on its glyph ink (not the font line box) under
  *  `anchor.set(0.5)` — the vertical correction ({@link inkCentreOffset}) is folded into `.pivot.y`
  *  so it survives later `.x`/`.y` writes by the caller. */
-export function makeCenteredLabel(text: string, fontFamily: string, fontSize: number, fill: number): BitmapText {
-  const label = new BitmapText({ text, style: { fontFamily, fontSize, fill } });
-  label.anchor.set(0.5);
-  label.pivot.y = inkCentreOffset(text, fontFamily, fontSize);
+export function makeCenteredLabel(text: string, font: LabelFont, fontSize: number, fill: number) {
+  const canvas = usesCanvasText(font, text);
+  const label = makeLabelText(text, font, fontSize, fill);
+  // Canvas text and MSDF text both end up ink-centred, so the label does not move when the atlas replaces the canvas text.
+  label.pivot.y = canvas ? canvasInkCentreOffset(text, font, fontSize) : inkCentreOffset(text, msdfFontFamily(font), fontSize);
   return label;
 }
 
-let loadPromise: Promise<void> | null = null;
-
-/** Loads and installs both MSDF bitmap fonts so `BitmapText` can reference them by the names
- *  {@link msdfFontFamily} returns. Idempotent — repeated calls await the same load. Call once at
- *  app startup (see `App.tsx`). */
-export function loadMsdfFont(): Promise<void> {
-  if (!loadPromise) {
-    loadPromise = Promise.all(MSDF_FONT_URLS.map((url) => Assets.load(url))).then(() => undefined);
-  }
-  return loadPromise;
+/** Loads and installs the default MSDF font (both Roboto weights) so `BitmapText` can reference it by
+ *  the names {@link msdfFontFamily} returns. Idempotent — repeated calls await the same load. Awaited
+ *  once at app startup (see `App.tsx`): every other font falls back to it. Rejects when the download
+ *  fails. Other fonts are loaded on demand by `loadMsdfFamily` and never reject. */
+export async function loadMsdfFont(): Promise<void> {
+  if (!(await loadMsdfFamily(VECTOR_FONT_FAMILY))) throw new Error("Default MSDF font failed to load");
 }

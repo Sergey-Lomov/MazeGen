@@ -12,9 +12,13 @@ Opening the Analytics card sets `analyticsOpen = true` in the store; closing it 
 ## Recomputing analytics after rule edits
 
 When the Quality panel changes `rules` or `stages`, the post-edit analytics snapshot is refreshed
-after a 300 ms debounce. The analytics-only WASM call runs in a dedicated module worker so cycle
-analysis and QC issue collection do not block rule editing or canvas input on the main thread.
-Starting a newer refresh terminates the previous worker; only the latest completed request may
+after a 300 ms debounce. The analytics-only WASM call runs in a module worker from the analytics
+`WorkerPool` (see `Specs/generation.md`, "Worker lifecycle") so cycle analysis and QC issue
+collection do not block rule editing or canvas input on the main thread. Starting a newer refresh
+cancels the running request: its worker is terminated and its promise rejects with "Analytics
+request superseded"; the next request starts a fresh worker. Every request is wrapped by `trackActivity("analytics", …)`
+(`computeAnalyticsAsync`), so a refresh that runs longer than the delay shows the "Updating analytics" card
+(`Specs/background-activity.md`); a new caller must go through `computeAnalyticsAsync` to get it. Only the latest completed request may
 update the store. Leaving the Quality panel flushes the pending refresh immediately.
 
 ### Card comment
@@ -76,6 +80,7 @@ Toggles, each backed by a store boolean:
 
 | Toggle label | Store field | Default | Disabled when |
 |---|---|---|---|
+| Grid | `showGridOverlay` | `true` | — |
 | Maze | `showMazeOverlay` | `true` | — |
 | Connectivity regions | `showComponentsOverlay` | `false` | — |
 | Graph | `showGraphOverlay` | `false` | — |
@@ -84,7 +89,7 @@ Toggles, each backed by a store boolean:
 | Route | `showRouteOverlay` | `false` | `routeInfo == null` |
 | Region classes | `showRegionClassesOverlay` | `false` | `statistics.graph_stats.region_classes` empty (start or finish unset) — independent of whether a route actually exists |
 
-Toggle state persists when the card is closed and reopened. It resets only on full store reset. `showPureCyclesOverlay` and `showRegionClassesOverlay` are not yet persisted in project export (`ProjectFileAnalytics`) — they reset to default on project load, unlike the other toggles in this table.
+Toggle state persists when the card is closed and reopened, and across project save/load. It resets only on full store reset. For project files saved before their settings existed, `showPureCyclesOverlay` and `showRegionClassesOverlay` default to `false`, while `showGridOverlay` defaults to `true`.
 
 An info icon (ℹ) sits next to the Region classes label (same convention as every other `ToggleRow`/`StatRow` info icon, GitHub issue #532's round of polish), opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
 
@@ -219,14 +224,14 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 
 | # | Container | Renderer | Visibility condition |
 |---|---|---|---|
-| 1 | `gridContainer` | `GridRenderer` | `analyticsOpen && showMazeOverlay && nodes.length > 0` |
-| 2 | `floorContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 3 | `closedCellsContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 1 | `gridContainer` | `GridRenderer` | `analyticsOpen && showGridOverlay && nodes.length > 0` |
+| 2 | `floorContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | `analyticsOpen && showMazeOverlay && nodes.length > 0` |
+| 3 | `closedCellsContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as maze |
 | 4 | `regionsContainer` | `RegionsRenderer` | `analyticsOpen && showComponentsOverlay && componentCount > 0` |
 | 5 | `regionClassesContainer` | `RegionClassesRenderer` | `analyticsOpen && showRegionClassesOverlay && componentCount > 0` |
-| 6 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 7 | `teleportContainer` | `TeleportRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 8 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 6 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as maze |
+| 7 | `teleportContainer` | `TeleportRenderer` (via `MazeOverlayRenderer`) | same as maze |
+| 8 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as maze |
 | 9 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
 | 10 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
 | 11 | `pureCyclesContainer` | `PureCyclesOverlay` | `analyticsOpen && showPureCyclesOverlay && navNodes.length > 0` |

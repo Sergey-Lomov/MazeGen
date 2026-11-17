@@ -19,11 +19,12 @@ interface MazeSnapshot { nodes: NodeDto[]; edges: EdgeDto[]; }
 Lazy singleton loader. WASM is initialized at most once per session.
 
 ```ts
-initWasm(): Promise<void>  // idempotent — safe to call multiple times
+initWasm(source?: BufferSource | WebAssembly.Module, onProgress?): Promise<void>  // idempotent — safe to call multiple times
+compileWasmModule(onProgress?): Promise<WebAssembly.Module>  // fetch + compile once; initWasm() uses it, and workers get it via postMessage
 getWasm(): WasmModule      // throws if not initialized
 ```
 
-Initialization: dynamic import of `../../pkg/maze_wasm`, then `await pkg.default()` (required for `--target web` WASM format).
+Initialization: dynamic import of `../../pkg/maze_wasm`, then `await pkg.default({ module_or_path })` (required for `--target web` WASM format), where `module_or_path` is the `WebAssembly.Module` from `compileWasmModule()` (or the module/bytes passed as `source`).
 
 ## mazeService.ts
 

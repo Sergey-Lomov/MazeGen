@@ -14,7 +14,8 @@ import {
 import { createFloorNodesSelector, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
-import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets, buildPostEditPointEntitiesAt } from "../store/slices/postEditSliceHelpers";
+import { resolveDragTargets } from "../store/slices/postEditSliceHelpers";
+import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, buildPostEditPointEntitiesAt } from "../store/slices/postEditBaselineBuilders";
 import { postEditEntitiesForPurpose } from "./entityToolKinds";
 import type { PostEditPointEntityDescriptor } from "./postEditPointEntities";
 import type { FieldEdge } from "./fieldEditUtils";
@@ -23,6 +24,8 @@ import {
   notifyEditRefusal, SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE,
 } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, postEditToolForShortcut } from "./toolShortcuts";
+import { bringSidePanelToFront } from "../components/SidePanel";
+import { isTypingTarget } from "./domUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -30,11 +33,6 @@ const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_pa
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
 
 type State = ReturnType<typeof useMazeStore.getState>;
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 /** Whether a point currently has more than one node (a split point) — used by the unified Reset
  * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an
@@ -664,7 +662,9 @@ export class PostEditController extends BaseController {
       const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const key = `${cell.x},${cell.y}`;
-      useMazeStore.getState().setPostEditFocusedPoint(nodeMap.has(key) ? [cell.x, cell.y] : null);
+      const point: [number, number] | null = nodeMap.has(key) ? [cell.x, cell.y] : null;
+      if (point) bringSidePanelToFront("post-edit-split-nodes");
+      useMazeStore.getState().setPostEditFocusedPoint(point);
       return;
     }
 

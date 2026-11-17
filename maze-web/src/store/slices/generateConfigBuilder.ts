@@ -1,12 +1,14 @@
-import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
+import { generateMaze, startGenerateMaze } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
+import { topologyKey } from "../topologyWire";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
+import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
+import { buildMultiFloorPostEditDraft, buildPostEditBaseline } from "./postEditBaselineBuilders";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
@@ -16,11 +18,20 @@ import { adapterForKind } from "../../debug/algorithmRegistry";
 import { notify } from "../../notifications/notificationStore";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";
+import { MAX_SIZE_PARAM_ID } from "../sizeThresholdIntervals";
+
+let activeGeneration: import("../../wasm/workerPool").WorkerJob<GenerateMazeResult> | null = null;
+
+/** Cancelling terminates the worker, so no partial WASM state can leak into the next run. */
+export function cancelActiveGeneration(): void {
+  activeGeneration?.cancel(new Error("Generation cancelled"));
+  activeGeneration = null;
+}
 
 const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
 const GENERATION_RUN_FAILED = "generation.run_failed";
-registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { category: "error", message: () => m["generation.error_free_field_too_small"]() });
-registerNotificationCode(GENERATION_RUN_FAILED, { category: "error", message: () => m[GENERATION_RUN_FAILED]() });
+registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { severity: "error", message: () => m["generation.error_free_field_too_small"]() });
+registerNotificationCode(GENERATION_RUN_FAILED, { severity: "error", message: () => m[GENERATION_RUN_FAILED]() });
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -45,7 +56,7 @@ export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
 // Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
 // `ruleToConfig`'s param-filtering (only descriptor-known param ids are forwarded), plus its own
 // `slot_id` and recursively-built `nested` list. Unlike top-level strategies, nested params are
-// per-node (`n.params`), not looked up in the global `strategyParams` map — see
+// per-node (`n.params`), not looked up from another rule — see
 // `NestedStrategyState`'s doc comment for why (two rules must be able to configure the same
 // nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
 // from a project file) blowing the call stack on every `generate()` call — see
@@ -59,6 +70,10 @@ export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
 // normal "only descriptor-known ids" filter would silently drop it.
 export const NESTED_STRATEGY_WEIGHT_PARAM_ID = "weight";
 
+// Same forwarding rule for `size_threshold_region_merge`'s per-candidate size bound
+// (`max_size`, maze-core `SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE`).
+export const NESTED_STRATEGY_MAX_SIZE_PARAM_ID = MAX_SIZE_PARAM_ID;
+
 function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): StrategyConfig {
   const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
   const params: Record<string, string> = {};
@@ -70,6 +85,9 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   if (n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID] !== undefined) {
     params[NESTED_STRATEGY_WEIGHT_PARAM_ID] = n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID];
   }
+  if (n.params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID] !== undefined) {
+    params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID] = n.params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID];
+  }
   return {
     id: n.strategyId,
     params,
@@ -78,14 +96,14 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   };
 }
 
-// Builds a rule's `StrategyConfig` from its own `strategyId`/`state.strategyParams` (the project's
+// Builds a rule's `StrategyConfig` from its own `strategyId`/`strategyParams` (the rule's
 // real, user-configured weights) — shared by `ruleToConfig` (generation) and `confirmPostEdit`
 // (GitHub issue #532, so post-edit's route score is computed from the same real weights generation
 // uses, never defaults — see `AnalyticsRuleGroupConfig.strategy` on the wasm side).
 export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): StrategyConfig | null {
   if (!g.strategyId || g.disabled) return null;
   const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-  const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+  const paramOverrides = g.strategyParams;
   const params: Record<string, string> = {};
   if (descriptor) {
     for (const p of descriptor.params) {
@@ -223,6 +241,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     level_fields,
+    ...topologyKey(state),
     stages,
     ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
@@ -284,7 +303,7 @@ function applyGenerationResult(
 ): void {
   const { snapshot, debugTape } = result;
   {
-    warmCartesianCache(activeTessellation);
+    warmCartesianCache(activeTessellation, get().floorTopology[get().activeFloorId] ?? null);
     let debugArena: DebugArenaHandle | null = null;
     let lastStep = 0;
     if (debugMode && debugTape) {
@@ -428,13 +447,28 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
 export async function generateWithSeedAsync(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): Promise<void> {
   const prepared = prepareGeneration(get, set, qcExperiment);
   if (!prepared) return;
+  set({ generationProgress: 0 });
+  const job = startGenerateMaze(seed, prepared.config, (progress) => {
+    if (activeGeneration === job) set({ generationProgress: Math.max(0, Math.min(100, progress)) });
+  });
+  activeGeneration = job;
   try {
-    const result = await generateMazeAsync(seed, prepared.config);
+    const result = await job.promise;
+    if (activeGeneration !== job) return;
     applyGenerationResult(result, get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "Generation cancelled") {
+      // A replacement run may have started after the cancellation retired this worker. Do not
+      // let the old promise erase that run's overlay or status.
+      if (activeGeneration === null) set({ generationProgress: null, generationStatus: "idle" });
+      return;
+    }
     set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
     notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
+  } finally {
+    if (activeGeneration === job) activeGeneration = null;
+    if (activeGeneration === null) set({ generationProgress: null });
   }
 }
 

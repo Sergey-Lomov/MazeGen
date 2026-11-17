@@ -1,11 +1,14 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamHopContext } from "./selectors/seamHop";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
+import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
@@ -25,6 +28,7 @@ import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
@@ -37,6 +41,7 @@ export class GenerationRenderer {
   private readonly kruskalDsuHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
@@ -81,6 +86,7 @@ export class GenerationRenderer {
 
   constructor(viewport: Container) {
     this.gridContainer = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
@@ -94,6 +100,8 @@ export class GenerationRenderer {
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    viewport.addChild(this.seamArrowContainer);
     viewport.addChild(this.closedCellsContainer);
     viewport.addChild(this.wallsContainer);
     viewport.addChild(this.splitJunctionContainer);
@@ -106,10 +114,11 @@ export class GenerationRenderer {
     viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.kruskalDsuHighlightContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "generation");
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
-    this.walls = new WallRenderer(this.wallsContainer);
+    this.walls = new WallRenderer(this.wallsContainer, true);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
@@ -118,8 +127,8 @@ export class GenerationRenderer {
     this.debugValueHighlight = new DebugValueHighlightOverlay(this.debugValueHighlightContainer);
     this.kruskalDsuHighlight = new KruskalDsuHighlightOverlay(this.kruskalDsuHighlightContainer);
 
-    this.syncVisibility(useMazeStore.getState());
-    this.renderAll(useMazeStore.getState());
+    // A hidden layer is still drawn once so it is ready when shown.
+    if (!this.syncVisibility(useMazeStore.getState())) this.renderAll(useMazeStore.getState());
     this.subscribe();
   }
 
@@ -128,11 +137,12 @@ export class GenerationRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
         state.openCard !== prev.openCard ||
-        state.showMaze !== prev.showMaze;
+        state.showMaze !== prev.showMaze ||
+        state._generatedNodes.length > 0 !== prev._generatedNodes.length > 0;
 
-      if (visibilityChanged) {
-        this.syncVisibility(state);
-      }
+      // `syncVisibility` already redraws while the layer is visible; the data check below would
+      // repeat the same full render for the same state.
+      const redrawn = visibilityChanged ? this.syncVisibility(state) : false;
 
       const dataChanged =
         state._generatedNodes !== prev._generatedNodes ||
@@ -150,7 +160,7 @@ export class GenerationRenderer {
         state.debugValueToggles !== prev.debugValueToggles ||
         state.showKruskalDsuGroups !== prev.showKruskalDsuGroups;
 
-      if (dataChanged) {
+      if (dataChanged && !redrawn) {
         this.renderAll(state);
       }
 
@@ -158,9 +168,12 @@ export class GenerationRenderer {
     });
   }
 
-  private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
+  /** Returns whether it redrew the layer. */
+  private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): boolean {
     const visible = state.openCard === "generation" && state.showMaze;
     this.gridContainer.visible = visible;
+    // Nothing to mark on the field before a maze is generated.
+    this.seamArrowContainer.visible = visible && state._generatedNodes.length > 0;
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
@@ -174,6 +187,7 @@ export class GenerationRenderer {
     if (visible) {
       this.renderAll(state);
     }
+    return visible;
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
@@ -291,19 +305,25 @@ export class GenerationRenderer {
       wallFaces: this.geometryCache.splitWallFaces,
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
-    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
+    const layout = layoutEditorMarkers({
+      markers: buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges),
+      teleportEdges: this.geometryCache.teleportEdges,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      nodeById, edges: view.edges, cfg,
+    });
+    const markerData = layout.markers;
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
       markers: markerData,
-      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayWallEdges: this.geometryCache.wallEdges,
       cfg,
       splitPassages: this.geometryCache.splitPassages,
     });
-    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg, floorNavigable: true, waypoints: teleportWaypoints });
-    this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
+    this.teleports.render({ edges: layout.teleportEdges, cfg, floorNavigable: true, waypoints: teleportWaypoints });
+    this.verticalConnections.render({ markers: layout.verticalMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
 
     this.markers.render({ markers: markerData });
 
@@ -325,6 +345,7 @@ export class GenerationRenderer {
         },
         activeFloorIndex: Math.max(activeFloorIndex, 0),
         oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay),
+        seam: selectSeamHopContext(state, view.nodes),
       });
     } else {
       this.debugRefHighlight.clear();
@@ -368,6 +389,7 @@ export class GenerationRenderer {
         colorFor: (name) => colorByName.get(name) ?? canvas.debug.refHighlight,
         singleCellRegionNames,
         cfg,
+        seam: selectSeamHopContext(state, view.nodes),
       });
     } else {
       this.debugValueHighlight.clear();
@@ -385,6 +407,8 @@ export class GenerationRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();

@@ -3,7 +3,9 @@ import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
+import { SeamHoverTracker } from "./SeamHoverTracker";
 import { FieldEditController } from "./FieldEditController";
+import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
@@ -13,15 +15,21 @@ import { ImageExportRenderer } from "./imageExport/ImageExportRenderer";
 import { ExportFrameOverlay } from "./imageExport/ExportFrameOverlay";
 import { PngExporter } from "./imageExport/PngExporter";
 import { fitFieldViewport } from "./FieldEditorOverlay";
-import { fitMazeViewport } from "./viewportFit";
+import { fitBoundsViewport, fitMazeViewport } from "./viewportFit";
+import { NO_MARGIN, resolveActiveCutPlan } from "./imageExport/exportContent";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
-import { backgroundImageEditMode } from "./sceneTypes";
+import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
 import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
+import { CutLineDragController, hasManualCutLine } from "./imageExport/CutLineDragController";
+import { TeleportConnectorEditController } from "./imageExport/TeleportConnectorEditController";
+import { CutLinesOverlay } from "./imageExport/CutLinesOverlay";
+import { CreaseExportOverlay } from "./imageExport/CreaseExportOverlay";
+import { TopologyWarningHighlight } from "./imageExport/TopologyWarningHighlight";
 import { RenderScheduler } from "./renderScheduler";
 import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
@@ -29,12 +37,12 @@ import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
 import type { FieldPrimitive } from "../store/tessellationTypes";
 import type { FieldConfig } from "../fieldConfig";
+import { setCanvasLabelView } from "./renderers/canvasLabelResolution";
 
 type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldConfig;
 
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   basic_config: (st) => st.previewFieldConfig,
-  floors: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   field_setup: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   preset_connections: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   quality: (st) => st.floorFields[st.activeFloorId].fieldConfig,
@@ -80,6 +88,7 @@ export class MazeScene {
   private primitivePreviewContainer: Container;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
+  private seamHoverTracker: SeamHoverTracker;
   private presetConnectionsController: PresetConnectionsController;
   private postEditRenderer: PostEditRenderer;
   private postEditContainer: Container;
@@ -94,9 +103,18 @@ export class MazeScene {
   private interaction: SceneInteraction;
   private backgroundImageController: BackgroundImageController;
   private floorLabelDragController: FloorLabelDragController;
+  private cutLineDragController: CutLineDragController;
+  private teleportConnectorEditController: TeleportConnectorEditController;
+  private cutLinesOverlay: CutLinesOverlay;
+  private creaseExportOverlay: CreaseExportOverlay;
+  private topologyWarningHighlight: TopologyWarningHighlight;
+  private cutLinesContainer: Container;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
+  private lastSyncedViewport = { x: 0, y: 0, scale: 1 };
+  private fieldSizeCallback: ((readout: FieldSizeReadout) => void) | null = null;
+  private fieldSizeReadout: FieldSizeReadout = EMPTY_FIELD_SIZE_READOUT;
   private cachedProjection: { cfg: FieldConfig; projection: TessellationProjection } | null = null;
 
   // All containers that must stay in sync with viewport position/scale.
@@ -125,10 +143,9 @@ export class MazeScene {
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
     this.imageExportContainer = new Container();
-    // Deliberately NOT in syncedLayers — hosts ExportFrameOverlay, which draws in screen space.
-    // Print mode's frame is a fixed rect (the sheet stays put while the maze content underneath
-    // keeps panning/zooming with the normal viewport); digital mode's frame instead recomputes its
-    // screen rect from the live viewport transform on every change. See ExportFrameOverlay.
+    this.cutLinesContainer = new Container();
+    // The print frame is a normal viewport layer. Ctrl-navigation is the sole exception: it leaves
+    // this layer fixed while moving the canvas inside it (see syncLayersToViewport).
     this.imageExportFrameContainer = new Container();
 
     this.syncedLayers = [
@@ -139,6 +156,8 @@ export class MazeScene {
       this.tessellationContainer,
       this.analyticsContainer,
       this.imageExportContainer,
+      this.cutLinesContainer,
+      this.imageExportFrameContainer,
     ];
 
     this.app.stage.addChild(this.viewport);
@@ -157,7 +176,7 @@ export class MazeScene {
     this.imageExportRenderer = new ImageExportRenderer(this.imageExportContainer);
     this.exportFrameOverlay = new ExportFrameOverlay(
       this.imageExportFrameContainer,
-      (x, y, scale) => this.setViewportTransform(x, y, scale),
+      (x, y, scale, navigation) => this.setViewportTransform(x, y, scale, navigation),
       () => ({ width: this.app.screen.width, height: this.app.screen.height }),
       this.imageExportRenderer,
     );
@@ -166,11 +185,40 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
+    this.seamHoverTracker = new SeamHoverTracker(this.viewport, this.app.stage);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
     this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
+    this.cutLineDragController = new CutLineDragController(() => this.viewport, {
+      start: (x, y) => this.interaction.defaultPan.begin(x, y),
+      move: (x, y) => this.interaction.defaultPan.move(x, y),
+      end: () => this.interaction.defaultPan.end(),
+    });
+    this.teleportConnectorEditController = new TeleportConnectorEditController(
+      () => this.viewport,
+      () => { const mode = useMazeStore.getState().activeRenderMode; return mode ? this.imageExportRenderer.getTeleportConnectorPaths(mode) : []; },
+      {
+        start: (x, y) => this.interaction.defaultPan.begin(x, y),
+        move: (x, y) => this.interaction.defaultPan.move(x, y),
+        end: () => this.interaction.defaultPan.end(),
+      },
+      this.cutLinesContainer,
+    );
+    this.cutLinesOverlay = new CutLinesOverlay(this.cutLinesContainer);
+    const activeModeMargin = () => {
+      const mode = useMazeStore.getState().activeRenderMode;
+      return (mode ? this.imageExportRenderer.getModeRenderer(mode)?.getRequiredExportMargin() : undefined) ?? NO_MARGIN;
+    };
+    this.creaseExportOverlay = new CreaseExportOverlay(this.cutLinesContainer, activeModeMargin);
+
+    // After the crease overlay, which draws the marks the highlight frames: above them, and unclipped by the cut region.
+    this.topologyWarningHighlight = new TopologyWarningHighlight(this.cutLinesContainer, activeModeMargin);
 
     this.viewportListeners = [
+      this.cutLinesOverlay,
+      this.creaseExportOverlay,
+      this.topologyWarningHighlight,
+      this.teleportConnectorEditController,
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
@@ -207,7 +255,7 @@ export class MazeScene {
       getController: (st) => this.getController(st),
       getHoverProvider: (st) => this.getHoverProvider(st),
       onHoverChanged: (info) => this.hoverCallback?.(info),
-      onViewportChanged: () => this.syncLayersToViewport(),
+      onViewportChanged: (canvasOnly) => this.syncLayersToViewport(canvasOnly ? "canvas" : "layout"),
       onResetZoom: () => this.resetZoomToOne(),
     });
 
@@ -225,8 +273,8 @@ export class MazeScene {
         endPan: () => this.interaction.defaultPan.end(),
       },
       {
-        onPreviewUpdate: (cells, btn, _kind, cfg, geometry) => {
-          this.primitivePreviewOverlay.update(cells, btn, cfg, geometry);
+        onPreviewUpdate: (cells, btn, _kind, cfg, geometry, smoothedOutCells) => {
+          this.primitivePreviewOverlay.update(cells, btn, cfg, geometry, smoothedOutCells);
         },
         onPreviewClear: () => {
           this.primitivePreviewOverlay.clear();
@@ -249,15 +297,19 @@ export class MazeScene {
             && afterState.fieldEditConfirmation !== beforeState.fieldEditConfirmation;
           return fieldPointsChanged || moveQueuedForConfirmation;
         },
-        onSymmetryPreviewUpdate: (axis, polygon) => {
-          this.fieldEditorOverlay.scheduleSymmetryPreview(axis, polygon);
+        onSizeReadout: (readout) => {
+          this.fieldSizeReadout = readout;
+          this.fieldSizeCallback?.(readout);
+        },
+        onMirrorPreviewUpdate: (axis, polygon) => {
+          this.fieldEditorOverlay.scheduleMirrorPreview(axis, polygon);
         },
       },
     );
 
     // Renderers react to store updates by editing Pixi objects, which the scheduler's render-group
     // hooks already pick up; this explicit request is the safety net for any update path they miss.
-    this.unsubscribeRender = useMazeStore.subscribe(() => this.renderScheduler.requestRender());
+    this.unsubscribeRender = useMazeStore.subscribe(() => { this.renderScheduler.requestRender(); this.teleportConnectorEditController.render(); });
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToQualityOpen();
@@ -268,7 +320,9 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
-    if (st.floorLabelDrag !== null) return this.floorLabelDragController;
+    if (isTeleportConnectorEditActive(st)) return this.teleportConnectorEditController;
+    if (isFloorLabelDragActive(st)) return this.floorLabelDragController;
+    if (hasManualCutLine(st)) return this.cutLineDragController;
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }
@@ -295,7 +349,7 @@ export class MazeScene {
   /** Resolves the active hover provider for the current card. Currently every card uses the same
    * generic cell-lookup provider; a future per-feature override (e.g. edge hit-testing) would
    * branch on st.openCard here the same way getController() does. `st` is unused today — kept for
-   * signature symmetry with getController() and because that future branch will need it. */
+   * signature mirror with getController() and because that future branch will need it. */
   private getHoverProvider(st: ReturnType<typeof useMazeStore.getState>): HoverProvider {
     void st;
     return this.hoverProvider;
@@ -318,6 +372,15 @@ export class MazeScene {
     if (cb === this.viewportScaleCallback) return;
     this.viewportScaleCallback = cb;
     this.viewportScaleCallback?.(this.viewport.scale.x);
+  }
+
+  /** Same one-listener contract — HoverInfoPanel's field-editor selection / stretched-shape size
+   * readout (GitHub issue #863). */
+  setFieldSizeListener(cb: ((readout: FieldSizeReadout) => void) | null): void {
+    if (cb === this.fieldSizeCallback) return;
+    this.fieldSizeCallback?.(EMPTY_FIELD_SIZE_READOUT);
+    this.fieldSizeCallback = cb;
+    this.fieldSizeCallback?.(this.fieldSizeReadout);
   }
 
   /** Resets the current viewport transform back to a 1:1 scale while keeping the same world point
@@ -456,22 +519,37 @@ export class MazeScene {
     });
   }
 
-  private syncLayersToViewport(): void {
+  private syncLayersToViewport(navigation?: "layout" | "canvas"): void {
     for (const layer of this.syncedLayers) {
+      // Ctrl/Cmd navigation intentionally moves only the maze canvas within the print sheet.
+      if (navigation === "canvas" && layer === this.imageExportFrameContainer) continue;
+      if (navigation === "layout" && layer === this.imageExportFrameContainer) {
+        const ratio = this.viewport.scale.x / this.lastSyncedViewport.scale;
+        layer.x = this.viewport.x - this.lastSyncedViewport.x * ratio + layer.x * ratio;
+        layer.y = this.viewport.y - this.lastSyncedViewport.y * ratio + layer.y * ratio;
+        layer.scale.set(layer.scale.x * ratio);
+        this.exportFrameOverlay.setFrameViewport(layer.x, layer.y, layer.scale.x);
+        continue;
+      }
       layer.x = this.viewport.x;
       layer.y = this.viewport.y;
       layer.scale.x = this.viewport.scale.x;
       layer.scale.y = this.viewport.scale.y;
+      if (layer === this.imageExportFrameContainer) this.exportFrameOverlay.setFrameViewport(layer.x, layer.y, layer.scale.x);
     }
+    this.lastSyncedViewport = { x: this.viewport.x, y: this.viewport.y, scale: this.viewport.scale.x };
     for (const listener of this.viewportListeners) {
-      listener.onViewportChanged(
+      const args = [
         this.viewport.x,
         this.viewport.y,
         this.app.screen.width,
         this.app.screen.height,
         this.viewport.scale.x,
-      );
+      ] as const;
+      if (navigation === undefined) listener.onViewportChanged(...args);
+      else listener.onViewportChanged(...args, navigation);
     }
+    setCanvasLabelView(this.app.stage, this.viewport.scale.x, this.app.screen.width, this.app.screen.height);
     this.viewportScaleCallback?.(this.viewport.scale.x);
     this.renderScheduler.requestRender();
   }
@@ -551,9 +629,8 @@ export class MazeScene {
   }
 
   /** Physical 1:1 request from the print settings panel (GitHub issue #476) — a pure viewport
-   * command: zoom the editor to `targetScale`, keeping the point under the print frame's centre
-   * fixed on screen. Does NOT touch print placement (`print.scale`/`anchor`/`offset`) — that
-   * stays the export contract; a later real pan/zoom moves placement as usual. */
+   * command that centres and zooms the complete print layout to `targetScale`. It does not touch
+   * print placement (`print.scale`/`anchor`/`offset`). */
   applyPrintPhysicalZoom(targetScale: number): void {
     this.exportFrameOverlay.applyViewportScaleAroundFrameCentre(targetScale);
   }
@@ -587,19 +664,36 @@ export class MazeScene {
   /** Directly sets the editor viewport's transform (used by `ExportFrameOverlay` to push
    * print-settings-panel edits — scale/offset/anchor — back onto the canvas, the inverse
    * direction of its own pan/zoom-to-settings sync). */
-  setViewportTransform(x: number, y: number, scale: number): void {
+  setViewportTransform(x: number, y: number, scale: number, navigation?: "layout" | "canvas"): void {
     this.viewport.x = x;
     this.viewport.y = y;
     this.viewport.scale.set(scale);
-    this.syncLayersToViewport();
+    this.syncLayersToViewport(navigation);
+  }
+
+  /** Centers and scales the live canvas around one edited connector's authored polyline. */
+  focusTeleportConnector(points: readonly [number, number][]): void {
+    if (points.length < 2) return;
+    const xs = points.map(([x]) => x), ys = points.map(([, y]) => y), pad = 30;
+    const { x, y, scale } = fitBoundsViewport({ minX: Math.min(...xs) - pad, minY: Math.min(...ys) - pad, maxX: Math.max(...xs) + pad, maxY: Math.max(...ys) + pad }, this.app.screen.width, this.app.screen.height);
+    this.setViewportTransform(x, y, scale);
   }
 
   refit(): void {
     this.app.resize();
+    if (this.exportFrameOverlay.fitLayoutToScreen()) return;
     const { nodes, previewFieldConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
     const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
-    const { x, y, scale } = showsMaze
+    const state = useMazeStore.getState();
+    const activeMode = state.activeRenderMode;
+    const cutBounds = resolveActiveCutPlan(
+      state,
+      () => (activeMode ? this.imageExportRenderer.getModeRenderer(activeMode)?.getRequiredExportMargin() : undefined) ?? NO_MARGIN,
+    )?.bounds;
+    const { x, y, scale } = cutBounds
+      ? fitBoundsViewport(cutBounds, this.app.screen.width, this.app.screen.height)
+      : showsMaze
       ? fitMazeViewport(
         floors.map((f) => floorFields[f.id].fieldConfig),
         nodes,
@@ -633,9 +727,14 @@ export class MazeScene {
     this.analyticsRenderer.destroy();
     this.imageExportRenderer.destroy();
     this.exportFrameOverlay.destroy();
+    this.cutLinesOverlay.destroy();
+    this.creaseExportOverlay.destroy();
+    this.topologyWarningHighlight.destroy();
+    this.teleportConnectorEditController.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
+    this.seamHoverTracker.destroy();
     this.presetConnectionsController.destroy();
     this.postEditRenderer.destroy();
     this.postEditController.destroy();

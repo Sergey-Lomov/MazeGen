@@ -1,30 +1,24 @@
 import type { FieldConfig } from "../fieldConfig";
-import { TESSELLATION_UI, isIdentityLinear, type Linear } from "./geometry/tessellationUi";
+import type { Linear } from "./geometry/tessellationUi";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import { originCellOf } from "./splitPatternTile";
 import { cellsInDisplayRect, getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 
-export type ShapeKind = "rectangle" | "circle" | "triangle" | "hexagon" | "parallelogram";
+export type ShapeKind = "rectangle" | "circle" | "triangle" | "hexagon";
 export type ShapeInclusion = "center" | "contained";
 export interface ShapeOrigin { x: number; y: number }
-export type PrimitiveShape = "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram";
+export type PrimitiveShape = "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon";
 export interface PrimitiveShapeGeometry {
   width: number;
   height: number;
   directionX?: -1 | 1;
   directionY?: -1 | 1;
-  radius?: number;
-  side?: number;
   polygon?: Point[];
-  anchorStart?: boolean;
-  startOffsetX?: number;
-  startOffsetY?: number;
 }
 
 export type ShapeDefinition =
   | { kind: "rectangle"; width: number; height: number }
-  | { kind: "parallelogram"; width: number; height: number; skewSign?: -1 | 1 }
   | { kind: "circle"; radius: number; width?: number; height?: number }
   | { kind: "triangle"; side: number; width?: number; height?: number; orientation?: Linear; polygon?: Point[] }
   | { kind: "hexagon"; radius: number; width?: number; height?: number; orientation?: "flat_top" | "pointy_top"; polygon?: Point[] };
@@ -33,61 +27,22 @@ type Point = { x: number; y: number };
 const BOUNDARY_EPSILON_PX = 0.25;
 
 export function shapeForPrimitive(
-  primitive: Exclude<PrimitiveShape, "equilateral_triangle">,
-  cfg: FieldConfig,
+  primitive: Exclude<PrimitiveShape, "equilateral_triangle" | "hexagon">,
   geometry: PrimitiveShapeGeometry,
 ): ShapeDefinition {
   if (primitive === "rectangle") return { kind: "rectangle", width: geometry.width, height: geometry.height };
-  if (primitive === "parallelogram") {
-    return { kind: "parallelogram", width: geometry.width, height: geometry.height, skewSign: geometry.directionX === geometry.directionY ? 1 : -1 };
-  }
   if (primitive === "circle") {
-    return geometry.radius !== undefined
-      ? { kind: "circle", radius: geometry.radius }
-      : { kind: "circle", radius: Math.max(geometry.width, geometry.height) / 2, width: geometry.width, height: geometry.height };
+    return { kind: "circle", radius: Math.max(geometry.width, geometry.height) / 2, width: geometry.width, height: geometry.height };
   }
-  if (primitive === "triangle") {
-    if (geometry.side !== undefined) return { kind: "triangle", side: geometry.side, orientation: TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation) };
-    return {
-      kind: "triangle",
-      side: 1,
-      polygon: geometry.polygon ?? [
-        { x: -(geometry.directionX ?? 1) * geometry.width / 2, y: -(geometry.directionY ?? 1) * geometry.height / 2 },
-        { x: (geometry.directionX ?? 1) * geometry.width / 2, y: -(geometry.directionY ?? 1) * geometry.height / 2 },
-        { x: -(geometry.directionX ?? 1) * geometry.width / 2, y: (geometry.directionY ?? 1) * geometry.height / 2 },
-      ],
-    };
-  }
-  // The shape is axis-aligned (pointy) while the field's orientation is the identity, and turned a
-  // sixth of a revolution with any other instance of the display orientation.
-  const o = TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation);
-  const orientation = isIdentityLinear(o) ? "pointy_top" : "flat_top";
-  const radius = Math.max(geometry.width, geometry.height) / 2;
-  const width = geometry.width;
-  const height = geometry.height;
-  let polygon: Point[] | undefined;
-  if (geometry.anchorStart) {
-    const startAngle = orientation === "pointy_top" ? Math.PI / 2 : 0;
-    const vertices = Array.from({ length: 6 }, (_, i) => {
-      const angle = startAngle + i * Math.PI / 3;
-      return { x: width / 2 * Math.cos(angle), y: height / 2 * Math.sin(angle) };
-    });
-    const target = { x: geometry.startOffsetX ?? 0, y: geometry.startOffsetY ?? 0 };
-    const targetDirection = Math.atan2(target.y, target.x);
-    const anchor = vertices.reduce((best, vertex) => {
-      const bestDistance = Math.abs(normalizeAngle(Math.atan2(best.y, best.x) - targetDirection));
-      const distance = Math.abs(normalizeAngle(Math.atan2(vertex.y, vertex.x) - targetDirection));
-      return distance < bestDistance ? vertex : best;
-    });
-    polygon = vertices.map((vertex) => ({ x: vertex.x + target.x - anchor.x, y: vertex.y + target.y - anchor.y }));
-  }
-  return geometry.radius !== undefined
-    ? { kind: "hexagon", radius: geometry.radius, orientation }
-    : { kind: "hexagon", radius, width, height, orientation, ...(polygon ? { polygon } : {}) };
-}
-
-function normalizeAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
+  return {
+    kind: "triangle",
+    side: 1,
+    polygon: geometry.polygon ?? [
+      { x: -(geometry.directionX ?? 1) * geometry.width / 2, y: -(geometry.directionY ?? 1) * geometry.height / 2 },
+      { x: (geometry.directionX ?? 1) * geometry.width / 2, y: -(geometry.directionY ?? 1) * geometry.height / 2 },
+      { x: -(geometry.directionX ?? 1) * geometry.width / 2, y: (geometry.directionY ?? 1) * geometry.height / 2 },
+    ],
+  };
 }
 
 export function regularHexagonDimensions(radius: number, orientation: "flat_top" | "pointy_top"): { width: number; height: number } {
@@ -109,7 +64,6 @@ function hexDimensions(shape: Extract<ShapeDefinition, { kind: "hexagon" }>): { 
 function shapeBounds(shape: ShapeDefinition): { minX: number; maxX: number; minY: number; maxY: number } {
   switch (shape.kind) {
     case "rectangle":
-    case "parallelogram":
       return { minX: -shape.width / 2, maxX: shape.width / 2, minY: -shape.height / 2, maxY: shape.height / 2 };
     case "circle":
       return { minX: -(shape.width ?? shape.radius * 2) / 2, maxX: (shape.width ?? shape.radius * 2) / 2, minY: -(shape.height ?? shape.radius * 2) / 2, maxY: (shape.height ?? shape.radius * 2) / 2 };
@@ -166,16 +120,6 @@ export function polygonForShape(shape: ShapeDefinition): Point[] | null {
         { x: -width / 2, y: height / 2 },
       ];
     }
-    case "parallelogram": {
-      const skew = (shape.skewSign ?? 1) * shape.height / (2 * Math.sqrt(3));
-      const halfWidth = Math.max(0, shape.width / 2 - Math.abs(skew));
-      return [
-        { x: -halfWidth - skew, y: -shape.height / 2 },
-        { x: halfWidth - skew, y: -shape.height / 2 },
-        { x: halfWidth + skew, y: shape.height / 2 },
-        { x: -halfWidth + skew, y: shape.height / 2 },
-      ];
-    }
     case "triangle": {
       if (shape.polygon) return shape.polygon;
       const width = shape.width ?? shape.side;
@@ -208,15 +152,6 @@ function containsPoint(shape: ShapeDefinition, point: Point): boolean {
     case "rectangle":
       return Math.abs(point.x) <= shape.width / 2 + BOUNDARY_EPSILON_PX
         && Math.abs(point.y) <= shape.height / 2 + BOUNDARY_EPSILON_PX;
-    case "parallelogram": {
-      const vertices = polygonForShape(shape)!;
-      for (let i = 0; i < vertices.length; i++) {
-        const a = vertices[i];
-        const b = vertices[(i + 1) % vertices.length];
-        if (edgeSignedDistance(point, a, b) < -BOUNDARY_EPSILON_PX) return false;
-      }
-      return true;
-    }
     case "circle":
       {
         const rx = (shape.width ?? shape.radius * 2) / 2;
@@ -282,7 +217,7 @@ export function cellsInsideShape(
 ): [number, number][] {
   const pixelShape = {
     ...shape,
-    ...((shape.kind === "rectangle" || shape.kind === "parallelogram") ? { width: shape.width * TILE_SIZE, height: shape.height * TILE_SIZE } : {}),
+    ...(shape.kind === "rectangle" ? { width: shape.width * TILE_SIZE, height: shape.height * TILE_SIZE } : {}),
     ...(shape.kind === "circle" ? { radius: shape.radius * TILE_SIZE } : {}),
     ...(shape.kind === "triangle" ? { side: shape.side * TILE_SIZE } : {}),
     ...(shape.kind === "hexagon" ? { radius: shape.radius * TILE_SIZE } : {}),

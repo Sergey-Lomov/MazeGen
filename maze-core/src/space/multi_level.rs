@@ -1,5 +1,7 @@
 use crate::ids::{IdGenerator, NodeId};
-use crate::space::{Field, Tessellation};
+use crate::space::{
+    Crossing, Field, Tessellation, TessellationFingerprint, Topology, TopologyError,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -200,6 +202,41 @@ impl<T: Tessellation> MultiLevelField<T> {
             return Vec::new();
         };
         self.levels[&level].neighbors(node)
+    }
+
+    /// Effective adjacency of `cell` through `face` on `level` (`Field::neighbor_via`). `None`
+    /// when `level` doesn't exist or nothing is adjacent there.
+    pub fn neighbor_via(
+        &self,
+        level: LevelId,
+        cell: T::CellId,
+        face: T::Face,
+    ) -> Option<Crossing<T::CellId, T::Face>> {
+        self.levels.get(&level)?.neighbor_via(cell, face)
+    }
+
+    /// Fold-aware position in `faces_of(cell)` of the face reaching `other` on `level`.
+    pub fn face_index_toward(
+        &self,
+        level: LevelId,
+        cell: T::CellId,
+        other: T::CellId,
+    ) -> Option<usize> {
+        self.levels.get(&level)?.face_index_toward(cell, other)
+    }
+
+    /// Installs a topology on one level (`Field::set_topology`). Doesn't touch the node maps, so
+    /// the aggregator's invariants are unaffected. Panics if `level` doesn't exist.
+    pub fn set_topology(
+        &mut self,
+        level: LevelId,
+        topology: Topology<T>,
+        current_fingerprint: &TessellationFingerprint,
+    ) -> Result<(), TopologyError<T::CellId>> {
+        self.levels
+            .get_mut(&level)
+            .unwrap_or_else(|| panic!("set_topology: level does not exist"))
+            .set_topology(topology, current_fingerprint)
     }
 
     /// `node`'s *potential* `VerticalPassage` partner nodes: whichever node(s) exist at `node`'s

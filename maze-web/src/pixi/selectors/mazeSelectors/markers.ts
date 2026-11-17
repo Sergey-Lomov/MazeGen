@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
-import type { LabelFontWeight } from "../../renderers/indexLabel";
+import { plainLabelFont, type LabelFont } from "../../renderers/fontChoice";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
 
@@ -28,6 +28,9 @@ export interface MarkerStyle {
    *  `gapWidth` at `0`, so `gapColor`'s value never actually shows. */
   gapWidth: number;
   gapColor: number;
+  /** "Show marker" toggle (GitHub issue #963) — `undefined`/`true` draws the marker, `false` hides
+   *  it (see `withMarkerVisibility`). Optional for the same reason as `text`. */
+  markerEnabled?: boolean;
   /** Custom one-text badge label (GitHub issue #697) — omitted/empty draws no label.
    *  Optional since only `startMarker`/`finishMarker` offer this in the UI so far — every other
    *  `MarkerStyle` caller (vertical connection markers) simply never sets it. */
@@ -37,15 +40,37 @@ export interface MarkerStyle {
    *  Optional for the same reason as `text`; `undefined`/`true` draws the badge (matches
    *  pre-toggle behavior), `false` suppresses it. */
   textEnabled?: boolean;
-  /** Text badge font weight (GitHub issue #697 follow-up) — optional for the same reason as
-   *  `text`. Defaults to `"bold"` when unset. */
-  textFontWeight?: LabelFontWeight;
+  /** Text badge font — optional for the same reason as `text`. Defaults to bold bundled Roboto
+   *  when unset. */
+  textFont?: LabelFont;
   /** Text badge font size in px — optional for the same reason as `text`. Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
   /** Text badge color (GitHub issue #697 second follow-up) — optional for the same
    *  reason as `text`. Defaults to `gapColor` (the floor-colored knockout look) when unset. */
   textColor?: number;
+}
+
+/** The marker geometry as drawn (GitHub issue #963): a marker with `markerEnabled === false` has no
+ *  size, border or gap, so every consumer (rendering, footprints, warnings) sees it as absent while
+ *  its caption stays governed by `textEnabled` alone. Returns `style` itself when the marker is on. */
+export function withMarkerVisibility<T extends { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean }>(style: T): T {
+  return style.markerEnabled === false ? { ...style, size: 0, borderWidth: 0, ...(style.gapWidth === undefined ? {} : { gapWidth: 0 }) } : style;
+}
+
+/** Whether a start/finish marker itself shows on the image (GitHub issue #963): enabled and with a size or a border
+ *  (projects saved before the toggle hide a marker by size `0`). */
+export function isMarkerDrawn(style: { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean }): boolean {
+  const marker = withMarkerVisibility(style);
+  return marker.size > 0 || marker.borderWidth > 0;
+}
+
+/** Whether a start/finish shows anything on the image (GitHub issue #963): a drawn marker or a caption (enabled and
+ *  non-empty). */
+export function isWaypointVisible(style: { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean; text?: string; textEnabled?: boolean }): boolean {
+  const markerDrawn = isMarkerDrawn(style);
+  const captionDrawn = style.textEnabled !== false && (style.text ?? "").trim() !== "";
+  return markerDrawn || captionDrawn;
 }
 
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
@@ -55,7 +80,7 @@ export function buildMarkerData(pos: [number, number], style: MarkerStyle): Mark
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
     text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,
-    textFontWeight: style.textFontWeight, textSize: style.textSize,
+    textFont: style.textFont && plainLabelFont(style.textFont), textSize: style.textSize,
   };
 }
 

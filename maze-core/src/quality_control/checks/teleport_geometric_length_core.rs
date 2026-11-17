@@ -2,18 +2,31 @@ use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
-use crate::quality_control::{Comparison, GeometricFloorMode, InvalidTeleportIssue};
-use crate::space::{Tessellation, floor_aware_distance};
+use crate::quality_control::{
+    Comparison, GeometricFloorMode, IndeterminateReason, InvalidTeleportIssue,
+};
+use crate::space::{
+    DistanceError, DistancePolicy, FloorMetrics, Tessellation, WithinLimit, cell_position,
+};
 
 /// Shared filter/issue-building logic for `TeleportGeometricLengthCheck` — see GitHub issue
-/// #74/#78/#177/#342.
+/// #74/#78/#177/#342. The distance is the surface distance (GitHub issue #838): a teleport whose
+/// comparison is `Unknown` (bracket straddles `length`) or `Unsupported` (topological-only fold)
+/// is neither flagged nor cleared by this function: it is recorded in
+/// `Maze::distance_diagnostics`.
 pub fn find_invalid_teleports<T: Tessellation>(
     maze: &Maze<T>,
     protect_route: bool,
     comparison: Comparison,
     length: f64,
     floor_mode: GeometricFloorMode,
+    approximate_topology: bool,
 ) -> Vec<EdgeId> {
+    let metrics = FloorMetrics::new(
+        &maze.field,
+        DistancePolicy::from_approximate(approximate_topology),
+    );
+    let tessellation = maze.field.tessellation();
     maze.graph
         .edges()
         .filter(|e| e.kind == EdgeKind::Teleport)
@@ -32,15 +45,34 @@ pub fn find_invalid_teleports<T: Tessellation>(
             if floor_mode == GeometricFloorMode::SameFloorOnly && from_level != to_level {
                 return false;
             }
-            let dist = floor_aware_distance(
-                maze.field.tessellation(),
+            match metrics.compare(
                 from_level,
-                from,
+                cell_position(tessellation, from),
                 to_level,
-                to,
+                cell_position(tessellation, to),
                 floor_mode.include_height(),
-            );
-            comparison.compare_f64(dist, length)
+                comparison,
+                length,
+            ) {
+                Ok(WithinLimit::Yes) => true,
+                Ok(WithinLimit::No) => false,
+                Ok(WithinLimit::Unknown) => {
+                    maze.distance_diagnostics.record(
+                        t.from,
+                        t.to,
+                        IndeterminateReason::DistanceUnknown,
+                    );
+                    false
+                }
+                Err(DistanceError::Unsupported) => {
+                    maze.distance_diagnostics.record(
+                        t.from,
+                        t.to,
+                        IndeterminateReason::UnsupportedTopology,
+                    );
+                    false
+                }
+            }
         })
         .filter(|t| !protect_route || !is_teleport_route_protected(maze, t.id))
         .map(|e| e.id)

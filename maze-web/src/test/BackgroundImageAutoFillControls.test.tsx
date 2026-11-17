@@ -62,12 +62,32 @@ describe("BackgroundImageAutoFillControls", () => {
     await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1));
 
     const slider = screen.getByRole("slider");
-    fireEvent.change(slider, { target: { value: "0.4" } });
-    fireEvent.change(slider, { target: { value: "0.3" } });
-    fireEvent.change(slider, { target: { value: "0.2" } });
+    expect(slider).toHaveAttribute("min", "0");
+    expect(slider).toHaveAttribute("max", "100");
+    expect(slider).toHaveAttribute("step", "0.1");
+    fireEvent.change(slider, { target: { value: "40" } });
+    fireEvent.change(slider, { target: { value: "30" } });
+    fireEvent.change(slider, { target: { value: "20" } });
 
     expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(2));
+  });
+
+  it("edits the threshold as a percentage while preserving the 0..1 preview value", async () => {
+    render(<BackgroundImageAutoFillControls enabled />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Click for exact input" }));
+    const input = screen.getByRole("spinbutton", { name: "Non-background threshold value" });
+    expect(input).toHaveAttribute("min", "0");
+    expect(input).toHaveAttribute("max", "100");
+    fireEvent.change(input, { target: { value: "3" } });
+
+    await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), expect.anything(), 0.03,
+    ));
   });
 
   it("keeps confirm disabled during an active threshold drag", async () => {

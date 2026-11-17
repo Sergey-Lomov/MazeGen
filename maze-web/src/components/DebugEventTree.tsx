@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
   buildStepIndex, flattenVisibleRows, allRenderableRows, resolveHighlightTarget, buildNodeCoordIndex,
@@ -13,7 +13,8 @@ import { buildDebugRowText, normalizeSearchText, bubbleLabel } from "../debug/de
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
-import { Tooltip } from "./Tooltip";
+import { IconActionButton } from "./IconActionButton";
+import { SearchInput } from "./SearchInput";
 import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { resolveIssueLabel } from "./features/qualityI18n";
@@ -469,36 +470,21 @@ export function DebugEventTree() {
   return (
     <div style={styles.container}>
       <div style={styles.searchRow}>
-        <input
-          type="text"
+        <SearchInput
           name="debug-search"
           value={debugSearchQuery}
-          onChange={(e) => setDebugSearchQuery(e.target.value)}
+          onValueChange={setDebugSearchQuery}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
             navigate(e.shiftKey ? -1 : 1);
           }}
           placeholder={m["debug.search.placeholder"]()}
-          style={styles.searchInput}
+          layoutStyle={styles.searchBox}
         />
         <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
-        <Tooltip content={m["debug.search.prev"]()}><button
-          type="button"
-          onClick={() => navigate(-1)}
-          disabled={matchCount <= 1}
-          style={styles.searchNavBtn}
-        >
-          <ChevronUp size={14} color={ui.text.secondary} />
-        </button></Tooltip>
-        <Tooltip content={m["debug.search.next"]()}><button
-          type="button"
-          onClick={() => navigate(1)}
-          disabled={matchCount <= 1}
-          style={styles.searchNavBtn}
-        >
-          <ChevronDown size={14} color={ui.text.secondary} />
-        </button></Tooltip>
+        <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
+        <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
       </div>
       <div ref={scrollRef} style={styles.scroll}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -579,14 +565,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  searchInput: {
-    ...typography.field,
+  searchBox: {
     flex: 1,
     minWidth: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    padding: "2px 6px",
   },
   searchCounter: {
     ...muted(typography.caption),

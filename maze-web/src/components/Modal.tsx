@@ -1,8 +1,7 @@
 import React, { useEffect, useId, useRef } from "react";
-import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
-import { sharedStyles } from "../styles/shared";
+import { CloseIconButton } from "./CloseIconButton";
 
 type DialogSizeKey = keyof typeof dialogSize;
 
@@ -37,9 +36,17 @@ function isNewlineTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.tagName === "TEXTAREA";
 }
 
+/** True for an input that ends its own edit on Enter (blur commits the value, e.g. `NumberInput`).
+ *  Enter there finishes the edit and leaves the dialog open instead of confirming it. */
+function isBlurOnEnterTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement && target.dataset.blurOnEnter !== undefined;
+}
+
 interface Props {
   title: string;
   size?: DialogSizeKey;
+  /** Layout-only overrides for a dialog whose dimensions depend on its content. */
+  layoutStyle?: React.CSSProperties;
   /** Replaces the padded body with a raw full-bleed container. Use when the content manages its own layout (e.g. split-pane dialogs). */
   rawBody?: React.ReactNode;
   onClose: () => void;
@@ -49,7 +56,7 @@ interface Props {
   children?: React.ReactNode;
 }
 
-export function Modal({ title, size = "info", rawBody, onClose, onConfirm, children }: Props) {
+export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onConfirm, children }: Props) {
   const sizeTokens = dialogSize[size];
   const id = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -58,9 +65,11 @@ export function Modal({ title, size = "info", rawBody, onClose, onConfirm, child
   // opened it stays focused, so Space re-activates that trigger (native button behavior) instead
   // of reaching this modal's own Enter/Space confirm shortcut, and only a mouse click inside fixes
   // it. `tabIndex={-1}` on the modal box makes it focusable programmatically without joining the
-  // Tab order.
+  // Tab order. Child effects run first, so a child that already took focus (an `autoFocus` list
+  // whose arrow keys must work at once) keeps it.
   useEffect(() => {
-    modalRef.current?.focus();
+    const modal = modalRef.current;
+    if (modal && !modal.contains(document.activeElement)) modal.focus();
   }, []);
 
   useEffect(() => {
@@ -75,10 +84,14 @@ export function Modal({ title, size = "info", rawBody, onClose, onConfirm, child
     function handleKeyDown(e: KeyboardEvent) {
       if (openModalStack[openModalStack.length - 1] !== id) return;
       if (e.key === "Escape") {
+        // The dialog unmounts synchronously, so a window-level Escape listener of the UI beneath it
+        // (`SidePanel`) would no longer see an open modal: `defaultPrevented` is its signal.
+        e.preventDefault();
         onClose();
         return;
       }
       if (!onConfirm) return;
+      if (e.key === "Enter" && isBlurOnEnterTarget(e.target)) return;
       if (e.key === "Enter" && !isNewlineTarget(e.target)) {
         e.preventDefault();
         onConfirm();
@@ -111,12 +124,13 @@ export function Modal({ title, size = "info", rawBody, onClose, onConfirm, child
           maxWidth: sizeTokens.maxWidth,
           ...("width" in sizeTokens ? { width: sizeTokens.width } : {}),
           ...("height" in sizeTokens ? { height: (sizeTokens as { height: string | number }).height } : {}),
+          ...layoutStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={styles.header}>
           <span style={styles.title}>{title}</span>
-          <button className="hoverable" style={styles.closeBtn} onClick={onClose}><X size={16} /></button>
+          <CloseIconButton onClick={onClose} />
         </div>
         {rawBody !== undefined ? (
           <div style={styles.bodyRaw}>{rawBody}</div>
@@ -159,7 +173,6 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     ...typography.title,
   },
-  closeBtn: sharedStyles.closeBtn,
   body: {
     flex: 1,
     overflowY: "auto" as const,

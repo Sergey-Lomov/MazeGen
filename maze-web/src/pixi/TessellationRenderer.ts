@@ -15,13 +15,13 @@ export class TessellationRenderer {
     this.root = container;
     this.gridContainer = new Container();
     this.root.addChild(this.gridContainer);
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "tessellation preview");
 
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
       const openChanged = state.openCard !== prev.openCard;
-      const shouldShow = state.openCard === "basic_config" || state.openCard === "floors";
+      const shouldShow = state.openCard === "basic_config";
       if (openChanged) {
         this.root.visible = shouldShow;
         if (shouldShow) this.redraw(state.previewFieldConfig);
@@ -33,7 +33,7 @@ export class TessellationRenderer {
     });
 
     const s = useMazeStore.getState();
-    const shouldShow = s.openCard === "basic_config" || s.openCard === "floors";
+    const shouldShow = s.openCard === "basic_config";
     this.root.visible = shouldShow;
     // Viewport not yet set; onViewportChanged will trigger first real draw.
   }

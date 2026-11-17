@@ -125,8 +125,10 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into every
     /// `Check::repair_check` call in that rule. Default `I::Requirement::default()` — which
     /// `IssueRequirement`'s contract fixes to mean "compute everything" — so an unmigrated
-    /// strategy changes nothing.
-    fn requirement(&self, _params: &StrategyParams) -> I::Requirement { I::Requirement::default() }
+    /// strategy changes nothing. `nested` is the same list `apply()` later receives (GitHub issue
+    /// #283): a coordinator strategy consults it to translate its nested strategies' requirements
+    /// into its own `I::Requirement`; a strategy with no nested slots ignores it.
+    fn requirement(&self, _params: &StrategyParams, _nested: &[NestedStrategyConfig<T>]) -> I::Requirement { I::Requirement::default() }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
     fn is_experimental(&self) -> bool { false }
@@ -164,14 +166,13 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn expected_nested(&self) -> &'static [NestedSlot];
     fn nested_suppressed_params(&self) -> &'static [&'static str];
     /// Erased form of `RepairStrategy::requirement` — returns `Box<dyn Any>` wrapping the
-    /// strategy's own `I::Requirement`. The only caller, `maze-runner`'s `downcast_strategy`,
-    /// already knows the concrete `I` (generic over it) and downcasts this back via
-    /// `downcast::<I::Requirement>()`. Needed because `requirement()`'s return type is generic
-    /// over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
-    /// `&dyn Issue` erasure. **A parent strategy delegating to a nested slot never calls this** —
-    /// a nested strategy's issue is synthesized directly by the parent (see "Nested strategies"
-    /// below), never produced by a `Check::repair_check` call, so there is no requirement to pass.
-    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
+    /// strategy's own `I::Requirement`. Callers know the concrete `I` and downcast this back via
+    /// `downcast::<I::Requirement>()`: `maze-runner`'s `downcast_strategy` (generic over `I`).
+    /// Needed because `requirement()`'s return type is generic over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
+    /// `&dyn Issue` erasure. A coordinator strategy (currently `InvalidLoopGroupSelectStrategy`,
+    /// GitHub issue #283) calls this on its nested strategy from its own `requirement()` and
+    /// translates the result into its own `I::Requirement`; every other parent ignores it.
+    fn requirement_erased(&self, params: &StrategyParams, nested: &[NestedStrategyConfig<T>]) -> Box<dyn std::any::Any>;
     fn apply(
         &self, issue: &dyn Issue, maze: &Maze<T>,
         rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
@@ -283,7 +284,7 @@ See GitHub issue #68. A repair strategy can delegate part of its work to other, 
 pub enum NestedDispatchKind {
     /// No ordering convention — either the slot holds at most one entry (`max: Some(1)`), or
     /// there's exactly one required fixer with nothing to pick between. Default for every slot
-    /// that isn't `Weighted`/`Priority`.
+    /// that isn't `Weighted`/`Priority`/`SizeThreshold`.
     Unordered,
     /// Candidates are picked weighted-randomly, with retry-on-`Failed` — see `dispatch_weighted`
     /// below (GitHub issue #90).
@@ -291,6 +292,9 @@ pub enum NestedDispatchKind {
     /// Candidates are tried strictly in configured list order, falling through to the next on
     /// `Failed` — see `dispatch_priority` below (GitHub issue #259).
     Priority,
+    /// One candidate picked by the flagged region's own size — see
+    /// `SizeThresholdRegionMergeStrategy` (GitHub issue #91).
+    SizeThreshold,
 }
 
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
@@ -363,10 +367,16 @@ concrete `I`, since `NestedStrategyConfig`'s candidates are `Box<dyn ErasedRepai
 whose own `I` may differ from the caller's.
 
 - **Who resolves weights**: `dispatch_weighted` itself carries no convention for how a weight is
-  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. Deriving a
-  weight (e.g. reading a `"weight"` key out of `NestedStrategyConfig.param_overrides`) is the
-  calling dispatcher's own convention; `WeightedRegionMergeStrategy` is the reference
-  implementation of one such convention.
+  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. The shared
+  convention lives next to it in `nested_dispatch.rs`: `WEIGHT_KEY` (`"weight"`),
+  `DEFAULT_WEIGHT` (`1.0`), `resolve_weight(param_overrides)` (missing, unparsable, non-finite or
+  `<= 0.0` falls back to the default) and `weighted_candidates(configs, slot_id)`, which wraps
+  already-filtered configs into `WeightedCandidate`s and debug-asserts that no candidate strategy
+  declares its own `"weight"` param. `WeightedRegionMergeStrategy` and `WeightedDeadEndStrategy`
+  both use it.
+- **Slot filtering**: `slot_candidates(nested, slot_id)` (`nested_dispatch.rs`) is the shared
+  defensive runtime filter that narrows `nested` to the configs filling one slot, in configured
+  order. Used by the priority/weighted dispatchers and `ReduceSccCountStrategy`.
 - **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
   `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
   returns `Failed` immediately without touching `rng`.
@@ -405,8 +415,9 @@ strategy that receives an already-bundled issue.
 See GitHub issue #259, the priority-fallback companion to `dispatch_weighted` above.
 `maze-core/src/repair/nested_dispatch.rs` provides a second shared helper for a parent strategy
 that wants to pick *which* of several nested strategies filling one slot to actually run, this
-time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy` and
-`PriorityMissingLoopsStrategy` (below) are its users.
+time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy`,
+`PriorityMissingLoopsStrategy` (below), and `PriorityDeadEndStrategy` (see the dead-end repair
+section) are its users.
 
 ```rust
 pub fn dispatch_priority<T: Tessellation>(
@@ -441,7 +452,7 @@ a `Priority`-kind slot (`NestedStrategyPanel`) mutate exactly that stored order.
 - Empty `candidates` returns `Failed` immediately without touching `rng`, same as
   `dispatch_weighted`.
 - **No weight resolution, no `"weight"` `param_overrides` convention** — a `Priority`-kind slot has
-  nothing analogous to `WeightedRegionMergeStrategy::resolve_weight`; a candidate's position in the
+  nothing analogous to `nested_dispatch::resolve_weight`; a candidate's position in the
   configured `nested` list is its entire selection signal.
 
 ### Rule, Stage, and the unified QualityControlEngine
@@ -714,7 +725,7 @@ User-facing strategy `label`s (`maze-web/messages/{en,ru}.json`, `strategy.<id>.
 **nominalized** — an action-as-noun phrase, matching how rules/checks are named — not an
 imperative verb phrase. E.g. "Remove teleport", not "Remove the teleport" or "Removes teleport".
 Cardinality in the label must match what the strategy actually does: a strategy that can act on
-several items in one call (e.g. `InvalidLoopGroupSelectStrategy` sampling multiple cycles) uses a
+several items in one call (e.g. `InvalidLoopGroupSelectStrategy` breaking every flagged cycle) uses a
 plural/generic noun ("Loop selection and break"), not a singular one ("...one loop") that
 overclaims a 1:1 guarantee.
 
@@ -729,6 +740,22 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
   - Picks candidate at random via `rng`, sets `maze.meta.start`.
 - If `maze.meta.finish.is_none()`: candidates = `reachable_from(start)` minus start. Empty → `Failed`. Picks at random, sets `maze.meta.finish`.
 - Returns `Fixed`.
+
+### DeadEndToTeleportStrategy
+
+`dead_end_to_teleport` is a nested-only `INVALID_DEAD_END` repair for
+`dead_end_group_select`'s `fix_target` slot. It repairs exactly the supplied source by adding a
+teleport from that source to one eligible exit; it never selects group candidates or consumes a
+group's `to_remove` budget itself.
+
+Its parameters are `one_way_chance` (default `50`), `allow_cross_floor` (default `false`),
+`desired_length` (default `5..1000` raw forward graph hops), `allow_out_of_interval` (default
+`true`), `exit_pick` (`random` or `dead_end_priority`, default `dead_end_priority`; the latter
+prefers a still-live reported candidate), and
+`attempts_limit` (default `25`). It intentionally does not expose `reserve_percent`. A directed
+teleport always points from the supplied dead end to its exit. A bidirectional teleport also
+repairs its exit if that exit remains a live dead-end candidate; the outer selector detects those
+outcomes from returned mutation commands and performs all group-budget accounting.
 
 ### FarthestEndpointsStrategy
 
@@ -842,11 +869,13 @@ Unlike `InvalidLoopRandomStrategy`, `requirement()` returns `InvalidLoopRequirem
 
 For a candidate edge, `invalid_overlap` counts how many cycles in `all` at indices listed in `invalid` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId` — raw, uncorrected: every invalid-cycle intersection is a real win regardless of linear dependence between invalid cycles, since `invalid` already names the concrete cycles that must be broken.
 
-`valid_overlap` — since GitHub issue #284 — counts how many cycles in the GF(2) independent basis of the *valid* subset of `all` (indices not in `invalid`) contain that `EdgeId`, not every valid cycle. A raw valid-cycle count overstates an edge's real cost: if several valid cycles sharing an edge are linearly dependent, cutting that edge cannot reduce the valid subset's independent-cycle count by more than its basis membership implies — a naive raw count would penalize the edge as if breaking `N` valid loops when at most `rank` of them are actually independent. The basis here is a separate, `EdgeId`-domain GF(2) elimination (`valid_cycle_basis_indices`, `invalid_loop_scored.rs`) — not `GraphAnalytics.pure_cycle_basis` (nav-edge-index domain, a different bit universe) — built via a local dense remap (`EdgeId` values are not a dense 0..N index) over `crate::graph::cycles::GF2Basis`, the same elimination core `find_all_simple_cycles` uses internally (see `graph-analytics.md`'s "Independent Cycle Basis" section). No canonical (forward/reverse) edge merging is applied in this domain, unlike the nav-edge basis — a cut here is about concrete `EdgeId`s, not physical corridors, and forward/reverse are already distinct `EdgeId`s with no automatic pairing to merge.
+`valid_overlap` — since GitHub issue #284 — counts how many cycles in the GF(2) independent basis of the *valid* subset of `all` (indices not in `invalid`) contain that `EdgeId`, not every valid cycle. A raw valid-cycle count overstates an edge's real cost: if several valid cycles sharing an edge are linearly dependent, cutting that edge cannot reduce the valid subset's independent-cycle count by more than its basis membership implies — a naive raw count would penalize the edge as if breaking `N` valid loops when at most `rank` of them are actually independent. The basis here is a separate, `EdgeId`-domain GF(2) elimination (`valid_cycle_basis_indices`, `invalid_loop_scored.rs`) — not `GraphAnalytics.pure_cycle_basis` (nav-edge-index domain, a different bit universe) — built via a local dense remap (`EdgeId` values are not a dense 0..N index) over `crate::graph::gf2_basis::GF2Basis`, the same elimination core `find_all_simple_cycles` uses internally (see `graph-analytics.md`'s "Independent Cycle Basis" section). No canonical (forward/reverse) edge merging is applied in this domain, unlike the nav-edge basis — a cut here is about concrete `EdgeId`s, not physical corridors, and forward/reverse are already distinct `EdgeId`s with no automatic pairing to merge.
+
+Performance (GitHub issue #908): only edges of the `invalid` cycles and their reverse legs are ever scored, so the basis is built only over valid cycles in edge-sharing components (union-find over shared `EdgeId`s) that touch those edges, in original order — a cycle's independence depends only on earlier cycles of its own component, so membership is identical to the full computation. The overlap map and the owners map are likewise restricted to that neighbourhood / to `invalid` indices. `GF2Basis::try_insert` xors only the words at or below the current top word.
 
 Score: `invalid_overlap * invalid_overlap_weight - valid_overlap * valid_overlap_weight`.
 
-The overlap counts (`edge -> (invalid_overlap, valid_overlap)`) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `invalid` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `InvalidLoopRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
+The overlap counts (`edge -> (invalid_overlap, valid_overlap)`, kept only for the edges of `invalid` cycles and their reverse legs) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `invalid` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `InvalidLoopRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
 
 When scoring a candidate edge, its counts are added to its reverse-direction `EdgeId`'s counts (via `Graph::edge_between`, O(1)) before applying the weights — a bidirectional corridor is two distinct `EdgeId`s (forward and reverse), so two invalid cycles that share the physical corridor but each traverse it in the opposite direction land on different `EdgeId`s in the overlap map; without this, a raw per-id lookup would miss that cutting either leg (which always removes both, via `RemoveEdgeWithReverse`) breaks both cycles at once. After a cut, both the cut edge's id and its reverse (if removed too) are used to drop other pending cycles that are now already broken, for the same reason.
 
@@ -854,25 +883,25 @@ Same candidate filtering (existence + preset-protection), same cut mechanics (`t
 
 ### InvalidLoopGroupSelectStrategy
 
-Handles `INVALID_LOOP_GROUP` — see GitHub issue #183. `MaxLoopDensityCheck`/`MaxLoopsCountCheck` (`quality_control.md`) both flag their *entire* field-wide cycle set `invalid` at once (no per-check subset selection); this strategy is where the actual "which loops to break, and how many this pass" decision lives. It picks a *sample* of the flagged cycles (sized by `sample_mode`/`sample_size`, ordered by `selection_mode`) and resolves them one at a time by delegating to a nested `RepairStrategy<T, InvalidLoopIssue>` (typically `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`) filling the `cut_target` nested slot (`kind: INVALID_LOOP`, `min: 1`, `max: Some(1)`).
+Handles `INVALID_LOOP_GROUP` — see GitHub issues #183 and #852. `MaxLoopDensityCheck`/`MaxLoopsCountCheck` (`quality_control.md`) both flag their *entire* field-wide cycle set `invalid` at once (no per-check subset selection); this strategy decides which of those loops to actually cut. It runs one shared group candidate pass (`group_select_apply`) over the complete live set of flagged cycles and delegates each selected cycle to a nested `RepairStrategy<T, InvalidLoopIssue>` (typically `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`) filling the `cut_target` nested slot (`kind: INVALID_LOOP`, `min: 1`, `max: Some(1)`).
 
 **Parameters:**
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `selection_mode` | Enum | `random` | `random`, `shortest`, `longest` | Which flagged cycles enter the sample first, and the tie-break/pick criterion within it |
-| `sample_mode` | Enum | `count` | `count`, `percent` | Whether `sample_size` below is an absolute cycle count or a percentage of `issue.invalid.len()` |
-| `sample_size` | Float | `1.0` | `[0, 100_000]` | Sample size, interpreted per `sample_mode` |
+| `selection_mode` | Enum | `random` | `random`, `shortest`, `longest` | Global candidate order for the pass |
 
-**Sample sizing**: `count` mode takes `sample_size` cycles literally (rounded up via `ceil`); `percent` mode takes `ceil(sample_size / 100 * issue.invalid.len())`. Either way the result is clamped to `[1, issue.invalid.len()]` — at least 1 (there is always something to do when `issue.invalid` is non-empty, the only case `apply` reaches this far for) and never more than what's actually flagged.
+There is no per-apply batch limit: every flagged cycle is a candidate. (The former `sample_mode`/`sample_size` parameters were removed in #852.)
 
-`issue.invalid`'s indices are first reordered by `selection_mode` — `shortest`/`longest` sort by edge count (ties broken by ascending original index, for determinism), `random` does a seeded Fisher-Yates shuffle through the strategy's `rng` — then the first `sample_size` (after sizing) become the sample; the rest of `issue.invalid`, plus all of `issue.valid`, become `valid`-context for every synthetic issue built this call.
+**Candidate pass**: the issue is mapped to one group whose elements are the distinct flagged cycles (identified by edge list) and whose `to_remove` budget equals their count. `selection_mode` is the pass's `order_candidates` hook: `shortest`/`longest` stable-sort by edge count (ties keep the pass's deterministic baseline order), `random` shuffles through the strategy's `rng`.
 
-**Queue processing**: the sample is a `VecDeque`. Each iteration pops the front cycle as the nested strategy's target and synthesizes an `InvalidLoopIssue` where every *other* still-pending sample cycle is `invalid` context (so the nested strategy's own overlap-scoring, if any, sees the rest of the batch) and every non-sampled cycle is `valid` context — then delegates via the nested strategy's `apply`. After each nested call, `removed_edge_ids` (see `repair::command`) extracts every `EdgeId` the call reported removing, and any remaining queued cycle (in the sample queue or the valid-context list) sharing one of those edges is dropped entirely — it's already broken by the same cut, so it is neither re-offered as a future target nor kept around as context, distinct from a cycle that simply wasn't sampled this round. `removed_edge_ids` only recognizes `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` (not `RemoveEdgeBetween`, which addresses by node pair, not `EdgeId`) — this is treated as a heuristic, not a guarantee; a cycle missed by this dedup just gets re-offered to the nested strategy later and discovered already-broken there (e.g. via `candidate_edges`'s own already-removed filtering), never causing incorrect behavior.
+**Nested issue**: for each selected cycle, an `InvalidLoopIssue` is built whose `all` holds the selected cycle first, then every other still-live flagged cycle, then the original `issue.valid` cycles; `invalid` is `[0]` (the selected cycle is the only target, so the nested strategy cuts exactly one cycle per call and its overlap scoring sees the rest as context). `issue.valid` is never pruned during the pass.
 
-The loop ends when the sample queue empties. Returns `Fixed` (with every nested call's commands concatenated, in order — "parent, then nested" per this section's own command-concatenation rule) if **at least one** nested call in the batch succeeded, even if a later cycle in the same batch failed; returns `Failed` (no commands) only if **every** nested call in the batch failed. A mix of successes and failures within one sample is not itself surfaced beyond "at least one worked."
+**Invalidation**: after a successful nested repair, every still-live candidate containing a removed `EdgeId` is invalidated (retires budget, never offered again) — this covers cycles resolved incidentally by the same cut, with no duplicate nested repair. The removed set is `removed_edge_ids` (primary ids of `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse`/`RemoveVerticalPassageWithReverse`) plus, for each `*WithReverse` command, the opposite-direction leg resolved against the pre-mutation maze (`edge_between(to, from)`, `teleport_reverse`, `vertical_passage_reverse`; `cycle_broken_by`), so a cycle traversing the same corridor in the opposite direction is invalidated too. `RemoveEdgeBetween` (addressed by node pair) is not recognized; a cycle missed that way is simply offered to the nested strategy later and discovered already broken there. A failed candidate is dropped from the pass and never retried within the same apply.
 
-Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
+**Result**: `Fixed` (with every successful nested call's commands, in order) only if at least one nested repair succeeded; `Failed` (no commands) if every nested call failed or no `cut_target` nested strategy is configured. An empty `invalid` list returns `Fixed` with no commands, even without a nested strategy.
+
+`requirement()` follows the nested `cut_target` strategy (GitHub issue #283): `Rule::new` passes `nested` into `requirement()`, and the group requests `VALID_CYCLES` exactly when the nested strategy's own `InvalidLoopRequirement` does (`apply` only forwards `issue.valid` into each nested issue's `all`). With no nested strategy configured it falls back to `InvalidLoopGroupRequirement::all()`. Note: the group-producing checks (`max_loops_count`, `max_loop_density`) do not yet read the requirement, so today this only fixes what is asked for, not what is computed.
 
 ### dead_end_priority (shared, not a strategy)
 
@@ -895,7 +924,11 @@ A dead end is a node with exactly one distinct graph neighbor (incoming and outg
 
 **GitHub issue #278's exhaustion bug**: an earlier version filtered the pool down to dead ends outright (`if dead_ends.is_empty() { pool } else { dead_ends }`), losing every non-dead-end candidate for the rest of the call — once the dead ends in that static pool were exhausted, the caller's `while !pool.is_empty()` loop stopped even if its `target` count wasn't reached and plenty of eligible non-dead-end candidates were never tried. Fixed by switching to the single ordered pool above; both strategies consume it via `pool.pop()` specifically (never a random index), since a random-index pick would destroy the dead-ends-last ordering on the very first iteration. `src_mode` values other than `dead_end_priority` (including the `random` default) return the pool shuffled but otherwise unpartitioned.
 
-Issue #278 also tracks a systematic audit of every other strategy parameter with a similar "priority tier, then fall back to the rest" shape, checking each one independently for the same exhaustion risk and for whether a single combined pool (as here) or two separate pools is the better fit given that strategy's own performance profile — not assumed to generalize from this fix alone.
+**Issue #278 audit of other priority-style params** (each judged on its own exhaustion risk and pool shape):
+
+- Fine as is, one combined ordered pool: `Pool` (`AddElevatorStrategy`, `AddSplitStrategy`, `AddVerticalPassageStrategy`), `MissingLoopsVerticalStrategy`, `MissingOneWaysShared`, `DeadEndToTeleportStrategy` (ordered pool, bounded by `attempts_limit` by design). The O(n) partition is no costlier than the `all_node_ids()` scan every caller already does to build the pool.
+- Fine as is, narrow-then-fall-back-per-pick: `MissingLoopsTeleportStrategy` / `MissingTeleportsStrategy` (`entry_pick`/`exit_pick`; each pick falls back to the whole set when no dead end exists, and the pool itself is never dropped), `apply_vertical_passage_priority` (`prioritized` falls back to the full pool when no vertical edge exists; one cut per cycle, preset edges are already filtered out, so there is nothing to exhaust), `group_select::order_by_priority` (ordering only, nothing dropped), the `priority_*` dispatchers (`dispatch_priority` tries every configured candidate).
+- Fixed: `SplitRouteCutStrategy`, the region-merge strategies and `ReduceSccCountStrategy`; see their sections and `run_merge_loop` below. All three picked one preferred item and gave up on it when it could not be applied.
 
 ### Pool (shared, not a strategy)
 
@@ -916,6 +949,65 @@ impl Pool {
 **Deliberately excludes `attempts_limit` accounting.** The three migrated strategies budget failed attempts differently (`AddElevatorStrategy` resets a per-slot consecutive count each time a slot is filled; `AddSplitStrategy`/`AddVerticalPassageStrategy` run one running total per area) — folding a budget into `Pool` would force one semantics onto every caller. `Pool` only owns candidate storage, ordering, and pop-based eviction; each strategy's own loop still tracks its own `attempts_limit` counter exactly as before. This also anticipates epic #520's follow-up split (single-element vs series/repeat strategies): the series strategy is expected to own the pool *and* whichever attempt-budget shape it needs, constructing/holding a `Pool` from outside the single-element strategy that consumes it, rather than `Pool` prescribing one.
 
 **`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
+
+### DeadEndGroupSelectStrategy / dead-end repair strategies
+
+`DeadEndGroupSelectStrategy` handles `INVALID_DEAD_END_GROUP` (GitHub issue #851). It makes one
+global candidate pass across every reported group, maintaining each group's independent
+`to_remove` budget. `priority: problematic` (the default) tries nodes present in more groups
+first; `random` shuffles them. A candidate is tried at most once per pass: success retires one
+unit from each group containing every invalidated candidate, and failure removes it from the pass.
+The selector delegates each selected node through its required `fix_target` nested slot, which
+accepts an `INVALID_DEAD_END` repair. A successful nested repair always invalidates its selected
+node and may invalidate other candidates based on its emitted mutation commands.
+
+`DeadEndToPassageStrategy` is the supplied `INVALID_DEAD_END` nested repair. It accepts exactly
+one node and adds one geometric `Basic` passage from it to an unconnected neighboring node.
+Candidates that cannot accept a new passage because of geometry, existing connections, or preset
+locks fail so the selector can try another candidate. Connecting to another selected dead end is
+permitted: a bidirectional passage resolves and accounts for both endpoints across every reported
+group, while a one-way passage resolves only its outward source.
+
+`DeadEndToVerticalPassageStrategy` (`dead_end_to_vertical_passage`, GitHub issue #857) is the
+multi-floor counterpart. It connects the selected node to the same field point on an adjacent
+floor with a `VerticalPassage`; it fails when no such point exists, the pair is already connected,
+or a preset lock blocks the new edge. It shares `dead_end_one_way_chance` with the ordinary
+passage repair. A one-way vertical passage always points out of the selected dead end, so that
+node no longer remains a dead end; a two-way passage also resolves the target if it was selected
+in an overlapping group. The strategy is available only on multi-floor mazes.
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |
+
+`DeadEndToSplitStrategy` (`dead_end_to_split`, GitHub issue #856) instead picks an unconnected
+geometric neighbor across a wall and replaces that neighbor's cell with a split tile. The shared
+split planner rotates or reflects a configured template until one split node can connect to the
+selected dead end; that bridge node must also have another edge, so the repair never merely moves
+the dead end onto the new split. Its `split_config` uses the same unrestricted-or-weighted-pattern
+configuration as `MissingLoopsSplitStrategy`. It fails when no walled neighbor is split-eligible
+or no generated/template variant can satisfy both required edges; preset locks on either endpoint
+of a planned edge also reject that candidate before it is reported as fixed.
+
+`DeadEndGroupSelectStrategy` exposes the standard group-select `priority` enum (`random`,
+`problematic`; default `problematic`) and requires one `fix_target` nested strategy.
+
+For a nonempty issue, the selector returns `Fixed` only when at least one nested repair succeeds;
+otherwise it returns `Failed`. An empty issue is already resolved and returns `Fixed` without
+requiring nested configuration.
+
+`PriorityDeadEndStrategy` (`priority_dead_end`, GitHub issue #854) is an `INVALID_DEAD_END`
+dispatcher meant to sit in `DeadEndGroupSelectStrategy`'s `fix_target` slot. It has no params and
+one nested slot, `dead_end_repair_target` (`kind = INVALID_DEAD_END`, `min = 1`, `max = None`,
+`dispatch_kind = Priority`). It passes the single-node issue unchanged to `dispatch_priority`: nested
+repairs run in configured order, the first `Fixed` result and its commands are used, and later
+candidates never run. Returns `Failed` when every candidate fails or none fills the slot; an empty
+issue returns `Fixed` without touching `rng` or `nested`. Each nested repair keeps its own params.
+Commands from the winning candidate are returned unchanged, so the selector's per-candidate
+invalidation (`element_invalidated`) and group-budget accounting behave exactly as with a direct
+nested repair.
+
+`WeightedDeadEndStrategy` (`weighted_dead_end`, GitHub issue #855) is the randomized counterpart of `PriorityDeadEndStrategy`: same `INVALID_DEAD_END` issue, no params, same `dead_end_repair_target` slot (`min = 1`, `max = None`) but with `dispatch_kind = Weighted`. It passes the single-node issue unchanged to `dispatch_weighted`; each nested candidate's weight comes from `param_overrides["weight"]` via `nested_dispatch::resolve_weight` (invalid or missing falls back to `1.0`). A random candidate is picked by weight, and on `Failed` another is picked without replacement until one is `Fixed` or the pool is exhausted (`Failed`). Empty issue returns `Fixed` without touching `rng` or `nested`; no candidate in the slot returns `Failed`. Intended for `DeadEndGroupSelectStrategy`'s `fix_target` slot.
 
 ### MissingLoopsRandomStrategy
 
@@ -997,7 +1089,7 @@ Direction is picked per `constraint`: `RequireUp`/`RequireDown` (used by `AddVer
 - `PARAM_TARGET_MODE` / `MODE_LARGEST` / `MODE_SMALLEST` / `MODE_RANDOM` / `MODE_PREFER_NEEDY` / `MODE_OPTIONS`, `PARAM_PREFER_PARTIALLY_CONNECTED` — the shared param ids/enum values both strategies expose under these exact names.
 - `pick_by_mode(pool, scc, mode, needy, rng) -> Option<ComponentId>` — `largest`/`smallest` by `components[i].len()`, `prefer_needy` biased toward flagged neighbors (falls back to the whole pool if none are needy), `random` (or any unrecognized mode) uniform via `rng`. `pool` must already be sorted by the caller for reproducible tie-breaking (component ids are typically collected from a `HashMap`'s randomized-per-process iteration order).
 - `narrow_to_partial(pool, partial, prefer_partial) -> &[ComponentId]` — the `prefer_partially_connected` pre-filter: returns `partial` if the flag is on and non-empty, otherwise the full `pool`. Each strategy computes its own `partial` subset (what "partially connected" means is strategy-specific — bridging-pair state for `ExpandRegionPassageStrategy`, any-edge-kind state for `TeleportRegionMergeStrategy`) and passes it in.
-- `run_merge_loop(invalid, find_candidate) -> bool` — the shared "merge every flagged region into a chosen neighbor" loop: pops region ids from `invalid` (LIFO), skips ones already absorbed by an earlier merge in the same call (`merged_away`), and calls the caller-supplied `find_candidate(region_idx, needy) -> Option<(neighbor_idx, applied)>` closure for each remaining one. If the chosen neighbor was itself a needy (flagged) region, it's marked `merged_away` so a later iteration doesn't try to expand it again. Returns `true` if at least one region was successfully merged (`applied == true` for at least one call) — callers map this to `Fixed`/`Failed`. `find_candidate` owns everything strategy-specific: candidate discovery, target selection (via `pick_by_mode`/`narrow_to_partial`), and the actual connection.
+- `run_merge_loop(invalid, find_candidate) -> bool` — the shared "merge every flagged region into a chosen neighbor" loop: walks region ids in `invalid` order (front to back, so a caller that sorted the batch — e.g. `ReduceSccCountStrategy`'s `merge_priority` — gets it processed in exactly that order), skips ones already absorbed by an earlier merge in the same call (`merged_away`), and calls the caller-supplied `find_candidate(region_idx, needy, excluded) -> Option<(neighbor_idx, applied)>` closure for each remaining one. A candidate that is found but not applied (`applied == false`: preset-blocked pair, no second pair for `one_way`, ...) is added to `excluded` and `find_candidate` is called again for the same region until one applies or none is left (`None`), so a blocked preferred neighbor (`target_mode`, `prefer_partially_connected`, `direction_balance`) falls back to the remaining neighbors; `find_candidate` must drop `excluded` neighbors before narrowing and picking, and a finder that keeps returning an excluded neighbor ends the retry. The first call for a region always has an empty `excluded`, so the success path consumes `rng` exactly as before (GitHub issue #278). If the chosen neighbor was itself a needy (flagged) region, it's marked `merged_away` so a later iteration doesn't try to expand it again. Returns `true` if at least one region was successfully merged (`applied == true` for at least one call) — callers map this to `Fixed`/`Failed`. `find_candidate` owns everything strategy-specific: candidate discovery, target selection (via `pick_by_mode`/`narrow_to_partial`), and the actual connection.
 
 ### ExpandRegionPassageStrategy
 
@@ -1136,7 +1228,7 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 **Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
 
-**One dispatch per region, not per `apply()` call** (GitHub issue #120): the original #90 design dispatched the *whole* `invalid` batch to a single weighted pick, so a low-weight candidate that happened to win controlled the outcome for every region still left in the batch, not just its own configured share — a rare 1%-odds win could still absorb most of a large batch, making the configured weight ratio not track the actual per-region merge frequency. This strategy now runs its own `invalid`-batch loop directly (`Vec::pop`, skipping any region already merged away by an earlier region's own merge in the same call), synthesizing a single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always governs exactly one region's outcome. A merged-away neighbor is tracked via `region_merge_core::mutation_command_endpoints` — each proposed command's endpoints resolved back to their SCC component index, computed once from a single fixed snapshot taken at the start of `apply()` (shared with `PriorityRegionMergeStrategy`, see below).
+**One dispatch per region, not per `apply()` call** (GitHub issue #120): the original #90 design dispatched the *whole* `invalid` batch to a single weighted pick, so a low-weight candidate that happened to win controlled the outcome for every region still left in the batch, not just its own configured share — a rare 1%-odds win could still absorb most of a large batch, making the configured weight ratio not track the actual per-region merge frequency. This strategy now runs its own `invalid`-batch loop directly (in `invalid` order, skipping any region already merged away by an earlier region's own merge in the same call), synthesizing a single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always governs exactly one region's outcome. A merged-away neighbor is tracked via `region_merge_core::mutation_command_endpoints` — each proposed command's endpoints resolved back to their SCC component index, computed once from a single fixed snapshot taken at the start of `apply()` (shared with `PriorityRegionMergeStrategy`, see below).
 
 - If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
 - Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
@@ -1167,7 +1259,7 @@ passes the whole `invalid` batch through to a single `dispatch_weighted` call, t
 its own batch loop directly: `issue.invalid` can carry several independent undersized regions, and
 folding the whole batch into one dispatch would let the first-in-priority candidate's success or
 failure govern every region still left in the batch, not just decide the mechanism once per
-region. For each region still pending (processed via `Vec::pop`, skipping any already merged away
+region. For each region in `invalid` order (skipping any already merged away
 by an earlier region's own merge in the same call), a single-region `RegionNeedsExpansionIssue` is
 synthesized and passed to its own `dispatch_priority` call against the shared candidate list. A
 merged-away neighbor is tracked the same way `WeightedRegionMergeStrategy` does — via
@@ -1180,6 +1272,34 @@ their SCC component index, computed once from a single fixed snapshot at the sta
   `WeightedRegionMergeStrategy`. If no candidate fills the slot after filtering: returns `Failed`.
 - Returns `Fixed` if at least one region in the batch was successfully merged (even if others
   failed); `Failed` only if every region in the batch failed every candidate.
+
+### SizeThresholdRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #91. Third `merge_target` dispatcher beside
+`WeightedRegionMergeStrategy` and `PriorityRegionMergeStrategy`: it picks *which* nested
+region-merge strategy runs, deterministically by the flagged region's own size
+(`scc.components[region].len()`), not randomly or unconditionally.
+
+No configurable parameters of its own. **Nested slot**: `slot_id = "merge_target"` (its own
+constant), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = None`,
+`dispatch_kind = SizeThreshold`.
+
+**Configuration**: each nested entry carries `param_overrides["max_size"]` — a non-negative
+integer string (`SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE`; like `"weight"`, the dispatcher's own
+convention, not a declared `StrategyParam`). Entries are an ordered list, expected sorted ascending
+by `max_size` (the strategy never reorders it; the UI lets the user reorder). A region of size `s`
+goes to the first entry, excluding the last, with `s <= max_size`; if none matches it goes to the
+last entry — the fallback for every larger region, whose own `max_size` is ignored (the UI hides
+it). Missing, unparsable or negative `max_size` is unbounded, so such an entry captures every
+size not already taken by an earlier one. A single entry handles every region.
+
+**No fallback on `Failed`**: the size range fully determines the mechanism, so a failing candidate
+leaves its region unmerged instead of handing it to a strategy configured for another size.
+
+Batching, empty-`invalid` idempotency (`Fixed`, no `rng` use), no-candidate `Failed`, merged-away
+neighbor tracking and `Fixed`-if-any-region-merged semantics are shared with the other dispatchers
+via `region_merge_core::run_per_region_dispatch`, whose closure receives each region's id and the
+single SCC snapshot taken at the start of `apply()`.
 
 ### graph::bisect (shared, not a strategy)
 
@@ -1336,10 +1456,10 @@ Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far on
 **Nested slots**: exactly one, `slot_id = "merge_target"` (exported as `SLOT_MERGE_TARGET`), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = Some(1)` — a single nested strategy, typically `ExpandRegionPassageStrategy`, does the actual merge.
 
 - `scc = maze.analysis.scc(&maze.graph)`; `count = scc.components.len()`. If `count <= max_scc_count`: returns `Fixed { score: None }` immediately (idempotency) without touching `nested` or `rng`.
-- Otherwise selects exactly `count - max_scc_count` components to merge, ordered by `merge_priority`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Only the first `count - max_scc_count` selected ids are used.
+- Otherwise orders every component by `merge_priority` and takes the first `count - max_scc_count` of them as the batch: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. The rest of the order is the fallback for regions the nested strategy fails to merge (GitHub issue #278).
 - Builds a synthetic `RegionNeedsExpansionIssue { meta: IssueMeta::default(), invalid: chosen, invalid_sources: Default::default() }`, passed to the nested `ErasedRepairStrategy::apply` call as `&synthetic as &dyn Issue` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
 - Looks up the nested strategy filling `merge_target` in the `nested` slice passed into `apply` (defensive `debug_assert!` that at most one entry fills the slot, even though `build_nested` already enforces `max: Some(1)` at config-build time) — if none is present, returns `Failed`.
-- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `(RepairResult, Vec<MutationCommand>)` the nested call produces, unchanged — the parent has accumulated no commands of its own before delegating, so the nested call's commands are the entire returned batch, already in "parent, then nested" order. A merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
+- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Calls it once per batch and accumulates every call's commands (the parent has none of its own, so they are the entire returned batch, already in "parent, then nested" order). A running `MergeTally` counts the merges performed so far as the distinct component pairs the commands connect, shared across batches so a pair re-bridged by a later batch (the SCC snapshot is stale between batches) is not counted twice; commands with no recognizable endpoints (elevators) count one merge each. While fewer than `count - max_scc_count` merges happened and unused components remain, the next components in the order form a replacement batch of the missing size and the nested strategy is called again (GitHub issue #278: a region that cannot merge, e.g. every bridge preset-blocked, no longer stalls the call or repeats on every fixpoint iteration under `smallest`/`largest`). Returns `Fixed { score: None }` if any commands were produced; otherwise the last nested result unchanged. A merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
 - **Does not itself guarantee full convergence to `max_scc_count` in one call** — like every other strategy that delegates region selection to `ExpandRegionPassageStrategy`, chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than the number of regions picked. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own `invalid` set.
 
 ### RemoveTeleportStrategy
@@ -1397,6 +1517,8 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 | `reserve_percent`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. This strategy takes the `no_src_mode` form (`entry_pick` is already its source-ordering knob). GitHub issue #486 unified the defaults: `reserve_percent` `0.0` (was `50.0`), `attempts_limit` `25` (was `3`). `attempts_limit` here is the per-teleport-slot entry-candidate retry cap. |
 | `cross_floor_mode` | Enum (`forbidden`, `natural`, `manual`) | `natural` | Cross-floor policy for the exit pick (GitHub issue #381) — `forbidden` restricts every candidate set to entry's own floor; `natural` ignores floor entirely; `manual` applies `cross_floor_balance`'s own-floor/other-floor roll within whichever zone is picked. |
 | `cross_floor_balance` | Float (0.0–1.0) | `0.5` | Under `cross_floor_mode: manual` only — chance of preferring an other-floor exit over a same-floor one; `0.0`/`1.0` are hard preferences (same-floor-only / other-floor-only), no fallback to the opposite group even if it's the only one populated. |
+
+The raw-`Graph` tile-hop BFS used by the teleport strategies and `farthest_reachable` is the single shared `bfs_distances` (`maze-core/src/graph/pathfinding.rs`): directed, outgoing edges, unreachable nodes absent from the result.
 
 **Entry/exit selection.** For each teleport slot, a pool index is picked per `entry_pick` (`pick_pool_index` — plain uniform under `random`/`farthest_from_random`, dead-end-biased under `dead_end_priority`), then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
 1. reachable, outside `[desired_min, desired_max]`
@@ -1496,6 +1618,8 @@ Handles `INVALID_SPLIT_ROUTE` — see GitHub issue #277, epic #246. For each rou
 
 **Shared-edge dedup across routes, same pattern as `InvalidLoopGroupSelectStrategy`.** Routes are processed as a queue (`issue.routes.clone()`, one at a time from the front). After each successful cut, `removed_edge_ids` on the returned commands (plus each removed edge's own reverse direction, resolved off the still-intact graph before mutation — a two-way passage severed by one cut breaks both directions at once) is used to drop every other still-pending route containing that same edge from the queue, rather than offering it a second, redundant cut. This is exactly the "assume a route sharing the cut edge is already fixed by the same cut" rule cycle-breaking strategies use, applied to routes instead of cycles — most relevant here because a single check pass can flag both `a -> b` and `b -> a` as separate routes (GitHub issue #277's own directionality rule), and the two directions often share an edge at their point of divergence.
 
+Candidates are tried in priority order until one is actually cuttable (`order_candidates`: a `random` shuffle or the `problematic` order, every other eligible edge behind it; under `random` the whole list is shuffled); a pick `cmd_remove_edge_with_reverse` refuses (preset-protected or stale) falls through to the next one instead of giving the route up (GitHub issue #278). A route fails only when no eligible edge can be cut.
+
 Reports `Fixed` if at least one route in the batch was actually cut (commands kept even if a later route in the same batch failed — e.g. no eligible candidate under `edge_scope`, or the chosen edge already stale in the graph), `Failed` only if every route failed to produce a command (nothing was fixed at all) — same "a mix of successes and failures within one batch is not itself surfaced beyond at least one worked" contract `InvalidLoopGroupSelectStrategy` uses.
 
 ### OneWayToPassageStrategy
@@ -1554,7 +1678,7 @@ A group is resolved once its `to_remove` reaches zero. If the candidate pass run
 
 Returns `Fixed` if at least one nested call across the whole call succeeded, `Failed` if every nested call failed *or there was no nested call to make at all* (e.g. every group in the issue is wholly-protected). A wholly-protected group's own auto-resolve (above) never counts as "worked" on its own.
 
-**Not used by `InvalidLoopGroupSelectStrategy`** — see that strategy's own section below for why loop-group cutting doesn't fit this per-candidate-per-nested-call contract (GitHub issue #210 explored and reverted the migration).
+`InvalidLoopGroupSelectStrategy` (GitHub issue #852) also runs on `group_select_apply`; see its section below.
 
 **`multi_target_group_select_apply` (GitHub issue #376)** — the multi-slot generalization. Every mechanic above (candidate pass, per-group `to_remove` budget, reverse index keyed by `K::Element` identity, `order_candidates`, resolution loop, `Fixed` iff some nested call succeeded) is unchanged; both `group_select_apply` and `multi_target_group_select_apply` are now thin wrappers over one shared `run_group_candidate_pass` core. Two differences:
 
@@ -2053,6 +2177,21 @@ Two rules producing the same concrete `Issue` type are fully independent through
 ### Stages and the repair budget
 
 `RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `run_full` call via the single `RepairBudget` constructed in `run_repair_stages`, not reset per stage — `iterations_done`/`start_ms` are set once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage sequence stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start.
+
+#### Cooperative deadline inside long-running steps (GitHub issue #976)
+
+`budget.exhausted` is only checked between fixpoint iterations, so on its own `time_budget_secs` is not an upper bound: one slow check or strategy would run to completion. `run_repair_stages` therefore also installs a thread-local deadline (`crate::deadline::install`, absolute `clock::now_ms` time = start + `time_budget_secs`; none when no time budget is set) for the duration of the repair loop. The guard is dropped before the final report pass, so that pass is not cut short.
+
+Long-running loops call `crate::deadline::expired()` (reads the clock once per 64 calls; latches to `true` once the deadline passes) and bail out with their existing "no result" outcome — a strategy returns `RepairResult::Failed` with no commands, so nothing is half-applied. `Stage::check_and_dispatch` also stops dispatching further rules once expired and reports progress, so `run_repair` does not return `Done`; its next `budget.exhausted` check yields `LimitReached(TimeBudget)`. `RepairBudget::exhausted` treats a latched `deadline::expired()` as `TimeBudget` too (only when a time budget is configured), so an injected `now_ms` that lags the real clock cannot leave the loop spinning after the deadline fired.
+
+Instrumented so far:
+- `ScoredEndpointsStrategy::best_pair` (per start and per candidate pair) — returns `None`, i.e. `Failed`.
+- `group_select`'s candidate pass (`run_group_candidate_pass`) — stops and returns the fixes collected so far.
+- `dispatch_weighted` / `dispatch_priority` — no further nested candidate is tried; result `Failed`.
+- `InvalidLoopScoredStrategy`'s per-cycle cut loop and `MissingLoopsRandomStrategy`'s source-pool loop — stop and keep what was collected.
+- `find_all_simple_cycles` (Johnson's DFS and the per-SCC loop) — aborts as `CycleSearchResult::TooManyCycles`, which every caller already treats as "analysis unavailable / no issue", so an aborted check reports nothing. `MazeAnalysis::graph_analytics` does not cache a result computed after the deadline expired, so a deadline abort never poisons the per-graph-version cache.
+
+Any other loop that can run long should call `deadline::expired()` the same way; a check that bails out must not report a bogus issue, and nothing computed under an expired deadline may be cached.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 

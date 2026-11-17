@@ -1,4 +1,5 @@
 import { Container } from "pixi.js";
+import type { SeamHopContext } from "./graphSeams";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueKind } from "../debug/eventTape";
@@ -42,6 +43,8 @@ export interface DebugValueHighlightData {
    *  merged into connected contours. Used by CustomVertexBased's frontier/reserve sets. */
   singleCellRegionNames?: ReadonlySet<string>;
   cfg: FieldConfig;
+  /** Seam hop context (GitHub issue #841): a sequence or map arrow across a glue ends at its contour. */
+  seam?: SeamHopContext;
 }
 
 type RendererEntry =
@@ -119,7 +122,7 @@ export class DebugValueHighlightOverlay {
   }
 
   render(data: DebugValueHighlightData): void {
-    const { nodes, debugValues, debugMaps, debugVertices, toggles, kindFor, colorFor, singleCellRegionNames, cfg } = data;
+    const { nodes, debugValues, debugMaps, debugVertices, toggles, kindFor, colorFor, singleCellRegionNames, cfg, seam } = data;
 
     for (const [name, entry] of this.renderersByName) {
       if (!toggles.has(name)) entry.renderer.clear();
@@ -137,12 +140,12 @@ export class DebugValueHighlightOverlay {
       switch (entry.kind) {
         case "sequence": {
           const ids = debugValues.get(name) ?? [];
-          entry.renderer.render({ nodes, sequence: ids, color, cfg });
+          entry.renderer.render({ nodes, sequence: ids, color, cfg, seam });
           break;
         }
         case "map": {
           const entries = debugMaps.get(name) ?? new Map();
-          entry.renderer.render({ nodes, entries, color, cfg });
+          entry.renderer.render({ nodes, entries, color, cfg, seam });
           break;
         }
         case "vertex": {

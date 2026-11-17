@@ -24,8 +24,8 @@ vi.mock("pixi.js", () => {
 });
 
 vi.mock("../pixi/renderers/msdfFont", () => ({
-  msdfFontFamily: (weight: string) => `fake-${weight}`,
-  makeCenteredLabel: (text: string, fontFamily: string, fontSize: number, fill: number) => {
+  makeCenteredLabel: (text: string, font: { weight: number }, fontSize: number, fill: number) => {
+    const fontFamily = `fake-${font.weight}`;
     const calls = (globalThis as { __labelCalls?: unknown[] }).__labelCalls ??= [];
     calls.push({ text, fontFamily, fontSize, fill });
     let destroyed = false;
@@ -141,14 +141,14 @@ describe("WaypointsRenderer.render", () => {
     expect(labels(renderer).children).toHaveLength(1);
     const calls = labelCalls();
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ text: "S", fontFamily: "fake-bold", fontSize: 11, fill: 0x999 });
+    expect(calls[0]).toMatchObject({ text: "S", fontFamily: "fake-700", fontSize: 11, fill: 0x999 });
   });
 
-  it("falls back to the marker's own color when textColor is unset, and honors textFontWeight/textSize", () => {
+  it("falls back to the marker's own color when textColor is unset, and honors textFont/textSize", () => {
     const renderer = new WaypointsRenderer(new Container());
-    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "F", textFontWeight: "regular", textSize: 10 };
+    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "F", textFont: { family: "", weight: 400 }, textSize: 10 };
     renderer.render({ markers: [marker] });
-    expect(labelCalls()[0]).toMatchObject({ fontFamily: "fake-regular", fontSize: 10, fill: 0x111 });
+    expect(labelCalls()[0]).toMatchObject({ fontFamily: "fake-400", fontSize: 10, fill: 0x111 });
   });
 
   it("destroys the previous render's label badges before drawing the next batch — no leaked labels", () => {

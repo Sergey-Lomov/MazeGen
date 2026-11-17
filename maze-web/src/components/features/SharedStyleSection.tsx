@@ -1,5 +1,7 @@
 import type React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import { useState } from "react";
+import { LabelFontRow } from "./LabelFontRow";
 import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
@@ -13,9 +15,15 @@ import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelect
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
-import type { LinkIconVisibility, SharedStyleSourceFields } from "../../store/imageExportTypes";
+import { MarkerLayoutRows } from "./MarkerLayoutRows";
+import type { MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
+import type { LinkIconVisibility, MarkerLayoutSettingsFields, SharedStyleSourceFields } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
+import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
+
+/** The texts the Shared style font reaches: what its text-size Auto-fit fits (floor labels have an independent style). */
+const SHARED_TEXT_KINDS: TextFitKind[] = ["start", "finish", "elevator", "teleport", "markerIndex"];
 
 /** Explains the parameter-link system to end users (GitHub issue #669) — plain-language only, no
  *  internal terminology (driving/dependent link, `ParamModifier`, etc.) and no mention of
@@ -34,12 +42,13 @@ function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
 
 /** The "Settings" section (GitHub issue #668) — one collapsible section, placed before "Shared
  *  style", holding every link-editing/management control that isn't itself a style value: link
- *  icon visibility, "Manage links...", and the destructive "Reset all settings". Split out of what
+ *  icon visibility, "Manage links...", and the destructive "Reset all settings". The cut-line editor
+ *  lives with the Cut lines subsection (GitHub issue #924). Split out of what
  *  used to be one combined "Shared style" section (GitHub issue #322/#643) so style configuration
  *  and management actions don't clutter each other, per the issue's own rationale. Shared by
  *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`, same per-mode-setters-only-differ
  *  reuse convention as `SharedStyleSection` itself. */
-export function SettingsSection<P extends string>({
+export function SettingsSection<P extends LinkPath>({
   onResetAll,
   settings,
   links,
@@ -117,13 +126,17 @@ export function SettingsSection<P extends string>({
  *  *dependent* field's own row elsewhere in the panel, not here. Link editing/icon-visibility/
  *  "Reset all settings" live in the separate "Settings" section (GitHub issue #668) — this section
  *  is style values only. */
-export function SharedStyleSection<P extends string>({
+export function SharedStyleSection<P extends LinkPath>({
   settings,
   onChange,
+  onLayoutChange,
+  onScaleChange,
   priorityColors,
 }: {
-  settings: SharedStyleSourceFields;
+  settings: SharedStyleSourceFields & MarkerLayoutSettingsFields;
   onChange: (patch: Partial<SharedStyleSourceFields>) => void;
+  onLayoutChange: (mode: MarkerLayoutMode) => void;
+  onScaleChange: (v: number) => void;
   /** "Priority" project colors (GitHub issue #503) for the fill / border color rows. */
   priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
 }) {
@@ -168,18 +181,13 @@ export function SharedStyleSection<P extends string>({
           fields={{ fillColor: PC.sharedMarkerFill, borderColor: PC.sharedMarkerBorder }}
         />
       </div>
+      <div style={typography.body}>{m["image_export.marker_layout.section"]()}</div>
+      <div style={styles.group}>
+        <MarkerLayoutRows layout={settings.markerLayout} onLayoutChange={onLayoutChange} scale={settings.markerScale} onScaleChange={onScaleChange} />
+      </div>
       <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
       <div style={styles.group}>
-        <LinkedSelectRow
-          label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
-          value={settings.markerTextFontWeight}
-          options={[
-            { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-            { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-          ]}
-          onChange={(markerTextFontWeight) => onChange({ markerTextFontWeight })}
-          linkTarget={"markerTextFontWeight" as P}
-        />
+        <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} warningKinds={SHARED_TEXT_KINDS} />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_text_size"]()}
           value={settings.markerTextSize}

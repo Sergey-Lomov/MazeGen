@@ -1,5 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamPairs } from "./selectors/seamHop";
+import { selectIssueHighlightData } from "./selectors/issueHighlight";
+import { seamFocusOf } from "./selectors/seamArrows";
+import { getSeamModel } from "./selectors/seams";
+import type { SeamArrowData } from "./renderers/SeamArrowRenderer";
 
 import type { FieldEdge } from "./fieldEditUtils";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
@@ -12,6 +18,7 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
+import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildHoveredEntityHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
@@ -40,6 +47,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly backgroundImageContainer: Container;
   private readonly closedCellsContainer: Container;
@@ -57,6 +65,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly issueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
+  /** What the seam layer last got from the store, and the cells of the hovered entity's link (the pointer's edge
+   *  is `hoverState.edge`): a hovered passage across a glue focuses that glue's pair. */
+  private seamData: SeamArrowData | null = null;
+  private entityLink: [[number, number], [number, number]] | null = null;
   private readonly floor: CellFillRenderer;
   private readonly backgroundImage: BackgroundImageHost;
   private readonly closedCells: CellFillRenderer;
@@ -112,6 +125,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root = container;
 
     this.gridContainer        = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer       = new Container();
     this.backgroundImageContainer = new Container();
     this.closedCellsContainer = new Container();
@@ -125,6 +139,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
     this.splitJunctionContainer = new Container();
@@ -145,7 +161,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.issueHighlightContainer = new Container();
     this.root.addChild(this.issueHighlightContainer);
 
-    this.grid        = new GridRenderer(this.gridContainer);
+    this.grid        = new GridRenderer(this.gridContainer, "post edit");
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer, (data) => {
+      this.seamData = data;
+      this.renderSeams();
+    });
     this.floor       = new CellFillRenderer(this.floorContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,
@@ -206,6 +226,20 @@ export class PostEditRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     const highlights = buildHoverEdgeHighlight(edge, this.cfg, danger ? canvas.fieldEditor.danger : undefined);
     this.hover.render({ highlights });
+    this.renderSeams();
+  }
+
+  /** Draws the seam layer; with no focus of its own (pointer on an arrow, topology panel) the glue pair of the hovered
+   *  edge or entity link is focused. */
+  private renderSeams(): void {
+    if (!this.seamData) return;
+    let focus = this.seamData.focus;
+    const cells = this.hoverState.edge ? [this.hoverState.edge.from, this.hoverState.edge.to] : this.entityLink;
+    if (!focus && cells && this.cfg) {
+      const half = getSeamModel(this.cfg).halfEdgeBetween(cells[0], cells[1]);
+      if (half) focus = seamFocusOf(this.seamData.arrows, half.seam);
+    }
+    this.seamLayer.render({ ...this.seamData, focus });
   }
 
   /** Highlights a single cell (not a wall/edge) — used while the `manage_split_nodes` tool is
@@ -454,32 +488,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const base = this.sceneBase(state, this.cfg);
     this.drawnLayers.issueHighlight = base;
     const { nodes, edges } = base;
-    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
-    const unscopedNodeById = new Map(state.nodes.map((n) => [n.id, n]));
-    const resolveNodeCell = (id: number): [number, number] | undefined => {
-      const n = unscopedNodeById.get(id);
-      return n ? [n.x, n.y] : undefined;
-    };
-    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
-    // Same one-way detection the Analytics overlay uses — built from the *unscoped* confirmed
-    // `state.edges` (a two-way connection's reverse edge lives on the other floor, GitHub issue
-    // #337/#347). Uncommitted post-edit draft changes to a cross-floor connection aren't reflected
-    // here; the hovered-issue highlight is a read-only locator, not a live edit preview.
-    const crossFloorEdgeKeys = new Set(
-      state.edges.filter((e) => e.kind !== "basic").map((e) => `${e.from}->${e.to}`),
-    );
-    this.issueHighlight.render({
-      nodes,
-      edges: state.hoveredIssueLoopEdges,
-      allEdges: edges,
-      regionGroups: state.hoveredIssueRegionGroups,
-      cfg: this.cfg,
-      resolveNodeLevel,
-      resolveNodeCell,
-      activeFloorIndex,
-      crossFloorEdgeKeys,
-      oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay),
-    });
+    this.issueHighlight.render(selectIssueHighlightData(state, { nodes, edges }, this.cfg));
   }
 
   /** Matches against the *unscoped* `state.nodes`, not `sceneBase(...).nodes` — a cross-floor
@@ -497,7 +506,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private redrawHoveredEntity(state: MazeState): void {
     if (!this.cfg) return;
     const activeLevel = activeFloorLevel(state) ?? 0;
-    const { link, regionGroups, boundaryLinks } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg);
+    const { link, regionGroups, boundaryLinks } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg, selectSeamPairs(state));
+    const hovered = state.postEditHoveredEntity;
+    this.entityLink = hovered?.kind === "link" ? [hovered.from.point, hovered.to.point] : null;
+    this.renderSeams();
     this.linkHover.render(link);
     this.boundaryHover.clear();
     for (const boundary of boundaryLinks ?? []) {
@@ -670,28 +682,32 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
+    const layout = layoutEditorMarkers({
+      markers: markerData, teleportEdges, verticalMarkers: verticalConnectionMarkers,
+      nodeById, edges: allMarkerEdges, cfg,
+    });
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
-      markers: markerData,
-      verticalMarkers: verticalConnectionMarkers,
+      markers: layout.markers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayWallEdges: wallEdges,
       cfg,
       splitPassages,
     });
-    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset", waypoints: teleportWaypoints });
+    this.teleports.render({ edges: layout.teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset", waypoints: teleportWaypoints });
 
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the reset tool is
     // active (its own click means "delete this connection", not "navigate") and, for a one-way
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticalConnections.render({
-      markers: verticalConnectionMarkers,
+      markers: layout.verticalMarkers,
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.postEditTool !== "reset" &&
         !(marker.filled === false && state.postEditTool === "vertical_passage_one_way"),
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: layout.markers });
 
     this.hover.render({
       highlights: buildHoverEdgeHighlight(
@@ -700,6 +716,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
         this.hoverState.edgeDanger ? canvas.fieldEditor.danger : undefined,
       ),
     });
+    this.renderSeams();
     this.cellHover.render({
       cells: this.hoverState.cell ? [this.hoverState.cell] : [],
       color: this.hoverState.cellDanger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
@@ -734,6 +751,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.verticalConnections.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
+    this.entityLink = null;
+    this.renderSeams();
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
     this.linkHover.clear();
@@ -743,6 +762,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected destroyChildren(): void {
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.backgroundImage.destroy();
     this.floor.destroy();

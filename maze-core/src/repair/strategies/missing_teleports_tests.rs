@@ -220,7 +220,7 @@ fn desired_length_interval_restricts_the_exit_distance() {
         .edges()
         .find(|e| e.kind == EdgeKind::Teleport)
         .expect("one teleport must have been added");
-    let dist = bfs_distances(&maze, teleport.from);
+    let dist = bfs_distances(&maze.graph, teleport.from);
     // Since the graph was already fully connected before the teleport was added, entry can
     // reach everything -- so unreachable_priority=forbidden always routes through the interval set,
     // never the unreachable/out-of-interval fallback branches.

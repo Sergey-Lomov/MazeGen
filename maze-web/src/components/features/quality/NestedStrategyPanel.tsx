@@ -1,22 +1,24 @@
 import { useState } from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
+import { NumberInput } from "../../NumberInput";
+import type { InputNormalizationReason } from "../../inputNormalization";
 import { WarningIcon } from "../../WarningIcon";
-import { RemoveIconButton } from "../../RemoveIconButton";
+import { DeleteIconButton } from "../../DeleteIconButton";
 import { EditIconButton } from "../../EditIconButton";
+import { IconActionButton } from "../../IconActionButton";
 import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
 import { ui, typography, spacing, indent } from "../../../styles/theme";
 import { Inline } from "../../Layout";
-import { Tooltip } from "../../Tooltip";
 import { resolveStrategyLabel, resolveNestedStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
-import { NESTED_STRATEGY_WEIGHT_PARAM_ID } from "../../../store/slices/generationSlice";
+import { NESTED_STRATEGY_WEIGHT_PARAM_ID, NESTED_STRATEGY_MAX_SIZE_PARAM_ID } from "../../../store/slices/generationSlice";
 import type { QualitySelection } from "./types";
+import { DEFAULT_INTERVAL_SPAN, cascadedIndices, editMaxSize, resolveIntervals, type SizeInterval } from "../../../store/sizeThresholdIntervals";
 
 // Walks the raw store tree (not the resolved view-model) down `path` to find this row's own
 // `NestedStrategyState` — `useParamEditor` needs the actual stored param overrides
@@ -62,7 +64,7 @@ export function pathsEqual(a: PathSegment[], b: PathSegment[]): boolean {
   return a.length === b.length && a.every((v, i) => v.slotId === b[i].slotId && v.index === b[i].index);
 }
 
-// Mirrors maze-core's `resolve_weight` (weighted_region_merge.rs) — any missing/unparsable/
+// Mirrors maze-core's `resolve_weight` (nested_dispatch.rs) — any missing/unparsable/
 // non-finite/`<= 0` raw value falls back to the same default the Rust dispatcher uses, so the
 // displayed percentage always matches what `dispatch_weighted` will actually do at generation
 // time. Exported for direct unit testing — pure, no React/store involved.
@@ -78,6 +80,7 @@ export function resolveWeight(raw: string | undefined): number {
 // simply renders one row with no visible "add" affordance once full.
 export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, selection, onSelect }: Props) {
   const addNestedStrategy = useMazeStore((s) => s.addNestedStrategy);
+  const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const atCapacity = slotDesc.max !== null && entries.length >= slotDesc.max;
   // A weight/rank row only makes sense once more than one candidate can coexist in the slot — a
   // single-entry slot has nothing else to be weighed/ranked against, so both stay hidden then,
@@ -85,6 +88,9 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
   const multiCandidate = slotDesc.max === null || slotDesc.max > 1;
   const showWeight = multiCandidate && slotDesc.dispatchKind === "weighted";
   const showPriority = multiCandidate && slotDesc.dispatchKind === "priority";
+  // Size-threshold slots: list order defines consecutive size intervals (see
+  // `sizeThresholdIntervals.ts`); every entry but the last has an editable upper bound.
+  const showThreshold = multiCandidate && slotDesc.dispatchKind === "size_threshold";
 
   // Every sibling's raw weight, read here (not per-row) so a change to any one entry's weight
   // re-renders every row's percentage in the same render pass — a per-row subscription would
@@ -102,6 +108,40 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
   }));
   const weights = rawWeights.map(resolveWeight);
   const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+  // Same primitive-snapshot rule as `rawWeights`.
+  const rawMaxSizes = useMazeStore(useShallow((s) => {
+    if (!showThreshold) return [];
+    const rule = s.rules.find((r) => r.id === ruleId);
+    const parentList = parentPath.length === 0 ? rule?.nestedStrategies : findRawNested(rule, parentPath)?.nested;
+    return entriesForSlot(parentList ?? [], slotDesc.slotId).map((n) => n.params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID]);
+  }));
+  const intervals = resolveIntervals(rawMaxSizes);
+  // Per-entry explanation of a bound the panel moved itself (cascade) — replaced on every commit.
+  const [adjustments, setAdjustments] = useState<Record<number, InputNormalizationReason>>({});
+  const entryPath = (index: number): PathSegment[] => [...parentPath, { slotId: slotDesc.slotId, index }];
+
+  // Stores every bound the edit changed (the edited one plus any later ones it pushed up).
+  const commitMaxSize = (index: number, value: string) => {
+    const next = editMaxSize(rawMaxSizes, index, value);
+    const pushed: Record<number, InputNormalizationReason> = {};
+    cascadedIndices(rawMaxSizes, index, next).forEach((i) => {
+      pushed[i] = { kind: "raised_above_previous", value: next[i] as string };
+    });
+    next.forEach((bound, i) => {
+      if (bound !== null && bound !== rawMaxSizes[i]) setNestedStrategyParam(ruleId, entryPath(i), NESTED_STRATEGY_MAX_SIZE_PARAM_ID, bound);
+    });
+    setAdjustments(pushed);
+  };
+
+  const addEntry = () => {
+    addNestedStrategy(ruleId, entryPath(entries.length), slotDesc.kind);
+    // The old last entry now needs an upper bound of its own; the new one becomes "and above".
+    if (showThreshold && entries.length > 0) {
+      const last = intervals[entries.length - 1];
+      setNestedStrategyParam(ruleId, entryPath(entries.length - 1), NESTED_STRATEGY_MAX_SIZE_PARAM_ID, String(last.lo + DEFAULT_INTERVAL_SPAN - 1));
+    }
+  };
 
   return (
     // `entriesGap` separates sibling entries by more than `indented`'s gap separates a single
@@ -124,6 +164,10 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
           showWeight={showWeight}
           percent={showWeight && totalWeight > 0 ? Math.floor((weights[index] / totalWeight) * 100) : null}
           showPriority={showPriority}
+          showThreshold={showThreshold}
+          interval={showThreshold ? intervals[index] ?? null : null}
+          onMaxSizeCommit={(value) => commitMaxSize(index, value)}
+          maxSizeAdjustment={adjustments[index] ?? null}
           rank={index + 1}
           canMoveUp={showPriority && index > 0}
           canMoveDown={showPriority && index < entries.length - 1}
@@ -138,7 +182,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
           <button
             className="hoverable"
             style={styles.addBtn}
-            onClick={() => addNestedStrategy(ruleId, [...path.slice(0, -1), { slotId: slotDesc.slotId, index: entries.length }], slotDesc.kind)}
+            onClick={addEntry}
           >
             + {m["quality.nested_strategy.add"]()}
           </button>
@@ -160,6 +204,14 @@ interface EntryRowProps {
   /** Whether this slot dispatches by configured order (`dispatchKind: "priority"`) — shows a
    * "Priority N" label plus up/down reorder buttons instead of a weight input. */
   showPriority: boolean;
+  /** Whether this slot dispatches by region size (`dispatchKind: "size_threshold"`). */
+  showThreshold: boolean;
+  /** This entry's size interval when `showThreshold`, else `null`. `hi: null` = last entry. */
+  interval: SizeInterval | null;
+  /** Commits new text for this entry's upper bound (validated/cascaded by the panel). */
+  onMaxSizeCommit: (value: string) => void;
+  /** Explanation of a bound the panel moved on this entry's behalf (cascade), else `null`. */
+  maxSizeAdjustment: InputNormalizationReason | null;
   /** 1-based position among siblings — only meaningful when `showPriority`. */
   rank: number;
   canMoveUp: boolean;
@@ -181,15 +233,16 @@ interface EntryRowProps {
 //                click-to-select target spanning this row and everything below it in the same
 //                block
 //   depth + 1  — the nested strategy's own params / further-nested slots
-function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, showPriority, rank, canMoveUp, canMoveDown, removable, depth, selection, onSelect }: EntryRowProps) {
+function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, showPriority, showThreshold, interval, onMaxSizeCommit, maxSizeAdjustment, rank, canMoveUp, canMoveDown, removable, depth, selection, onSelect }: EntryRowProps) {
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const removeNestedStrategy = useMazeStore((s) => s.removeNestedStrategy);
   const moveNestedStrategy = useMazeStore((s) => s.moveNestedStrategy);
   const rawNested = useMazeStore((s) => findRawNested(s.rules.find((r) => r.id === ruleId), path));
-  const showRankRow = showWeight || showPriority;
+  const showRankRow = showWeight || showPriority || showThreshold;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.type === "nested_strategy" && selection.ruleId === ruleId && pathsEqual(selection.path, path);
+  const maxSizeInputId = `nested-strategy-max-size-${ruleId}-${path.map((p) => `${p.slotId}-${p.index}`).join("-")}`;
   const weightInputId = `nested-strategy-weight-${ruleId}-${path.map((p) => `${p.slotId}-${p.index}`).join("-")}`;
 
   const { values, onChange, flushRef } = useParamEditor({
@@ -223,31 +276,45 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           />
           {percent !== null && <span style={styles.weightPercent}>{percent}%</span>}
           {removable && (
-            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+          )}
+        </Inline>
+      )}
+      {showThreshold && interval && (
+        <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
+          {interval.hi === null ? (
+            <span style={styles.weightLabel}>{m["quality.nested_strategy.interval_from_up"]({ lo: interval.lo })}</span>
+          ) : (
+            <>
+              <label htmlFor={maxSizeInputId} style={styles.weightLabel}>{m["quality.nested_strategy.interval_from_to"]({ lo: interval.lo })}</label>
+              {/* Committed on blur only (`onChange` ignored): a cascade while typing "15" would
+                  act on the intermediate "1". `min` makes the field itself explain a bound
+                  below this interval's lower end. */}
+              <NumberInput
+                id={maxSizeInputId}
+                name={maxSizeInputId}
+                integer
+                min={interval.lo}
+                style={styles.weightInput}
+                value={String(interval.hi)}
+                onChange={() => {}}
+                onBlurCommit={onMaxSizeCommit}
+                externalReason={maxSizeAdjustment}
+              />
+            </>
+          )}
+          {removable && (
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
       {showPriority && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
           <span style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</span>
-          <Tooltip content={m["quality.nested_strategy.move_up"]()}><button
-            className="hoverable"
-            style={styles.reorderBtn}
-            disabled={!canMoveUp}
-            onClick={() => moveNestedStrategy(ruleId, path, "up")}
-          >
-            <ChevronUp size={16} color={canMoveUp ? ui.text.tertiary : ui.text.disabled} />
-          </button></Tooltip>
-          <Tooltip content={m["quality.nested_strategy.move_down"]()}><button
-            className="hoverable"
-            style={styles.reorderBtn}
-            disabled={!canMoveDown}
-            onClick={() => moveNestedStrategy(ruleId, path, "down")}
-          >
-            <ChevronDown size={16} color={canMoveDown ? ui.text.tertiary : ui.text.disabled} />
-          </button></Tooltip>
+          <IconActionButton action="move-up" title={m["quality.nested_strategy.move_up"]()} disabled={!canMoveUp} onClick={() => moveNestedStrategy(ruleId, path, "up")} />
+          <IconActionButton action="move-down" title={m["quality.nested_strategy.move_down"]()} disabled={!canMoveDown} onClick={() => moveNestedStrategy(ruleId, path, "down")} />
           {removable && (
-            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
@@ -281,7 +348,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             {node.strategy.experimental && <WarningIcon />}
             <EditIconButton title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }} />
             {!showRankRow && removable && (
-              <RemoveIconButton
+              <DeleteIconButton
                 title={m["quality.nested_strategy.remove"]()}
                 onClick={(e) => { e.stopPropagation(); flushRef.current(); removeNestedStrategy(ruleId, path); }}
               />
@@ -348,7 +415,11 @@ const styles = {
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {
     ...typography.message,
-    flex: 1,
+    // The slot label is descriptive metadata; it must only reserve the width it needs so the
+    // selected strategy can use the remaining row width. Giving both spans `flex: 1` split the
+    // row in half even when the label was short, needlessly truncating long strategy labels.
+    flex: "0 1 auto",
+    minWidth: 0,
   },
   // Same token as `label`, but without `flex: 1` — the weight row has no "far right" content to
   // balance against (see `weightRow`), so the label must not claim the remaining width.
@@ -400,7 +471,7 @@ const styles = {
     whiteSpace: "nowrap" as const,
     textAlign: "right" as const,
   },
-  // Up/down priority-reorder buttons — same shape as `RemoveIconButton`, disabled (not hidden) at
+  // Up/down priority-reorder buttons — same shape as `DeleteIconButton`, disabled (not hidden) at
   // either end of the sibling list so the row's width stays stable as rank changes.
   reorderBtn: {
     background: "none",

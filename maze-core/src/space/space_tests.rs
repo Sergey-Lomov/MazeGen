@@ -289,26 +289,39 @@ mod edge_position_tests {
     use super::super::*;
     use crate::space::{HexPoint, SquarePoint, TriPoint};
 
+    /// A field over `cells` on `tessellation` (no folds).
+    pub(super) fn field_over<T: Tessellation>(tessellation: T, cells: &[T::CellId]) -> Field<T> {
+        let mut cells = cells.to_vec();
+        cells.sort();
+        cells.dedup();
+        Field::new(Arc::new(tessellation), cells, &mut IdGenerator::new()).unwrap()
+    }
+
     fn geometric_edge_distance<T: Tessellation>(
-        tessellation: &T,
+        tessellation: T,
         a_from: T::CellId,
         a_to: T::CellId,
         b_from: T::CellId,
         b_to: T::CellId,
     ) -> f64 {
+        let field = field_over(tessellation, &[a_from, a_to, b_from, b_to]);
         floor_aware_xy_distance(
             0,
-            edge_position(tessellation, a_from, a_to),
+            edge_position(&field, a_from, a_to),
             0,
-            edge_position(tessellation, b_from, b_to),
+            edge_position(&field, b_from, b_to),
             false,
         )
     }
 
     #[test]
     fn square_edge_position_is_the_contact_point_of_the_shared_face() {
+        let field = field_over(
+            SquareTessellation,
+            &[SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 }],
+        );
         let pos = edge_position(
-            &SquareTessellation,
+            &field,
             SquarePoint { x: 0, y: 0 },
             SquarePoint { x: 1, y: 0 },
         );
@@ -320,8 +333,9 @@ mod edge_position_tests {
     fn edge_position_is_symmetric_in_from_to() {
         let a = SquarePoint { x: 2, y: 3 };
         let b = SquarePoint { x: 5, y: 1 };
-        let ab = edge_position(&SquareTessellation, a, b);
-        let ba = edge_position(&SquareTessellation, b, a);
+        let field = field_over(SquareTessellation, &[a, b]);
+        let ab = edge_position(&field, a, b);
+        let ba = edge_position(&field, b, a);
         assert_eq!(ab, ba);
     }
 
@@ -330,7 +344,7 @@ mod edge_position_tests {
      {
         // 0->1 and 1->2, collinear on the x-axis: contact points are (1, 0.5) and (2, 0.5).
         let d = geometric_edge_distance(
-            &SquareTessellation,
+            SquareTessellation,
             SquarePoint { x: 0, y: 0 },
             SquarePoint { x: 1, y: 0 },
             SquarePoint { x: 1, y: 0 },
@@ -343,7 +357,7 @@ mod edge_position_tests {
     fn geometric_edge_distance_between_disjoint_parallel_edges() {
         // 0->1 on row y=0, 0->1 on row y=1: contact points (1, 0.5) and (1, 1.5).
         let d = geometric_edge_distance(
-            &SquareTessellation,
+            SquareTessellation,
             SquarePoint { x: 0, y: 0 },
             SquarePoint { x: 1, y: 0 },
             SquarePoint { x: 0, y: 1 },
@@ -355,7 +369,7 @@ mod edge_position_tests {
     #[test]
     fn geometric_edge_distance_to_self_is_zero() {
         let d = geometric_edge_distance(
-            &SquareTessellation,
+            SquareTessellation,
             SquarePoint { x: 0, y: 0 },
             SquarePoint { x: 1, y: 0 },
             SquarePoint { x: 0, y: 0 },
@@ -367,23 +381,24 @@ mod edge_position_tests {
     /// Hex and triangle neighbors are mirror images across their shared face, so its contact
     /// point is the midpoint of the two centers.
     fn assert_edge_position_is_the_centers_midpoint<T: Tessellation>(
-        tessellation: &T,
+        tessellation: T,
         a: T::CellId,
         b: T::CellId,
     ) {
-        let midpoint = (tessellation.center(a) + tessellation.center(b)) * 0.5;
-        assert!(edge_position(tessellation, a, b).point.distance(midpoint) < 1e-9);
+        let field = field_over(tessellation, &[a, b]);
+        let midpoint = (field.tessellation().center(a) + field.tessellation().center(b)) * 0.5;
+        assert!(edge_position(&field, a, b).point.distance(midpoint) < 1e-9);
     }
 
     #[test]
     fn hex_and_tri_edge_position_is_the_midpoint_of_the_centers() {
         assert_edge_position_is_the_centers_midpoint(
-            &HexTessellation,
+            HexTessellation,
             HexPoint { q: 0, r: 0 },
             HexPoint { q: 1, r: 0 },
         );
         assert_edge_position_is_the_centers_midpoint(
-            &TriTessellation,
+            TriTessellation,
             TriPoint { col: 0, row: 0 },
             TriPoint { col: 1, row: 0 },
         );
@@ -407,7 +422,7 @@ mod edge_position_tests {
         let n0 = HexPoint { q: 0, r: 0 };
         let n1 = HexPoint { q: 1, r: 0 };
         let n2 = HexPoint { q: 2, r: 0 };
-        let d = geometric_edge_distance(&HexTessellation, n0, n1, n1, n2);
+        let d = geometric_edge_distance(HexTessellation, n0, n1, n1, n2);
         let node_distance = geometric_distance(&HexTessellation, n0, n2);
         assert!(
             (d - node_distance / 2.0).abs() < 1e-9,
@@ -421,7 +436,7 @@ mod edge_position_tests {
         let n0 = TriPoint { col: 0, row: 0 };
         let n1 = TriPoint { col: 1, row: 0 };
         let n2 = TriPoint { col: 2, row: 0 };
-        let d = geometric_edge_distance(&TriTessellation, n0, n1, n1, n2);
+        let d = geometric_edge_distance(TriTessellation, n0, n1, n1, n2);
         let node_distance = geometric_distance(&TriTessellation, n0, n2);
         assert!(
             (d - node_distance / 2.0).abs() < 1e-9,
@@ -502,8 +517,12 @@ mod floor_aware_distance_tests {
 
     #[test]
     fn edge_positions_fold_in_one_unit_per_floor_apart() {
+        let field = super::edge_position_tests::field_over(
+            SquareTessellation,
+            &[SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 }],
+        );
         let position = edge_position(
-            &SquareTessellation,
+            &field,
             SquarePoint { x: 0, y: 0 },
             SquarePoint { x: 1, y: 0 },
         );

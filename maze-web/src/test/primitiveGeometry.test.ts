@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { normalizeCells, primitiveCells, primitiveWorldGeometry, snapEquilateralAngle } from "../pixi/primitiveGeometry";
 import { configAllCells } from "../pixi/tessellationCells";
 import { regularHexagonDimensions } from "../pixi/shapeSelection";
-import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "../pixi/triShapeHelpers";
+import { triCenterOffset, triTriangleRaw } from "../pixi/triShapeHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 
 /** Core returns preset cells sorted by cell id (x, then y). */
@@ -60,25 +60,58 @@ describe("field shape primitives", () => {
     expect(cells).toContainEqual([0, 0]);
   });
 
-  it("removes isolated cells before and after smoothing", () => {
-    const cells: [number, number][] = [[0, 0], [1, 0], [1, 1], [2, 0], [10, 10]];
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual([[0, 0], [1, 0], [1, 1], [2, 0]]);
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual([[1, 0]]);
+  describe("normalizeCells", () => {
+    it("peels spikes repeatedly until every cell has two links", () => {
+      const block: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+      const cells: [number, number][] = [...block, [2, 0], [3, 0]];
+      expect(normalizeCells(cells, SQUARE_CFG, true)).toEqual(block);
+      expect(normalizeCells(cells, SQUARE_CFG, false)).toEqual(cells);
+    });
+
+    it("peels a thin strip completely instead of stopping at three cells", () => {
+      const config = fieldOf("tri", { shape: "rect", cols: 8, rows: 1 }, "r0");
+      const strip = configAllCells(config);
+      expect(strip.length).toBeGreaterThanOrEqual(4);
+      expect(normalizeCells(strip, config, true)).toEqual([]);
+    });
+
+    it("leaves no stub at the border when a strip protrudes from anchors", () => {
+      const strip: [number, number][] = [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]];
+      // A wall of anchors along x = 0 gives the first strip cell a single link to the field.
+      const isAnchor = (x: number) => x === 0;
+      expect(normalizeCells(strip, SQUARE_CFG, true, isAnchor)).toEqual([]);
+    });
+
+    it("does not smooth a shape of fewer than four cells", () => {
+      const line: [number, number][] = [[0, 0], [1, 0], [2, 0]];
+      expect(normalizeCells(line, SQUARE_CFG, true)).toEqual(line);
+    });
+
+    it("keeps a one-cell-thick preset field when smoothing is on", () => {
+      const config = fieldOf("square", { shape: "rect", cols: 6, rows: 1 });
+      const raw = configAllCells(config);
+      expect(raw.length).toBe(6);
+      expect(configAllCells(config, true)).toEqual(raw);
+    });
+
+    it("removes a lone isolated cell", () => {
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, false)).toEqual([]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, true)).toEqual([]);
+    });
+
+    it("counts anchors as neighbors without returning them", () => {
+      const anchors = new Set(["1,0", "2,0"]);
+      const isAnchor = (x: number, y: number) => anchors.has(`${x},${y}`);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, false, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, true, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCells([[5, 5]], SQUARE_CFG, false, isAnchor)).toEqual([]);
+    });
   });
 
   it("smooths terminal cells in predefined fields", () => {
     const config = fieldOf("square", { shape: "circle", radius: 5 });
     expect(configAllCells(config)).toContainEqual([5, 0]);
     expect(configAllCells(config, true)).not.toContainEqual([5, 0]);
-  });
-
-  it("preserves primitives smaller than the normalization threshold", () => {
-    const cells: [number, number][] = [[0, 0]];
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual(cells);
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual(cells);
-
-    const twoCellLine: [number, number][] = [[0, 0], [1, 0]];
-    expect(normalizePrimitiveCells(twoCellLine, SQUARE_CFG, true)).toEqual(twoCellLine);
   });
 
   it("keeps predefined circle and rectangle shapes geometrically distinct", () => {
@@ -200,25 +233,6 @@ describe("field shape primitives", () => {
     }
   });
 
-  it("keeps the hex parallelogram inside the shared frame", () => {
-    const ctx = {
-      ...gesture,
-      kind: "hex" as const,
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-      endGrid: { x: 3, y: 2 },
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 120, y: 80 },
-    };
-    const rectangle = primitiveWorldGeometry("rectangle", ctx);
-    const parallelogram = primitiveWorldGeometry("parallelogram", ctx);
-    if (rectangle.kind !== "polygon" || parallelogram.kind !== "polygon") throw new Error("expected polygon geometry");
-    const bounds = (points: { x: number; y: number }[]) => ({
-      width: Math.max(...points.map((p) => p.x)) - Math.min(...points.map((p) => p.x)),
-      height: Math.max(...points.map((p) => p.y)) - Math.min(...points.map((p) => p.y)),
-    });
-    expect(bounds(parallelogram.points)).toEqual(bounds(rectangle.points));
-  });
-
   it("uses independent axial dimensions for the standard hex parallelogram", () => {
     const cells = configAllCells(fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 2 }, "flat_top"));
     expect(cells).toHaveLength(6);
@@ -239,53 +253,130 @@ describe("field shape primitives", () => {
     }
   });
 
-  it("uses equal parallelogram sides for Ctrl instead of a square bounding frame", () => {
-    const geometry = primitiveWorldGeometry("parallelogram", {
-      ...gesture,
-      kind: "hex",
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-      endGrid: { x: 4, y: 1 },
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 160, y: 40 },
-      constrainSquare: true,
-    });
-    if (geometry.kind !== "polygon") throw new Error("expected polygon geometry");
-    const length = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
-    expect(length(geometry.points[0], geometry.points[1])).toBeCloseTo(length(geometry.points[1], geometry.points[2]), 6);
-  });
+  // The parallelogram tool is click-based; see parallelogramGeometry.test.ts.
 
-  it("keeps the parallelogram drag start on a frame vertex in every direction", () => {
-    for (const endWorld of [{ x: 120, y: 80 }, { x: 120, y: -80 }, { x: -120, y: 80 }, { x: -120, y: -80 }]) {
-      const geometry = primitiveWorldGeometry("parallelogram", {
+  it("centers the hexagon on the drag start at any angle with shift", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    for (const angle of [0.1, 0.7, 1.3, 2.9, -2]) {
+      const hexagon = primitiveWorldGeometry("hexagon", {
         ...gesture,
-        kind: "hex",
-        config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-        startWorld: { x: 0, y: 0 },
-        endWorld,
+        kind: "square",
+        config,
+        startWorld: { x: 10, y: 20 },
+        endWorld: { x: 10 + 200 * Math.cos(angle), y: 20 + 200 * Math.sin(angle) },
+        symmetric: true,
       });
-      if (geometry.kind !== "polygon") throw new Error("expected polygon geometry");
-      expect(geometry.points).toContainEqual({ x: 0, y: 0 });
+      if (hexagon.kind !== "polygon") throw new Error("expected polygon geometry");
+      expect(hexagon.points).toHaveLength(6);
+      const cx = hexagon.points.reduce((sum, p) => sum + p.x, 0) / 6;
+      const cy = hexagon.points.reduce((sum, p) => sum + p.y, 0) / 6;
+      expect(cx).toBeCloseTo(10, 6);
+      expect(cy).toBeCloseTo(20, 6);
+      for (const p of hexagon.points) expect(Math.hypot(p.x - 10, p.y - 20)).toBeCloseTo(200, 6);
     }
   });
 
-  it("matches the primitive hexagon orientation to the hex tessellation", () => {
-    const flat = primitiveWorldGeometry("hexagon", {
+  it("grows the hexagon to one side of the drag start without shift", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const g = primitiveWorldGeometry("hexagon", { ...gesture, kind: "square", config, startWorld: { x: 0, y: 0 }, endWorld: { x: 0, y: 200 } });
+    if (g.kind !== "polygon") throw new Error("expected polygon geometry");
+    expect(g.points.some((p) => Math.abs(p.x) < 1e-6 && Math.abs(p.y) < 1e-6)).toBe(true);
+    expect(g.points.some((p) => Math.abs(p.x) < 1e-6 && Math.abs(p.y - 200) < 1e-6)).toBe(true);
+  });
+
+  it("rotates the hexagon with the drag direction", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const at = (endWorld: { x: number; y: number }) => {
+      const g = primitiveWorldGeometry("hexagon", { ...gesture, kind: "square", config, startWorld: { x: 0, y: 0 }, endWorld });
+      if (g.kind !== "polygon") throw new Error("expected polygon geometry");
+      return g.points;
+    };
+    expect(at({ x: 200, y: 0 })).toContainEqual({ x: 200, y: 0 });
+    const turned = at({ x: 0, y: 200 });
+    expect(turned.some((p) => Math.abs(p.x) < 1e-6 && Math.abs(p.y - 200) < 1e-6)).toBe(true);
+  });
+
+  it("centers the equilateral triangle centroid on the drag start with shift", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    for (const angle of [0.3, 1.1, 2.5]) {
+      const triangle = primitiveWorldGeometry("equilateral_triangle", {
+        ...gesture,
+        kind: "square",
+        config,
+        startWorld: { x: 5, y: -7 },
+        endWorld: { x: 5 + 150 * Math.cos(angle), y: -7 + 150 * Math.sin(angle) },
+        symmetric: true,
+      });
+      if (triangle.kind !== "polygon") throw new Error("expected polygon geometry");
+      const cx = triangle.points.reduce((sum, p) => sum + p.x, 0) / 3;
+      const cy = triangle.points.reduce((sum, p) => sum + p.y, 0) / 3;
+      expect(cx).toBeCloseTo(5, 6);
+      expect(cy).toBeCloseTo(-7, 6);
+    }
+  });
+
+  it("snaps the hexagon and triangle direction to the lattice near a snap angle", () => {
+    const configs = [
+      { kind: "hex" as const, config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top") },
+      { kind: "tri" as const, config: fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }, "r0") },
+    ];
+    for (const { kind, config } of configs) {
+      let snapped = NaN;
+      for (let a = 0; a < Math.PI / 3 && Number.isNaN(snapped); a += 0.001) {
+        const candidate = snapEquilateralAngle(a, config);
+        if (candidate !== a) snapped = candidate;
+      }
+      expect(Number.isNaN(snapped)).toBe(false);
+      const nearby = snapped + 0.03;
+      expect(snapEquilateralAngle(nearby, config)).toBeCloseTo(snapped, 9);
+      const hexagon = primitiveWorldGeometry("hexagon", {
+        ...gesture,
+        kind,
+        config,
+        startWorld: { x: 0, y: 0 },
+        endWorld: { x: 300 * Math.cos(nearby), y: 300 * Math.sin(nearby) },
+      });
+      if (hexagon.kind !== "polygon") throw new Error("expected polygon geometry");
+      const far = hexagon.points.reduce((best, p) => (Math.hypot(p.x, p.y) > Math.hypot(best.x, best.y) ? p : best));
+      expect(Math.atan2(far.y, far.x)).toBeCloseTo(Math.atan2(Math.sin(snapped), Math.cos(snapped)), 6);
+    }
+  });
+
+  it("ignores control for the hexagon and equilateral triangle", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    for (const primitive of ["hexagon", "equilateral_triangle"] as const) {
+      const base = { ...gesture, kind: "square" as const, config, startWorld: { x: 0, y: 0 }, endWorld: { x: 180, y: 90 } };
+      expect(primitiveWorldGeometry(primitive, { ...base, constrainSquare: true })).toEqual(primitiveWorldGeometry(primitive, base));
+    }
+  });
+
+  it("selects the start cell and a symmetric set around it for a shifted hexagon", () => {
+    const config = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const cells = primitiveCells("hexagon", {
       ...gesture,
-      kind: "hex",
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 120, y: 80 },
+      kind: "square",
+      config,
+      startGrid: { x: 0, y: 0 },
+      endGrid: { x: 0, y: 3 },
+      symmetric: true,
     });
-    const pointy = primitiveWorldGeometry("hexagon", {
-      ...gesture,
-      kind: "hex",
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top"),
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 120, y: 80 },
-    });
-    if (flat.kind !== "polygon" || pointy.kind !== "polygon") throw new Error("expected polygon geometry");
-    expect(flat.points).toContainEqual({ x: 0, y: 0 });
-    expect(pointy.points.some((point) => Math.abs(point.x) < 1e-6 && Math.abs(point.y) < 1e-6)).toBe(true);
+    const keys = new Set(cells.map(([x, y]) => `${x},${y}`));
+    expect(keys.has("0,0")).toBe(true);
+    for (const [x, y] of cells) expect(keys.has(`${-x},${-y}`)).toBe(true);
+  });
+
+  it("selects cells on the pointer side for an unshifted hexagon on every tessellation", () => {
+    const configs = [
+      { kind: "square" as const, config: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
+      { kind: "hex" as const, config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top") },
+      { kind: "tri" as const, config: fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }, "r0") },
+    ];
+    for (const { kind, config } of configs) {
+      const centered = primitiveCells("hexagon", { ...gesture, kind, config, startWorld: { x: 0, y: 0 }, endWorld: { x: 0, y: 320 }, symmetric: true });
+      const grown = primitiveCells("hexagon", { ...gesture, kind, config, startWorld: { x: 0, y: 0 }, endWorld: { x: 0, y: 320 } });
+      expect(grown.length).toBeGreaterThan(0);
+      expect(grown.length).toBeLessThan(centered.length);
+    }
   });
 
   it("builds a regular standard hexagon in both grid orientations", () => {
@@ -299,24 +390,6 @@ describe("field shape primitives", () => {
     const pointySize = regularHexagonDimensions(10, "pointy_top");
     expect(flatSize.width / flatSize.height).toBeCloseTo(2 / Math.sqrt(3), 6);
     expect(pointySize.width / pointySize.height).toBeCloseTo(Math.sqrt(3) / 2, 6);
-  });
-
-  it("matches a centered hexagon primitive to the standard hexagon frame", () => {
-    const config = fieldOf("hex", { shape: "hexagon", radius: 0 }, "flat_top");
-    const radius = 7;
-    const frameSide = radius * 4;
-    const dragDistance = (frameSide - 1) * 40 / 2;
-    const standard = configAllCells(fieldOf("hex", { shape: "hexagon", radius }, "flat_top"));
-    const manual = primitiveCells("hexagon", {
-      ...gesture,
-      kind: "hex",
-      config,
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: dragDistance, y: dragDistance },
-      symmetric: true,
-      constrainSquare: true,
-    });
-    expect(manual).toEqual(standard);
   });
 
   it("keeps centered hexagon primitives on a non-origin drag start", () => {
@@ -334,31 +407,9 @@ describe("field shape primitives", () => {
     expect(cells).not.toContainEqual([0, 0]);
   });
 
-  it("matches a centered hexagon primitive on the triangle grid", () => {
-    const config = fieldOf("tri", { shape: "rect", cols: 0, rows: 0 }, "r0");
-    const radius = 7;
-    const frameSide = radius * 4;
-    const dragDistance = (frameSide - 1) * 40 / 2;
-    const standard = configAllCells(fieldOf("tri", { shape: "hexagon", radius }, "r0"));
-    const manual = primitiveCells("hexagon", {
-      ...gesture,
-      kind: "tri",
-      config,
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: dragDistance, y: dragDistance },
-      symmetric: true,
-      constrainSquare: true,
-    });
-    expect(sortedCells(manual)).toEqual(standard);
-    expect(standard).toHaveLength(6 * radius * radius);
-    const raw = triHexagonRaw(radius);
-    const { ox, oy } = triCenterOffset(raw);
-    expect(standard).toEqual(sortedCells(raw.map(([x, y]) => [x - ox, y - oy])));
-  });
-
   it("supports the same primitive set on every tessellation", () => {
     for (const kind of ["square", "hex", "tri"] as const) {
-      for (const primitive of ["rectangle", "circle", "triangle", "hexagon", "parallelogram"] as const) {
+      for (const primitive of ["rectangle", "circle", "triangle", "hexagon"] as const) {
         const cells = primitiveCells(primitive, { ...gesture, kind, config: kind === "hex"
           ? fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top")
           : kind === "tri"
@@ -442,7 +493,7 @@ describe("field shape primitives", () => {
           ? fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }, "r0")
           : fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
       for (const symmetric of [false, true]) for (const constrainSquare of [false, true]) {
-        for (const primitive of ["rectangle", "circle", "triangle", "hexagon", "parallelogram"] as const) {
+        for (const primitive of ["rectangle", "circle", "triangle", "hexagon"] as const) {
           const cells = primitiveCells(primitive, {
             ...gesture,
             kind,

@@ -73,6 +73,17 @@ export const ui = {
     // attention", distinct from `refHighlight`'s cyan (info) and `issueHighlight`'s red (error).
     searchMatch: base.warning,
   },
+  // Run A / run B of a glue in the topology editor: bubbles in the panel and the canvas highlight
+  // (`canvas.topology`) share these hues.
+  // Font format badges in the font picker: `Bubble` colors, one hue per format.
+  fontFormat: {
+    msdf: { bg: base.fontMsdfBg, text: base.fontMsdf },
+    vec: { bg: base.fontVecBg, text: base.fontVec },
+  },
+  topology: {
+    runA: { bg: base.topologyRunABg, text: base.topologyRunA },
+    runB: { bg: base.topologyRunBBg, text: base.topologyRunB },
+  },
 } as const;
 
 export const radius = {
@@ -234,7 +245,9 @@ export const dialogSize = {
   // link's modifier chain alongside the existing target/source pickers, which `complex`'s 720px is
   // too narrow for without squeezing all three.
   threeColumn: { minWidth: 460, maxWidth: 960, width: 960, height: "60vh" },
-  printSizing: { minWidth: 520, maxWidth: 720 },
+  // The print-sizing dialog (GitHub issue #1006): no fixed width, so it fits its calculated data;
+  // running text inside it must not set the width (`contain: inline-size`), it wraps instead.
+  printSizing: { minWidth: 440, maxWidth: 720 },
   // The pattern editor (`AbstractPatternEditorDialog`) — its tile diagram and node-card list stack
   // vertically, not side-by-side (GitHub issue #237 follow-up: post-edit/preset moved to a
   // `SidePanel`, leaving this the only `wide` caller), so it no longer needs `complex`'s width,

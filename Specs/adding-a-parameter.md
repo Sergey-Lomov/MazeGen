@@ -8,7 +8,7 @@ happened.
 ## 1. Check for a semantic precedent before naming anything
 
 Before inventing a label or a field name, search the existing settings for a parameter that means the
-same thing (a color, a font weight, a size fraction, a toggle). Reuse its exact wording. Do not invent a
+same thing (a color, a font, a size fraction, a toggle). Reuse its exact wording. Do not invent a
 synonym for a concept that already has a name elsewhere in the panel — that is how a project ends up with
 both "Насыщенность шрифта" and "Жирность текста" for the same concept (font weight) in two different
 sections. If no precedent exists, pick the plainest term and expect it to become the precedent for the
@@ -27,12 +27,12 @@ disambiguate between them).
 
 ## 3. Register it in the parameter-links system when its type supports it
 
-If the new field's value type has a matching `ParamType`, add a registry entry (`parameterLinksRegistry.ts`)
-and a `linkTargets` plumbing path from the owning settings panel, the same way every other linkable field
+If the new field's value type has a matching `ParamType`, declare it in `LINK_SCHEMA` (`parameterLinkSchema.ts` — the registries, activity rules and `patch*` path lists derive from it)
+and add a `linkTargets` plumbing path from the owning settings panel, the same way every other linkable field
 in that panel already works. Do not leave a field that structurally *could* be linked rendering with
 `linkTarget={null}` ("unsupported") just because it was new — that renders as a permanent broken-looking
 icon for no real reason. The current set of supported `ParamType`s is not reproduced here — read it
-directly from `parameterLinksRegistry.ts`, since it changes as new field shapes get modeled.
+directly from `parameterLinks.ts`, since it changes as new field shapes get modeled.
 
 ## 4. Never add backward-compatibility logic for old projects
 
@@ -56,6 +56,10 @@ call site the ticket named — then wire the distinction through an explicit pro
 
 - **Register it in the project-colors list** (`projectColorsSelector.ts`, the `PC.*` entries) so it shows
   up in the color picker's "Project colors" section like every other named color in the project.
+- **Give its registry entry the schema path** (`colorFieldRegistry.ts`, `schemaField("<link path>", { get, set })`):
+  the color's visibility then comes from the field's `active` rule in `LINK_SCHEMA`, never from a second
+  predicate. Use a hand-written `visible` only when the row is shown on purpose while the color is not
+  drawn (the grid colors), and say why next to it.
 - **Survey the existing colors for semantic neighbors.** Find colors that are conceptually close to the
   new one (e.g. a new badge text color is close to that badge's own fill/border colors, and to any
   sibling badge's text color) and add them to the new color's own `priorityColors` list, so picking the
@@ -86,7 +90,7 @@ default:
   the sibling setters' own naming convention for that settings group).
 - **Settings panel UI** — the relevant row in `VectorByWallsSettingsPanel.tsx`/
   `VectorByCorridorsSettingsPanel.tsx` (or a shared group component), wired to the new setter.
-- **Parameter-links registry** — see step 3, when applicable.
+- **Parameter-links schema** — `maze-web/src/store/parameterLinkSchema.ts`, see step 3, when applicable.
 - **Validation** — `maze-web/src/store/projectExport/validateImageExport.ts` (an `opt*` read with a
   fallback to the default, for loading project files saved before this field existed).
 - **i18n messages** — `maze-web/messages/en.json` and `maze-web/messages/ru.json` (English content is

@@ -8,7 +8,8 @@
 
 use super::geometry::{GEOM_EPS, MAX_REGION_CANDIDATES, Point, TessellationGeometry};
 use super::{CellScope, Tessellation};
-use std::collections::HashSet;
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// An operation a tessellation may offer on cell sets. `Tessellation::field_operations` lists the
@@ -106,6 +107,9 @@ pub(super) const HEXAGON_PRESET: PresetDescriptor = PresetDescriptor {
 /// every coordinate far from `i32` overflow.
 pub(super) const MAX_PRESET_SIZE: u64 = 1_000_000;
 
+/// Switches a preset may leave out (they default to `0`) and that do not count toward its size.
+const OPTIONAL_PARAMS: [&str; 1] = ["axis"];
+
 /// Checks `params` against the schema of preset `key` among `presets`: the preset must exist and
 /// every parameter must be present exactly once, known and at least its minimum, and the product
 /// of the values must stay within `MAX_PRESET_SIZE`.
@@ -131,7 +135,11 @@ pub fn validate_preset(
             )));
         }
     }
-    let size: u64 = params.iter().map(|&(_, value)| u64::from(value)).product();
+    let size: u64 = params
+        .iter()
+        .filter(|(name, _)| !OPTIONAL_PARAMS.contains(name))
+        .map(|&(_, value)| u64::from(value))
+        .product();
     if size > MAX_PRESET_SIZE {
         return Err(FieldOpError::InvalidPreset(
             "preset is too large".to_string(),
@@ -142,7 +150,8 @@ pub fn validate_preset(
             .iter()
             .filter(|(name, _)| *name == schema.name)
             .count();
-        if count != 1 {
+        let optional = OPTIONAL_PARAMS.contains(&schema.name);
+        if count > 1 || (count == 0 && !optional) {
             return Err(FieldOpError::InvalidPreset(format!(
                 "parameter \"{}\" must be given exactly once",
                 schema.name
@@ -159,6 +168,15 @@ pub(super) fn param(params: PresetParams<'_>, name: &str) -> u32 {
         .find(|(n, _)| *n == name)
         .map(|&(_, value)| value)
         .expect("params validated against the preset schema")
+}
+
+/// The value of the optional switch `name` (`0` when left out) in params already accepted by
+/// `validate_preset`.
+pub(super) fn optional_param(params: PresetParams<'_>, name: &str) -> u32 {
+    params
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map_or(0, |&(_, value)| value)
 }
 
 /// Half-size (world units) of the window probed when deciding whether a map is a symmetry. It
@@ -182,7 +200,11 @@ pub trait FieldOps: Tessellation {
     ) -> Result<Vec<Self::CellId>, FieldOpError> {
         require_operation(self, FieldOperation::Translate)?;
         let map = |point: Point| point + vector;
-        if !is_symmetry(self, &map, Point::default()) {
+        let is_translation = match self.translation_basis() {
+            Some(basis) => in_lattice(basis, vector),
+            None => is_symmetry(self, &map, Point::default()),
+        };
+        if !is_translation {
             return Err(FieldOpError::NotASymmetry);
         }
         map_cells(self, cells, &map)
@@ -244,6 +266,70 @@ fn same_vertex_set(a: &[Point], b: &[Point]) -> bool {
     a.len() == b.len()
         && a.iter().all(|p| b.iter().any(|q| near(p, q)))
         && b.iter().all(|q| a.iter().any(|p| near(p, q)))
+}
+
+/// Largest distance from an integer accepted for a lattice coordinate; absorbs floating-point
+/// noise of vectors computed from cell centers.
+const LATTICE_COORDINATE_TOLERANCE: f64 = 1e-6;
+
+/// Whether `vector` is an integer combination of the two `basis` vectors.
+fn in_lattice(basis: [Point; 2], vector: Point) -> bool {
+    let [a, b] = basis;
+    let determinant = a.x * b.y - a.y * b.x;
+    let along_a = (vector.x * b.y - vector.y * b.x) / determinant;
+    let along_b = (a.x * vector.y - a.y * vector.x) / determinant;
+    [along_a, along_b]
+        .iter()
+        .all(|c| (c - c.round()).abs() <= LATTICE_COORDINATE_TOLERANCE)
+}
+
+/// Checks the `Tessellation::translation_basis` contract of `tessellation`: a tessellation that
+/// offers `Translate` must declare a basis, and the basis must accept exactly the translations the
+/// slow symmetry probe accepts (tested on lattice vectors, fractions of them and other offsets).
+/// Run for every registered tessellation, so a new one cannot skip or get its basis wrong.
+pub fn check_translation_basis<T: Tessellation + ?Sized>(tessellation: &T) -> Result<(), String> {
+    let t = tessellation;
+    let Some(basis) = t.translation_basis() else {
+        return if t.field_operations().contains(&FieldOperation::Translate) {
+            Err("offers Translate but declares no translation_basis".to_string())
+        } else {
+            Ok(())
+        };
+    };
+    let [a, b] = basis;
+    let mut vectors = vec![Point::default()];
+    for i in -2..=2 {
+        for j in -2..=2 {
+            let lattice = a * f64::from(i) + b * f64::from(j);
+            vectors.push(lattice);
+            vectors.push(lattice + a * 0.5);
+            vectors.push(lattice + b * 0.5);
+            vectors.push(lattice + (a + b) * 0.5);
+            vectors.push(lattice + Point::new(0.3, 0.1));
+        }
+    }
+    let window = Point::new(2.0, 2.0);
+    let cells = t
+        .candidate_cells(
+            Point::default() - window,
+            Point::default() + window,
+            100_000,
+        )
+        .ok_or("no candidate cells near the origin")?;
+    let valid: Vec<_> = cells.into_iter().filter(|&c| t.is_valid_cell(c)).collect();
+    let first = *valid.first().ok_or("no valid cell near the origin")?;
+    vectors.extend(valid.iter().map(|&c| t.center(c) - t.center(first)));
+    for v in vectors {
+        let map = |point: Point| point + v;
+        let probed = is_symmetry(t, &map, Point::default());
+        if in_lattice(basis, v) != probed {
+            return Err(format!(
+                "translation_basis disagrees with the symmetry probe for ({}, {}): probe says {probed}",
+                v.x, v.y
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Whether the point map sends every cell of the probe window around `focus` onto a cell with the
@@ -329,6 +415,62 @@ pub(super) enum Inclusion {
     WholeCell,
 }
 
+/// A measurement running under `with_extent_focus`.
+#[derive(Clone, Copy)]
+struct ExtentFocus {
+    directions: [[f64; 2]; 2],
+    /// False once a builder did something that depends on the whole shape.
+    exact: bool,
+}
+
+thread_local! {
+    /// The focus of the measurement running on this thread, if any.
+    static EXTENT_FOCUS: Cell<Option<ExtentFocus>> = const { Cell::new(None) };
+}
+
+/// Called by a shape builder that works on the whole set of cells (it drops a piece cut off from
+/// the rest): under `with_extent_focus` the cells are only a part, so the result is not exact.
+pub(super) fn spoil_extent_focus() {
+    EXTENT_FOCUS.with(|focus| {
+        if let Some(active) = focus.get() {
+            focus.set(Some(ExtentFocus { exact: false, ..active }));
+        }
+    });
+}
+
+/// Runs `measure` with the geometric shape builders (`circle`, `triangle`, `hexagon`, a lattice
+/// `rect`) returning only the cells that can hold the extremes along `directions` (GitHub issue
+/// #939): the cells in the strips at the four ends, not the whole shape. The cells returned are a
+/// subset, so only a measurement of the extents may run inside. A shape on a tessellation without
+/// a translation lattice is built in full. The flag returned is false when a builder needed the
+/// whole shape after all; the result of `measure` is then not to be used.
+pub fn with_extent_focus<R>(directions: [[f64; 2]; 2], measure: impl FnOnce() -> R) -> (R, bool) {
+    struct Restore(Option<ExtentFocus>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            EXTENT_FOCUS.with(|focus| focus.set(self.0));
+        }
+    }
+    let _restore = Restore(EXTENT_FOCUS.with(|focus| {
+        focus.replace(Some(ExtentFocus {
+            directions,
+            exact: true,
+        }))
+    }));
+    let result = measure();
+    let exact = EXTENT_FOCUS.with(|focus| focus.get().is_some_and(|active| active.exact));
+    (result, exact)
+}
+
+/// Tolerance the boundaries are flattened with to find how far a cell reaches from its center.
+const REACH_TOLERANCE: f64 = 1e-6;
+/// Margin on the measured reach: the focus must never cut off a cell a measurement needs.
+const REACH_SAFETY: f64 = 1.5;
+/// Side of a focus tile in cell reaches.
+const TILE_REACHES: f64 = 6.0;
+/// Largest number of tiles a focused build walks; a bigger box is built in full.
+const MAX_FOCUS_TILES: f64 = 4_000_000.0;
+
 /// The valid cells matching `inside` (a point test) within the box `min`–`max`, sorted.
 fn cells_where<T: Tessellation + ?Sized>(
     tessellation: &T,
@@ -337,16 +479,39 @@ fn cells_where<T: Tessellation + ?Sized>(
     inclusion: Inclusion,
     inside: impl Fn(Point) -> bool,
 ) -> Result<Vec<T::CellId>, FieldOpError> {
-    let mut cells: Vec<T::CellId> = tessellation
-        .candidate_cells(min, max, MAX_REGION_CANDIDATES)
-        .ok_or_else(|| FieldOpError::InvalidPreset("preset is too large".to_string()))?
-        .into_iter()
-        .filter(|&cell| tessellation.is_valid_cell(cell))
-        .filter(|&cell| match inclusion {
-            Inclusion::Center => inside(tessellation.center(cell)),
-            Inclusion::WholeCell => cell_vertices(tessellation, cell).into_iter().all(&inside),
-        })
-        .collect();
+    let accepts = |cell: T::CellId| {
+        tessellation.is_valid_cell(cell)
+            && match inclusion {
+                Inclusion::Center => inside(tessellation.center(cell)),
+                Inclusion::WholeCell => cell_vertices(tessellation, cell).into_iter().all(&inside),
+            }
+    };
+    let focused = match EXTENT_FOCUS.with(Cell::get) {
+        Some(focus) if tessellation.translation_basis().is_some() => {
+            // The shape is measured as if built in full: one too large to be built is refused too,
+            // else a size would be found that the field then cannot have. Candidates are counted
+            // before any is allocated.
+            if tessellation
+                .candidate_cells(min, max, MAX_REGION_CANDIDATES)
+                .is_none()
+            {
+                return Err(FieldOpError::InvalidPreset(
+                    "preset is too large".to_string(),
+                ));
+            }
+            focused_cells(tessellation, min, max, focus.directions, &accepts)?
+        }
+        _ => None,
+    };
+    let mut cells: Vec<T::CellId> = match focused {
+        Some(cells) => cells,
+        None => tessellation
+            .candidate_cells(min, max, MAX_REGION_CANDIDATES)
+            .ok_or_else(|| FieldOpError::InvalidPreset("preset is too large".to_string()))?
+            .into_iter()
+            .filter(|&cell| accepts(cell))
+            .collect(),
+    };
     cells.sort();
     cells.dedup();
     if cells.is_empty() {
@@ -355,6 +520,120 @@ fn cells_where<T: Tessellation + ?Sized>(
         ));
     }
     Ok(cells)
+}
+
+/// The cells accepted in the box `min`–`max` that lie within reach of its extremes along each end
+/// of `directions`, or `None` when the box cannot be walked in tiles.
+///
+/// The box is cut into tiles; for each end the tiles are visited from the one reaching furthest
+/// along it, until the next tile lies more than three cell reaches behind the furthest accepted
+/// cell. Every accepted cell a measurement of the extents can need is in a visited tile: it
+/// is at most two reaches behind the furthest center, and a cell's center lies in its tile.
+fn focused_cells<T: Tessellation + ?Sized>(
+    tessellation: &T,
+    min: Point,
+    max: Point,
+    directions: [[f64; 2]; 2],
+    accepts: &dyn Fn(T::CellId) -> bool,
+) -> Result<Option<Vec<T::CellId>>, FieldOpError> {
+    let Some(reach) = cell_reach(tessellation, (min + max) * 0.5) else {
+        return Ok(None);
+    };
+    let tile = TILE_REACHES * reach;
+    let columns = ((max.x - min.x) / tile).ceil().max(1.0);
+    let rows = ((max.y - min.y) / tile).ceil().max(1.0);
+    if columns * rows > MAX_FOCUS_TILES {
+        return Ok(None);
+    }
+    let (columns, rows) = (columns as usize, rows as usize);
+    let tile_min = |column: usize, row: usize| {
+        Point::new(min.x + column as f64 * tile, min.y + row as f64 * tile)
+    };
+
+    let mut visited: HashMap<(usize, usize), Vec<(T::CellId, Point)>> = HashMap::new();
+    for end in [
+        directions[0],
+        directions[1],
+        [-directions[0][0], -directions[0][1]],
+        [-directions[1][0], -directions[1][1]],
+    ] {
+        let along = |point: Point| end[0] * point.x + end[1] * point.y;
+        let margin = 3.0 * reach * end[0].hypot(end[1]);
+        // A tile reaches furthest along `end` at one of its corners.
+        let furthest = |column: usize, row: usize| {
+            let low = tile_min(column, row);
+            let high = low + Point::new(tile, tile);
+            [low.x, high.x]
+                .into_iter()
+                .flat_map(|x| [low.y, high.y].map(move |y| along(Point::new(x, y))))
+                .fold(f64::NEG_INFINITY, f64::max)
+        };
+        let mut order: Vec<(f64, usize, usize)> = (0..columns)
+            .flat_map(|column| (0..rows).map(move |row| (column, row)))
+            .map(|(column, row)| (furthest(column, row), column, row))
+            .collect();
+        order.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+        let mut best = f64::NEG_INFINITY;
+        for (tile_furthest, column, row) in order {
+            if best.is_finite() && tile_furthest < best - margin {
+                break;
+            }
+            if !visited.contains_key(&(column, row)) {
+                let low = tile_min(column, row);
+                let high = Point::new((low.x + tile).min(max.x), (low.y + tile).min(max.y));
+                let candidates = tessellation
+                    .candidate_cells(low, high, MAX_REGION_CANDIDATES)
+                    .ok_or_else(|| FieldOpError::InvalidPreset("preset is too large".to_string()))?;
+                let accepted = candidates
+                    .into_iter()
+                    .filter(|&cell| accepts(cell))
+                    .map(|cell| (cell, tessellation.center(cell)))
+                    .collect();
+                visited.insert((column, row), accepted);
+            }
+            for &(_, center) in &visited[&(column, row)] {
+                best = best.max(along(center));
+            }
+        }
+    }
+    Ok(Some(
+        visited
+            .into_values()
+            .flatten()
+            .map(|(cell, _)| cell)
+            .collect(),
+    ))
+}
+
+/// How far the cells around `at` reach from their centers (with `REACH_SAFETY`), the largest of
+/// every shape found within a few units; `None` for a tessellation with no cell there.
+fn cell_reach<T: Tessellation + ?Sized>(tessellation: &T, at: Point) -> Option<f64> {
+    let around = Point::new(6.0, 6.0);
+    let mut shapes = HashSet::new();
+    let mut reach: Option<f64> = None;
+    for cell in tessellation.candidate_cells(at - around, at + around, MAX_REGION_CANDIDATES)? {
+        if !tessellation.is_valid_cell(cell) {
+            continue;
+        }
+        let first_of_shape = tessellation
+            .shape_of(cell)
+            .is_none_or(|shape| shapes.insert(shape.descriptor().key().to_owned()));
+        if !first_of_shape {
+            continue;
+        }
+        let center = tessellation.center(cell);
+        let cell_reach = tessellation
+            .boundary_path(cell)
+            .flatten(REACH_TOLERANCE)
+            .iter()
+            .map(|point| point.distance(center))
+            .fold(0.0, f64::max);
+        reach = Some(reach.unwrap_or(0.0).max(cell_reach));
+    }
+    reach
+        .filter(|&reach| reach > 0.0)
+        .map(|reach| reach * REACH_SAFETY)
 }
 
 /// A disc of `radius` around `origin`.
@@ -423,10 +702,21 @@ pub(super) fn convex_cells<T: Tessellation + ?Sized>(
     inclusion: Inclusion,
 ) -> Result<Vec<T::CellId>, FieldOpError> {
     let margin = Point::new(reach + 2.0, reach + 2.0);
+    // A cell is accepted only when its center lies inside the polygon, so the polygon's own box
+    // bounds the search: no walk over the corners of a box drawn around a long, thin shape.
+    let (mut low, mut high) = (origin - margin, origin + margin);
+    let (mut low_vertex, mut high_vertex) = (vertices[0], vertices[0]);
+    for vertex in vertices {
+        low_vertex = Point::new(low_vertex.x.min(vertex.x), low_vertex.y.min(vertex.y));
+        high_vertex = Point::new(high_vertex.x.max(vertex.x), high_vertex.y.max(vertex.y));
+    }
+    let slack = Point::new(PRESET_EPS + GEOM_EPS, PRESET_EPS + GEOM_EPS) * 1e3;
+    low = Point::new(low.x.max(low_vertex.x - slack.x), low.y.max(low_vertex.y - slack.y));
+    high = Point::new(high.x.min(high_vertex.x + slack.x), high.y.min(high_vertex.y + slack.y));
     cells_where(
         tessellation,
-        origin - margin,
-        origin + margin,
+        low,
+        high,
         inclusion,
         |p| {
             vertices

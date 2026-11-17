@@ -179,7 +179,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
         let scc = maze.analysis.scc(&maze.graph);
         let mut pending = PendingTeleports::default();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
                 region,
@@ -193,6 +193,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
                 min_distance,
                 allow_cross_floor,
                 needy,
+                excluded,
                 rng,
                 &mut pending,
             )
@@ -318,6 +319,7 @@ fn find_merge_candidate<T: Tessellation>(
     min_distance: usize,
     allow_cross_floor: bool,
     needy: &HashSet<ComponentId>,
+    excluded: &HashSet<ComponentId>,
     rng: &mut dyn RngCore,
     pending: &mut PendingTeleports,
 ) -> Option<(ComponentId, bool)> {
@@ -328,6 +330,11 @@ fn find_merge_candidate<T: Tessellation>(
 
     let mut keys: Vec<ComponentId> = by_neighbor.keys().copied().collect();
     keys.sort_unstable();
+    // Neighbors already tried and failed for this region (see `run_merge_loop`).
+    keys.retain(|k| !excluded.contains(k));
+    if keys.is_empty() {
+        return None;
+    }
 
     // `allow_cross_floor == false` (GitHub issue #472): drop every candidate component that
     // shares no floor with the flagged region, so a teleport merge stays within one floor.

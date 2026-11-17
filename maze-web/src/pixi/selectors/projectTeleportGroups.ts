@@ -2,7 +2,7 @@ import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { TeleportGroupOverride } from "../renderers/types";
 import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "./mazeSelectors";
-import { buildTeleportGroups, coordKey, type TeleportGroup } from "./teleportGroups";
+import { buildTeleportGroups, coordKey, teleportNodePairKey, type TeleportGroup } from "./teleportGroups";
 
 /** Merges per-floor teleport groups into project-wide groups (GitHub issue #727 follow-up). A
  *  cross-floor teleport is built on each floor it touches, where it lands in that floor's own
@@ -41,7 +41,7 @@ export function mergeTeleportGroupsAcrossFloors(perFloor: TeleportGroup[][]): Te
     for (const [px, py] of g.points) entry.points.set(coordKey(px, py), [px, py]);
     // A link's edge key is its sorted node-id pair (`teleportEdgeKey` with node ids).
     for (const link of g.links) {
-      const lk = link.from < link.to ? `${link.from}-${link.to}` : `${link.to}-${link.from}`;
+      const lk = teleportNodePairKey(link.from, link.to);
       if (!entry.links.has(lk)) entry.links.set(lk, link);
     }
   }
@@ -71,10 +71,12 @@ type ProjectGroupArgs = {
   avoidFieldExit: boolean;
   start: number | null;
   finish: number | null;
+  /** Teleport merge mode (GitHub issue #868) — `false` makes every teleport its own group. */
+  mergeTeleports?: boolean;
 };
 
 export function buildProjectTeleportGroups(args: ProjectGroupArgs): TeleportGroup[] {
-  const { nodes, edges, cfg, floors, avoidFieldExit, start, finish } = args;
+  const { nodes, edges, cfg, floors, avoidFieldExit, start, finish, mergeTeleports = true } = args;
   const floorList = floors.length > 0 ? floors : [{ id: "" }];
   // Same `{ floorContext, spread }` the vector renderers build; only `activeFloorIndex` varies per floor.
   const { floorContext, spread } = buildTeleportFloorInputs({
@@ -91,7 +93,7 @@ export function buildProjectTeleportGroups(args: ProjectGroupArgs): TeleportGrou
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const nodeById = new Map(scoped.nodes.map((n) => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, { ...floorContext, activeFloorIndex }, spread);
-    return buildTeleportGroups(teleportEdges);
+    return buildTeleportGroups(teleportEdges, mergeTeleports);
   });
   return mergeTeleportGroupsAcrossFloors(perFloor);
 }
@@ -120,6 +122,25 @@ export function resolveFloorGroupOverrides(
 let lastArgs: ProjectGroupArgs | null = null;
 let lastGroups: TeleportGroup[] = [];
 
+function sameFloorIds(a: { id: string }[], b: { id: string }[]): boolean {
+  return a === b || (a.length === b.length && a.every((f, i) => f.id === b[i].id));
+}
+
+/** `buildProjectTeleportGroups` reusing the last result while its inputs are reference-equal
+ *  (renders repeat with unchanged data). Shared by the override re-keying and the marker index
+ *  (GitHub issue #871), so both agree on what a group is. */
+export function getProjectTeleportGroups(args: ProjectGroupArgs): TeleportGroup[] {
+  // `floors` is compared by id: callers pass differently-typed arrays of the same floors.
+  const same = lastArgs !== null && (Object.keys(args) as (keyof ProjectGroupArgs)[]).every((k) => (
+    k === "floors" ? sameFloorIds(lastArgs!.floors, args.floors) : lastArgs![k] === args[k]
+  ));
+  if (!same) {
+    lastGroups = buildProjectTeleportGroups(args);
+    lastArgs = args;
+  }
+  return lastGroups;
+}
+
 /** Renderer entry point: the stored project-wide overrides re-keyed onto `floorGroups` (this
  *  floor's own groups). Skips the all-floor rebuild when there is nothing to re-key, and reuses the
  *  last project-wide result while its inputs are reference-equal (renders repeat with unchanged data). */
@@ -129,10 +150,5 @@ export function resolveRendererGroupOverrides(
   args: ProjectGroupArgs,
 ): Record<string, TeleportGroupOverride> {
   if (Object.keys(overrides).length === 0) return overrides;
-  const same = lastArgs !== null && (Object.keys(args) as (keyof ProjectGroupArgs)[]).every((k) => lastArgs![k] === args[k]);
-  if (!same) {
-    lastGroups = buildProjectTeleportGroups(args);
-    lastArgs = args;
-  }
-  return resolveFloorGroupOverrides(floorGroups, lastGroups, overrides);
+  return resolveFloorGroupOverrides(floorGroups, getProjectTeleportGroups(args), overrides);
 }

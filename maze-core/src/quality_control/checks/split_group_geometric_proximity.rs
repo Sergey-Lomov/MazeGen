@@ -1,9 +1,9 @@
-use super::proximity_scan_core::pairwise_geometric_scan;
+use super::proximity_scan_core::pairwise_surface_scan;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidSplitTileGroupIssue, SplitTileNodes};
-use crate::space::{Tessellation, floor_aware_distance};
+use crate::space::{DistancePolicy, FloorMetrics, Tessellation, cell_position};
 use rand::RngCore;
 
 pub const SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
@@ -31,6 +31,9 @@ pub struct SplitGroupGeometricProximityCheck {
     pub distance: f64,
     /// GitHub issue #342: how a cross-floor split-tile pair is treated by this geometric check.
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometricProximityCheck {
@@ -64,7 +67,13 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
             return;
         }
 
-        let groups = pairwise_geometric_scan(
+        let metrics = FloorMetrics::new(
+            &maze.field,
+            DistancePolicy::from_approximate(self.approximate_topology),
+        );
+        let tessellation = maze.field.tessellation();
+        // Undecidable pairs (`scan.indeterminate`) are neither flagged nor cleared.
+        let groups = pairwise_surface_scan(
             &tiles,
             self.distance,
             |&(own_level, _, own_point, _), &(other_level, _, other_point, _)| {
@@ -73,12 +82,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
                         && other_level != own_level)
             },
             |&(_, own_level_index, own_point, _), &(_, other_level_index, other_point, _)| {
-                floor_aware_distance(
-                    maze.field.tessellation(),
+                metrics.distance(
                     own_level_index,
-                    own_point,
+                    cell_position(tessellation, own_point),
                     other_level_index,
-                    other_point,
+                    cell_position(tessellation, other_point),
                     self.floor_mode.include_height(),
                 )
             },
@@ -91,7 +99,9 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
                     1,
                 )
             },
-        );
+            |(.., own_nodes), (.., other_nodes)| Some((*own_nodes.first()?, *other_nodes.first()?)),
+        )
+        .into_groups(&maze.distance_diagnostics);
 
         if groups.is_empty() {
             return;
@@ -139,6 +149,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 5.0,
             floor_mode: SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -163,6 +174,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 5.0,
             floor_mode: SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -176,6 +188,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 1000.0,
             floor_mode: SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -214,6 +227,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 0.5,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -231,6 +245,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 0.5,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -244,6 +259,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 1.5,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
         };
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "floor-folded distance 1.0 < 1.5 must fire");
@@ -256,6 +272,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 1000.0,
             floor_mode: GeometricFloorMode::SameFloorOnly,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -272,6 +289,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance: 5.0,
             floor_mode: GeometricFloorMode::SameFloorOnly,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());

@@ -5,14 +5,16 @@ use maze_core::{
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
-        CrossElementGroupSelectStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
-        ElevatorStopGroupSelectStrategy, ErasedRepairStrategy, ExpandRegionPassageStrategy,
-        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
-        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
-        MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
-        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
-        MissingTeleportsStrategy, NestedSlot, NestedStrategyConfig, OneWayGroupSelectStrategy,
-        OneWayToPassageStrategy, OneWayToWallStrategy, PriorityMissingLoopsStrategy,
+        CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
+        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, DeadEndToVerticalPassageStrategy,
+        ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy,
+        ErasedRepairStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
+        InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy,
+        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
+        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
+        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
+        NestedSlot, NestedStrategyConfig, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
+        OneWayToWallStrategy, PriorityDeadEndStrategy, PriorityMissingLoopsStrategy,
         PriorityRegionMergeStrategy, RandomEndpointsStrategy, ReduceSccCountStrategy,
         RegionShrinkSplitStrategy, RemoveElevatorStopStrategy, RemoveElevatorStrategy,
         RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy, RemoveSplitStrategy,
@@ -21,7 +23,7 @@ use maze_core::{
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::Tessellation,
 };
@@ -58,6 +60,11 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
         "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
         "invalid_loop_group_select" => Box::new(InvalidLoopGroupSelectStrategy),
+        "dead_end_group_select" => Box::new(DeadEndGroupSelectStrategy),
+        "dead_end_to_passage" => Box::new(DeadEndToPassageStrategy),
+        "dead_end_to_split" => Box::new(build_dead_end_to_split_strategy(params)),
+        "dead_end_to_teleport" => Box::new(DeadEndToTeleportStrategy),
+        "dead_end_to_vertical_passage" => Box::new(DeadEndToVerticalPassageStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
         "missing_loops_vertical" => Box::new(MissingLoopsVerticalStrategy),
         "missing_loops_split" => Box::new(build_missing_loops_split_strategy(params)),
@@ -72,7 +79,10 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "missing_regions" => Box::new(MissingRegionsStrategy),
         "reduce_scc_count" => Box::new(ReduceSccCountStrategy),
         "weighted_region_merge" => Box::new(WeightedRegionMergeStrategy),
+        "weighted_dead_end" => Box::new(WeightedDeadEndStrategy),
         "priority_region_merge" => Box::new(PriorityRegionMergeStrategy),
+        "size_threshold_region_merge" => Box::new(SizeThresholdRegionMergeStrategy),
+        "priority_dead_end" => Box::new(PriorityDeadEndStrategy),
         "priority_missing_loops" => Box::new(PriorityMissingLoopsStrategy),
         "remove_teleport" => Box::new(RemoveTeleportStrategy),
         "teleport_group_select" => Box::new(TeleportGroupSelectStrategy {
@@ -149,6 +159,14 @@ fn build_missing_loops_split_strategy(
     }
 }
 
+/// Builds `DeadEndToSplitStrategy` with the same construction-time `split_config` convention as
+/// `MissingLoopsSplitStrategy`.
+fn build_dead_end_to_split_strategy(params: &HashMap<String, String>) -> DeadEndToSplitStrategy {
+    DeadEndToSplitStrategy {
+        config: parse_split_config_param(params.get("split_config")),
+    }
+}
+
 /// Downcasts an erased `Box<dyn ErasedRepairStrategy<T>>` (from `build_strategy_erased`) to a
 /// concrete `Box<dyn RepairStrategy<T, I>>` — used only by `build_rule_for!`, where `I` is fixed
 /// by the macro's own `KindTag` arm. Every registry strategy for a given `type_id` is *intended*
@@ -184,8 +202,12 @@ pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + I
         // downcasting back to this rule's concrete I::Requirement. Without this override the
         // default (Full) would silently win here regardless of what the real strategy declares,
         // since build_qc_and_repair resolves every registry strategy through this wrapper.
-        fn requirement(&self, params: &maze_core::repair::StrategyParams) -> I::Requirement {
-            *self.inner.requirement_erased(params)
+        fn requirement(
+            &self,
+            params: &maze_core::repair::StrategyParams,
+            nested: &[NestedStrategyConfig<T>],
+        ) -> I::Requirement {
+            *self.inner.requirement_erased(params, nested)
                 .downcast::<I::Requirement>()
                 .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
         }

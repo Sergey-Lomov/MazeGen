@@ -8,7 +8,6 @@ import { serializeProject, serializeVisualPreset, serializeQualityPreset } from 
 import * as m from "~/paraglide/messages";
 import { resetNotifications } from "../notifications/notificationStore";
 import { errorCards, errorDetails } from "./notificationTestHelpers";
-import { getTooltipControl } from "./tooltipTestUtils";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -51,12 +50,24 @@ describe("ImageExportFeature", () => {
     expect(screen.getByText(m["image_export.vector_by_walls.section_background"]())).toBeInTheDocument();
   });
 
-  it("clicking the active mode's switcher item toggles its settings panel closed", () => {
+  it("clicking the active mode's switcher item keeps its settings panel open", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     fireEvent.click(screen.getByRole("button", { name: m["image_export.mode.vector_by_walls.label"]() }));
-    expect(useMazeStore.getState().openRenderModeSettings).toBeNull();
+    expect(useMazeStore.getState().openRenderModeSettings).toBe("vector_by_walls");
     expect(useMazeStore.getState().activeRenderMode).toBe("vector_by_walls");
+  });
+
+  it("brings an already-open render-mode panel to the front", () => {
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls", openExportFormatSettings: "png" });
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    const wallsBackground = screen.getByText(m["image_export.vector_by_walls.section_background"]());
+    expect(wallsBackground).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: m["image_export.mode.vector_by_walls.label"]() }));
+
+    expect(wallsBackground).toBeVisible();
+    expect(screen.getByText(m["image_export.format.png.digital.scale"]())).not.toBeVisible();
   });
 
   it("clicking the active mode's switcher item again reopens its settings panel", () => {
@@ -72,10 +83,20 @@ describe("ImageExportFeature", () => {
     expect(btn).toBeDisabled();
   });
 
-  it("stretches the PNG settings gear to the export button height", () => {
+  it("places PNG export settings above the export action", () => {
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
-    const gear = getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() }));
-    expect(gear.parentElement).toHaveStyle({ alignSelf: "stretch" });
+    const settings = screen.getByRole("button", { name: m["image_export.format.settings"]() });
+    const exportButton = screen.getByRole("button", { name: m["image_export.format.png.label"]() });
+    expect(settings.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("stretches the visual preset buttons to a shared height", () => {
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    const save = screen.getByRole("button", { name: m["image_export.visual_preset.save"]() });
+    const load = screen.getByRole("button", { name: m["image_export.visual_preset.load"]() });
+
+    expect(save.parentElement).toHaveStyle({ alignItems: "stretch" });
+    expect(load.parentElement).toBe(save.parentElement);
   });
 
   it("clicking the PNG button calls onExportPng with the current settings", () => {
@@ -89,10 +110,10 @@ describe("ImageExportFeature", () => {
   // GitHub issue #629: opening one settings panel no longer clears the other — both may stay open
   // at once, and `SidePanel`'s own mount-order stack decides which is shown. Closing the top one
   // (PNG format settings here) must reveal the render-mode panel underneath, not leave it cleared.
-  it("clicking the PNG format's gear opens its settings panel without clearing the render-mode one", () => {
+  it("clicking PNG export settings opens its panel without clearing the render-mode one", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
-    fireEvent.click(getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
+    fireEvent.click(screen.getByRole("button", { name: m["image_export.format.settings"]() }));
     expect(useMazeStore.getState().openExportFormatSettings).toBe("png");
     expect(useMazeStore.getState().openRenderModeSettings).toBe("vector_by_walls");
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeInTheDocument();
@@ -113,7 +134,7 @@ describe("ImageExportFeature", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
 
-    fireEvent.click(getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
+    fireEvent.click(screen.getByRole("button", { name: m["image_export.format.settings"]() }));
     const wallsBackground = screen.getByText(m["image_export.vector_by_walls.section_background"]());
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeVisible();
     expect(wallsBackground).not.toBeVisible();
@@ -121,8 +142,8 @@ describe("ImageExportFeature", () => {
     // Close via the PNG panel's own header ✕ button, same as a real user closing the top panel —
     // not by calling `setOpenExportFormatSettings` directly. Both `SidePanel`s share the same
     // portal slot and render in mount order, so the PNG panel (opened after the render-mode one)
-    // is the last one in the DOM; its close button is the last "✕"-labelled button rendered.
-    const closeButtons = screen.getAllByRole("button", { name: "" }).filter((btn) => btn.querySelector("svg.lucide-x"));
+    // is the last one in the DOM; its close button is the last accessible "Close" action.
+    const closeButtons = screen.getAllByRole("button", { name: "Close" }).filter((btn) => btn.querySelector("svg.lucide-x"));
     fireEvent.click(closeButtons[closeButtons.length - 1]);
 
     expect(screen.queryByText(m["image_export.format.png.digital.scale"]())).not.toBeInTheDocument();

@@ -61,7 +61,7 @@ const editedSnapshot = {
 
 describe("Cairo application pipeline", () => {
   beforeEach(() => {
-    useMazeStore.setState(baseStoreState());
+    useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
     vi.mocked(generateMaze).mockReset();
     vi.mocked(generateMaze).mockReturnValue({ snapshot: generatedSnapshot, debugTape: undefined });
     vi.mocked(computeAnalyticsAsync).mockReset();
@@ -133,5 +133,27 @@ describe("Cairo application pipeline", () => {
     expect(fit.height).toBeGreaterThan(0);
     expect(Number.isFinite(fit.worldX)).toBe(true);
     expect(Number.isFinite(fit.worldY)).toBe(true);
+  });
+
+  it("reveals the saved card only after restored post-edit confirmation completes", async () => {
+    const store = useMazeStore.getState();
+    store.generate();
+    store.setPostEditAutoConfirm(false);
+    store.applyPostEditToolAt("wall", "", nodeEndpoint(0), nodeEndpoint(1));
+    const file = serializeProject(useMazeStore.getState());
+    file.ui = { ...file.ui, openCard: "post_edit" };
+
+    let resolveAnalytics!: (snapshot: typeof editedSnapshot) => void;
+    vi.mocked(computeAnalyticsAsync).mockImplementationOnce(
+      () => new Promise<typeof editedSnapshot>((resolve) => { resolveAnalytics = resolve; }),
+    );
+
+    void useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().openCard).toBe("basic_config");
+
+    resolveAnalytics(editedSnapshot);
+    await vi.waitFor(() => {
+      expect(useMazeStore.getState().openCard).toBe("post_edit");
+    });
   });
 });

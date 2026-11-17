@@ -6,12 +6,14 @@ import * as m from "~/paraglide/messages";
 export type InputNormalizationReason =
   | { kind: "decimal_separator_rejected" }
   | { kind: "rounded"; value: string }
+  | { kind: "rounded_to_gluing"; shape: "cylinder" | "torus"; value: string }
   | { kind: "clamped_min"; min: string; max: string; value: string }
   | { kind: "clamped_max"; min: string; max: string; value: string }
   | { kind: "restored"; value: string }
   | { kind: "text_truncated" }
   | { kind: "character_rejected" }
-  | { kind: "range_reverted"; min: string; max: string; value: string };
+  | { kind: "range_reverted"; min: string; max: string; value: string }
+  | { kind: "raised_above_previous"; value: string };
 
 /** Canonical result returned by field normalizers (GitHub issue #770). `raw` is always the exact
  * user input, while `value` is the value accepted or restored by the field. */
@@ -28,6 +30,11 @@ export function inputHintReason(reason: InputNormalizationReason): FieldHintReas
       return { key: reason.kind, message: () => m["input_hint.decimal_separator_rejected"]() };
     case "rounded":
       return { key: reason.kind, message: () => m["input_hint.rounded"]({ value: reason.value }) };
+    case "rounded_to_gluing":
+      return {
+        key: reason.kind,
+        message: () => reason.shape === "torus" ? m["input_hint.rounded_to_torus"]() : m["input_hint.rounded_to_cylinder"](),
+      };
     case "clamped_min":
       return { key: reason.kind, message: () => m["input_hint.clamped_min"]({ min: reason.min, max: reason.max }) };
     case "clamped_max":
@@ -43,6 +50,8 @@ export function inputHintReason(reason: InputNormalizationReason): FieldHintReas
         key: reason.kind,
         message: () => m["input_hint.range_reverted"]({ min: reason.min, max: reason.max }),
       };
+    case "raised_above_previous":
+      return { key: reason.kind, message: () => m["input_hint.raised_above_previous"]({ value: reason.value }) };
   }
 }
 

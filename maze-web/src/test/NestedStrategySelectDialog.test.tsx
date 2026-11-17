@@ -14,7 +14,7 @@ const path = [{ slotId: "merge_target", index: 0 }];
 beforeEach(() => {
   useMazeStore.setState({
     availableStrategies,
-    rules: [{ id: "g1", name: "Rule 1", kind: "region_needs_expansion", checks: [], nextLocalCheckId: 0, strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "merge_target", strategyId: "priority_region_merge", params: {}, nested: [] }], collapsed: false }],
+    rules: [{ id: "g1", name: "Rule 1", kind: "region_needs_expansion", checks: [], nextLocalCheckId: 0, strategyId: "reduce_scc_count", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "merge_target", strategyId: "priority_region_merge", params: {}, nested: [] }], collapsed: false }],
   });
 });
 

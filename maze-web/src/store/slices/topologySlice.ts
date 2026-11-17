@@ -1,0 +1,240 @@
+import type { StateCreator } from "zustand";
+import { editTopology, TopologyError } from "../../wasm/mazeService";
+import type { MazeStore } from "../storeTypes";
+import { buildResetDownstreamState, debugStaleOf, withActiveFloorField, hasGeneration } from "../storeHelpers";
+import { floorTopologyInfo, floorTopologyRequest, selectionRun } from "../topologyInfo";
+import type { WireFoldEnd } from "../../wasm/types";
+import type { TopologyActions, TopologyState } from "../topologyTypes";
+import { withCrease, type Crease } from "../creases";
+
+const CLEARED_EDITOR = {
+  topologyRunA: null,
+  topologyRunB: null,
+  topologyPick: null,
+  topologyHover: null,
+  topologyFaceHover: null,
+  topologyFlagged: [],
+  topologySideHover: null,
+  seamHover: null,
+  creaseDraft: null,
+  creaseHover: null,
+} as const;
+
+export const initialTopologyState: TopologyState = {
+  ...CLEARED_EDITOR,
+  topologyMode: "gluings",
+  topologyTwist: false,
+  topologyGlueError: null,
+  topologyPanelError: null,
+  topologyPanelOpen: false,
+  topologyGlueEditor: null,
+};
+
+export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState & TopologyActions> = (set, get) => ({
+  ...initialTopologyState,
+
+  setTopologyHover: (hover) => set({ topologyHover: hover }),
+
+  setSeamHover: (hover) => set({ seamHover: hover }),
+
+  setTopologySideHover: (hover) => set({ topologySideHover: hover }),
+
+  setTopologyFlagged: (sides) => {
+    if (sides.length === 0 && get().topologyFlagged.length === 0) return;
+    set({ topologyFlagged: sides });
+  },
+
+  setTopologyFaceHover: (hover) => {
+    const current = get().topologyFaceHover;
+    if (current?.contour === hover?.contour && current?.face === hover?.face) return;
+    set({ topologyFaceHover: hover });
+  },
+
+  openTopologyGlueEditor: (glueId) => {
+    const state = get();
+    const topology = state.floorTopology[state.activeFloorId];
+    const glue = glueId === undefined ? undefined : topology?.groups.find((group) => group.id === glueId);
+    if (glueId === undefined || !topology || !glue) {
+      set({ ...CLEARED_EDITOR, topologyGlueEditor: { mode: "add" }, topologyTwist: false, topologyGlueError: null });
+      return;
+    }
+    // An untwisted glue meets a[i] with b[n-1-i] (see core glue_folds), so run B in run order is
+    // the folds B sides reversed; a twisted one keeps their order.
+    const folds = glue.folds.map((index) => topology.folds[index]);
+    const twist = folds[0]?.twist === true;
+    // The run order below holds for one twist per glue; a mixed glue (only a hand-made file has
+    // one) cannot be shown as two runs.
+    if (folds.some((fold) => fold.twist !== twist)) {
+      set({ topologyPanelError: { code: "inconsistent", message: `glue ${glueId + 1} mixes twisted and untwisted pairs` } });
+      return;
+    }
+    const sidesB = folds.map((fold) => fold.b);
+    set({
+      ...CLEARED_EDITOR,
+      topologyGlueEditor: { mode: "edit", glueId },
+      topologyRunA: { faces: folds.map((fold) => fold.a) },
+      topologyRunB: { faces: twist ? sidesB : [...sidesB].reverse() },
+      topologyTwist: twist,
+      topologyGlueError: null,
+    });
+  },
+
+  closeTopologyGlueEditor: () => set({ topologyGlueEditor: null, topologyTwist: false, ...CLEARED_EDITOR }),
+
+  setTopologyPanelOpen: (open) => set(open ? { topologyPanelOpen: true } : { topologyPanelOpen: false, topologyPanelError: null, topologyGlueEditor: null, ...CLEARED_EDITOR }),
+
+  startTopologyPick: (target) => set(target === null
+    ? { topologyPick: null, topologyFaceHover: null }
+    // Editing a run starts it afresh: the sides it already holds are dropped.
+    : { topologyPick: target, [target === "a" ? "topologyRunA" : "topologyRunB"]: null, topologyGlueError: null }),
+
+  setTopologyRun: (target, selection) => set({ [target === "a" ? "topologyRunA" : "topologyRunB"]: selection, topologyGlueError: null }),
+
+  clearTopologyRuns: () => set({ ...CLEARED_EDITOR }),
+
+  setTopologyTwist: (twist) => set({ topologyTwist: twist }),
+
+  applyTopologyOp: (op) => {
+    const state = get();
+    if (state.backgroundAutoFillPreview !== null) return;
+    if (hasGeneration(state)) {
+      set({ fieldEditConfirmation: { kind: "applyTopologyOp", op } });
+      return;
+    }
+    const floorId = state.activeFloorId;
+    let topology;
+    try {
+      topology = editTopology(floorTopologyRequest(state, floorId), op).topology;
+    } catch (error) {
+      const problem = error instanceof TopologyError ? error.problem : { code: "internal" as const, message: error instanceof Error ? error.message : String(error) };
+      set(op.kind === "glue" ? { topologyGlueError: problem } : { topologyPanelError: problem });
+      return;
+    }
+    set(committedTopology(state, floorId, topology.folds.length === 0 ? null : topology));
+  },
+
+  confirmTopologyGlue: () => {
+    const state = get();
+    const run = pickedRuns(state);
+    if (!run) return;
+    const editor = state.topologyGlueEditor;
+    // The glue being edited was removed meanwhile (e.g. by a confirmed field edit): nothing to replace.
+    if (editor?.mode === "edit" && !state.floorTopology[state.activeFloorId]?.groups.some((group) => group.id === editor.glueId)) {
+      state.closeTopologyGlueEditor();
+      return;
+    }
+    state.applyTopologyOp({ kind: "glue", a: run.a, b: run.b, twist: state.topologyTwist, ...(editor?.mode === "edit" ? { replace: editor.glueId } : {}) });
+  },
+
+  removeTopologyGroup: (id) => get().applyTopologyOp({ kind: "remove_group", id }),
+
+  clearTopologyGroups: () => {
+    const state = get();
+    if (state.backgroundAutoFillPreview !== null) return;
+    const floorId = state.activeFloorId;
+    if (!state.floorTopology[floorId]) return;
+    if (hasGeneration(state)) {
+      set({ fieldEditConfirmation: { kind: "clearTopologyGroups" } });
+      return;
+    }
+    set(committedTopology(state, floorId, null));
+  },
+
+  setTopologyMode: (mode) => {
+    if (get().topologyMode === mode) return;
+    set({ topologyMode: mode, topologyGlueEditor: null, topologyPanelError: null, ...CLEARED_EDITOR });
+  },
+
+  setCreaseHover: (id) => {
+    if (get().creaseHover !== id) set({ creaseHover: id });
+  },
+
+  startCreaseDraft: (replace) => {
+    if (get().backgroundAutoFillPreview !== null) return;
+    set({ creaseDraft: { replace: replace ?? null, a: null, cursor: null }, creaseHover: null });
+  },
+
+  cancelCreaseDraft: () => {
+    if (get().creaseDraft !== null) set({ creaseDraft: null });
+  },
+
+  setCreaseCursor: (point) => {
+    const draft = get().creaseDraft;
+    if (draft === null || draft.cursor === point) return;
+    if (draft.cursor !== null && point !== null && draft.cursor[0] === point[0] && draft.cursor[1] === point[1]) return;
+    set({ creaseDraft: { ...draft, cursor: point } });
+  },
+
+  placeCreasePoint: (point) => {
+    const state = get();
+    const draft = state.creaseDraft;
+    if (draft === null) return;
+    if (draft.a === null) {
+      set({ creaseDraft: { ...draft, a: point } });
+      return;
+    }
+    const floorId = state.activeFloorId;
+    const next = withCrease(state.floorCreases[floorId] ?? [], draft.a, point, draft.replace);
+    // Equal ends: keep waiting for a distinct second point.
+    if (next === null) return;
+    set({ floorCreases: { ...state.floorCreases, [floorId]: next }, creaseDraft: null });
+  },
+
+  removeCrease: (id) => {
+    const state = get();
+    const floorId = state.activeFloorId;
+    const next = (state.floorCreases[floorId] ?? []).filter((crease) => crease.id !== id);
+    set({ floorCreases: withFloorCreases(state.floorCreases, floorId, next), creaseHover: null });
+  },
+
+  clearCreases: () => {
+    const state = get();
+    set({ floorCreases: withFloorCreases(state.floorCreases, state.activeFloorId, []), creaseHover: null, creaseDraft: null });
+  },
+});
+
+/** `floorCreases` with the floor's list replaced; an empty list removes the entry. */
+function withFloorCreases(floorCreases: MazeStore["floorCreases"], floorId: string, creases: Crease[]): MazeStore["floorCreases"] {
+  const { [floorId]: _previous, ...others } = floorCreases;
+  return creases.length === 0 ? others : { ...others, [floorId]: creases };
+}
+
+/** Store update of an accepted edit of the floor's topology (`null`: no folds left). Changing the set of active
+ * folds discards the maze and analytics, like a tessellation kind change does (Specs/topology.md, "Web authoring"). */
+function committedTopology(state: MazeStore, floorId: string, topology: MazeStore["floorTopology"][string] | null): Partial<MazeStore> {
+  const { [floorId]: _previous, ...others } = state.floorTopology;
+  return {
+    floorTopology: topology === null ? others : { ...others, [floorId]: topology },
+    ...withoutStaleCuts(state, floorId, topology?.groups.map((group) => group.id) ?? []),
+    ...withActiveFloorField(state, { fieldDirty: true }),
+    topologyGlueError: null,
+    topologyPanelError: null,
+    topologyGlueEditor: null,
+    ...CLEARED_EDITOR,
+    ...buildResetDownstreamState(),
+    debugStale: debugStaleOf(state),
+  };
+}
+
+/** Export cut lines (GitHub issue #859) of the floor's glues that the edit removed. A new glue takes `max + 1` as its
+ * id, so a stale `{floorId}:{group}` key would attach the old line to an unrelated glue. Part of the edit's own update,
+ * not a store subscriber: a `setState` inside a subscriber reaches the other subscribers out of order. */
+function withoutStaleCuts(state: MazeStore, floorId: string, groups: number[]): Partial<MazeStore> {
+  const { pngExportSettings } = state;
+  const floor = pngExportSettings.cuts.lines[floorId];
+  if (!floor) return {};
+  const kept = Object.entries(floor).filter(([group]) => groups.includes(Number(group)));
+  if (kept.length === Object.keys(floor).length) return {};
+  const { [floorId]: _removed, ...others } = pngExportSettings.cuts.lines;
+  const lines = kept.length === 0 ? others : { ...others, [floorId]: Object.fromEntries(kept) };
+  return { pngExportSettings: { ...pngExportSettings, cuts: { ...pngExportSettings.cuts, lines } } };
+}
+
+/** The two picked runs as boundary faces, or `null` while either is incomplete. */
+function pickedRuns(state: MazeStore): { a: WireFoldEnd[]; b: WireFoldEnd[] } | null {
+  const result = floorTopologyInfo(state, state.activeFloorId);
+  if (!result.ok) return null;
+  const a = selectionRun(state.topologyRunA, result.info.contours);
+  const b = selectionRun(state.topologyRunB, result.info.contours);
+  return a && b ? { a, b } : null;
+}

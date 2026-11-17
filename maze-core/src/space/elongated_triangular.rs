@@ -13,9 +13,9 @@
 //! hanging between it and its right neighbor ([`TriangleDown`](ElongatedTriangularKind::TriangleDown)).
 
 use super::exact_tiling::{Template, Tiling, Vertex};
-use super::field_ops::{Inclusion, convex_cells, param};
+use super::field_ops::{Inclusion, convex_cells, param, spoil_extent_focus};
 use super::multi_shape::{
-    AnchoredPoint, CellFace, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind,
+    AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
     is_opposite_face, polygon_faces, preset_cells, regular_cell_shape, regular_polygon_area,
     regular_shapes,
 };
@@ -179,6 +179,10 @@ impl Tessellation for ElongatedTriangularTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(-1.0, 0.0), Point::new(-0.5, -1.866025403784438)])
+    }
+
     fn center(&self, cell: ElongatedTriangularPoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }
@@ -213,7 +217,7 @@ impl Tessellation for ElongatedTriangularTessellation {
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
-        &PRESETS
+        &TOPOLOGY_PRESETS
     }
 
     fn build_preset(
@@ -269,6 +273,7 @@ fn largest_component(
     tessellation: &ElongatedTriangularTessellation,
     cells: Vec<ElongatedTriangularPoint>,
 ) -> Vec<ElongatedTriangularPoint> {
+    spoil_extent_focus();
     let members: HashSet<_> = cells.iter().copied().collect();
     let mut seen = HashSet::new();
     let mut best: Vec<ElongatedTriangularPoint> = Vec::new();

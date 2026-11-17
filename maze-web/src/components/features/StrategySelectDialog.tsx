@@ -3,8 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
-import { ParamFields, isEntityVisible, useVisibilityContext } from "./ParamFields";
-import { useParamEditor } from "./useParamEditor";
+import { ParamFields, isEntityVisible, defaultParamValue, useVisibilityContext } from "./ParamFields";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
@@ -40,6 +39,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
   const visibility = useVisibilityContext();
+  const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
   const addSplitPatternsOverride = selectedId === "add_split"
     ? parseRuleSplitPatterns(rule?.params.split_patterns)
     : undefined;
@@ -52,7 +52,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
     if (selectedId === NO_FIX_STRATEGY_ID) {
       clearStrategy(ruleId);
     } else {
-      setStrategy(ruleId, selectedId);
+      setStrategy(ruleId, selectedId, paramOverrides[selectedId] ?? (selectedId === currentId ? rule?.strategyParams : undefined));
     }
     onClose();
   }
@@ -81,7 +81,16 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
           {selectedStrategy.params.length > 0 && (
-            <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} addSplitPatternsOverride={addSplitPatternsOverride} />
+            <StrategyParamPanel
+              strategyId={selectedStrategy.id}
+              params={selectedStrategy.params}
+              values={paramOverrides[selectedId] ?? (selectedId === currentId ? (rule?.strategyParams ?? {}) : {})}
+              onChange={(paramId, value) => setParamOverrides((previous) => ({
+                ...previous,
+                [selectedId]: { ...(previous[selectedId] ?? (selectedId === currentId ? (rule?.strategyParams ?? {}) : {})), [paramId]: value },
+              }))}
+              addSplitPatternsOverride={addSplitPatternsOverride}
+            />
           )}
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
@@ -122,23 +131,13 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   );
 }
 
-function StrategyParamPanel({ strategyId, params, addSplitPatternsOverride }: { strategyId: string; params: ParamDescriptor[]; addSplitPatternsOverride?: SplitPattern[] }) {
-  const strategyParams = useMazeStore((s) => s.strategyParams);
-  const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
-
+function StrategyParamPanel({ strategyId, params, values, onChange, addSplitPatternsOverride }: { strategyId: string; params: ParamDescriptor[]; values: Record<string, string>; onChange: (paramId: string, value: string) => void; addSplitPatternsOverride?: SplitPattern[] }) {
   const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, strategyId) }));
-  const storeValues = strategyParams[strategyId] ?? {};
-  const { values, onChange } = useParamEditor({
-    entityId: strategyId,
-    params: localizedParams,
-    storeValues,
-    onCommit: (paramId, value) => setStrategyParam(strategyId, paramId, value),
-  });
 
   return (
     <ParamFields
       params={localizedParams}
-      values={values}
+      getValue={(p) => values[p.id] ?? defaultParamValue(p)}
       onChange={onChange}
       getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       addSplitPatternsOverride={addSplitPatternsOverride}

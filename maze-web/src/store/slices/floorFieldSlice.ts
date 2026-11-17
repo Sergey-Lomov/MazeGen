@@ -6,12 +6,15 @@ import { getCartesian } from "../../pixi/cartesianCache";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
-import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { computeMirrorPreview } from "../../pixi/mirror";
+import { tessellationFingerprint } from "../topologyWire";
+import { topologyCopiedTo, withPresetCreases, withPresetTopology } from "../presetTopology";
+import { creasesCopiedTo } from "../creases";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
-  buildResetDownstreamState,
+  buildResetDownstreamState, withoutFloorTopology, hasGeneration,
 } from "../storeHelpers";
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
@@ -27,7 +30,7 @@ function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () =
   // field, so accepting edits here would make them invisible and resurrect them when preview is
   // cancelled. The preview's Confirm action uses applyBackgroundAutoFill, not this guard.
   if (state.backgroundAutoFillPreview !== null) return {};
-  return state.mazeDirty || state.postEditDirty
+  return hasGeneration(state)
     ? { fieldEditConfirmation: pending }
     : apply();
 }
@@ -38,6 +41,7 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
     : [state.activeFloorId];
   const targetIdSet = new Set(targetIds);
   const floorFields = { ...state.floorFields };
+  const leftCustomIds: string[] = [];
   let derivedForActive: ReturnType<typeof deriveTessellationFromConfig> | null = null;
 
   for (const floor of state.floors) {
@@ -63,11 +67,30 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
       fieldPoints: derived.fieldPoints,
       fieldDirty: true,
     };
+    if (field.isEditingField && !derived.isEditingField) leftCustomIds.push(floor.id);
     if (floor.id === state.activeFloorId) derivedForActive = derived;
   }
 
   if (!derivedForActive) return {};
+  // A topology is authored for one tessellation config (GitHub issue #836): a config change
+  // invalidates every floor's folds. A field change keeps them; each fold's activity is recomputed
+  // against the new cell set (GitHub issue #839) and the user is told when one goes inactive.
+  const configChanged =
+    tessellationFingerprint(derivedForActive.kind, derivedForActive.params) !==
+    tessellationFingerprint(state.tessellationKind, state.tessellationParams);
+  // A floor on a standard shape holds exactly the topology that shape defines (box), or none.
+  let floorTopology = configChanged ? {} : withoutFloorTopology(state.floorTopology, leftCustomIds);
+  let floorCreases = configChanged ? {} : state.floorCreases;
+  for (const id of targetIds) {
+    const cfg = configs[id];
+    if (cfg && !floorFields[id].isEditingField) {
+      floorTopology = withPresetTopology(floorTopology, id, cfg);
+      floorCreases = withPresetCreases(floorCreases, id, cfg);
+    }
+  }
   return {
+    floorTopology,
+    floorCreases,
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
@@ -84,9 +107,14 @@ function applyFieldConfigForFloors(state: MazeState, cfg: FieldConfig, applyToAl
   return applyFieldConfigsForFloors(state, configs, applyToAllStandardFloors);
 }
 
+/** A pending field-edit confirmation refers to the project it was raised in (GitHub issue #946). */
+export const floorFieldTransientUi = {
+  fieldEditConfirmation: null,
+} satisfies Partial<FloorFieldsState>;
+
 export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsState & FloorFieldsActions> = (set, get) => ({
   floorFields: {},
-  fieldEditConfirmation: null,
+  ...floorFieldTransientUi,
 
   setSelectedShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSelectedShape", shape }, () => setSelectedShapeState(shape)(state))),
 
@@ -97,7 +125,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "setFieldConfigForFloors", config: cfg, applyToAllStandardFloors } });
       return;
     }
@@ -107,7 +135,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldConfigsForFloors: (configs, applyToAllStandardFloors) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "setFieldConfigsForFloors", configs, applyToAllStandardFloors } });
       return;
     }
@@ -130,7 +158,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setFieldEditMode: (mode) => set((state) => {
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
     const field = activeFloorField(state);
     if (mode === "custom") {
       const cfg = field.fieldConfig;
@@ -154,6 +182,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const cfg = buildPredefinedConfig(tessellationOf(state), field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
+      floorTopology: withPresetTopology(state.floorTopology, state.activeFloorId, cfg),
+      floorCreases: withPresetCreases(state.floorCreases, state.activeFloorId, cfg),
       ...buildResetDownstreamState(),
       backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),
@@ -249,14 +279,14 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldOperation: (operation) => set((state) => {
     if (state.backgroundAutoFillPreview !== null) return {};
     const field = activeFloorField(state);
-    const selectingWithSymmetry = operation === "select" && field.fieldPrimitive === "symmetry";
+    const enteringSelect = operation === "select" && field.fieldOperation !== "select";
     return {
       ...withActiveFloorField(state, {
         fieldOperation: operation,
-        ...(selectingWithSymmetry ? { fieldPrimitive: "point" } : {}),
+        ...(enteringSelect ? { fieldPrimitive: "rectangle" } : {}),
       }),
-      ...(selectingWithSymmetry
-        ? { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }
+      ...(enteringSelect && field.fieldPrimitive === "mirror"
+        ? { mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false }
         : {}),
     };
   }),
@@ -265,27 +295,27 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     if (state.backgroundAutoFillPreview !== null) return {};
     return {
       ...withActiveFloorField(state, { fieldPrimitive: p }),
-      ...(p === "symmetry"
+      ...(p === "mirror"
         ? {}
-        : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
+        : { mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false }),
     };
   }),
 
-  applySymmetry: () => set((state) => guardFieldEdit(state, { kind: "applySymmetry" }, () => {
+  applyMirror: () => set((state) => guardFieldEdit(state, { kind: "applyMirror" }, () => {
     const field = activeFloorField(state);
-    const axis = state.symmetryAxisPoints;
+    const axis = state.mirrorAxisPoints;
     if (field.fieldEditMode !== "custom" || axis.length !== 2
       || (axis[0].x === axis[1].x && axis[0].y === axis[1].y)) return {};
-    if (state.symmetryScope === "polygon"
-      && (state.symmetryPolygon.length < 3 || !state.symmetryPolygonFinished)) return {};
-    const preview = computeSymmetryPreview(
+    if (state.mirrorScope === "polygon"
+      && (state.mirrorPolygon.length < 3 || !state.mirrorPolygonFinished)) return {};
+    const preview = computeMirrorPreview(
       field.fieldPoints,
       field.fieldConfig,
       {
-        scope: state.symmetryScope,
-        sourceSide: state.symmetrySourceSide,
+        scope: state.mirrorScope,
+        sourceSide: state.mirrorSourceSide,
         axis: [axis[0], axis[1]],
-        polygon: state.symmetryPolygon,
+        polygon: state.mirrorPolygon,
       },
       encodePoint,
       decodePoint,
@@ -315,34 +345,53 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         },
       },
       fieldOpError: null,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
     };
   })),
 
-  copyFloorField: (sourceFloorId) => set((state) => {
+  copyFloorField: (sourceFloorId, includeTopology = true, targetFloorId) => set((state) => {
+    const target = targetFloorId ?? state.activeFloorId;
     const source = state.floorFields[sourceFloorId];
-    if (!source) return {};
+    const current = state.floorFields[target];
+    if (!source || !current || sourceFloorId === target) return {};
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId } };
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology, targetFloorId: target } };
     return {
-      ...withActiveFloorField(state, { ...cloneFloorField(source), fieldDirty: true }),
+      floorFields: { ...state.floorFields, [target]: { ...current, ...cloneFloorField(source), fieldDirty: true } },
+      floorTopology: includeTopology
+        ? topologyCopiedTo(state.floorTopology, sourceFloorId, [target])
+        : current.isEditingField && !source.isEditingField
+          ? withoutFloorTopology(state.floorTopology, [target])
+          : state.floorTopology,
+      ...(includeTopology
+        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, [target]), creaseDraft: null, creaseHover: null }
+        : {}),
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
   }),
 
-  copyCurrentFloorFieldToAll: () => set((state) => {
-    const source = state.floorFields[state.activeFloorId];
-    if (!source || state.floors.length <= 1 || state.backgroundAutoFillPreview !== null) return {};
+  copyFloorFieldToFloors: (sourceFloorId, targetFloorIds, includeTopology = true) => set((state) => {
+    const source = state.floorFields[sourceFloorId];
+    const targets = [...new Set(targetFloorIds)].filter((id) => id !== sourceFloorId && state.floorFields[id]);
+    if (!source || targets.length === 0 || state.backgroundAutoFillPreview !== null) return {};
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorFieldToFloors", sourceFloorId, targetFloorIds: targets, includeTopology } };
+    // Without topology, a target that leaves the field editor's custom shape loses its (now stale)
+    // topology exactly as in `copyFloorField`; every other target keeps its own.
+    const staleTopology = targets.filter((id) => state.floorFields[id].isEditingField && !source.isEditingField);
     return {
-      floorFields: Object.fromEntries(state.floors.map((floor) => [
-        floor.id,
-        floor.id === state.activeFloorId
-          ? source
-          : { ...cloneFloorField(source), fieldDirty: true },
-      ])),
+      floorTopology: includeTopology
+        ? topologyCopiedTo(state.floorTopology, sourceFloorId, targets)
+        : staleTopology.length > 0 ? withoutFloorTopology(state.floorTopology, staleTopology) : state.floorTopology,
+      ...(includeTopology
+        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, targets), creaseDraft: null, creaseHover: null }
+        : {}),
+      floorFields: {
+        ...state.floorFields,
+        ...Object.fromEntries(targets.map((id) => [id, { ...cloneFloorField(source), fieldDirty: true }])),
+      },
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
@@ -391,8 +440,11 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "centerFieldPoints": get().centerFieldPoints(); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
-      case "applySymmetry": get().applySymmetry(); break;
-      case "copyFloorField": get().copyFloorField(pending.sourceFloorId); break;
+      case "applyMirror": get().applyMirror(); break;
+      case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology, pending.targetFloorId); break;
+      case "copyFloorFieldToFloors": get().copyFloorFieldToFloors(pending.sourceFloorId, pending.targetFloorIds, pending.includeTopology); break;
+      case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
+      case "clearTopologyGroups": get().clearTopologyGroups(); break;
     }
   },
 

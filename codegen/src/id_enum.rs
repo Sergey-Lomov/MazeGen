@@ -185,7 +185,9 @@ pub fn generate_rust_ids_file(source: &IdEnumSource) -> String {
         ));
     }
     out.push_str("        }\n    }\n\n");
-    out.push_str("    pub fn from_str(s: &str) -> Option<Self> {\n        match s {\n");
+    out.push_str(
+        "    /// Not `FromStr`: an unknown id is `None`, not an error value, and callers match on that.\n    #[allow(clippy::should_implement_trait)]\n    pub fn from_str(s: &str) -> Option<Self> {\n        match s {\n",
+    );
     for v in &source.variants {
         out.push_str(&format!(
             "            \"{}\" => Some({}::{}),\n",

@@ -1,7 +1,7 @@
 use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{GeometricFloorMode, InvalidTeleportIssue};
 use crate::space::Tessellation;
 use rand::RngCore;
@@ -27,6 +27,9 @@ pub struct TeleportGeometricLengthCheck {
     pub protect_route: bool,
     /// GitHub issue #342: how a cross-floor teleport is treated by this geometric check.
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGeometricLengthCheck {
@@ -47,6 +50,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGeometricLength
             self.comparison,
             self.length,
             self.floor_mode,
+            self.approximate_topology,
         );
         if let Some(issue) = build_issue(invalid, &self.instance_id, self.length) {
             issues.push(issue);
@@ -99,6 +103,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -131,6 +136,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -150,6 +156,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -166,6 +173,7 @@ mod tests {
             length: 0.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -185,6 +193,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -217,6 +226,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -236,6 +246,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -268,6 +279,7 @@ mod tests {
             length: 100.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -303,6 +315,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -363,6 +376,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::Ignore,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -383,6 +397,7 @@ mod tests {
             length: 1.1,
             protect_route: true,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -399,6 +414,7 @@ mod tests {
             length: 1.5,
             protect_route: true,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
         };
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "sqrt(2) = 1.41 < 1.5 must fire");
@@ -413,6 +429,7 @@ mod tests {
             length: 1000.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::SameFloorOnly,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -432,6 +449,7 @@ mod tests {
             length: 5.0,
             protect_route: true,
             floor_mode: GeometricFloorMode::SameFloorOnly,
+            approximate_topology: false,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);

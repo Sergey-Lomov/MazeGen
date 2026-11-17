@@ -54,7 +54,7 @@ const MARKER_FIELDS: [string, unknown][] = [
 ];
 const TEXT_FIELDS: [string, unknown][] = [
   ["textEnabled", true],
-  ["textFontWeight", "regular"],
+  ["textFont", { family: "Arial", weight: 400 }],
   ["textSize", 14],
   ["textColor", 0xabcdef],
   ["text", "S"],
@@ -103,9 +103,8 @@ describe("flat vector setters write their settings path", () => {
     ["OneWayPattern", "oneWayPattern", "chevron"],
     ["OneWayColor", "oneWayColor", 0x666666],
     ["OneWayGapWidth", "oneWayGapWidth", 4],
-    ["OneWaySize", "oneWaySize", 0.4],
-    ["OneWayThickness", "oneWayThickness", 6],
     ["OneWayJoin", "oneWayJoin", "miter"],
+    ["MarkerLayout", "markerLayout", "grid"],
     ["SplitSpecialShapes", "splitSpecialShapes", false],
   ];
   const corridors: [string, string, unknown][] = [
@@ -115,6 +114,7 @@ describe("flat vector setters write their settings path", () => {
     ["JunctionRadius", "junctionRadius", 7.5],
     ["Join", "join", "miter"],
     ["RenderStyle", "renderStyle", "segments"],
+    ["MarkerLayout", "markerLayout", "radial"],
     ["MarkerWidenPadding", "markerWidenPadding", 3],
     ["MarkerWidenShape", "markerWidenShape", "round"],
     ["SplitSpecialShapes", "splitSpecialShapes", false],
@@ -187,8 +187,12 @@ describe("patch actions", () => {
   });
 
   it.each(MODES)("%s: vertical shared style patch applies", (mode) => {
-    actions()[`patchVectorBy${mode}VerticalSharedStyle`]({ twoWayArrowColor: 0x0a0b0c });
-    expect(useMazeStore.getState()[settingsKey(mode)].twoWayArrowColor).toBe(0x0a0b0c);
+    actions()[`patchVectorBy${mode}VerticalSharedStyle`]({ verticalBorderColor: 0x0a0b0c });
+    const settings = useMazeStore.getState()[settingsKey(mode)];
+    expect(settings.verticalBorderColor).toBe(0x0a0b0c);
+    expect(settings.twoWayPassageMarker.borderColor).toBe(0x0a0b0c);
+    expect(settings.oneWayPassageMarker.borderColor).toBe(0x0a0b0c);
+    expect(settings.elevatorMarker.borderColor).toBe(0x0a0b0c);
   });
 });
 
@@ -241,7 +245,7 @@ describe("png export setters", () => {
     const p = useMazeStore.getState().pngExportSettings;
     expect(p.outputMode).toBe("print");
     expect(p.digital).toMatchObject({ scale: 3, canvasMode: "fixed", marginValue: 12, fixedWidth: 800, fixedHeight: 600 });
-    expect(p.print).toMatchObject({ paperSize: "a3", customWidthMm: 100, customHeightMm: 200, orientation: "landscape", marginHMm: 5, marginVMm: 6, scale: 2, scaleAutoFit: true, anchor: "top_left" });
+    expect(p.print).toMatchObject({ paperSize: "a3", customWidthMm: 100, customHeightMm: 200, orientation: "landscape", marginHMm: 5, marginVMm: 6, scale: 2, scaleAutoFit: false, anchor: "top_left" });
   });
 
   it("custom placement forces the custom anchor", () => {

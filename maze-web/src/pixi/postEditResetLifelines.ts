@@ -1,7 +1,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditBaseline } from "./postEditReplay";
-import { collectAffectedLifelineKeys, lifelineKeysOf } from "./postEditReplay";
+import { collectAffectedLifelineKeys, lifelineKeysOf } from "./postEditLifelines";
 import { postEditCommandLabel, type PostEditCommandLabel } from "./postEditCommandLabels";
 import type { SplitLabelContext } from "./postEditSplitLabels";
 

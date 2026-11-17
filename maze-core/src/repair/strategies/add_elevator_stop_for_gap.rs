@@ -226,7 +226,7 @@ mod tests {
 
         let issue = ExcessiveElevatorStopGapIssue::new_from_check(
             "max_elevator_stop_gap",
-            vec![(ElevatorNodes::new(nodes.clone()), floors[0], floors[2])],
+            vec![(ElevatorNodes::new(nodes), floors[0], floors[2])],
         );
         let mut rng = MazeRng::seed_from_u64(2);
         let result = apply_and_commit(
@@ -251,7 +251,7 @@ mod tests {
 
         let issue = ExcessiveElevatorStopGapIssue::new_from_check(
             "max_elevator_stop_gap",
-            vec![(ElevatorNodes::new(nodes.clone()), floors[0], floors[5])],
+            vec![(ElevatorNodes::new(nodes), floors[0], floors[5])],
         );
         let mut rng = MazeRng::seed_from_u64(3);
         let result = apply_and_commit(

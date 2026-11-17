@@ -198,6 +198,12 @@ pub enum IssuePayload {
     InvalidElevatorStop {
         nodes: HashMap<String, Vec<IssueRegionPayload>>,
     },
+    /// Keyed by source check id — one single-node region per dead end in an over-budget scope.
+    /// This is intentionally a distinct debug payload kind so warnings and QC narration identify
+    /// dead-end nodes without implying that they are elevator stops or repair candidates.
+    InvalidDeadEnd {
+        nodes: HashMap<String, Vec<IssueRegionPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` if
     /// the deficit is scoped to a specific floor (`RepairArea::Level`, the index being the floor's
     /// `levels_ordered()` position, same convention `NodeDto.level`/`level_index_of` already use
@@ -239,6 +245,21 @@ pub enum IssuePayload {
     InvalidCrossElement {
         elements: HashMap<String, Vec<CrossElementPayloadEntry>>,
     },
+    /// Every pair a geometric check could not decide (GitHub issue #838, `IndeterminateDistance`),
+    /// each located by a representative node per side. No source check: the issue is raised by
+    /// the engine, not by a `Check`. Mirrors `IssuePayloadDto::IndeterminateDistance`.
+    IndeterminateDistance {
+        pairs: Vec<IssueUndecidedPairPayload>,
+    },
+}
+
+/// One pair a geometric check could not decide, resolved for the wire boundary: a representative
+/// base-graph node per side. `unsupported` is `true` for a topological-only fold and `false` for a
+/// distance bracket straddling the threshold.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IssueUndecidedPairPayload {
+    pub nodes: [u32; 2],
+    pub unsupported: bool,
 }
 
 /// One element of a flagged cross-element proximity group resolved for the wire boundary (GitHub

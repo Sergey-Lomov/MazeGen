@@ -3,6 +3,119 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Lucide's compact Ban badge keeps disabled controls visually consistent with the dark UI. Its
+   single slate stroke avoids the mismatched circle/slash tones of the former custom drawing.
+   The hotspot is centered on the badge, and the native cursor remains a fallback for browsers
+   that cannot load SVG cursors. */
+:root {
+  --cursor-not-allowed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2377818a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23000' fill-opacity='.35'/%3E%3Cpath d='m4.9 4.9 14.2 14.2'/%3E%3C/svg%3E") 9 9, not-allowed;
+}
+
+/* Shared action surface matches the 22 px switch height. Negative block-axis margins preserve an
+   18 px layout footprint, so adding an icon control never increases a text row's height. */
+.btn-flat-icon {
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  margin: -2px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #aaa;
+  cursor: default;
+  line-height: 1;
+  font-size: 16px;
+}
+
+/* The compact hit area is for dense, in-field actions. Unlike the default 22 px button with its
+   negative block margins, it naturally occupies the standard 18 px row footprint. */
+.btn-flat-icon-compact {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+  margin: 0;
+}
+
+.btn-flat-icon:hover:not(:disabled) {
+  background: #2d2d2d;
+  color: #d0d4d7;
+}
+
+/* Search fields share this flat-icon hit area. Their input background is also #2d2d2d, so the
+   regular hover fill would be invisible; the stronger shared action surface remains 18 px square
+   and the absolutely-positioned control does not affect the field's height. */
+.btn-flat-icon.search-input-clear:hover:not(:disabled) {
+  background: #404040;
+}
+
+/* An action needs a distinct second hover level when its containing list row is already hovered,
+   or when it sits in a SidePanel's lighter header or a background activity card. Both contexts are shared structural surfaces,
+   so controls need no local colour overrides. */
+.list-cell.hoverable:hover .btn-flat-icon:hover:not(:disabled),
+.side-panel-header .btn-flat-icon:hover:not(:disabled),
+.activity-card .btn-flat-icon:hover:not(:disabled) {
+  background: #404040;
+}
+
+.btn-flat-icon-no-hover:hover:not(:disabled) {
+  background: transparent;
+  color: #aaa;
+}
+
+.btn-flat-icon:disabled {
+  cursor: var(--cursor-not-allowed);
+  opacity: 0.4;
+}
+
+.btn-flat-icon-danger {
+  color: #e06c75;
+}
+
+.btn-flat-icon-danger:hover:not(:disabled) {
+  background: #542d32;
+  color: #ff9ba3;
+}
+
+/* Icons inside a coloured message inherit that message's contrast colour. */
+.btn-flat-icon-contextual {
+  color: inherit;
+}
+
+.btn-flat-icon-contextual:hover:not(:disabled) {
+  background: rgb(255 255 255 / 16%);
+  color: inherit;
+}
+
+.btn-flat-icon-active {
+  background: var(--flat-icon-active-bg, #444);
+  color: var(--flat-icon-active-color, #e0e0e0);
+}
+
+
+.loading-progress-indeterminate {
+  animation: loading-progress-slide 3s ease-in-out infinite;
+}
+
+@keyframes loading-progress-slide {
+  from { transform: translateX(-30%) scaleX(0.3); }
+  to { transform: translateX(100%) scaleX(0.3); }
+}
+
+/* Stands in for a value that is being recalculated (GitHub issue #961). */
+.value-skeleton {
+  animation: value-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes value-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
 /* The application shell intentionally occupies the viewport and clips its canvas. The geometry
    laboratory is a document-sized route, so let its complete combination list scroll normally. */
 html.corridor-geometry-route,
@@ -26,6 +139,20 @@ input:focus,
 select:focus {
   outline: none;
   border-color: #666;
+}
+
+/* Keyboard focus must stay visible without changing an element's box metrics. This covers native
+   controls as well as explicitly focusable custom controls; mouse clicks retain the quieter
+   appearance because the ring is limited to `:focus-visible`. An inset offset keeps the ring on
+   feature-card headers and controls inside scrolling panels from being clipped at their edges. */
+a[href]:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #4a9eff;
+  outline-offset: -2px;
 }
 
 input[type="number"]::-webkit-outer-spin-button,
@@ -79,12 +206,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .maze-slider:disabled {
-  cursor: not-allowed;
+  cursor: var(--cursor-not-allowed);
   opacity: 0.4;
 }
 
 .maze-slider:disabled::-webkit-slider-thumb {
-  cursor: not-allowed;
+  cursor: var(--cursor-not-allowed);
   background: #aaa;
 }
 
@@ -93,7 +220,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .maze-slider:disabled::-moz-range-thumb {
-  cursor: not-allowed;
+  cursor: var(--cursor-not-allowed);
 }
 
 /* RGB color-picker channel slider (GitHub issue #500). 8px gradient track (radius 4px); thumb is a
@@ -143,21 +270,22 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .gradient-slider:disabled {
-  cursor: not-allowed;
+  cursor: var(--cursor-not-allowed);
   opacity: 0.4;
 }
 
-/* "Project colors" section rows in the color picker (GitHub issue #503) — clickable, so they take
-   a pointer cursor and a hover highlight (inline styles can't express :hover). */
-.project-color-row {
+/* Clickable rows of picker lists (project colors in the color picker, GitHub issue #503; fonts in
+   the font picker, #970) — they take a pointer cursor and a hover highlight (inline styles can't
+   express :hover). */
+.picker-list-row {
   cursor: pointer;
 }
 
-.project-color-row:hover {
+.picker-list-row:hover {
   background: #2f2f2f;
 }
 
-.project-color-row:focus-visible {
+.picker-list-row:focus-visible {
   outline: 2px solid #6a6a6a;
   outline-offset: -2px;
 }
@@ -237,24 +365,6 @@ input[type="number"]::-webkit-inner-spin-button {
 .hoverable-danger:active {
   border-color: #ff3535; /* darken(base.error, 0.15) */
   color: #ff3535;
-}
-
-/* Delayed generation feedback (GitHub issue #655). The timer is managed by GenerationFeature so
-   short generations leave the button completely unchanged. */
-.generation-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-left: 6px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  vertical-align: -2px;
-  animation: generation-spinner-spin 0.75s linear infinite;
-}
-
-@keyframes generation-spinner-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* Toast countdown line (`NotificationHost`'s `CountdownBar`): shrinks from the remaining fraction

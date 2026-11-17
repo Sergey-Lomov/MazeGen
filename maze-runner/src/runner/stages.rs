@@ -57,7 +57,7 @@ pub fn seed_graph<T: Tessellation>(
         graph.add_node(node);
     }
 
-    let preset_state = build_preset_state(
+    let mut preset_state = build_preset_state(
         &mut graph,
         &mut field,
         &mut ids,
@@ -70,6 +70,9 @@ pub fn seed_graph<T: Tessellation>(
         None,
         None,
     )?;
+    // Endpoint placement is applied during the later MissingEndpoints repair strategy, so carry
+    // the already-resolved generation rules alongside the preset state used by that pass.
+    preset_state.element_placement_rules = gen_config.element_placement_rules.clone();
 
     // `start_id` re-resolves the same gen_source marker `resolve_start` already used to pick
     // `start` geometrically, but now against `PresetState` — a slot-addressed gen_source needs

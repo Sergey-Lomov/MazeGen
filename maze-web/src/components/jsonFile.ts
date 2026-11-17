@@ -4,8 +4,8 @@ import { notify } from "../notifications/notificationStore";
 
 const READ_FAILED = "file_load.read_failed";
 const INVALID_JSON = "file_load.invalid_json";
-registerNotificationCode(READ_FAILED, { category: "error", message: () => m[READ_FAILED]() });
-registerNotificationCode(INVALID_JSON, { category: "error", message: () => m[INVALID_JSON]() });
+registerNotificationCode(READ_FAILED, { severity: "error", message: () => m[READ_FAILED]() });
+registerNotificationCode(INVALID_JSON, { severity: "error", message: () => m[INVALID_JSON]() });
 
 /** Reads a user-picked file as JSON for the project/style load dialogs. I/O and JSON syntax
  *  failures are reported as `error` toasts under `source` and abort the load (`onJson` is not

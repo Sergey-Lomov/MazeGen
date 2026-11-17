@@ -2,6 +2,8 @@ use maze_runner::runner::field_ops::{
     self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
     PresetRequest, ReflectRequest, TranslateRequest,
 };
+use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
+use maze_runner::runner::print_sizing::{self, PrintSizingRequest};
 use wasm_bindgen::prelude::*;
 
 /// Which field operations and preset shapes (with parameter schemas) a tessellation offers.
@@ -21,6 +23,29 @@ pub fn field_preset(request: JsValue) -> Result<JsValue, JsValue> {
     cells_result(runner_field_ops::build_preset(&request))
 }
 
+/// The wire topology a preset defines together with its cells (`null` for a preset that is only a
+/// shape), e.g. the `box` net's seven gluings. The error is `{ kind, message? }`
+/// (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_preset_topology(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PresetRequest = decode(request)?;
+    match runner_field_ops::preset_topology(&request) {
+        Ok(topology) => Ok(serde_wasm_bindgen::to_value(&topology).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// The crease lines a preset defines, world-unit segments `[[x, y], [x, y]]` (empty for a preset
+/// without any). The error is `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_preset_creases(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PresetRequest = decode(request)?;
+    match runner_field_ops::preset_creases(&request) {
+        Ok(creases) => Ok(serde_wasm_bindgen::to_value(&creases).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions
 /// (`directions`, each `[x, y]`). The error is `{ kind, message? }` (`FieldOpWireError`).
 #[wasm_bindgen]
@@ -28,6 +53,47 @@ pub fn field_preset_extents(request: JsValue) -> Result<JsValue, JsValue> {
     let request: PresetExtentsRequest = decode(request)?;
     match runner_field_ops::preset_extents(&request) {
         Ok(extents) => Ok(serde_wasm_bindgen::to_value(&extents).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939):
+/// the whole search runs next to the geometry. `null` when nothing fits. The error is
+/// `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_print_sizing(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PrintSizingRequest = decode(request)?;
+    match print_sizing::print_sizing(&request) {
+        // The shape params are a map; a plain object is what the caller spreads.
+        Ok(result) => Ok(serde::Serialize::serialize(
+            &result,
+            &serde_wasm_bindgen::Serializer::new()
+                .serialize_maps_as_objects(true)
+                .serialize_missing_as_null(true),
+        )
+        .unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Count, sides and diameter of the cells of each cell type among given cells (GitHub issue #948),
+/// in world units. The error is `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_cell_sizes(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellSizesRequest = decode(request)?;
+    match cell_sizes::cell_sizes(&request) {
+        Ok(sizes) => Ok(serde_wasm_bindgen::to_value(&sizes).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Sides and diameter of every cell type of a tessellation, in world units, from sample cells around
+/// its origin: independent of any field and cheap. The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_cell_type_sizes(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match cell_sizes::cell_type_sizes(&tessellation) {
+        Ok(types) => Ok(serde_wasm_bindgen::to_value(&types).unwrap()),
         Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
     }
 }

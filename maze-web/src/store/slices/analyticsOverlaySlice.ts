@@ -1,7 +1,15 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, AnalyticsOverlayState, AnalyticsOverlayActions } from "../storeTypes";
 
+/** Legend and hover highlights that never outlive the maze they describe (GitHub issue #946). */
+export const analyticsTransientUi = {
+  regionClassLegendOpen: false,
+  hoveredIssueLoopEdges: null,
+  hoveredIssueRegionGroups: null,
+} satisfies Partial<AnalyticsOverlayState>;
+
 export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], AnalyticsOverlayState & AnalyticsOverlayActions> = (set) => ({
+  showGridOverlay: true,
   showMazeOverlay: true,
   showComponentsOverlay: false,
   showGraphOverlay: false,
@@ -9,12 +17,11 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   showPureCyclesOverlay: false,
   showRouteOverlay: false,
   showRegionClassesOverlay: false,
-  regionClassLegendOpen: false,
-  hoveredIssueLoopEdges: null,
-  hoveredIssueRegionGroups: null,
+  ...analyticsTransientUi,
   analyticsSectionsExpanded: { layers: true, issues: false },
   showFullyPresetLockedIssues: true,
 
+  setShowGridOverlay: (v) => set({ showGridOverlay: v }),
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
   setShowGraphOverlay: (v) => set({ showGraphOverlay: v }),

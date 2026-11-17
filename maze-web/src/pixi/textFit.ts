@@ -1,7 +1,9 @@
 import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import type { LabelFontWeight } from "./renderers/indexLabel";
+import { MSDF_FONTS, type LabelFont } from "./renderers/fontChoice";
 import { msdfFontFamily } from "./renderers/msdfFont";
+import { isLabelFontLoaded, labelFontCss, labelFontMetricsKey, usesCanvasText } from "./renderers/labelFont";
+import { rasterAtlasSignature } from "./renderers/rasterFont/rasterMsdf";
 import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 import type { MarkerShape } from "./renderers/types";
 import { markerPolygonPoints } from "./renderers/markerShapes";
@@ -37,7 +39,8 @@ export interface TextExtent {
 /** A label with the plate it must fit into — the unit the warnings and auto-fit operate on. */
 export interface TextFitItem {
   text: string;
-  fontWeight: LabelFontWeight;
+  /** Measured on the font's MSDF atlas (baked, or built from a raster font); Roboto while that is not ready. */
+  font: LabelFont;
   /** Plate shape (`MarkerAppearance.shape`). */
   shape: MarkerShape;
   /** Plate fill diameter in px (`MarkerAppearance.size`). For a rectangular plate (`plateWidth` /
@@ -56,26 +59,37 @@ export interface TextFitItem {
 
 /** Ink extent of `text` at `fontSize` px. Falls back to a rough per-glyph estimate when the font
  *  isn't installed (e.g. before `loadMsdfFont` resolves). */
-export function measureText(text: string, fontWeight: LabelFontWeight, fontSize: number): TextExtent {
-  const cacheKey = `${msdfFontFamily(fontWeight)}-bitmap`;
-  const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
+export function measureText(text: string, font: LabelFont, fontSize: number): TextExtent {
+  if (usesCanvasText(font, text) && typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.font = `${font.weight} ${fontSize}px ${labelFontCss(font.family.trim())}`;
+      const metrics = context.measureText(text);
+      const width = metrics.width;
+      const height = (metrics.actualBoundingBoxAscent || fontSize * 0.7) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);
+      return { width, height, left: -width / 2, right: width / 2 };
+    }
+  }
+  const cacheKey = `${msdfFontFamily(font)}-bitmap`;
+  const bitmapFont = typeof Cache.has !== "function" || Cache.has(cacheKey)
     ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
     : undefined;
   const glyphs = Array.from(text);
   if (glyphs.length === 0) return { width: 0, height: 0, left: 0, right: 0 };
-  if (!font) {
+  if (!bitmapFont) {
     const width = glyphs.length * fontSize * 0.6;
     return { width, height: fontSize * 0.7, left: -width / 2, right: width / 2 };
   }
 
-  const scale = fontSize / font.baseMeasurementFontSize;
+  const scale = fontSize / bitmapFont.baseMeasurementFontSize;
   let cursor = 0;
   let minLeft = Infinity;
   let maxRight = -Infinity;
   let minTop = Infinity;
   let maxBottom = -Infinity;
   for (const ch of glyphs) {
-    const glyph = font.chars[ch];
+    const glyph = bitmapFont.chars[ch];
     if (!glyph) continue;
     if (glyph.texture) {
       const left = cursor + glyph.xOffset + MSDF_GLYPH_PADDING;
@@ -96,6 +110,74 @@ export function measureText(text: string, fontWeight: LabelFontWeight, fontSize:
     left: (minLeft - cursor / 2) * scale,
     right: (maxRight - cursor / 2) * scale,
   };
+}
+
+/** Raster scale for browser-font collision checks. The fixed cap makes this work predictable. */
+const RUNTIME_INK_SCALE = 4;
+const RUNTIME_INK_MAX_SIDE = 256;
+const RUNTIME_INK_PADDING = 2;
+const RUNTIME_INK_CACHE_LIMIT = 256;
+
+type RuntimeInkMask = { width: number; height: number; pixels: Uint8ClampedArray };
+const runtimeInkMasks = new Map<string, RuntimeInkMask>();
+
+function runtimeInkMask(text: string, font: LabelFont, fontSize: number): RuntimeInkMask | null {
+  const family = isLabelFontLoaded(font) ? font.family.trim() : null;
+  if (!family || typeof document === "undefined") return null;
+  const key = `${family}\u0000${font.weight}\u0000${fontSize}\u0000${text}`;
+  const cached = runtimeInkMasks.get(key);
+  if (cached) {
+    // Move a hot label to the end, keeping this small cache LRU-like.
+    runtimeInkMasks.delete(key);
+    runtimeInkMasks.set(key, cached);
+    return cached;
+  }
+  try {
+    const probe = document.createElement("canvas").getContext("2d");
+    if (!probe) return null;
+    probe.font = `${font.weight} ${fontSize}px ${labelFontCss(family)}`;
+    const metrics = probe.measureText(text);
+    const width = Math.ceil((metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight) * RUNTIME_INK_SCALE) + RUNTIME_INK_PADDING * 2;
+    const height = Math.ceil((metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) * RUNTIME_INK_SCALE) + RUNTIME_INK_PADDING * 2;
+    if (width <= 0 || height <= 0 || width > RUNTIME_INK_MAX_SIDE || height > RUNTIME_INK_MAX_SIDE) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.font = `${font.weight} ${fontSize * RUNTIME_INK_SCALE}px ${labelFontCss(family)}`;
+    context.fillStyle = "#000";
+    context.textBaseline = "alphabetic";
+    context.fillText(text, RUNTIME_INK_PADDING - metrics.actualBoundingBoxLeft * RUNTIME_INK_SCALE, RUNTIME_INK_PADDING + metrics.actualBoundingBoxAscent * RUNTIME_INK_SCALE);
+    const mask = { width, height, pixels: context.getImageData(0, 0, width, height).data };
+    runtimeInkMasks.set(key, mask);
+    if (runtimeInkMasks.size > RUNTIME_INK_CACHE_LIMIT) runtimeInkMasks.delete(runtimeInkMasks.keys().next().value!);
+    return mask;
+  } catch {
+    return null;
+  }
+}
+
+/** True when two centred floor labels share rendered glyph ink. Loaded browser fonts use alpha
+ * masks; unavailable masks (including MSDF) retain the established metric comparison. */
+export function labelInkOverlaps(
+  a: { text: string; font: LabelFont; fontSize: number; x: number; y: number },
+  b: { text: string; font: LabelFont; fontSize: number; x: number; y: number },
+): boolean {
+  const aMask = runtimeInkMask(a.text, a.font, a.fontSize);
+  const bMask = runtimeInkMask(b.text, b.font, b.fontSize);
+  if (aMask && bMask) {
+    const ax = Math.round(a.x * RUNTIME_INK_SCALE - aMask.width / 2), ay = Math.round(a.y * RUNTIME_INK_SCALE - aMask.height / 2);
+    const bx = Math.round(b.x * RUNTIME_INK_SCALE - bMask.width / 2), by = Math.round(b.y * RUNTIME_INK_SCALE - bMask.height / 2);
+    const left = Math.max(ax, bx), right = Math.min(ax + aMask.width, bx + bMask.width);
+    const top = Math.max(ay, by), bottom = Math.min(ay + aMask.height, by + bMask.height);
+    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+      if (aMask.pixels[((y - ay) * aMask.width + x - ax) * 4 + 3] > 0 && bMask.pixels[((y - by) * bMask.width + x - bx) * 4 + 3] > 0) return true;
+    }
+    return false;
+  }
+  const first = measureText(a.text, a.font, a.fontSize), second = measureText(b.text, b.font, b.fontSize);
+  return Math.abs(a.x - b.x) < (first.width + second.width) / 2 && Math.abs(a.y - b.y) < (first.height + second.height) / 2;
 }
 
 function pointInPolygon(x: number, y: number, pts: number[]): boolean {
@@ -186,8 +268,13 @@ function readAtlasPage(texture: AtlasTexture): AtlasPage | null {
   if (atlasPages.has(source)) return atlasPages.get(source) ?? null;
   let page: AtlasPage | null = null;
   try {
-    const resource = source.resource as CanvasImageSource | undefined;
-    if (resource) {
+    const resource = source.resource as CanvasImageSource | ArrayBufferView | undefined;
+    if (resource && ArrayBuffer.isView(resource)) {
+      // A dynamic atlas page (GitHub issue #966) is a live RGBA buffer: read it in place, so glyphs
+      // added later are visible without a second read.
+      const width = (source as unknown as { width: number }).width;
+      page = { data: new Uint8ClampedArray(resource.buffer, resource.byteOffset, resource.byteLength), width };
+    } else if (resource) {
       const w = (resource as { width: number }).width;
       const h = (resource as { height: number }).height;
       const canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : document.createElement("canvas");
@@ -222,8 +309,9 @@ function glyphInk(family: string, ch: string, texture: AtlasTexture): number[] |
  *  origin (`makeCenteredLabel`: `anchor 0.5` centres horizontally on the advance box, the pivot
  *  centres vertically on the quads' extent), plus the atlas base font size they are measured at.
  *  `null` when any glyph's ink is unavailable — callers fall back to the bounding rectangle. */
-function textInk(text: string, fontWeight: LabelFontWeight): { points: number[]; base: number } | null {
-  const family = msdfFontFamily(fontWeight);
+function textInk(text: string, labelFont: LabelFont): { points: number[]; base: number } | null {
+  if (usesCanvasText(labelFont, text)) return null;
+  const family = msdfFontFamily(labelFont);
   const cacheKey = `${family}-bitmap`;
   const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
     ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
@@ -311,9 +399,9 @@ function parallelogramInnerHalfExtents(item: TextFitItem): { hw: number; hh: num
 /** Whether `item` drawn at `fontSize` px exceeds its plate shape. */
 export function textOverflows(item: TextFitItem, fontSize: number): boolean {
   if (item.text.length === 0) return false;
-  const ink = textInk(item.text, item.fontWeight);
+  const ink = textInk(item.text, item.font);
   if (ink) return !inkFitsPlate(item, ink.points, fontSize / ink.base);
-  const extent = measureText(item.text, item.fontWeight, fontSize);
+  const extent = measureText(item.text, item.font, fontSize);
   return !extentFitsPlate(item, extent.width, extent.height);
 }
 
@@ -376,11 +464,11 @@ export function maxFittingFontSize(items: readonly TextFitItem[], range: { min: 
   const seen = new Set<string>();
   for (const item of items) {
     if (item.text.length === 0) continue;
-    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${item.plateShape}|${itemMargin(item)}`;
+    const key = `${item.text}|${item.font.family}|${item.font.weight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${item.plateShape}|${itemMargin(item)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const reachLimit = plateReach(item);
-    const ink = textInk(item.text, item.fontWeight);
+    const ink = textInk(item.text, item.font);
     if (ink) {
       let reach = 0;
       for (const v of ink.points) reach = Math.max(reach, Math.abs(v));
@@ -396,7 +484,7 @@ export function maxFittingFontSize(items: readonly TextFitItem[], range: { min: 
       continue;
     }
     const probeSize = 100;
-    const extent = measureText(item.text, item.fontWeight, probeSize);
+    const extent = measureText(item.text, item.font, probeSize);
     if (extent.width <= 0 || extent.height <= 0) continue;
     best = Math.min(best, probeSize * maxFitScale(item, extent.width, extent.height));
   }
@@ -416,7 +504,7 @@ export function requiredTextPlateDimensions(items: readonly TextFitItem[], fontS
   let found = false;
   for (const item of items) {
     if (!item.text) continue;
-    const extent = measureText(item.text, item.fontWeight, fontSize);
+    const extent = measureText(item.text, item.font, fontSize);
     if (extent.width <= 0 || extent.height <= 0) continue;
     const margin = item.margin ?? DEFAULT_TEXT_MARGIN;
     const baseWidth = extent.width + margin * 2;
@@ -437,4 +525,13 @@ export function requiredTextPlateDimensions(items: readonly TextFitItem[], fontS
     found = true;
   }
   return found ? { width: Math.ceil(width), height: Math.ceil(height) } : null;
+}
+
+/** Which label fonts are installed, as a string: the one global input of {@link measureText} besides its arguments (a font that
+ *  finishes loading changes every measurement), so cached text-fit results list it among their inputs (GitHub issue #928). */
+export function textMetricsKey(): string {
+  return `${labelFontMetricsKey()}|${Object.values(MSDF_FONTS)
+    .flatMap((font) => font.faces)
+    .map((face) => (typeof Cache.has !== "function" || Cache.has(`${face.atlasName}-bitmap`) ? "1" : "0"))
+    .join("")}${rasterAtlasSignature()}`;
 }

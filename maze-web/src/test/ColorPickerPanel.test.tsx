@@ -1,3 +1,4 @@
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ColorPickerPanel } from "../components/ColorPickerPanel";
@@ -33,16 +34,18 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0x000000, showGrid: true, gridColor: 0x000000, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
+    background: 0x000000, showGrid: true, gridColor: 0x000000, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
-    oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+    oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",
+    markerLayout: "auto", markerScale: 1,
     startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
     finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
-    teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+    teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
     teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -187,6 +190,7 @@ describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)
       // Start caption color equals the start marker fill -> label_low_contrast.
       vectorByWallsSettings: baseWallsSettings({
         gridColor: 0x808080, background: 0xffffff,
+        markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 20, text: "S", textColor: 0x00ff00 },
       }),
     });
@@ -310,7 +314,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
     // The SidePanel header also shows field name as its title -- only that one occurrence
     // may exist; the list itself must contain none.
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
-    expect(document.querySelector(".project-color-row")).toBeNull();
+    expect(document.querySelector(".picker-list-row")).toBeNull();
   });
 
   it("clicking a project-color row sets the working color without committing", () => {

@@ -1,4 +1,5 @@
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::quality_control::InvalidOneWayIssue;
 use crate::quality_control::check::Check;
@@ -6,7 +7,6 @@ use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::checks::waypoint_distance_core::{
     Waypoint, WaypointDistances, waypoint_distance_matches,
 };
-use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
 

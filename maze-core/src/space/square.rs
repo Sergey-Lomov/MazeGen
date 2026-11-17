@@ -1,9 +1,13 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, rect_folds, rect_param_max_of, validate_rect_topology,
+};
+use super::square_box::{BOX_PRESET, box_cells, box_creases, box_folds, box_param_max};
 use super::{
-    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
+    ShapeDescriptor, Tessellation, validate_preset,
 };
 use std::sync::LazyLock;
 
@@ -42,9 +46,16 @@ const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [0, 1, 2, 3];
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("square")];
+
 impl Tessellation for SquareTessellation {
     type CellId = SquarePoint;
     type Face = SquareFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: SquarePoint) -> bool {
         true
@@ -84,6 +95,10 @@ impl Tessellation for SquareTessellation {
     }
 
     /// Unit squares: cell `(x, y)` spans `[x, x + 1] × [y, y + 1]` (area 1).
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(0.0, -1.0), Point::new(-1.0, 0.0)])
+    }
+
     fn center(&self, cell: SquarePoint) -> Point {
         Point::new(cell.x as f64 + 0.5, cell.y as f64 + 0.5)
     }
@@ -122,13 +137,52 @@ impl Tessellation for SquareTessellation {
         validate_preset(&SQUARE_PRESETS, key, params)?;
         let origin = self.center(SquarePoint { x: 0, y: 0 });
         match key {
-            "rect" => Ok(centered_square_rect(
-                param(params, "cols") as usize,
-                param(params, "rows") as usize,
-            )),
+            "rect" | "cylinder" | "torus" => {
+                let cells = centered_square_rect(
+                    param(params, "cols") as usize,
+                    param(params, "rows") as usize,
+                );
+                validate_rect_topology(self, &cells, key, params)?;
+                Ok(cells)
+            }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
+            "box" => box_cells(params),
             _ => Err(FieldOpError::Unavailable),
+        }
+    }
+
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        match key {
+            "box" => box_param_max(name),
+            _ => rect_param_max_of(self.presets(), key, name),
+        }
+    }
+
+    fn build_preset_folds(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Vec<NewFold<SquarePoint>>>, FieldOpError> {
+        validate_preset(&SQUARE_PRESETS, key, params)?;
+        match key {
+            "box" => box_folds(params),
+            "rect" | "cylinder" | "torus" => {
+                rect_folds(self, &self.build_preset(key, params)?, key, params)
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn build_preset_creases(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<[Point; 2]>, FieldOpError> {
+        validate_preset(&SQUARE_PRESETS, key, params)?;
+        match key {
+            "box" => box_creases(params),
+            _ => Ok(Vec::new()),
         }
     }
 
@@ -173,7 +227,14 @@ pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
 }
 
 /// Preset field shapes of the square grid, in UI order.
-const SQUARE_PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+const SQUARE_PRESETS: [PresetDescriptor; 6] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    BOX_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// `square_rect` shifted so the origin cell sits at `size / 2` (rounded down) of each axis.
 fn centered_square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

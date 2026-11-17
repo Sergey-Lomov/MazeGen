@@ -2,6 +2,7 @@ use crate::generation_config::TessellationConfig;
 use maze_core::space::Tessellation;
 use maze_runner::runner::geometry::{
     self as runner_geometry, CellAtRequest, CellsInRegionRequest, GeometrySnapshotRequest,
+    OutlinesRequest,
 };
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
@@ -12,7 +13,8 @@ use wasm_bindgen::prelude::*;
 
 /// Immutable geometry snapshot of a cell set (boundary as path commands or a flattened polyline,
 /// as requested; centers, `cell_scale`, per-face contact points and segments), bound to the tessellation
-/// instance and the caller's field version — see `maze_runner::runner::geometry`.
+/// instance and the caller's field and topology versions; faces glued by an active fold carry the
+/// partner, endpoint correspondence and rigid transform — see `maze_runner::runner::geometry`.
 #[wasm_bindgen]
 pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
     let request: GeometrySnapshotRequest = serde_wasm_bindgen::from_value(request)
@@ -20,6 +22,16 @@ pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
     let snapshot =
         runner_geometry::geometry_snapshot(&request).map_err(|e| JsValue::from_str(&e))?;
     Ok(serde_wasm_bindgen::to_value(&snapshot).unwrap())
+}
+
+/// Boundary path commands of a cell set and nothing else (no faces, shapes or contact points):
+/// the cheap request for painting many cells, see `maze_runner::runner::geometry::cell_outlines`.
+#[wasm_bindgen]
+pub fn geometry_outlines(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: OutlinesRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let outlines = runner_geometry::cell_outlines(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&outlines).unwrap())
 }
 
 /// Point query: the cell at a world point, within an optional cell-set scope.
@@ -38,6 +50,16 @@ pub fn geometry_cells_in_region(request: JsValue) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
     let cells = runner_geometry::cells_in_region(&request).map_err(|e| JsValue::from_str(&e))?;
     Ok(serde_wasm_bindgen::to_value(&cells).unwrap())
+}
+
+/// Region query and the edges of the selected cells, each shared edge once, as one flat command
+/// list: the cheapest answer for a viewport grid painter.
+#[wasm_bindgen]
+pub fn geometry_region_edges(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellsInRegionRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let edges = runner_geometry::region_edges(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&edges).unwrap())
 }
 
 /// Wire shape for the per-point tessellation queries (`tessellation_shapes`,
@@ -108,11 +130,13 @@ impl TessellationVisitor for Shapes<'_> {
 /// Cell types of one tessellation instance (GitHub issue #822): `keys` lists every
 /// `CellType::key` the instance provides (`Tessellation::cell_types`), and `point_types[i]` is the
 /// type key of `points[i]` (`Tessellation::cell_type_key_of`). Configs that parametrize generation or
-/// quality control by cell type name types by these keys.
+/// quality control by cell type name types by these keys. `cells_vary_in_size` is
+/// `Tessellation::cells_vary_in_size`: the cells of one type differ in size or shape.
 #[derive(Serialize, Debug, PartialEq)]
 struct TessellationCellTypes {
     keys: Vec<String>,
     point_types: Vec<String>,
+    cells_vary_in_size: bool,
 }
 
 #[wasm_bindgen]
@@ -153,6 +177,7 @@ impl TessellationVisitor for CellTypes<'_> {
                 .into_iter()
                 .map(|cell| tessellation.cell_type_key_of(cell).to_string())
                 .collect(),
+            cells_vary_in_size: tessellation.cells_vary_in_size(),
         })
     }
 }
@@ -202,12 +227,13 @@ mod tests {
                     "square".to_string(),
                     "octagon".to_string()
                 ],
+                cells_vary_in_size: false,
             })
         );
     }
 
     #[test]
-    fn tessellation_cell_types_of_a_uniform_tessellation_is_the_single_default_type() {
+    fn tessellation_cell_types_of_a_uniform_tessellation_is_named_by_its_polygon() {
         let cfg = TessellationPointsConfig {
             tessellation: TessellationConfig {
                 kind: TessellationKind::Square,
@@ -218,8 +244,9 @@ mod tests {
         assert_eq!(
             tessellation_cell_types_for(&cfg),
             Ok(TessellationCellTypes {
-                keys: vec!["cell".to_string()],
-                point_types: vec!["cell".to_string(), "cell".to_string()],
+                keys: vec!["square".to_string()],
+                point_types: vec!["square".to_string(), "square".to_string()],
+                cells_vary_in_size: false,
             })
         );
     }

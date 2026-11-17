@@ -69,7 +69,6 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `elementsConfig` | `ElementsConfig` | One-way chance etc. |
 | `selectedChecks` | `string[]` | Active quality check ids |
 | `selectedStrategies` | `Record<string, string>` | issueKind → strategyId |
-| `strategyParams` | `Record<strategyId, Record<paramId, string>>` | Raw string param values |
 | `checkParams` | `Record<checkId, Record<paramId, string>>` | Raw string param values |
 | `registryLoaded` | `boolean` | WASM check/strategy registry loaded |
 | `availableChecks` | `CheckDescriptor[]` | All checks from WASM registry |
@@ -138,6 +137,9 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `setFieldConfig(cfg)` — full config override, derives kind/shape from `cfg.tessellation.kind` and `cfg.shape`
 
 ### Generation
+
+The Generation card's debug switch forwards its checked value directly to `setDebugMode(v)`.
+
 - `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`. Also updates `seedHistory`: truncates from `seedHistoryIndex` and appends the used seed (capped at 20, oldest dropped), unless this is a repeat-generate on the exact seed just navigated to via history (`seedAttachedToHistory` and unchanged)
 - `seedHistoryBack()` / `seedHistoryForward()` / `seedHistoryJump(index)` — move `seedHistoryIndex` and copy that seed into `seed`; does not trigger generation. Also turns `randomSeed` off. No-op past either end of history
 - `reset()` — clears maze data
@@ -169,7 +171,7 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 
 Other failures go through toasts (`Specs/notifications.md`):
 
-- `loadRegistry` failure sets `registryError` (untouched by seed changes and generation; cleared by a successful `loadRegistry`) and raises an `error` toast. The generation card shows it as a persistent status line and disables Generate with a `Tooltip` reason; the card header (`computeGenerationCard`) reads `critical` regardless of other config. Overlapping `loadRegistry` calls share one in-flight promise (React StrictMode mounts twice in dev), so one failure is one toast occurrence; a call after it settles starts a fresh load.
+- `loadRegistry` failure sets `registryError` (untouched by seed changes and generation; cleared by a successful `loadRegistry`) and raises an `error` toast. The generation card shows it as a persistent status line and disables Generate with a `Tooltip` reason; the card header (`computeGenerationCard`) reads `critical` regardless of other config. Overlapping `loadRegistry` calls share one in-flight promise (React StrictMode mounts twice in dev), so one failure is one toast occurrence; a call after it settles starts a fresh load. `loadProject` awaits `loadRegistry` when the registry is not loaded and is refused (error toast `project.load_error_engine_not_loaded`, no state change) if it still is not (#967).
 - `confirmPostEdit` failure sets `postEditRefreshError` and raises an `error` toast; the post-edit card shows it as a persistent status line. Cleared by the next successful refresh and whenever post-edit state is rebuilt (generation, project load, downstream reset).
 - Project / style preset / quality preset load failures are `error` toasts; the load is aborted before any state change.
 - Removing a split node assigned as start/finish (post-edit) or start/finish/gen-source (presets) is rejected with a `notice` toast.

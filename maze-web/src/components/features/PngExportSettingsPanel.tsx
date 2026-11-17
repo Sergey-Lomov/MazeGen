@@ -1,32 +1,37 @@
-import { useMemo, useEffect, useState } from "react";
-import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
+import { useMemo, useState } from "react";
 import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { Stack, Inline } from "../Layout";
-import { HoverIconButton } from "../HoverIconButton";
-import { ToggleRow } from "../ToggleRow";
+import { FlatIconButton } from "../FlatIconButton";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, printEnteredFromMeasure, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { CellSizesSection, SmallSideWarning } from "../dialogs/CellSizesSection";
+import { useTessellationCellTypes } from "../dialogs/useTessellationCellTypes";
+import { hasTooSmallSide, measureTessellationCellTypes } from "../../pixi/printCellSizes";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
 import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
 import { resolveContentBoundsBasis } from "../../pixi/imageExport/exportMargins";
+import { resolveCutPlan, resolveExportContent } from "../../pixi/imageExport/exportContent";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
 import { Container } from "pixi.js";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { getCurrentViewportScale } from "../../pixi/viewportScaleBridge";
 import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "./PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
+import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 
 const CANVAS_MODE_OPTIONS: { value: PngCanvasMode; label: string }[] = [
   { value: "edge_to_edge", label: m["image_export.format.png.digital.canvas_edge_to_edge"]() },
@@ -135,16 +140,27 @@ export function PngExportSettingsPanel() {
     }
   }, [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings, cfg, nodes, edges, effStart, effFinish]);
 
-  const basis = activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell";
+  const topology = useMazeStore((s) => s.floorTopology[s.activeFloorId]);
+  const cuts = useMazeStore((s) => s.pngExportSettings.cuts);
+  // A glue with a cut line turns the sheet into the cut region (GitHub issue #859): its bounds
+  // replace the mode's own margin and basis in every fit below.
+  const cutPlan = useMemo(
+    () => resolveCutPlan({ cfg, floorId: activeFloorId, topology, cuts, floorNodes, margin: () => margin }),
+    [cfg, activeFloorId, topology, cuts, floorNodes, margin],
+  );
+  const { margin: fitMargin, basis } = useMemo(
+    () => resolveExportContent(cutPlan, margin, activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell"),
+    [cutPlan, margin, activeRenderMode],
+  );
 
   const digitalFit = useMemo(
-    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, margin, digital, basis) : null),
-    [cfg, floorNodes, margin, digital, basis],
+    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, fitMargin, digital, basis) : null),
+    [cfg, floorNodes, fitMargin, digital, basis],
   );
 
   const printFit = useMemo(
-    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, margin, print, basis) : null),
-    [cfg, floorNodes, margin, print, basis],
+    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, fitMargin, print, basis) : null),
+    [cfg, floorNodes, fitMargin, print, basis],
   );
 
   function handleCanvasModeChange(mode: PngCanvasMode) {
@@ -157,18 +173,71 @@ export function PngExportSettingsPanel() {
     setDigitalScale(floor2(getCurrentViewportScale()));
   }
 
-  // While print.scaleAutoFit is on, keeps print.scale in lockstep with computeAutoFitPrintScale —
-  // recomputed on every change that could affect the fit (sheet size/orientation/DPI, margins, or
-  // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
-  useEffect(() => {
-    if (!print.scaleAutoFit || floorNodes.length === 0) return;
-    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, margin, print, basis));
-    if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, margin, print, basis, setPrintScale]);
+  function handlePrintScaleChange(scale: number) {
+    setPrintScale(scale);
+  }
+
+  function handlePrintAutoFit() {
+    if (floorNodes.length === 0) return;
+    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, fitMargin, print, basis));
+    setPrintScale(autoScale);
+    // `scaleAutoFit` remains in persisted projects for compatibility, but no longer enables a
+    // persistent fitting mode. This button performs exactly one calculation.
+    if (print.scaleAutoFit) setPrintScaleAutoFit(false);
+  }
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];
   const printCellSizeMm = printCellMeasureMm(cfg, print.scale, printDpi);
+  // The sizes the print result reports are the ones the print-sizing dialog takes for the kind.
+  const sizeModes = TESSELLATION_UI[cfg.tessellation.kind].editor.sizeModes;
+  // Core measures sample cells of every type (no field cells), so the call is cheap and runs here;
+  // it is made at a measure of 1 mm because every printed length is linear in the measure.
+  // Cells that vary in size have no sizes to measure (their own line above states the entered
+  // size), so core is not asked, which would build their costly tessellation again.
+  const cellTypes = useTessellationCellTypes(cfg.tessellation);
+  const unitCellTypeSizes = useMemo(
+    () => (cellTypes.cellsVary ? [] : measureTessellationCellTypes({ tessellation: cfg.tessellation }, 1)),
+    [cfg.tessellation, cellTypes.cellsVary],
+  );
+  const cellTypeSizes = useMemo(
+    () => (Number.isFinite(printCellSizeMm) && printCellSizeMm > 0
+      ? unitCellTypeSizes.map((type) => ({
+        ...type,
+        sidesMm: type.sidesMm.map((side) => side * printCellSizeMm),
+        diameterMm: type.diameterMm * printCellSizeMm,
+      }))
+      : []),
+    [unitCellTypeSizes, printCellSizeMm],
+  );
+  const hasSmallSide = useMemo(() => cellTypeSizes.some(hasTooSmallSide), [cellTypeSizes]);
+  const printRingThicknessMm = printEnteredFromMeasure(cfg, "ring_thickness", printCellSizeMm);
+  const scaleRow = (
+    <SliderRow
+      label={m["image_export.format.png.digital.scale"]()}
+      value={outputMode === "digital" ? digital.scale : print.scale}
+      onChange={outputMode === "digital" ? setDigitalScale : handlePrintScaleChange}
+      min={1}
+      max={8}
+      step={0.1}
+      preciseWidth={48}
+      preciseMin={0.11}
+      preciseMax={null}
+      preciseAriaLabel={m["image_export.format.png.digital.scale"]()}
+      trailingAction={
+        <FlatIconButton
+          onClick={outputMode === "digital" ? handleScaleFromZoom : handlePrintAutoFit}
+          title={outputMode === "digital"
+            ? m["image_export.format.png.digital.scale_from_zoom_tooltip"]()
+            : m["image_export.format.png.print.scale_auto_fit"]()}
+          tooltipStretch
+          layoutStyle={{ aspectRatio: "1 / 1", margin: 0 }}
+        >
+          <Maximize2 size={16} />
+        </FlatIconButton>
+      }
+    />
+  );
 
   return (
     <div style={styles.root}>
@@ -190,26 +259,11 @@ export function PngExportSettingsPanel() {
           </Button>
         </Inline>
 
+        {outputMode === "digital" && scaleRow}
+
         {outputMode === "digital" && (
           <div style={styles.paramsBlock}>
           <Stack gap="itemGap">
-            <Inline gap="itemGap" justify="space-between">
-              <div style={{ flex: 1 }}>
-                <SliderRow
-                  label={m["image_export.format.png.digital.scale"]()}
-                  value={digital.scale}
-                  onChange={setDigitalScale}
-                  min={1}
-                  max={8}
-                  step={0.1}
-                  format={(v) => `${v.toFixed(1)}x`}
-                />
-              </div>
-              <HoverIconButton onClick={handleScaleFromZoom} title={m["image_export.format.png.digital.scale_from_zoom_tooltip"]()}>
-                <Maximize2 size={16} />
-              </HoverIconButton>
-            </Inline>
-
             <SelectRow<PngCanvasMode>
               label={m["image_export.format.png.digital.canvas"]()}
               value={digital.canvasMode}
@@ -304,36 +358,14 @@ export function PngExportSettingsPanel() {
               inputNamePrefix="png-print"
             />
 
-            <div style={styles.control}>
-              <ToggleRow
-                label={m["image_export.format.png.print.scale_auto_fit"]()}
-                checked={print.scaleAutoFit}
-                onChange={setPrintScaleAutoFit}
-              />
-            </div>
-
-            <Inline gap="itemGap" justify="space-between">
-              <span style={{ ...styles.label, ...(print.scaleAutoFit ? styles.labelDisabled : {}) }}>{m["image_export.format.png.print.scale"]()}</span>
-              <input
-                type="number"
-                name="png-print-scale"
-                step="0.01"
-                style={{
-                  ...sharedStyles.input, ...styles.control, width: 90,
-                  ...(print.scaleAutoFit ? styles.inputDisabled : {}),
-                }}
-                value={print.scale}
-                disabled={print.scaleAutoFit}
-                onChange={(e) => setPrintScale(Number(e.target.value))}
-              />
-            </Inline>
-
             <SelectRow<PrintAnchor>
               label={m["image_export.format.png.print.anchor"]()}
               value={print.anchor}
               options={ANCHOR_OPTIONS}
               onChange={setPrintAnchor}
             />
+
+            {scaleRow}
 
             {printFit && (
               <>
@@ -345,16 +377,28 @@ export function PngExportSettingsPanel() {
                       height: String(Math.round(printFit.sheetHeightPx)),
                     })}
                   </span>
-                  <span style={typography.caption}>
-                    {(TESSELLATION_UI[cfg.tessellation.kind].editor.pngCellSize === "diameter"
-                      ? m["image_export.format.png.result.cell_size_mm_diameter"]
-                      : m["image_export.format.png.result.cell_size_mm_side"]
-                    )({ size: printCellSizeMm.toFixed(2) })}
-                  </span>
+                  {sizeModes.includes("average_size") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.average_size_mm"]({ size: printCellSizeMm.toFixed(2) })}
+                    </span>
+                  )}
+                  {sizeModes.includes("ring_thickness") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.ring_thickness_mm"]({ size: printRingThicknessMm.toFixed(2) })}
+                    </span>
+                  )}
                 </Stack>
+                {/* The same per-type table as the print-sizing dialog (GitHub issue #1006). */}
+                <CellSizesSection
+                  sizes={cellTypeSizes}
+                  tessellationKind={cfg.tessellation.kind}
+                  placeholderTypes={cellTypes.keys}
+                  cellsVary={cellTypes.cellsVary}
+                />
               </>
             )}
 
+            {hasSmallSide && <SmallSideWarning sizes={cellTypeSizes} />}
             {printFit?.clipsSheetBounds && <PngFitWarningBubble id="png_content_clips_sheet" />}
             {printFit?.entersMarginZone && <PngFitWarningBubble id="png_content_in_margin_zone" />}
 
@@ -362,19 +406,18 @@ export function PngExportSettingsPanel() {
 
             <Inline gap="itemGap" justify="space-between">
               <span style={styles.label}>{m["image_export.format.png.print.screen_calibration"]()}</span>
-              <Inline gap="elementsGap">
+              <Inline gap="itemGap">
                 <span style={typography.caption}>
                   {calibratedCssPpi == null
                     ? m["image_export.format.png.print.screen_calibration_uncalibrated"]()
                     : m["image_export.format.png.print.screen_calibration_value"]({ ppi: calibratedCssPpi.toFixed(0) })}
                 </span>
-                <HoverIconButton
-                  fixedHeight
+                <FlatIconButton
                   onClick={() => setCalibrationOpen(true)}
                   title={m["image_export.format.png.print.calibrate_tooltip"]()}
                 >
                   <Ruler size={16} />
-                </HoverIconButton>
+                </FlatIconButton>
               </Inline>
             </Inline>
 
@@ -393,6 +436,12 @@ export function PngExportSettingsPanel() {
             >
               {m["image_export.format.png.print.physical_size"]()}
             </Button>
+
+            <div style={styles.instructions}>
+              <EmbeddedHotkeyHint keys={["mod"]}>
+                {m["image_export.format.png.print.canvas_navigation_hint"]()}
+              </EmbeddedHotkeyHint>
+            </div>
           </Stack>
           </div>
         )}
@@ -410,7 +459,7 @@ const styles = {
   shortLabel: { ...typography.body },
   labelDisabled: { opacity: 0.4 },
   control: { height: controlRowHeight, boxSizing: "border-box" as const },
-  iconToggle: { flex: "none" as const, width: controlRowHeight, padding: 0, display: "flex" as const, alignItems: "center" as const, justifyContent: "center" as const },
-  inputDisabled: { opacity: 0.4, cursor: "not-allowed" as const },
+  inputDisabled: { opacity: 0.4, cursor: notAllowedCursor },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
+  instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
 } as const;

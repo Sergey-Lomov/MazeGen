@@ -18,6 +18,7 @@ import {
   type ProjectFileQuality,
 } from "../store/projectExport";
 import type { QcRuleState, RepairStageState } from "../store/storeTypes";
+import { rulesFromFile } from "../store/slices/generationSliceHelpers";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -40,6 +41,7 @@ function rule(id: string, typeIds: string[], strategyId: string | null, extra: P
     checks: typeIds.map((typeId, localId) => ({ localId, typeId, params: {}, disabled: false })),
     nextLocalCheckId: typeIds.length,
     strategyId,
+    strategyParams: {},
     disabled: false,
     ruleDisabled: false,
     nestedStrategies: [],
@@ -54,7 +56,7 @@ function stage(id: string, ruleIds: string[]): RepairStageState {
 }
 
 const sourceRules = [
-  rule("rule_a", ["min_loop_length"], "invalid_loop_random", { name: "Loops", checks: [{ localId: 4, typeId: "min_loop_length", params: { min: "6" }, disabled: true }] }),
+  rule("rule_a", ["min_loop_length"], "invalid_loop_random", { name: "Loops", strategyParams: { attempts: "7" }, checks: [{ localId: 4, typeId: "min_loop_length", params: { min: "6" }, disabled: true }] }),
   rule("rule_b", ["max_loop_length"], null, { ruleDisabled: true }),
 ];
 
@@ -63,7 +65,6 @@ function resetStore() {
     ...baseStoreState(),
     rules: [],
     stages: [],
-    strategyParams: {},
     repairMaxIterations: 100,
     repairTimeBudgetSecs: 10,
   });
@@ -74,7 +75,6 @@ function saveSourcePreset() {
   useMazeStore.setState({
     rules: sourceRules,
     stages: [stage("stage_x", ["rule_a"]), stage("stage_y", ["rule_b"])],
-    strategyParams: { invalid_loop_random: { attempts: "7" } },
     repairMaxIterations: null,
     repairTimeBudgetSecs: 3.5,
   });
@@ -85,6 +85,7 @@ const checks = ["min_loop_length", "max_loop_length"].map((id) => ({ id, issue_k
 const strategies = [
   { id: "invalid_loop_random", handles: "invalid_loop", nested_slots: [] },
   { id: "dispatcher", handles: "invalid_loop", nested_slots: [{ slot_id: "a" }, { slot_id: "c" }] },
+  { id: "size_dispatcher", handles: "invalid_loop", nested_slots: [{ slot_id: "t", dispatch_kind: "size_threshold" }, { slot_id: "u" }] },
 ] as unknown as StrategyDescriptor[];
 const registry = { registryLoaded: true, availableChecks: checks, availableStrategies: strategies };
 
@@ -96,7 +97,7 @@ describe("quality preset (GitHub issue #751)", () => {
     expect(raw.kind).toBe(QUALITY_PRESET_KIND);
     expect(raw.version).toBe(QUALITY_PRESET_VERSION);
     expect(Object.keys(raw).sort()).toEqual(["kind", "quality", "version"]);
-    expect(Object.keys(raw.quality).sort()).toEqual(["repairMaxIterations", "repairTimeBudgetSecs", "rules", "stages", "strategyParams"]);
+    expect(Object.keys(raw.quality).sort()).toEqual(["repairMaxIterations", "repairTimeBudgetSecs", "rules", "stages"]);
     expect(raw.quality.rules[0].nextLocalCheckId).toBeUndefined();
   });
 
@@ -111,7 +112,6 @@ describe("quality preset (GitHub issue #751)", () => {
     const after = useMazeStore.getState();
     expect(after.rules).toEqual([{ ...sourceRules[0], nextLocalCheckId: 5 }, sourceRules[1]]);
     expect(after.stages).toEqual([stage("stage_x", ["rule_a"]), stage("stage_y", ["rule_b"])]);
-    expect(after.strategyParams).toEqual({ invalid_loop_random: { attempts: "7" } });
     expect(after.repairMaxIterations).toBeNull();
     expect(after.repairTimeBudgetSecs).toBe(3.5);
     expect(after.seed).toBe(777);
@@ -124,7 +124,7 @@ describe("quality preset (GitHub issue #751)", () => {
     const preset = parseQualityPreset({
       kind: QUALITY_PRESET_KIND,
       version: 1,
-      quality: { rules: [{ id: "r1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length" }], disabled: false }], strategyParams: {}, futureKey: 1 },
+      quality: { rules: [{ id: "r1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length" }], disabled: false }], futureKey: 1 },
     });
     expect(preset.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["r1"], disabled: false, collapsed: false }]);
     expect(preset.quality.repairMaxIterations).toBe(100);
@@ -167,6 +167,32 @@ describe("quality preset (GitHub issue #751)", () => {
   });
 });
 
+describe("rulesFromFile", () => {
+  it("makes a size-threshold slot's missing max_size explicit, leaving other slots alone", () => {
+    const entry = (slotId: string, params: Record<string, string>) => ({ slotId, strategyId: "invalid_loop_random", params, nested: [] });
+    const fileRules = [rule("r", [], "size_dispatcher", {
+      nestedStrategies: [entry("t", {}), entry("u", {}), entry("t", { max_size: "20" }), entry("t", {})],
+    })].map(({ nextLocalCheckId: _n, ...r }) => r);
+    const out = rulesFromFile(fileRules, strategies)[0].nestedStrategies;
+    expect(out.map((n) => [n.slotId, n.params.max_size])).toEqual([["t", "5"], ["u", undefined], ["t", "20"], ["t", undefined]]);
+    // Without a registry there is nothing to tell which slots are size-threshold: left as is.
+    expect(rulesFromFile(fileRules)[0].nestedStrategies.map((n) => n.params.max_size)).toEqual([undefined, undefined, "20", undefined]);
+  });
+
+  it("normalizes size-threshold slots nested deeper, and leaves rules without a strategy alone", () => {
+    const leaf = (params: Record<string, string>) => ({ slotId: "t", strategyId: "invalid_loop_random", params, nested: [] });
+    const fileRules = [
+      rule("deep", [], "dispatcher", {
+        nestedStrategies: [{ slotId: "a", strategyId: "size_dispatcher", params: {}, nested: [leaf({}), leaf({})] }],
+      }),
+      rule("bare", [], null),
+    ].map(({ nextLocalCheckId: _n, ...r }) => r);
+    const out = rulesFromFile(fileRules, strategies);
+    expect(out[0].nestedStrategies[0].nested.map((n) => n.params.max_size)).toEqual(["5", undefined]);
+    expect(out[1].nestedStrategies).toEqual([]);
+  });
+});
+
 describe("dropUnknownQualityIds", () => {
   it("keeps a fully known configuration unchanged", () => {
     const quality = parseQualityPreset(saveSourcePreset()).quality;
@@ -188,7 +214,6 @@ describe("dropUnknownQualityIds", () => {
         rule("r_kind", [], null, { kind: "removed_kind" }),
       ].map(({ nextLocalCheckId: _n, ...r }) => r),
       stages: [stage("s1", ["r_mixed", "r_gone"]), stage("s2", ["r_empty", "r_kind"])],
-      strategyParams: { invalid_loop_random: { a: "1" }, removed_strategy: { b: "2" } },
       repairMaxIterations: 5,
       repairTimeBudgetSecs: null,
     };
@@ -208,7 +233,6 @@ describe("dropUnknownQualityIds", () => {
     expect(out.rules[1].strategyId).toBe("dispatcher");
     expect(out.rules[1].nestedStrategies).toEqual([{ slotId: "a", strategyId: "invalid_loop_random", params: {}, nested: [] }]);
     expect(out.stages).toEqual([stage("s1", ["r_mixed"]), stage("s2", ["r_empty"])]);
-    expect(out.strategyParams).toEqual({ invalid_loop_random: { a: "1" } });
     expect(out.repairMaxIterations).toBe(5);
     expect(out.repairTimeBudgetSecs).toBeNull();
   });

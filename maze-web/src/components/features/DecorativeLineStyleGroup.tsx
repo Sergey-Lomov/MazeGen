@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { DecorativeLineStyle } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
@@ -13,7 +14,7 @@ import * as m from "~/paraglide/messages";
  *  `MarkerSettingsGroup`'s fill/border/gap/shape fields (a stroke-only stairs/elevator icon has none
  *  of those). Shared by all three "decorative" sub-sections (`decorativeStairsTwoWay`/
  *  `decorativeStairsOneWay`/`decorativeElevator`) in `VectorByWallsSettingsPanel`. */
-export function DecorativeLineStyleGroup<P extends string>({ settings, onChange, linkTargets, lineColorPriority, lineColorDefault, lineColorField }: {
+export function DecorativeLineStyleGroup<P extends LinkPath>({ settings, onChange, linkTargets, lineColorPriority, lineColorDefault, lineColorField }: {
   settings: DecorativeLineStyle;
   onChange: (patch: Partial<DecorativeLineStyle>) => void;
   /** Per-field link paths (GitHub issue #652 follow-up) for this group's `Linked*Row`s. */

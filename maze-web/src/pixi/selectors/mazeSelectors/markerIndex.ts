@@ -1,10 +1,12 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerIndexSettings } from "../../../store/imageExportTypes";
-import { getCellCenter } from "../../tessellationGeometry";
+import { getCellCenter, buildNodePositions } from "../../tessellationGeometry";
 import { formatIndexLabel } from "../../renderers/indexLabel";
 import { elevatorComponent } from "../../postEditVerticalUtils";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../../markerScale";
+import { teleportNodePairKey, type TeleportGroup } from "../teleportGroups";
+import type { RoundedRectGeometry } from "../../renderers/verticalConnectionGeometry";
 
 /** Link kind of a cross-floor connection an index label hangs off. */
 export type MarkerIndexLinkKind = "teleport" | "vertical" | "elevator";
@@ -40,15 +42,23 @@ export type ResolveMarkerEndpointVisual = (
   oneWay?: boolean,
 ) => MarkerEndpointVisual;
 
-/** One index label to draw on the active floor. `pos` is the world-space center of the anchor
- *  cell; `markerOuterRadius` is that endpoint marker's visual outer radius (the plate center sits
+/** One index label to draw on the active floor. `pos` is the world-space anchor of the node (cell center, or hub
+ *  point on a split tile, GitHub issue #896); `markerOuterRadius` is that endpoint marker's visual outer radius (the plate center sits
  *  `style.offset` below it); `borderMatchColor` feeds `borderColorFromMarker`. */
 export interface MarkerIndexLabel {
   pos: [number, number];
+  /** Node this label is anchored on — pairs the label with its laid-out marker (`shiftKey`). */
+  nodeId: number;
+  /** Other endpoint of a two-node link — tells apart several links ending on one node. */
+  partnerId?: number;
+  /** Which link kind this label annotates — lets the marker layout (GitHub issue #735) move it with its marker. */
+  kind: MarkerIndexLinkKind;
   label: string;
   markerOuterRadius: number;
   markerBorderWidth: number;
   borderMatchColor: number;
+  /** Marker-layout shrink factor (GitHub issue #735) — the plate (size, offset, border, gap, text) shrinks with its marker. `undefined` = 1. */
+  scale?: number;
 }
 
 export interface MarkerIndexLabelSet {
@@ -65,6 +75,8 @@ interface Link {
   nodeIds: number[];
   /** Whether a vertical passage has no reverse directed edge. */
   oneWay?: boolean;
+  /** Teleport link standing for a whole teleport group (GitHub issue #871). */
+  grouped?: boolean;
 }
 
 /** Canonical sort key for a link: its kind, then its endpoints sorted by `(level, nodeId)`.
@@ -106,6 +118,10 @@ function compareKeys(a: (number | string)[], b: (number | string)[]): number {
  *  `resolveEndpointVisual` is supplied by the mode renderer — it knows each endpoint marker's real
  *  outer radius and border/fill color (group overrides included); this selector does not.
  *
+ *  `teleportGroups` (GitHub issue #871) are the project-wide teleport groups
+ *  (`buildProjectTeleportGroups`, merge mode included): all teleports of one group take one index
+ *  and one plate per cell. Without groups every teleport pair is its own link.
+ *
  *  An elevator fan with several nodes in one cell of one floor yields a single plate there
  *  (dedup by `(level, x, y)`). Distinct links sharing a cell (a teleport and a staircase, say)
  *  stack — the issue only requires distinguishing elevators. */
@@ -117,6 +133,7 @@ export function buildMarkerIndexLabels(
   style: MarkerIndexSettings,
   resolveEndpointVisual: ResolveMarkerEndpointVisual,
   scaler: MarkerScaler = NO_MARKER_SCALING,
+  teleportGroups: TeleportGroup[] = [],
 ): MarkerIndexLabelSet {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const levelOf = (id: number) => nodeById.get(id)?.level ?? 0;
@@ -126,6 +143,9 @@ export function buildMarkerIndexLabels(
   const links: Link[] = [];
 
   // teleport + vertical_passage: unordered endpoint pair, deduped across both directed edges.
+  const groupKeyByEdge = new Map<string, string>();
+  for (const g of teleportGroups) for (const k of g.edgeKeys) groupKeyByEdge.set(k, g.key);
+  const groupLinks = new Map<string, Link>();
   const seenPair = new Map<string, Link>();
   const verticalPairs = new Set(
     edges.filter((e) => e.kind === "vertical_passage").map((e) => `${e.from}->${e.to}`),
@@ -144,11 +164,22 @@ export function buildMarkerIndexLabels(
     }
     const pairKey = `${kind}:${lo},${hi}`;
     if (seenPair.has(pairKey)) continue;
+    // A teleport sharing a group with others (GitHub issue #871) joins the group's single link, so
+    // every teleport of the group takes the same index.
+    const groupKey = kind === "teleport" ? groupKeyByEdge.get(teleportNodePairKey(lo, hi)) : undefined;
+    const grouped = groupKey !== undefined ? groupLinks.get(groupKey) : undefined;
+    if (grouped) {
+      for (const id of [lo, hi]) if (!grouped.nodeIds.includes(id)) grouped.nodeIds.push(id);
+      seenPair.set(pairKey, grouped);
+      continue;
+    }
     const link: Link = {
       kind,
       nodeIds: [lo, hi],
       oneWay: kind === "vertical" && !verticalPairs.has(`${e.to}->${e.from}`),
+      grouped: groupKey !== undefined,
     };
+    if (groupKey !== undefined) groupLinks.set(groupKey, link);
     seenPair.set(pairKey, link);
     links.push(link);
   }
@@ -181,22 +212,33 @@ export function buildMarkerIndexLabels(
   // --- Labels for the active floor ---
   const labels: MarkerIndexLabel[] = [];
   const dedup = new Set<string>();
+  // Split-tile nodes sit on their hub point, not the cell center (GitHub issue #896); positions are
+  // resolved per floor since `buildNodePositions` groups by tile only.
+  const floorNodes = nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
+  const nodePos = buildNodePositions(
+    floorNodes,
+    cfg,
+    edges.filter((e) => e.kind !== "teleport").map(({ from, to }) => ({ from, to })),
+  );
   keyed.forEach(({ link }, i) => {
     const label = formatIndexLabel(i, style.labelStyle);
     for (const id of link.nodeIds) {
       const node = nodeById.get(id);
       if (!node || (node.level ?? 0) !== activeFloorIndex) continue;
-      if (link.kind === "elevator") {
-        const cellKey = `${node.level ?? 0}:${node.x},${node.y}`;
+      if (link.kind === "elevator" || link.grouped) {
+        const cellKey = `${link.grouped ? i : "e"}:${node.level ?? 0}:${node.x},${node.y}`;
         if (dedup.has(cellKey)) continue;
         dedup.add(cellKey);
       }
-      const center = getCellCenter(node.x, node.y, cfg);
+      const anchor = nodePos.get(id) ?? getCellCenter(node.x, node.y, cfg);
       const visual = resolveEndpointVisual(id, link.kind, link.oneWay);
-      const pos: [number, number] = [center.x, center.y];
+      const pos: [number, number] = [anchor.x, anchor.y];
       const factor = scaler.factorAt(pos, visual.sizeAdaptation);
       labels.push({
         pos,
+        nodeId: id,
+        ...(link.nodeIds.length === 2 ? { partnerId: link.nodeIds[0] === id ? link.nodeIds[1] : link.nodeIds[0] } : {}),
+        kind: link.kind,
         label,
         markerOuterRadius: visual.scalesAsWhole ? visual.outerRadius * factor : visual.outerRadius + visual.fillRadius * (factor - 1),
         markerBorderWidth: visual.scalesAsWhole ? visual.borderWidth * factor : visual.borderWidth,
@@ -217,6 +259,18 @@ export interface MarkerIndexPlateBox {
   cornerRadius: number;
   /** Whole pixels; the border is drawn *outside* the body rectangle. */
   borderWidth: number;
+  /** Marker-layout shrink factor (GitHub issue #735) already applied to this box; the renderer also
+   *  shrinks the gap ring and the caption text by it. */
+  scale: number;
+}
+
+/** The plate's drawn footprint — body plus border, never the floor-colored gap ring (it draws under
+ *  the markers) — as one rounded rect. What other geometry (stop lines, elevator badges) must not
+ *  hide behind. */
+export function markerIndexPlateFootprint(label: MarkerIndexLabel, style: MarkerIndexSettings): RoundedRectGeometry {
+  const box = markerIndexPlateBox(label, style);
+  const border = box.borderWidth;
+  return { x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border, radius: box.cornerRadius + border };
 }
 
 /** Where `MarkerIndexRenderer` draws `label`'s plate: a fixed `style.width` x `style.height`
@@ -224,13 +278,18 @@ export interface MarkerIndexPlateBox {
  *  outer edge. Shared with the export warnings, which test the plate against other geometry. */
 export function markerIndexPlateBox(label: MarkerIndexLabel, style: MarkerIndexSettings): MarkerIndexPlateBox {
   const [cx, cy] = label.pos;
-  const plateCenterY = cy + label.markerOuterRadius + style.offset;
+  const s = label.scale ?? 1;
+  const w = style.width * s;
+  const h = style.height * s;
+  // `offset` is the distance from the marker's outer edge to the plate's *center*.
+  const plateCenterY = cy + label.markerOuterRadius * s + style.offset * s;
   return {
-    x: cx - style.width / 2,
-    y: plateCenterY - style.height / 2,
-    w: style.width,
-    h: style.height,
-    cornerRadius: style.cornerRadius,
-    borderWidth: Math.max(0, Math.round(style.borderWidthFromMarker ? label.markerBorderWidth : style.borderWidth)),
+    x: cx - w / 2,
+    y: plateCenterY - h / 2,
+    w,
+    h,
+    cornerRadius: style.cornerRadius * s,
+    borderWidth: Math.max(0, Math.round((style.borderWidthFromMarker ? label.markerBorderWidth : style.borderWidth) * s)),
+    scale: s,
   };
 }

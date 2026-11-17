@@ -1,12 +1,15 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
-import { SectionHeader, SubsectionHeader } from "../SectionHeader";
+import { SectionHeader } from "../SectionHeader";
 import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
+import { DEFAULT_LABEL_FONT } from "../../pixi/renderers/fontChoice";
 import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import * as m from "~/paraglide/messages";
 
@@ -14,14 +17,14 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
 
 /** One "Start"/"Finish" collapsible sub-section of a "Waypoints" section (GitHub issue #296,
  *  upgraded from a plain always-visible sub-group to its own collapsible `SectionHeader` plus two
- *  `SubsectionHeader`s — "Marker" and "Caption" — by GitHub issue #697 follow-up, since the caption
- *  controls would otherwise clutter the marker's own shape/color/border settings). "Marker" holds
+ *  nested `SectionHeader`s — "Marker" and "Caption" — by GitHub issue #697 follow-up, since the
+ *  caption controls would otherwise clutter the marker's own shape/color/border settings). "Marker" holds
  *  shape, corner style, size, fill color, border color, border width and gap width —
  *  `borderWidth: 0` draws no border and `gapWidth: 0` draws no gap, so there is no separate
  *  show-border/show-gap toggle for either. "Caption" (rendered only when the caller passes
  *  `showTextSection`, i.e. start/finish markers — every other `MarkerSettingsGroup` caller, the
  *  three vertical-connection markers, passes `false`) holds the "Show caption" toggle,
- *  text input, font weight, color and size — all but the toggle are hidden while it is off (GitHub
+ *  text input, font, color and size — all but the toggle are hidden while it is off (GitHub
  *  issue #723; the stored values persist, so turning the caption back on restores exactly what was
  *  there before).
  *  Shared by `VectorByWallsSettingsPanel` and `VectorByCorridorsSettingsPanel` (GitHub issue
@@ -31,7 +34,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, textFitKind }: {
+export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, showMarkerToggle, textFitKind, children }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -46,6 +49,9 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
    *  `true` only for callers whose `MarkerSettings` actually models a user-facing text (start/
    *  finish); every other caller passes `false`. */
   showTextSection: boolean;
+  /** Whether to render the "Show marker" toggle (GitHub issue #963) — start/finish only, like
+   *  `showTextSection`; requires `linkTargets.markerEnabled`. */
+  showMarkerToggle?: boolean;
   /** "Priority" project colors (GitHub issue #503) for this group's fill/border/text color
    *  rows — forwarded to the picker's "Project colors" section. Omitted fields render with no
    *  priority. */
@@ -60,7 +66,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
   /** Per-field link path for this group's `Linked*Row`s (GitHub issue #652 follow-up) — a concrete
    *  path for every field the caller's registry models (the seven "Marker" fields: `shape`/
    *  `cornerStyle`/`size`/`fillColor`/`borderColor`/`borderWidth`/`gapWidth`, plus the four
-   *  "Caption" fields `textEnabled`/`textFontWeight`/`textSize`/`textColor`,
+   *  "Caption" fields `textEnabled`/`textFont`/`textSize`/`textColor`,
    *  GitHub issue #697 second follow-up — `text` itself has no registry entry, free text has
    *  no `ParamType`), or `null` for one it doesn't, rendering `LinkStatusIcon`'s "unsupported" state
    *  there instead of omitting the icon — every field row gets one either way. The four Caption
@@ -69,12 +75,15 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
    *  other field its registry doesn't model. */
   /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
   textFitKind?: "start" | "finish";
-  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
+  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; markerEnabled?: P | null; textEnabled: P | null; textFont?: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;
   onToggle?: (id: string) => void;
+  /** Extra subsections rendered after "Marker" inside the group (GitHub issue #330's "Opening"); only the callers that have one pass it. */
+  children?: React.ReactNode;
 }) {
+  const textOn = useGate(textFitKind === "finish" ? "finishTextOn" : "startTextOn");
   const markerId = sectionId ? `${sectionId}_marker` : "";
   const textId = sectionId ? `${sectionId}_text` : "";
   const sectionExpanded = !title || !sectionId || !isExpanded || isExpanded(sectionId);
@@ -87,7 +96,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
         <div style={title ? styles.markerGroup : styles.markerGroupNoIndent}>
           {showTextSection && fields.textColor && (
             <>
-              <SubsectionHeader label={m["image_export.vector_by_walls.markers_text_subsection"]()} expanded={subExpanded(textId)} onToggle={() => toggle(textId)} />
+              <SectionHeader label={m["image_export.vector_by_walls.markers_text_subsection"]()} expanded={subExpanded(textId)} onToggle={() => toggle(textId)} />
               {subExpanded(textId) && (
                 <div style={styles.subsectionGroup}>
                   <LinkedToggleRow
@@ -96,7 +105,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                     onChange={(textEnabled) => onChange({ textEnabled })}
                     linkTarget={linkTargets.textEnabled}
                   />
-                  {(settings.textEnabled ?? true) && (
+                  {textOn && (
                     <>
                       <LinkedTextFieldRow
                         label={m["image_export.vector_by_walls.marker_text"]()}
@@ -109,13 +118,13 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                       />
                       <TextStyleRows
                         settings={{
-                          textFontWeight: settings.textFontWeight ?? "bold",
+                          textFont: settings.textFont ?? DEFAULT_LABEL_FONT,
                           textColor: settings.textColor ?? 0x000000,
                           textSize: settings.textSize ?? DEFAULT_MARKER_TEXT_SIZE,
                           textMargin: settings.textMargin ?? DEFAULT_TEXT_MARGIN,
                         }}
                         onChange={onChange}
-                        linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin }}
+                        linkTargets={{ textFont: linkTargets.textFont ?? null, textColor: linkTargets.textColor, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin }}
                         priorityColors={priorityColors?.textColor}
                         defaultColor={defaultColors?.textColor}
                         field={fields.textColor}
@@ -127,9 +136,17 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
               )}
             </>
           )}
-          {sectionId && <SubsectionHeader label={m["image_export.vector_by_walls.markers_marker_subsection"]()} expanded={subExpanded(markerId)} onToggle={() => toggle(markerId)} />}
+          {sectionId && <SectionHeader label={m["image_export.vector_by_walls.markers_marker_subsection"]()} expanded={subExpanded(markerId)} onToggle={() => toggle(markerId)} />}
           {subExpanded(markerId) && (
             <div style={sectionId ? styles.subsectionGroup : styles.markerGroupNoIndent}>
+              {showMarkerToggle && (
+                <LinkedToggleRow
+                  label={m["image_export.vector_by_walls.marker_show"]()}
+                  checked={settings.markerEnabled ?? true}
+                  onChange={(markerEnabled) => onChange({ markerEnabled })}
+                  linkTarget={linkTargets.markerEnabled ?? null}
+                />
+              )}
               <MarkerAppearanceRows
                 settings={settings}
                 onChange={onChange}
@@ -140,6 +157,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
               />
             </div>
           )}
+          {children}
         </div>
       )}
     </div>

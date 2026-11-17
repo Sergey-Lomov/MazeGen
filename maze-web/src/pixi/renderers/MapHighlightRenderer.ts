@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
-import { drawEdge, type RenderEdge } from "../BaseGraphRenderer";
+import { drawEdge } from "../BaseGraphRenderer";
+import { hopPieces, type SeamHopContext } from "../graphSeams";
 import { NODE_RADIUS } from "../renderConstants";
 
 export interface MapHighlightData {
@@ -13,6 +14,8 @@ export interface MapHighlightData {
   entries: Map<number, number>;
   color: number;
   cfg: FieldConfig;
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 /** Draws a `DebugValueKind.Map` debug value (GitHub issue #145's follow-up, e.g. Wilson's
@@ -38,7 +41,7 @@ export class MapHighlightRenderer {
 
   render(data: MapHighlightData): void {
     this.g.clear();
-    const { nodes, entries, color, cfg } = data;
+    const { nodes, entries, color, cfg, seam } = data;
     if (entries.size === 0 || nodes.length === 0) return;
 
     if (this.cachedNodes !== nodes || this.cachedCfg !== cfg) {
@@ -50,11 +53,8 @@ export class MapHighlightRenderer {
 
     const markedIds = new Set<number>();
     for (const [key, value] of entries) {
-      const from = nodePos.get(key);
-      const to = nodePos.get(value);
-      if (!from || !to) continue;
-      const edge: RenderEdge = { path: [from, to], hasReverse: false };
-      drawEdge(this.g, edge, color);
+      if (!nodePos.has(key) || !nodePos.has(value)) continue;
+      for (const piece of hopPieces(key, value, nodePos, seam)) drawEdge(this.g, { ...piece, hasReverse: false }, color);
       markedIds.add(key);
       markedIds.add(value);
     }

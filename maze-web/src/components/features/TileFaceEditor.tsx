@@ -52,6 +52,10 @@ interface Props {
    *  pattern's card in the settings list) where rotate controls would have nothing meaningful to
    *  do. Defaults to `true` (shown), matching every existing caller. */
   showRotateControls?: boolean;
+  /** Allows a caller to rotate its face assignments even when the cell has no rotational symmetry.
+   * Used only by the radial post-edit split editor: this moves real split-node connections to the
+   * next/previous face rather than declaring the cell geometrically rotation-invariant. */
+  allowFaceReassignmentRotation?: boolean;
   /** Draws a pale index (`faces_of` position) outside each physical face. Off by default — small
    *  previews would only be cluttered by it. */
   showFaceIndices?: boolean;
@@ -92,7 +96,7 @@ const FACE_INDEX_GLYPH_HEIGHT = 0.72;
  * segment. */
 export function TileFaceEditor({
   point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate,
-  showRotateControls = true, showFaceIndices = false, notificationSource,
+  showRotateControls = true, allowFaceReassignmentRotation = false, showFaceIndices = false, notificationSource,
 }: Props) {
   const diagram = getTileDiagram(point[0], point[1], cfg);
   if (!diagram) return null;
@@ -303,7 +307,7 @@ export function TileFaceEditor({
         })}
       </svg>
     </div>
-    {showRotateControls && canRotateSplit(cfg, point[0], point[1]) && (
+    {showRotateControls && (allowFaceReassignmentRotation || canRotateSplit(cfg, point[0], point[1])) && (
       <div style={styles.rotateRow}>
         <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
         <Tooltip content={m["post_edit.split_rotate_ccw"]()}><button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)}>

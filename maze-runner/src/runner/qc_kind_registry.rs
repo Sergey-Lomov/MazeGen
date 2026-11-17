@@ -12,7 +12,8 @@
 
 use super::check_factory::{
     build_area_missing_elevator_stops_check, build_cross_element_cell_type_check,
-    build_cross_element_group_check, build_excessive_elevator_stop_gap_check,
+    build_cross_element_group_check, build_dead_end_group_check,
+    build_excessive_elevator_stop_gap_check,
     build_excessive_scc_count_check, build_invalid_elevator_check,
     build_invalid_elevator_group_check, build_invalid_elevator_stop_group_check,
     build_invalid_loop_check, build_invalid_loop_group_check, build_invalid_one_way_check,
@@ -32,7 +33,8 @@ use super::strategy_factory::{build_nested, build_strategy_erased, downcast_stra
 use maze_core::{
     quality_control::{
         AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidElevatorGroupIssue,
+        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidDeadEndGroupIssue,
+        InvalidElevatorGroupIssue,
         InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
         InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
         InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
@@ -192,6 +194,7 @@ qc_kind_registry! {
     ExcessiveElevatorStopGap => ExcessiveElevatorStopGapIssue, build_excessive_elevator_stop_gap_check, ["max_elevator_stop_gap"];
     InvalidCrossElementGroup => InvalidCrossElementGroupIssue, build_cross_element_group_check, ["cross_element_geometric_proximity", "cross_element_graph_proximity"];
     InvalidCrossElement => InvalidCrossElementIssue, build_cross_element_cell_type_check, ["cross_element_cell_type"];
+    InvalidDeadEndGroup => InvalidDeadEndGroupIssue, build_dead_end_group_check, ["max_dead_end_count", "max_dead_end_density"];
 }
 
 #[cfg(test)]

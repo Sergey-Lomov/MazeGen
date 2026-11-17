@@ -150,6 +150,24 @@ describe("titleKeyForTopology", () => {
     expect(titleKeyForTopology(topology)).toBe("split_pattern_title.bridge");
   });
 
+  it("names the octagon bridge and double-bridge topologies", () => {
+    expect(titleKeyForTopology([
+      [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+      [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+    ])).toBe("split_pattern_title.bridge");
+    expect(titleKeyForTopology([
+      [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+      [WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL],
+      [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+    ])).toBe("split_pattern_title.double_bridge");
+    expect(titleKeyForTopology([
+      [PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL],
+      [WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL, WALL],
+      [WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE, WALL],
+      [WALL, WALL, WALL, PASSAGE, WALL, WALL, WALL, PASSAGE],
+    ])).toBe("split_pattern_title.triple_bridge");
+  });
+
   it("returns null for an unregistered topology", () => {
     const topology: SplitFaceRequirement[][] = [
       [PASSAGE, WALL, WALL, WALL],

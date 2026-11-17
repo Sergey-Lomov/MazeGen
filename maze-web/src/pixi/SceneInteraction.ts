@@ -3,10 +3,11 @@ import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
-import { backgroundImageEditMode, PanState } from "./sceneTypes";
+import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "./colorTokens";
+import { isTypingTarget } from "./domUtils";
 
 interface SceneInteractionDeps {
   app: Application;
@@ -17,14 +18,12 @@ interface SceneInteractionDeps {
   getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
   getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
   onHoverChanged: (info: HoverInfo | null) => void;
-  onViewportChanged: () => void;
+  onViewportChanged: (canvasOnly: boolean) => void;
   onResetZoom: () => void;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
+/** Hold-to-preview key of the teleport connector editor. */
+const CONNECTOR_PREVIEW_CODE = "KeyP";
 
 function setCanvasCursor(canvas: HTMLCanvasElement, cursor: string): void {
   if (canvas.style) canvas.style.cursor = cursor;
@@ -35,10 +34,22 @@ export class SceneInteraction {
   private deps: SceneInteractionDeps;
   defaultPan: PanState;
   private onWheel: (e: WheelEvent) => void = () => {};
+  private canvasOnlyNavigation = false;
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
-    if (state.floorLabelDrag !== null
+    if (isTeleportConnectorEditActive(state) && e.code === CONNECTOR_PREVIEW_CODE && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      this.setConnectorPreview(true);
+      return;
+    }
+    if (isTeleportConnectorEditActive(state) && (e.code === "Escape" || e.code === "Delete")) {
+      e.preventDefault();
+      const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
+      if (e.code === "Escape") controller?.escape?.(); else controller?.deleteSelected?.();
+      return;
+    }
+    if (isFloorLabelDragActive(state)
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
       if (e.code === "Escape") state.cancelFloorLabelDrag();
@@ -59,7 +70,18 @@ export class SceneInteraction {
     }
   };
 
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (e.code === CONNECTOR_PREVIEW_CODE) this.setConnectorPreview(false);
+  };
+
+  private setConnectorPreview(on: boolean): void {
+    const state = useMazeStore.getState();
+    const controller = this.deps.getController(state) as { setPreview?: (on: boolean) => void } | null;
+    controller?.setPreview?.(on);
+  }
+
   private onBlur = () => {
+    this.setConnectorPreview(false);
     const st = useMazeStore.getState();
     const controller = this.deps.getController(st);
     this.defaultPan.end();
@@ -112,7 +134,7 @@ export class SceneInteraction {
       (x, y) => {
         viewport.x = x;
         viewport.y = y;
-        onViewportChanged();
+        onViewportChanged(this.canvasOnlyNavigation);
       },
     );
     this.setup();
@@ -125,6 +147,7 @@ export class SceneInteraction {
     stage.hitArea = app.screen;
 
     stage.on("pointerdown", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
       const controller = getController(st);
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
@@ -143,8 +166,14 @@ export class SceneInteraction {
     });
 
     stage.on("pointermove", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
-      onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
+      const controller = getController(st);
+      // A pan changes the viewport continuously, so resolving a hover cell would synchronously
+      // cross into core (`geometry_cell_at`) for every pointer event. The hover is meaningless
+      // while the viewport moves and is recomputed on the first stationary pointer move.
+      if (this.defaultPan.isDragging || controller?.isViewportPanning) onHoverChanged(null);
+      else onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && (e.buttons & 4) !== 0) {
         setCanvasCursor(app.canvas, "grabbing");
@@ -163,8 +192,19 @@ export class SceneInteraction {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const field = st.floorFields[st.activeFloorId];
+        if (st.creaseDraft !== null) {
+          // Drawing a crease: the controller tracks its end; no cell hover.
+          fieldEditorOverlay.updateHover(null, field.fieldConfig);
+          return;
+        }
+        if (st.topologyPick !== null) {
+          // Editing a glue run highlights boundary edges, not cells.
+          fieldEditController.updateTopologyFaceHover(e.globalX, e.globalY);
+          fieldEditorOverlay.updateHover(null, field.fieldConfig);
+          return;
+        }
         const hoverCell = (field.fieldPrimitive === "polygon"
-          || field.fieldPrimitive === "symmetry")
+          || field.fieldPrimitive === "mirror")
           ? null
           : field.fieldPrimitive === "magic_wand"
             ? fieldEditController.getMagicWandPreview(e.globalX, e.globalY)
@@ -180,9 +220,8 @@ export class SceneInteraction {
         );
         return;
       }
-      const controller = getController(st);
       if (controller) {
-        controller.onPointerMove(e.globalX, e.globalY);
+        controller.onPointerMove(e.globalX, e.globalY, e.buttons, e.shiftKey, e.ctrlKey, e.metaKey);
         return;
       }
       this.defaultPan.move(e.globalX, e.globalY);
@@ -195,7 +234,7 @@ export class SceneInteraction {
       if (!(st.openCard === "field_setup"
         && field.fieldEditMode === "custom"
         && (field.fieldPrimitive === "polygon"
-          || (field.fieldPrimitive === "symmetry" && st.symmetryAxisPoints.length === 2 && st.symmetryScope === "polygon")))) return;
+          || (field.fieldPrimitive === "mirror" && st.mirrorAxisPoints.length === 2 && st.mirrorScope === "polygon")))) return;
       getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
     });
 
@@ -213,8 +252,11 @@ export class SceneInteraction {
       }
       this.defaultPan.end();
     });
-    stage.on("pointerupoutside", () => {
+    stage.on("pointerupoutside", (e?: { nativeEvent?: { target?: EventTarget | null } }) => {
       const st = useMazeStore.getState();
+      // Copy / Paste read the selection on `click`, which follows this pointerup.
+      const released = e?.nativeEvent?.target as Element | null | undefined;
+      if (released?.closest?.("[data-preserves-field-selection]")) return;
       const controller = getController(st);
       const fieldEditController = getFieldEditController();
       const field = st.floorFields[st.activeFloorId];
@@ -238,6 +280,7 @@ export class SceneInteraction {
 
     window.addEventListener("blur", this.onBlur);
     window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("pointerdown", this.onWindowPointerDown, true);
     app.canvas.addEventListener("pointerleave", this.onPointerLeave);
 
@@ -252,7 +295,7 @@ export class SceneInteraction {
       viewport.y = mouseY + (viewport.y - mouseY) * factor;
       viewport.scale.x *= factor;
       viewport.scale.y *= factor;
-      onViewportChanged();
+      onViewportChanged(e.ctrlKey || e.metaKey);
     };
     app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }
@@ -260,6 +303,7 @@ export class SceneInteraction {
   destroy(): void {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("pointerdown", this.onWindowPointerDown, true);
     this.deps.app.canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.deps.app.canvas.removeEventListener("wheel", this.onWheel);

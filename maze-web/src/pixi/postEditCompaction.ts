@@ -1,8 +1,7 @@
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditBaseline } from "./postEditReplay";
-import {
-  applyPostEditCommand, isCreateCommand, isDirectionCommand, renormalizeCommand,
-} from "./postEditReplay";
+import { applyPostEditCommand } from "./postEditReplay";
+import { isCreateCommand, isDirectionCommand, renormalizeCommand } from "./postEditLifelines";
 import { edgeKey, endpointKey, type PostEditEndpoint } from "./postEditEndpoint";
 
 /** Groups commands by the spatial face or entity whose state they change.

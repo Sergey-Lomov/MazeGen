@@ -1,7 +1,7 @@
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::waypoint_distance_core::{Waypoint, WaypointDistances};
-use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
 use crate::space::Tessellation;
 use rand::RngCore;

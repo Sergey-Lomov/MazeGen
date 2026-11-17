@@ -362,3 +362,36 @@ fn a_stale_chosen_edge_is_skipped_without_counting_as_fixed() {
     assert!(maze.graph.edge(e0).is_some());
     assert!(maze.graph.edge(e2).is_some());
 }
+
+#[test]
+fn a_blocked_top_pick_falls_back_to_the_next_candidate() {
+    // `problematic` with no overlap ties on ascending EdgeId, so e0 is tried first. It is stale
+    // (cannot be cut), so the strategy must move on to another candidate of the same route instead
+    // of giving the route up.
+    for priority in [PRIORITY_PROBLEMATIC, PRIORITY_RANDOM] {
+        let (mut maze, e0, e1, e2) = maze_with_mixed_route();
+        maze.graph.remove_initial_edge(e0);
+        let issue = InvalidSplitRouteIssue::new_from_check(
+            "test",
+            vec![vec![(e0, true), (e1, false), (e2, true)]],
+        );
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(
+            &SplitRouteCutStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[(PARAM_EDGE_SCOPE, EDGE_SCOPE_ANY), (PARAM_PRIORITY, priority)]),
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Fixed { score: None }),
+            "{priority}: must fall back past the blocked candidate"
+        );
+        assert!(
+            maze.graph.edge(e1).is_none() || maze.graph.edge(e2).is_none(),
+            "{priority}: one of the remaining candidates must be cut"
+        );
+    }
+}

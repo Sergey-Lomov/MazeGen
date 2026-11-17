@@ -36,14 +36,15 @@ pub(super) fn edge_pair(graph: &Graph, eid: crate::ids::EdgeId) -> Option<[u32; 
 /// different `Issue` types. `cycles` yields each flagged cycle's edges — for `InvalidLoopIssue`
 /// that's `all[idx]` per `invalid` index, for `InvalidLoopGroupIssue` `invalid` already holds the
 /// cycles directly (no index indirection).
-pub(super) fn resolve_cycle_payload<'a>(
-    cycles: impl Iterator<Item = &'a Vec<crate::ids::EdgeId>>,
+pub(super) fn resolve_cycle_payload<'a, C: AsRef<[crate::ids::EdgeId]> + 'a>(
+    cycles: impl Iterator<Item = &'a C>,
     invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
     graph: &Graph,
     preset_state: &PresetState,
 ) -> Option<IssuePayload> {
     let mut edges: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
-    for loop_edges in cycles {
+    for cycle in cycles {
+        let loop_edges = cycle.as_ref();
         let edge_pairs: Vec<[u32; 2]> = loop_edges
             .iter()
             .filter_map(|&eid| edge_pair(graph, eid))
@@ -658,6 +659,33 @@ pub(super) fn resolve_elevator_stop_group_map(
     }
 }
 
+/// Resolves a grouped dead-end issue into one highlightable single-node region per dead end.
+/// Preset locks do not affect visibility; they only constrain any later repair.
+pub(super) fn resolve_dead_end_group_map(
+    groups: &[(Vec<NodeId>, u32)],
+    invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>,
+) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
+    for (group, _excess) in groups {
+        let mut key = group.clone();
+        key.sort_unstable();
+        for &id in group {
+            let Some(id32) = u32::try_from(id).ok() else {
+                continue;
+            };
+            for source in invalid_sources.get(&key).into_iter().flatten() {
+                out.entry(source.clone())
+                    .or_default()
+                    .push(IssueRegionPayload {
+                        region: vec![id32],
+                        preset_locked: false,
+                    });
+            }
+        }
+    }
+    (!out.is_empty()).then_some(IssuePayload::InvalidDeadEnd { nodes: out })
+}
+
 /// Resolves a deficit issue's `missing: Vec<(RepairArea, u32)>` (shared shape of
 /// `MissingVerticalPassagesIssue`/`MissingTeleportsIssue`/`MissingElevatorsIssue`/
 /// `AreaMissingElevatorStopsIssue`) into the `AreaDeficit` wire shape — `RepairArea::Level` becomes
@@ -930,14 +958,14 @@ fn cross_element_entry<T: Tessellation>(
             // Narrow to just the close nodes when the scan pinned them down (all split
             // occurrences share one point, so this is rarely a strict subset — but honor it).
             let narrowed: Vec<NodeId> = if close_nodes.is_empty() {
-                nodes.clone()
+                nodes
             } else {
                 let kept: Vec<NodeId> = nodes
                     .iter()
                     .copied()
                     .filter(|n| close_nodes.contains(n))
                     .collect();
-                if kept.is_empty() { nodes.clone() } else { kept }
+                if kept.is_empty() { nodes } else { kept }
             };
             let payload = tile_payload(&narrowed, preset_state);
             CrossElementPayloadEntry {

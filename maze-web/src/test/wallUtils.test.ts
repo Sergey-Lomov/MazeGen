@@ -17,7 +17,7 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, drawCellBoundaryHighlight, clampBoundaryInset, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, oneWayIndicatorSpan, drawOneWayWallHighlight, drawCellBoundaryHighlight, clampBoundaryInset, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -202,6 +202,26 @@ describe("drawOneWayArrow", () => {
     // 7.5 - 3.75 = 3.75).
     expect(x).toBeCloseTo(3.75, 5);
     expect(x).toBeLessThan(7.5);
+  });
+
+  it("takes the arrowhead's width from headWidth, independent of the arrow's length (GitHub issue #993)", () => {
+    const wingOffset = (style: { size: number; headWidth?: number }) => {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { thickness: 4, ...style });
+      const moves = g.calls.filter((c) => c.fn === "moveTo");
+      // The second moveTo starts the head's first wing, off-axis by half the head width.
+      return Math.abs((moves[1].args as [number, number])[1]);
+    };
+    expect(wingOffset({ size: 20, headWidth: 10 })).toBeCloseTo(5, 5);
+    expect(wingOffset({ size: 40, headWidth: 10 })).toBeCloseTo(5, 5);
+  });
+
+  it("keeps the previous head proportions when headWidth is not given", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
+    const moves = g.calls.filter((c) => c.fn === "moveTo");
+    // headSize = 3.75, wing base offset = 0.6 * headSize.
+    expect(Math.abs((moves[1].args as [number, number])[1])).toBeCloseTo(0.6 * 3.75, 5);
   });
 
   it("uses the thickness style knob for its stroke width, independent of size", () => {
@@ -433,5 +453,127 @@ describe("clampBoundaryInset", () => {
 
   it("caps at half the edge length minus 1px so the quad never collapses or crosses over", () => {
     expect(clampBoundaryInset(1000, 40)).toBe(19);
+  });
+});
+
+describe("sharp tip of chevron/arrow at a miter join", () => {
+  // Heading +x: the spike of the tip is a triangle whose apex lies ahead of the geometric tip by half the stroke over sin(half apex angle).
+  const spikeApex = (g: FakeG) => {
+    const polys = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    return polys.map((p) => ({ x: Math.max(p[0], p[2], p[4]), count: p.length }));
+  };
+
+  it("chevron fills a pointed spike past its tip, wider for a thicker stroke", () => {
+    const thin = newG();
+    drawOneWayChevron(thin, 0, 0, 1, 0, { size: 20, thickness: 2, join: "miter" });
+    const thick = newG();
+    drawOneWayChevron(thick, 0, 0, 1, 0, { size: 20, thickness: 10, join: "miter" });
+    const [thinSpike] = spikeApex(thin);
+    const [thickSpike] = spikeApex(thick);
+    expect(thinSpike.count).toBe(6);
+    expect(thickSpike.x).toBeGreaterThan(thinSpike.x);
+    const tipX = 20 * 0.5 * 0.75 / 1.4;
+    expect(thinSpike.x).toBeGreaterThan(tipX);
+  });
+
+  it("arrow is one solid sharp polygon (flat-backed head), and a gap pass adds a wider one first", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 30, thickness: 4, join: "miter", gapWidth: 2 });
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
+    const polys = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    expect(polys).toHaveLength(2);
+    const [gap, main] = polys;
+    const pts = (p: number[]) => Array.from({ length: p.length / 2 }, (_, i) => ({ x: p[2 * i], y: p[2 * i + 1] }));
+    const mainPts = pts(main);
+    expect(mainPts).toHaveLength(7);
+    // The head's back edge is perpendicular to the heading: both back corners share one x, beyond the shaft's width.
+    expect(mainPts[1].x).toBeCloseTo(mainPts[2].x);
+    expect(mainPts[2].x).toBeCloseTo(mainPts[4].x);
+    expect(mainPts[5].x).toBeCloseTo(mainPts[4].x);
+    expect(Math.abs(mainPts[2].y)).toBeGreaterThan(Math.abs(mainPts[1].y));
+    expect(mainPts[3].y).toBeCloseTo(0);
+    expect(Math.max(...pts(gap).map((p) => p.x))).toBeGreaterThan(mainPts[3].x);
+  });
+
+  it("arrow head keeps its shape when only the length changes", () => {
+    const headBack = (size: number) => {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { size, thickness: 4, headWidth: 8, join: "miter" });
+      const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+      // Tip x minus back-edge x: the head's own length.
+      return poly[6] - poly[4];
+    };
+    expect(headBack(60)).toBeCloseTo(headBack(40));
+  });
+
+  it("a degenerate miter arrow (zero size / zero head) emits only finite coordinates", () => {
+    for (const style of [{ size: 0, thickness: 4, gapWidth: 2 }, { size: 30, thickness: 4, headWidth: 0, gapWidth: 2 }]) {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { ...style, join: "miter" });
+      for (const c of g.calls.filter((call) => call.fn === "poly")) {
+        expect((c.args[0] as number[]).every(Number.isFinite)).toBe(true);
+      }
+    }
+  });
+
+  it("the arrow's indicator span follows its head width, defaulting to the head proportion", () => {
+    const span = (headWidth?: number) => oneWayIndicatorSpan({ pattern: "arrow", size: 40, thickness: 4, headWidth });
+    expect(span(10) - span(6)).toBeCloseTo(4);
+    expect(span(undefined)).toBeCloseTo(span(40 * 0.225));
+  });
+
+  it("a narrow arrow head's gap tip stays within the reach limit", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 40, thickness: 4, headWidth: 2, join: "miter", gapWidth: 4 });
+    const [gap] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    const tipX = 40 * 0.5 * 0.75;
+    const maxX = Math.max(...gap.filter((_, i) => i % 2 === 0));
+    expect(maxX - tipX).toBeLessThanOrEqual(2 * (2 + 4) + 1e-6);
+  });
+
+  it("a narrow chevron's miter tip stays within the reach limit", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, width: 2, thickness: 6, join: "miter" });
+    const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    // With `width` set, `size` is the tip's distance from the center.
+    expect(Math.max(...poly.filter((_, i) => i % 2 === 0)) - 20).toBeLessThanOrEqual(2 * 3 + 1e-6);
+  });
+
+  it("a round join draws no spike", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 6, join: "round" });
+    expect(g.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
+  });
+
+  it("the spike follows the heading", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 0, 1, { size: 20, thickness: 6, join: "miter" });
+    const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    const ys = [poly[1], poly[3], poly[5]];
+    expect(Math.max(...ys)).toBeGreaterThan(20 * 0.5 * 0.75 / 1.4);
+  });
+});
+
+describe("one-way indicator layers", () => {
+  const style = { size: 30, thickness: 4, gapWidth: 3, gapColor: 1, color: 2 };
+  const colorsOf = (g: FakeG) => g.calls.filter((c) => c.fn === "fill" || c.fn === "stroke").map((c) => (c.args[0] as { color: number } | number));
+
+  it.each([
+    ["triangle", drawOneWayTriangle, "round"],
+    ["chevron", drawOneWayChevron, "round"],
+    ["chevron", drawOneWayChevron, "miter"],
+    ["arrow", drawOneWayArrow, "round"],
+    ["arrow", drawOneWayArrow, "miter"],
+  ] as const)("%s (%s join): the gap layer draws only the gap color, the main layer only the indicator color", (_name, draw, join) => {
+    const both = newG();
+    draw(both, 0, 0, 1, 0, { ...style, join });
+    const gap = newG();
+    draw(gap, 0, 0, 1, 0, { ...style, join, layer: "gap" });
+    const main = newG();
+    draw(main, 0, 0, 1, 0, { ...style, join, layer: "main" });
+    const colors = (g: FakeG) => new Set(colorsOf(g).map((c) => (typeof c === "number" ? c : c.color)));
+    expect(colors(both)).toEqual(new Set([1, 2]));
+    expect(colors(gap)).toEqual(new Set([1]));
+    expect(colors(main)).toEqual(new Set([2]));
   });
 });

@@ -1,9 +1,9 @@
 pub mod apply_commands;
 pub mod check;
 pub mod checks;
-pub mod comparison;
 pub mod cross_element;
 pub mod cycle_kind;
+pub mod distance_diagnostics;
 pub mod engine;
 pub mod event;
 pub mod floor_group;
@@ -22,6 +22,7 @@ pub mod teleport_direction_filter;
 pub mod teleport_floor_kind_filter;
 pub mod vertical_passage_type;
 
+pub use crate::comparison::Comparison;
 pub use apply_commands::{ApplyOutcome, apply_commands};
 pub use check::Check;
 pub use checks::{
@@ -46,6 +47,8 @@ pub use checks::{
     ExternalEscapeDiversityCheck, FORBID_CELL_TYPE_PARAM_PREFIX, LOOP_DISTANCE_FROM_FINISH_DEFAULT,
     LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_LENGTH_DEFAULT, LOOP_LENGTH_DEFAULT_COMPARISON,
     LoopDistanceFromFinishCheck, LoopDistanceFromStartCheck, LoopLengthCheck,
+    MAX_DEAD_END_COUNT_DEFAULT, MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE,
+    MAX_DEAD_END_DENSITY_DEFAULT, MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE,
     MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
     MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MAX_LOOP_DENSITY_DEFAULT,
     MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_LOOPS_COUNT_DEFAULT,
@@ -77,17 +80,17 @@ pub use checks::{
     MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE,
     MIN_VERTICAL_PASSAGE_RATIO_DEFAULT, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
     MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE,
-    MaxElevatorCountCheck, MaxElevatorDensityCheck, MaxElevatorStopGapCheck, MaxElevatorStopsCheck,
-    MaxElevatorStopsPerFloorCheck, MaxLoopDensityCheck, MaxLoopsCountCheck, MaxOneWayCountCheck,
-    MaxOneWayRatioCheck, MaxRegionRatioCheck, MaxRegionSizeCheck, MaxSplitCountCheck,
-    MaxSplitDensityCheck, MaxSplitTileNodeCountCheck, MaxTeleportCountCheck,
-    MaxTeleportDensityCheck, MaxVerticalPassageCountCheck, MaxVerticalPassageRatioCheck,
-    MinElevatorCountCheck, MinElevatorDensityCheck, MinElevatorHeightCheck,
-    MinElevatorStopCountCheck, MinElevatorStopsPerAreaCountCheck,
-    MinElevatorStopsPerAreaDensityCheck, MinLoopDensityCheck, MinLoopsCountCheck,
-    MinOneWayCountCheck, MinOneWayRatioCheck, MinRegionCountCheck, MinRegionRatioCheck,
-    MinRegionSizeCheck, MinTeleportCountCheck, MinTeleportRatioCheck, MinVerticalPassageCountCheck,
-    MinVerticalPassageRatioCheck, MissingEndpointsCheck,
+    MaxDeadEndCountCheck, MaxDeadEndDensityCheck, MaxElevatorCountCheck, MaxElevatorDensityCheck,
+    MaxElevatorStopGapCheck, MaxElevatorStopsCheck, MaxElevatorStopsPerFloorCheck,
+    MaxLoopDensityCheck, MaxLoopsCountCheck, MaxOneWayCountCheck, MaxOneWayRatioCheck,
+    MaxRegionRatioCheck, MaxRegionSizeCheck, MaxSplitCountCheck, MaxSplitDensityCheck,
+    MaxSplitTileNodeCountCheck, MaxTeleportCountCheck, MaxTeleportDensityCheck,
+    MaxVerticalPassageCountCheck, MaxVerticalPassageRatioCheck, MinElevatorCountCheck,
+    MinElevatorDensityCheck, MinElevatorHeightCheck, MinElevatorStopCountCheck,
+    MinElevatorStopsPerAreaCountCheck, MinElevatorStopsPerAreaDensityCheck, MinLoopDensityCheck,
+    MinLoopsCountCheck, MinOneWayCountCheck, MinOneWayRatioCheck, MinRegionCountCheck,
+    MinRegionRatioCheck, MinRegionSizeCheck, MinTeleportCountCheck, MinTeleportRatioCheck,
+    MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck, MissingEndpointsCheck,
     ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
@@ -125,8 +128,8 @@ pub use checks::{
     VerticalPassageGroupGeometricProximityCheck, VerticalPassageGroupGraphProximityCheck,
     elevator_groups, elevator_stops_per_floor, stop_floors,
 };
-pub use comparison::Comparison;
 pub use cycle_kind::CycleKind;
+pub use distance_diagnostics::{DistanceDiagnostics, IndeterminateReason, UndecidedPair};
 pub use engine::QualityControlEngine;
 pub use event::QcEvent;
 pub use floor_group::{floor_point_count, floors_of_edge, floors_of_edges, floors_of_node};
@@ -134,47 +137,51 @@ pub use floor_scope::FloorScope;
 pub use geometric_floor_mode::GeometricFloorMode;
 pub use issue::{
     AREA_MISSING_ELEVATOR_STOPS, CYCLE_ANALYSIS_OVERFLOWED, EXCESSIVE_ELEVATOR_STOP_GAP,
-    EXCESSIVE_SCC_COUNT, INVALID_CROSS_ELEMENT, INVALID_CROSS_ELEMENT_GROUP, INVALID_ELEVATOR,
-    INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
-    INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
-    INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP,
-    INVALID_SPLIT_ROUTE, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT,
-    INVALID_TELEPORT_GROUP, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, Issue,
-    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT,
-    MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS,
-    MISSING_ONE_WAYS, MISSING_REGIONS, MISSING_SPLIT_TILES, MISSING_TELEPORTS,
-    MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED,
-    UNREACHABLE_FINISH,
+    EXCESSIVE_SCC_COUNT, INDETERMINATE_DISTANCE, INVALID_CROSS_ELEMENT, INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END,
+    INVALID_DEAD_END_GROUP, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP,
+    INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP, INVALID_LOOP_GROUP, INVALID_ONE_WAY,
+    INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION,
+    INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
+    INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
+    INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, Issue, IssueKind, IssueKindConst,
+    IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT, MISSING_ELEVATOR_STOP_COUNT,
+    MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS, MISSING_ONE_WAYS, MISSING_REGIONS,
+    MISSING_SPLIT_TILES, MISSING_TELEPORTS, MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION,
+    REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED, UNREACHABLE_FINISH,
 };
 pub use issue_kinds::{
     AreaMissingElevatorStopsIssue, CrossElementCellViolation, CrossElementCloseNodes,
-    CrossElementGroupKind, CycleAnalysisOverflowedIssue, ElevatorGroupKind, ElevatorNodes,
+    CrossElementGroupKind,
+    CycleAnalysisOverflowedIssue, DeadEndGroupKind, ElevatorGroupKind, ElevatorNodes,
     ElevatorStopGroupKind, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-    InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidElevatorGroupIssue,
-    InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue,
-    InvalidGroupIssue, InvalidGroupIssueKind, InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
-    InvalidLoopIssue, InvalidLoopRequirement, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+    IndeterminateDistanceIssue, InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidDeadEndGroupIssue,
+    InvalidDeadEndIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
+    InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidGroupIssue,
+    InvalidGroupIssueKind, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, InvalidLoopIssue,
+    InvalidLoopRequirement, InvalidOneWayGroupIssue, InvalidOneWayIssue,
     InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeConnectionIssue,
     InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue, InvalidSplitRouteIssue,
     InvalidSplitTileGroupIssue, InvalidSplitTileIssue, InvalidTeleportGroupIssue,
     InvalidTeleportIssue, InvalidVerticalPassageGroupIssue, InvalidVerticalPassageIssue,
-    MissingElevatorHeightIssue, MissingElevatorStopCountIssue, MissingElevatorsIssue,
-    MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue,
-    MissingSplitTilesIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue, OneWayGroupKind,
-    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, RepairLimitKind, RepairLimitReachedIssue,
-    SplitGroupKind, SplitNodeConnectionGroupKind, SplitNodeGroupKind, SplitRouteEdge,
-    SplitTileNodes, TeleportGroupKind, UnreachableFinishIssue, VerticalPassageGroupKind,
+    LoopGroupKind, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
+    MissingElevatorsIssue, MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue,
+    MissingRegionsIssue, MissingSplitTilesIssue, MissingTeleportsIssue,
+    MissingVerticalPassagesIssue, OneWayGroupKind, RegionNeedsExpansionIssue,
+    RegionNeedsShrinkIssue, RepairLimitKind, RepairLimitReachedIssue, SharedCycle, SplitGroupKind,
+    SplitNodeConnectionGroupKind, SplitNodeGroupKind, SplitRouteEdge, SplitTileNodes,
+    TeleportGroupKind, UnreachableFinishIssue, VerticalPassageGroupKind,
 };
 pub use issue_payload::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload, resolve_issue_payload,
+    IssueSplitTilePayload, IssueUndecidedPairPayload, resolve_issue_payload,
 };
 pub use repair_area::RepairArea;
 pub use rule::{Rule, RuleIterationOutcome, RuleTrait};
 pub use rule_params::{
-    PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS, PARAM_VERTICAL_PASSAGE_TYPE, RULE_PARAM_DESCRIPTORS,
-    RuleParamDescriptor, RuleParamKind, RuleParams, rule_param_applies_to,
+    PARAM_APPROXIMATE_TOPOLOGY, PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS,
+    PARAM_VERTICAL_PASSAGE_TYPE, RULE_PARAM_DESCRIPTORS, RuleParamDescriptor, RuleParamKind,
+    RuleParams, rule_param_applies_to,
 };
 pub use stage::Stage;
 pub use teleport_direction_filter::TeleportDirectionFilter;

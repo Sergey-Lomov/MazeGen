@@ -48,6 +48,26 @@ describe("WallRenderer.render", () => {
     expect(strokeCalls).toHaveLength(2);
   });
 
+  it("with batchStrokes, merges the default-style solid walls into a single stroke while keeping one subpath per edge", () => {
+    const renderer = new WallRenderer(new Container(), true);
+    renderer.render({ edges: cornerEdges() }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+    // Each edge keeps its own moveTo, so segments stay independent subpaths (no chaining or joins).
+    expect(g.calls.filter((c) => c.fn === "moveTo")).toHaveLength(2);
+    // The single stroke comes after every path was traced.
+    expect(g.calls[g.calls.length - 1].fn).toBe("stroke");
+  });
+
+  it("with batchStrokes and no solid walls, issues no stroke at all", () => {
+    const renderer = new WallRenderer(new Container(), true);
+    renderer.render({ edges: [] }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
+  });
+
   it("with a style override, chains the two corner edges into one continuous path (single stroke call) so the join renders", () => {
     const renderer = new WallRenderer(new Container());
     renderer.render({ edges: cornerEdges() }, squareCfg, { color: 0x123456, width: 5, join: "miter", cap: "square" });
@@ -153,7 +173,7 @@ describe("WallRenderer.render", () => {
     const renderer = new WallRenderer(new Container());
     const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
     const chevronStyle: OneWayStyleOverride = {
-      pattern: "chevron", color: 0x1, gapColor: 0x2, gapWidth: 0, size: 10, thickness: 4, join: "round", cap: "round",
+      pattern: "chevron", color: 0x1, gapColor: 0x2, gapWidth: 0, size: 10, thickness: 4, headWidth: 2, join: "round", cap: "round",
     };
     renderer.render({ edges: oneWayEdges }, squareCfg, undefined, chevronStyle);
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
@@ -169,7 +189,7 @@ describe("WallRenderer.render", () => {
     const renderer = new WallRenderer(new Container());
     const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
     const triangleStyle: OneWayStyleOverride = {
-      pattern: "triangle", color: 0xaaaaaa, gapColor: 0xbbbbbb, gapWidth: 5, size: 30, thickness: 4, join: "miter", cap: "square",
+      pattern: "triangle", color: 0xaaaaaa, gapColor: 0xbbbbbb, gapWidth: 5, size: 30, thickness: 4, headWidth: 2, join: "miter", cap: "square",
     };
     renderer.render({ edges: oneWayEdges }, squareCfg, undefined, triangleStyle);
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;

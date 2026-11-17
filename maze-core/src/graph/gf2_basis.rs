@@ -28,12 +28,19 @@ impl GF2Basis {
     /// returns `false` (linearly dependent, already spanned) and `vector` is discarded.
     pub(crate) fn try_insert(&mut self, mut vector: Vec<u64>) -> bool {
         debug_assert_eq!(vector.len(), self.words_per_row);
+        // A row has no bits above its own pivot, so xoring it never touches words above the
+        // current top word: the pivot search resumes from there instead of rescanning from the end.
+        let mut top = vector.len();
         loop {
-            let Some(pivot) = highest_set_bit(&vector) else {
+            while top > 0 && vector[top - 1] == 0 {
+                top -= 1;
+            }
+            if top == 0 {
                 return false; // reduced to the zero vector: dependent
-            };
+            }
+            let pivot = (top - 1) * 64 + 63 - vector[top - 1].leading_zeros() as usize;
             match &self.rows[pivot] {
-                Some(row) => xor_into(&mut vector, row),
+                Some(row) => xor_into(&mut vector[..top], &row[..top]),
                 None => {
                     self.rows[pivot] = Some(vector);
                     return true;
@@ -41,16 +48,6 @@ impl GF2Basis {
             }
         }
     }
-}
-
-fn highest_set_bit(vector: &[u64]) -> Option<usize> {
-    for (word_idx, &word) in vector.iter().enumerate().rev() {
-        if word != 0 {
-            let bit_in_word = 63 - word.leading_zeros() as usize;
-            return Some(word_idx * 64 + bit_in_word);
-        }
-    }
-    None
 }
 
 fn xor_into(vector: &mut [u64], other: &[u64]) {
@@ -69,4 +66,37 @@ pub(crate) fn set_bit(words_per_row: usize, bits: impl Iterator<Item = usize>) -
         v[bit / 64] |= 1u64 << (bit % 64);
     }
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bits(words: usize, set: &[usize]) -> Vec<u64> {
+        set_bit(words, set.iter().copied())
+    }
+
+    #[test]
+    fn dependent_vector_across_word_boundary_is_rejected() {
+        let mut basis = GF2Basis::new(130);
+        assert!(basis.try_insert(bits(3, &[0, 70, 129])));
+        assert!(basis.try_insert(bits(3, &[70, 100])));
+        // (0,70,129) xor (70,100) = (0,100,129): dependent on the two rows above.
+        assert!(!basis.try_insert(bits(3, &[0, 100, 129])));
+    }
+
+    #[test]
+    fn zero_vector_is_dependent() {
+        let mut basis = GF2Basis::new(64);
+        assert!(!basis.try_insert(bits(1, &[])));
+    }
+
+    #[test]
+    fn reduction_to_lower_word_pivot_inserts_independent_vector() {
+        let mut basis = GF2Basis::new(130);
+        assert!(basis.try_insert(bits(3, &[129, 5])));
+        // Reduces against the row above, leaving only bit 7 in word 0.
+        assert!(basis.try_insert(bits(3, &[129, 5, 7])));
+        assert!(!basis.try_insert(bits(3, &[7])));
+    }
 }

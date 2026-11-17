@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
-import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n, resolveParamLabel, resolveParamDescription, resolveParamOptionExplanation } from "../components/features/qualityI18n";
+import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n, resolveNestedStrategyLabel, resolveParamLabel, resolveParamDescription, resolveParamOptionExplanation } from "../components/features/qualityI18n";
 import { resolveIssue, DETAIL_LABELS } from "../components/issueRegistry";
 
 // Every check whose maze-core implementation calls `.with_detail(...)` (grep for
@@ -26,7 +26,7 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "cross_element_geometric_proximity", "cross_element_graph_proximity",
 ];
 
-// `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.sh` / `wasm-rebuild.ps1`;
+// `src/wasm/pkg/` is gitignored build output produced by `scripts/wasm-rebuild.sh` / `scripts/windows/wasm-rebuild.ps1`;
 // `npm test` requires it (`tools/require-wasm.mjs`).
 const wasmPath = resolve(dirname(__filename), "../wasm/pkg/maze_wasm_bg.wasm");
 
@@ -189,5 +189,26 @@ describe("wasm registry vs web i18n consistency", () => {
     // A sibling strategy sharing the same `selection` param must still see the generic label.
     const sibling = resolveParamLabel("selection", "fallback", "split_node_group_select");
     expect(sibling).toBe(generic);
+  });
+
+  it("dead_end_to_teleport's one_way_chance label override actually overrides the generic text", () => {
+    expect(strategies.some((s) => s.id === "dead_end_to_teleport"), '"dead_end_to_teleport" is not a registered wasm strategy id').toBe(true);
+
+    const generic = resolveParamLabel("one_way_chance", "fallback");
+    const overridden = resolveParamLabel("one_way_chance", "fallback", "dead_end_to_teleport");
+    expect(overridden).not.toBe(generic);
+
+    const sibling = resolveParamLabel("one_way_chance", "fallback", "missing_teleports");
+    expect(sibling).toBe(generic);
+  });
+
+  it("dead-end repair uses repair-specific priority wording", () => {
+    expect(strategies.some((s) => s.id === "dead_end_group_select"), '"dead_end_group_select" is not a registered wasm strategy id').toBe(true);
+
+    expect(resolveParamLabel("priority", "fallback", "dead_end_group_select"))
+      .not.toBe(resolveParamLabel("priority", "fallback"));
+    expect(resolveParamDescription("priority", "dead_end_group_select"))
+      .not.toBe(resolveParamDescription("priority"));
+    expect(resolveNestedStrategyLabel("invalid_dead_end")).not.toBe(resolveNestedStrategyLabel("invalid_one_way"));
   });
 });

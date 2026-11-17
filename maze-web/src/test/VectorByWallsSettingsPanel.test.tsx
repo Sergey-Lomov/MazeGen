@@ -1,5 +1,6 @@
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { VectorByWallsSettingsPanel } from "../components/features/VectorByWallsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -55,7 +56,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
-      gridColor: 0xffffff,
+      gridColor: 0xffffff, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0xffffff,
       floorColor: 0x2a2a2a,
@@ -66,21 +67,22 @@ beforeEach(() => {
       oneWayPattern: "triangle",
       oneWayColor: 0xff0000,
       oneWayGapWidth: 0,
-      oneWaySize: 0.18,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
+      markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
-      teleportAvoidFieldExit: false,
+      teleportAvoidFieldExit: false, teleportMergeMode: true,
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -185,14 +187,16 @@ describe("VectorByWallsSettingsPanel", () => {
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
-        background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
-        oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+        background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
+        oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",
+        markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
         finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+        startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
         teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
-        teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
+        teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false, teleportMergeMode: true,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
-        teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+        teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -374,14 +378,72 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.gapWidth).toBe(0);
   });
 
-  it("renders the one-ways section's pattern, color, gap width, join, size and thickness fields when expanded", () => {
+  it("External passage subsection (GitHub issue #330): the mode reveals the pointer group and writes only its own endpoint", () => {
+    useMazeStore.setState({ vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, markers_start_opening: true, markers_finish_opening: true } });
+    render(<VectorByWallsSettingsPanel />);
+    const modeLabel = m["image_export.vector_by_walls.opening_mode"]();
+    expect(screen.getAllByText(modeLabel)).toHaveLength(2);
+    // The pointer group's pattern row shares its label with the One-ways section's, so count the rows.
+    const patternCount = () => screen.queryAllByText(m["image_export.vector_by_walls.one_way_pattern"]()).length;
+    const before = patternCount();
+    const finishMode = () => screen.getAllByText(modeLabel)[1].parentElement!.querySelector("select")!;
+    fireEvent.change(finishMode(), { target: { value: "opening" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishOpening.mode).toBe("opening");
+    expect(patternCount()).toBe(before);
+    fireEvent.change(finishMode(), { target: { value: "both" } });
+    const { startOpening, finishOpening } = useMazeStore.getState().vectorByWallsSettings;
+    expect(finishOpening.mode).toBe("both");
+    expect(startOpening.mode).toBe("none");
+    expect(patternCount()).toBe(before + 1);
+    fireEvent.change(finishMode(), { target: { value: "pointer" } });
+    expect(patternCount()).toBe(before + 1);
+  });
+
+  it("renders the one-ways section's pattern, color, gap width, join and the triangle's size only when expanded (GitHub issue #993)", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_pattern"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_color"]())).toBeInTheDocument();
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_gap_width"]()).length).toBeGreaterThan(0);
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_join"]()).length).toBeGreaterThan(0);
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]()).length).toBeGreaterThan(0);
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_thickness"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_length"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_head_width"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the chevron's size and thickness for the chevron pattern", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]()).length).toBeGreaterThan(0);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_length"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_head_width"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the arrow's length, head width and thickness, but no size, for the arrow pattern", () => {
+    const sizeLabels = () => screen.queryAllByText(m["image_export.vector_by_walls.one_way_size"]()).length;
+    const { unmount } = render(<VectorByWallsSettingsPanel />);
+    const withTriangle = sizeLabels();
+    unmount();
+    useMazeStore.getState().setVectorByWallsOneWayPattern("arrow");
+    render(<VectorByWallsSettingsPanel />);
+    expect(sizeLabels()).toBe(withTriangle - 1);
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_length"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_head_width"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
+  });
+
+  it("changing the arrow's head width updates only that pattern's own parameter", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("arrow");
+    render(<VectorByWallsSettingsPanel />);
+    const before = useMazeStore.getState().vectorByWallsSettings.oneWayGeometry;
+    const slider = screen.getByText(m["image_export.vector_by_walls.one_way_head_width"]())
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "7" } });
+    const after = useMazeStore.getState().vectorByWallsSettings.oneWayGeometry;
+    expect(after.arrow.headWidth).toBe(7);
+    expect(after.triangle).toEqual(before.triangle);
+    expect(after.chevron).toEqual(before.chevron);
   });
 
   it("collapsing the one-ways section hides its fields", () => {
@@ -436,15 +498,16 @@ describe("VectorByWallsSettingsPanel", () => {
     const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]());
     const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "12" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(12);
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayGeometry.triangle.size).toBe(12);
   });
 
-  it("changing the one-way thickness updates the store", () => {
+  it("changing the chevron thickness updates the store", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
     render(<VectorByWallsSettingsPanel />);
     const slider = screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())
       .parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "6" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWayThickness).toBe(6);
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayGeometry.chevron.thickness).toBe(6);
   });
 
   describe("Teleports section", () => {
@@ -488,9 +551,31 @@ describe("VectorByWallsSettingsPanel", () => {
     it("changing the corner style updates the store", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
+      const select = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]())[0];
       fireEvent.change(select, { target: { value: "round" } });
       expect(useMazeStore.getState().vectorByWallsSettings.teleportMarker.cornerStyle).toBe("round");
+    });
+
+    it("shows the angled connector corner style only for angled connectors and overrides its shared-style link", () => {
+      const sharedCornerStyle = useMazeStore.getState().vectorByWallsSettings.cornerStyle;
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const connectorStyle = screen.getByText(m["image_export.vector_by_walls.teleport_connector_style"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorStyle, { target: { value: "orthogonal" } });
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())).toHaveLength(2);
+
+      fireEvent.change(connectorStyle, { target: { value: "straight" } });
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())).toHaveLength(1);
+
+      fireEvent.change(connectorStyle, { target: { value: "orthogonal" } });
+      const connectorCorner = screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())[1]
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorCorner, { target: { value: "round" } });
+      const settings = useMazeStore.getState().vectorByWallsSettings;
+      expect(settings.teleportConnectorCornerStyle).toBe("round");
+      expect(settings.cornerStyle).toBe(sharedCornerStyle);
+      expect(settings.links.find((link) => link.target === "teleportConnectorCornerStyle")?.enabled).toBe(false);
     });
 
     it("changing the marker size updates the store", () => {
@@ -663,6 +748,21 @@ describe("VectorByWallsSettingsPanel", () => {
       fireEvent.mouseEnter(screen.getByText("<->"));
       expect(hovered()).toEqual([0, 1]);
       fireEvent.mouseLeave(screen.getByText("#1"));
+      expect(hovered()).toBeNull();
+    });
+
+    it("opening a group color picker clears the canvas highlight (GitHub issue #877)", () => {
+      twoWayTeleportState();
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const hovered = () => useMazeStore.getState().hoveredTeleportNodeIds;
+      fireEvent.mouseEnter(screen.getByText("#1"));
+      expect(hovered()).toEqual([0, 1]);
+      // The group cell is the nearest ancestor of the "#1" title that also holds the swatches.
+      let cell: HTMLElement = screen.getByText("#1");
+      while (!cell.querySelector('div[role="button"]')) cell = cell.parentElement!;
+      const swatch = Array.from(cell.querySelectorAll<HTMLElement>('div[role="button"]')).find((el) => el.style.width === "40px")!;
+      fireEvent.click(swatch);
       expect(hovered()).toBeNull();
     });
 
@@ -840,8 +940,7 @@ describe("VectorByWallsSettingsPanel", () => {
         },
       });
       render(<VectorByWallsSettingsPanel />);
-      // "Border color" appears for Start/Finish markers, the "Vertical connections" shared-style
-      // marker row, and the one-way sub-group's own marker.
+      // "Border color" appears for Start/Finish markers and the one-way sub-group's own marker.
       expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(3);
     });
 
@@ -871,6 +970,10 @@ describe("VectorByWallsSettingsPanel", () => {
             ...useMazeStore.getState().vectorByWallsSectionsExpanded,
             vertical: true,
             vertical_elevator: true,
+            vertical_elevator_badges: true,
+            elevator_badges_placement: true,
+            elevator_badges_text: true,
+            elevator_badges_backplate: true,
           },
           vectorByWallsSettings: {
             ...useMazeStore.getState().vectorByWallsSettings,
@@ -886,6 +989,40 @@ describe("VectorByWallsSettingsPanel", () => {
         setElevatorState();
         render(<VectorByWallsSettingsPanel />);
         expect(screen.getByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())).toBeInTheDocument();
+      });
+
+      it("keeps Placement, Text and Backplate collapsed until opened, each hiding only its own rows", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        useMazeStore.setState({
+          vectorByWallsSectionsExpanded: {
+            ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+            elevator_badges_placement: false,
+            elevator_badges_text: false,
+            elevator_badges_backplate: false,
+          },
+        });
+        render(<VectorByWallsSettingsPanel />);
+        const distance = m["image_export.vector_by_walls.elevator_badges_distance"]();
+        const labelType = m["image_export.vector_by_walls.elevator_badges_label_type"]();
+        expect(screen.queryByText(distance)).not.toBeInTheDocument();
+        expect(screen.queryByText(labelType)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges_subsection_placement"]()));
+        expect(useMazeStore.getState().vectorByWallsSectionsExpanded.elevator_badges_placement).toBe(true);
+        expect(screen.getByText(distance)).toBeInTheDocument();
+        expect(screen.queryByText(labelType)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges_subsection_text"]()));
+        expect(screen.getByText(labelType)).toBeInTheDocument();
+      });
+
+      it("collapsing the Floor badges subsection hides the toggle and its sub-groups", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        render(<VectorByWallsSettingsPanel />);
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges"]()));
+        expect(useMazeStore.getState().vectorByWallsSectionsExpanded.vertical_elevator_badges).toBe(false);
+        expect(screen.queryByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())).not.toBeInTheDocument();
+        expect(screen.queryByText(m["image_export.vector_by_walls.elevator_badges_subsection_text"]())).not.toBeInTheDocument();
       });
 
       it("hides the rest of the elevator badges fields when disabled", () => {
@@ -910,17 +1047,6 @@ describe("VectorByWallsSettingsPanel", () => {
         const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_letters"]());
         fireEvent.change(select, { target: { value: "roman" } });
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.labelType).toBe("roman");
-      });
-
-      it("changing the font weight updates the store", () => {
-        setElevatorState({ elevatorBadgesEnabled: true });
-        render(<VectorByWallsSettingsPanel />);
-        // GitHub issue #697 follow-up added two other "bold" font-weight selects (start/finish
-        // marker text) rendered earlier in the panel — the elevator badges one is last.
-        const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
-        const select = selects[selects.length - 1];
-        fireEvent.change(select, { target: { value: "regular" } });
-        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.textFontWeight).toBe("regular");
       });
 
       it("changing the corner style updates the store and disables its shared-style link (GitHub issue #322 follow-up)", () => {
@@ -1085,6 +1211,7 @@ describe("VectorByWallsSettingsPanel", () => {
         edges: [{ from: 0, to: 1, kind: "teleport" as const }],
         vectorByWallsSettings: {
           ...useMazeStore.getState().vectorByWallsSettings,
+          startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
           teleportMarker: { ...useMazeStore.getState().vectorByWallsSettings.teleportMarker, borderWidth: 0, fillColor: 0xffffff },
           teleportConnectorColor: 0xffffff,
         },
@@ -1130,6 +1257,37 @@ describe("VectorByWallsSettingsPanel", () => {
   });
 });
 
+describe("VectorByWallsSettingsPanel start/finish marker toggle (GitHub issue #963)", () => {
+  const withMarker = (markerEnabled: boolean) => {
+    const st = useMazeStore.getState();
+    useMazeStore.setState({
+      vectorByWallsSettings: {
+        ...st.vectorByWallsSettings,
+        startMarker: { ...st.vectorByWallsSettings.startMarker, markerEnabled },
+        finishMarker: { ...st.vectorByWallsSettings.finishMarker, markerEnabled },
+      },
+      vectorByWallsSectionsExpanded: { ...st.vectorByWallsSectionsExpanded, markers_start_marker: true, markers_finish_marker: true },
+    });
+  };
+
+  it("hides the marker look rows when the marker is off, keeping the toggle", () => {
+    withMarker(false);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_show"]())).toHaveLength(2);
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_shape"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_fill_color"]())).toBeNull();
+  });
+
+  it("shows the marker look rows when the marker is on, and the toggle patches the start marker", () => {
+    withMarker(true);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_shape"]())).toHaveLength(2);
+    const toggle = screen.getAllByRole("checkbox", { name: m["image_export.vector_by_walls.marker_show"]() })[0];
+    fireEvent.click(toggle);
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.markerEnabled).toBe(false);
+  });
+});
+
 describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", () => {
   const withCaption = (textEnabled: boolean) => {
     const st = useMazeStore.getState();
@@ -1137,6 +1295,7 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     useMazeStore.setState({
       vectorByWallsSettings: {
         ...st.vectorByWallsSettings,
+        markerLayout: "auto", markerScale: 1,
         startMarker: { ...startMarker, textEnabled, textColor: 0x112233 },
         finishMarker: { ...finishMarker, textEnabled, textColor: 0x112233 },
       },
@@ -1151,7 +1310,6 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text"]())).toBeNull();
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_color"]())).toBeNull();
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).toBeNull();
-    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_font_weight"]())).toBeNull();
   });
 
   it("shows caption text and style rows when the caption is on", () => {
@@ -1159,5 +1317,42 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_size"]())).toHaveLength(2);
+  });
+});
+
+describe("Topology section (cut lines, GitHub issue #859)", () => {
+  const withGlues = () => useMazeStore.setState({
+    floorTopology: { [useMazeStore.getState().activeFloorId]: { folds: [], groups: [{ id: 0 }] } },
+    vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, topology: true, cutLines: true },
+  } as never);
+
+  it("is hidden for a floor without glues", () => {
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["topology.title"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the lines and glue-colour toggles, but not the colour while lines take their glue's colour", () => {
+    withGlues();
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getByText(m["image_export.topology.show_cut_lines"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.topology.cut_lines_glue_color"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.topology.cut_lines_color"]())).not.toBeInTheDocument();
+  });
+
+  it("offers the single colour once the glue colour is off, and hides the rest once the lines are off", () => {
+    withGlues();
+    useMazeStore.getState().setVectorByWallsCutLinesGlueColor(false);
+    const { rerender } = render(<VectorByWallsSettingsPanel />);
+    expect(screen.getByText(m["image_export.topology.cut_lines_color"]())).toBeInTheDocument();
+    act(() => useMazeStore.getState().setVectorByWallsShowCutLines(false));
+    rerender(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.topology.cut_lines_glue_color"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.topology.cut_lines_color"]())).not.toBeInTheDocument();
+  });
+
+  it("starts with the lines shown, in the glue colour", () => {
+    const { showCutLines, cutLinesGlueColor, cutLinesColor } = useMazeStore.getState().vectorByWallsSettings;
+    expect({ showCutLines, cutLinesGlueColor, cutLinesColor }).toEqual({ showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080 });
   });
 });

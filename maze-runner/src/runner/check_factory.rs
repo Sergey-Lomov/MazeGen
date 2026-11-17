@@ -25,14 +25,16 @@ use maze_core::{
         ElevatorStopGroupGraphProximityCheck, ElevatorStopsSkipCheck, ElevatorStopsSpanCheck,
         ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue, ExternalEscapeDiversityCheck,
         FORBID_CELL_TYPE_PARAM_PREFIX, FloorScope, GeometricFloorMode,
-        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidElevatorGroupIssue,
-        InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
-        InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidDeadEndGroupIssue,
+        InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
+        InvalidLoopGroupIssue, InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
         InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
         InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
         InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
         LOOP_DISTANCE_FROM_FINISH_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_LENGTH_DEFAULT,
         LoopDistanceFromFinishCheck, LoopDistanceFromStartCheck, LoopLengthCheck,
+        MAX_DEAD_END_COUNT_DEFAULT, MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE,
+        MAX_DEAD_END_DENSITY_DEFAULT, MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE,
         MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
         MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MAX_LOOP_DENSITY_DEFAULT,
         MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_LOOPS_COUNT_DEFAULT,
@@ -64,22 +66,22 @@ use maze_core::{
         MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
         MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT,
         MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
-        MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MaxElevatorCountCheck,
-        MaxElevatorDensityCheck, MaxElevatorStopGapCheck, MaxElevatorStopsCheck,
-        MaxElevatorStopsPerFloorCheck, MaxLoopDensityCheck, MaxLoopsCountCheck,
-        MaxOneWayCountCheck, MaxOneWayRatioCheck, MaxRegionRatioCheck, MaxRegionSizeCheck,
-        MaxSplitCountCheck, MaxSplitDensityCheck, MaxSplitTileNodeCountCheck,
-        MaxTeleportCountCheck, MaxTeleportDensityCheck, MaxVerticalPassageCountCheck,
-        MaxVerticalPassageRatioCheck, MinElevatorCountCheck, MinElevatorDensityCheck,
-        MinElevatorHeightCheck, MinElevatorStopCountCheck, MinElevatorStopsPerAreaCountCheck,
-        MinElevatorStopsPerAreaDensityCheck, MinLoopDensityCheck, MinLoopsCountCheck,
-        MinOneWayCountCheck, MinOneWayRatioCheck, MinRegionCountCheck, MinRegionRatioCheck,
-        MinRegionSizeCheck, MinTeleportCountCheck, MinTeleportRatioCheck,
-        MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck, MissingElevatorHeightIssue,
-        MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingEndpointsCheck,
-        MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue,
-        MissingSplitTilesIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
-        ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MaxDeadEndCountCheck,
+        MaxDeadEndDensityCheck, MaxElevatorCountCheck, MaxElevatorDensityCheck,
+        MaxElevatorStopGapCheck, MaxElevatorStopsCheck, MaxElevatorStopsPerFloorCheck,
+        MaxLoopDensityCheck, MaxLoopsCountCheck, MaxOneWayCountCheck, MaxOneWayRatioCheck,
+        MaxRegionRatioCheck, MaxRegionSizeCheck, MaxSplitCountCheck, MaxSplitDensityCheck,
+        MaxSplitTileNodeCountCheck, MaxTeleportCountCheck, MaxTeleportDensityCheck,
+        MaxVerticalPassageCountCheck, MaxVerticalPassageRatioCheck, MinElevatorCountCheck,
+        MinElevatorDensityCheck, MinElevatorHeightCheck, MinElevatorStopCountCheck,
+        MinElevatorStopsPerAreaCountCheck, MinElevatorStopsPerAreaDensityCheck,
+        MinLoopDensityCheck, MinLoopsCountCheck, MinOneWayCountCheck, MinOneWayRatioCheck,
+        MinRegionCountCheck, MinRegionRatioCheck, MinRegionSizeCheck, MinTeleportCountCheck,
+        MinTeleportRatioCheck, MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck,
+        MissingElevatorHeightIssue, MissingElevatorStopCountIssue, MissingElevatorsIssue,
+        MissingEndpointsCheck, MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue,
+        MissingRegionsIssue, MissingSplitTilesIssue, MissingTeleportsIssue,
+        MissingVerticalPassagesIssue, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
@@ -709,6 +711,7 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(
                 length,
                 protect_route,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "teleport_graph_distance" => {
@@ -886,6 +889,7 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(
                 distance,
                 protect_route: rule_params.protect_route,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "one_way_group_graph_proximity" => {
@@ -1146,7 +1150,7 @@ pub(crate) fn build_split_node_group_check<T: Tessellation>(
 pub(crate) fn build_split_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_split_count" => {
@@ -1200,6 +1204,7 @@ pub(crate) fn build_split_group_check<T: Tessellation>(
                 instance_id,
                 distance,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "split_group_graph_proximity" => {
@@ -1213,6 +1218,51 @@ pub(crate) fn build_split_group_check<T: Tessellation>(
             Some(Box::new(SplitGroupGraphProximityCheck {
                 instance_id,
                 distance,
+            }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_dead_end_group_check<T: Tessellation>(
+    instance: &CheckInstanceConfig,
+    instance_id: String,
+    _rule_params: &RuleParams,
+) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidDeadEndGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_dead_end_count" => {
+            let max_dead_end_count = instance
+                .params
+                .get("max_dead_end_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_DEAD_END_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(
+                instance.params.get("floor_scope"),
+                MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE,
+            );
+            Some(Box::new(MaxDeadEndCountCheck {
+                instance_id,
+                max_dead_end_count,
+                floor_scope,
+            }))
+        }
+        "max_dead_end_density" => {
+            let max_dead_end_density = instance
+                .params
+                .get("max_dead_end_density")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MAX_DEAD_END_DENSITY_DEFAULT);
+            let floor_scope = parse_floor_scope(
+                instance.params.get("floor_scope"),
+                MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE,
+            );
+            Some(Box::new(MaxDeadEndDensityCheck {
+                instance_id,
+                max_dead_end_density,
+                floor_scope,
             }))
         }
         _ => None,
@@ -1324,7 +1374,7 @@ pub(crate) fn build_missing_vertical_passages_check<T: Tessellation>(
 pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidVerticalPassageGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_vertical_passage_count" => {
@@ -1410,6 +1460,7 @@ pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(
                 same_type_only,
                 count_incoming,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "vertical_passage_group_graph_proximity" => {
@@ -1668,7 +1719,7 @@ pub(crate) fn build_excessive_elevator_stop_gap_check<T: Tessellation>(
 pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidElevatorStopGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_elevator_stops" => {
@@ -1735,6 +1786,7 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(
                 instance_id,
                 distance,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "elevator_stop_group_graph_proximity" => {
@@ -1832,6 +1884,7 @@ pub(crate) fn build_cross_element_group_check<T: Tessellation>(
                 distance,
                 set,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
                 protect_route,
             }))
         }
