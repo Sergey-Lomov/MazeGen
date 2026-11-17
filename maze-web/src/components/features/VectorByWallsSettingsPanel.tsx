@@ -210,6 +210,8 @@ export function VectorByWallsSettingsPanel() {
           onChange={patchSharedStyle}
           onLayoutChange={setMarkerLayout}
           onScaleChange={setMarkerScale}
+          isExpanded={isExpanded}
+          onToggle={toggleSection}
           priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), floor, background], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), floor, background] }}
         />
       )}

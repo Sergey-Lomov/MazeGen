@@ -202,6 +202,8 @@ export function VectorByCorridorsSettingsPanel() {
           onChange={patchSharedStyle}
           onLayoutChange={setMarkerLayout}
           onScaleChange={setMarkerScale}
+          isExpanded={isExpanded}
+          onToggle={toggleSection}
           priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), corridor, bg], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), corridor, bg] }}
         />
       )}

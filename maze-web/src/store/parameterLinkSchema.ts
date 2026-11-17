@@ -108,6 +108,8 @@ function prefixed<Pre extends string, K extends string, D>(prefix: Pre, defs: Re
 // up with where a field actually lives (GitHub issue #644).
 const G = {
   sharedStyle: g("image_export.vector_by_walls.section_shared_style"),
+  sharedStyleMarkers: g("image_export.vector_by_walls.section_shared_style", "image_export.vector_by_walls.shared_style_subsection_markers"),
+  sharedStyleText: g("image_export.vector_by_walls.section_shared_style", "image_export.vector_by_walls.shared_style_subsection_text"),
   floors: g("image_export.floors.section"),
   floorsLabel: g("image_export.floors.section", "image_export.floors.label_subsection"),
   floorsBackground: g("image_export.floors.section", "image_export.floors.background_subsection"),
@@ -251,17 +253,17 @@ const floorBadgeOn = R.crossFloorTeleports;
 export const LINK_SCHEMA = {
   // ---- "Shared style" sources (an edit refreshes dependents but keeps the field's own incoming link)
   ...section(BOTH, { group: G.sharedStyle, update: "source" }, {
-    markerShape: f("markerShape", `${PL}.shared_marker_shape`),
-    markerFillColor: f("color", `${PL}.shared_marker_fill_color`),
-    markerBorderColor: f("color", `${PL}.shared_marker_border_color`),
+    markerShape: f("markerShape", `${PL}.shared_marker_shape`, { group: G.sharedStyleMarkers }),
+    markerFillColor: f("color", `${PL}.shared_marker_fill_color`, { group: G.sharedStyleMarkers }),
+    markerBorderColor: f("color", `${PL}.shared_marker_border_color`, { group: G.sharedStyleMarkers }),
     cornerStyle: f("cornerStyle", `${PL}.shared_corner_style`),
-    markerSize: f("number", `${PL}.shared_marker_size`),
-    markerSizeAdaptation: f("number", `${PL}.shared_marker_size_adaptation`, { spread: true }),
-    markerBorderWidth: f("number", `${PL}.shared_marker_border_width`),
-    gapWidth: f("number", `${PL}.shared_gap_width`),
-    markerTextSize: f("number", `${PL}.shared_marker_text_size`),
-    markerTextMargin: f("number", `${PL}.shared_marker_text_margin`),
-    labelFont: f("labelFont", "image_export.label_font_family"),
+    markerSize: f("number", `${PL}.shared_marker_size`, { group: G.sharedStyleMarkers }),
+    markerSizeAdaptation: f("number", `${PL}.shared_marker_size_adaptation`, { spread: true, group: G.sharedStyleMarkers }),
+    markerBorderWidth: f("number", `${PL}.shared_marker_border_width`, { group: G.sharedStyleMarkers }),
+    gapWidth: f("number", `${PL}.shared_gap_width`, { group: G.sharedStyleMarkers }),
+    markerTextSize: f("number", `${PL}.shared_marker_text_size`, { group: G.sharedStyleText }),
+    markerTextMargin: f("number", `${PL}.shared_marker_text_margin`, { group: G.sharedStyleText }),
+    labelFont: f("labelFont", "image_export.label_font_family", { group: G.sharedStyleText }),
     floorLabelType: f("indexLabelStyle", "image_export.floors.general_style_floor_label"),
   }),
   // "Vector by walls" vertical shared style: abstract fields and decorative fields tell apart by the

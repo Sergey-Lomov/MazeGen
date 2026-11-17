@@ -8,6 +8,7 @@ import { EditIconButton } from "../EditIconButton";
 import { DeleteIconButton } from "../DeleteIconButton";
 import { AddIconButton } from "../AddIconButton";
 import { Tooltip } from "../Tooltip";
+import { SectionHeader } from "../SectionHeader";
 import { typography } from "../../styles/theme";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import { getParamValue, reachableFrom, wouldCreateCycle } from "../../store/slices/parameterLinksEngine";
@@ -379,6 +380,7 @@ export function ParameterLinksDialog<P extends string>({
   const [editing, setEditing] = useState<{ source: P; target: P; modifiers?: ParamModifier[]; colorModifiers?: ColorModifier[] } | null>(null);
   const [adding, setAdding] = useState(false);
   const [filterPath, setFilterPath] = useState<string[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set());
 
   function handleSave(source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) {
     onAddLink(source, target, modifiers, colorModifiers);
@@ -400,6 +402,19 @@ export function ParameterLinksDialog<P extends string>({
     [...new Set(links.flatMap((link) => [link.target, link.source]))],
     registry,
   );
+  const linkSections = new Map<string, ParamLink<P>[]>();
+  for (const link of visibleLinks) {
+    const section = registry[link.target].group[0] ?? registry[link.target].label;
+    const sectionLinks = linkSections.get(section) ?? [];
+    sectionLinks.push(link);
+    linkSections.set(section, sectionLinks);
+  }
+  const toggleSection = (section: string) => setExpandedSections((current) => {
+    const next = new Set(current);
+    if (next.has(section)) next.delete(section);
+    else next.add(section);
+    return next;
+  });
 
   return (
     <>
@@ -429,8 +444,12 @@ export function ParameterLinksDialog<P extends string>({
             </div>
             <div style={styles.toolbarDivider} />
             <div style={styles.rowsScroll}>
-              <div style={styles.rows}>
-                {visibleLinks.map((link) => (
+              <div style={styles.linkSections}>
+                {[...linkSections.entries()].map(([section, sectionLinks]) => (
+                  <div key={section} style={styles.linkSection}>
+                    <SectionHeader label={section} expanded={expandedSections.has(section)} onToggle={() => toggleSection(section)} />
+                    {expandedSections.has(section) && <div style={styles.rows}>
+                      {sectionLinks.map((link) => (
                   <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
                     <div style={styles.rowLine}>
                       <span style={styles.linkLabel}>
@@ -459,6 +478,9 @@ export function ParameterLinksDialog<P extends string>({
                         {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
                       </span>
                     </div>
+                  </div>
+                      ))}
+                    </div>}
                   </div>
                 ))}
               </div>
