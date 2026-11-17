@@ -8,8 +8,9 @@ import * as m from "~/paraglide/messages";
 /** Full-app guard for an in-flight generation. Delaying it avoids a distracting flash for fast runs. */
 export function GenerationProgressOverlay() {
   const progress = useMazeStore((s) => s.generationProgress);
+  const projectLoadInProgress = useMazeStore((s) => s.projectLoadInProgress);
   const cancelGeneration = useMazeStore((s) => s.cancelGeneration);
-  const visible = useDelayedIndicator(progress !== null);
+  const visible = useDelayedIndicator(progress !== null || projectLoadInProgress);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [displayedProgress, setDisplayedProgress] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -33,24 +34,26 @@ export function GenerationProgressOverlay() {
     return () => window.clearInterval(timer);
   }, [visible, progress]);
 
-  if (!visible || displayedProgress === null) return null;
-  const status = displayedProgress < 70
+  if (!visible || (!projectLoadInProgress && displayedProgress === null)) return null;
+  const status = projectLoadInProgress && progress === null
+    ? m["project.load_progress_analytics"]()
+    : (displayedProgress ?? 0) < 70
     ? m["generation.progress_generating"]()
-    : displayedProgress < 98
+    : (displayedProgress ?? 0) < 98
       ? m["generation.progress_quality_control"]()
       : m["generation.progress_analytics"]();
   const elapsedSeconds = Math.floor((now - (startedAt ?? now)) / 1_000);
 
   return (
-    <div style={styles.backdrop} role="dialog" aria-modal="true" aria-label={m["generation.progress_title"]()}>
+    <div style={styles.backdrop} role="dialog" aria-modal="true" aria-label={projectLoadInProgress ? m["project.load_progress_title"]() : m["generation.progress_title"]()}>
       <div style={styles.card}>
-        <div style={styles.title}>{m["generation.progress_title"]()}</div>
+        <div style={styles.title}>{projectLoadInProgress ? m["project.load_progress_title"]() : m["generation.progress_title"]()}</div>
         <div role="status" style={styles.status}>{status}</div>
         <div role="progressbar" aria-label={status} style={styles.track}>
           <div className="loading-progress-indeterminate" style={styles.bar} />
         </div>
         <div style={styles.elapsed}>{m["generation.progress_elapsed"]({ time: formatElapsed(elapsedSeconds) })}</div>
-        <Button variant="secondary" layoutStyle={styles.cancel} onClick={cancelGeneration}>{m["common.cancel"]()}</Button>
+        {!projectLoadInProgress && progress !== null && <Button variant="secondary" layoutStyle={styles.cancel} onClick={cancelGeneration}>{m["common.cancel"]()}</Button>}
       </div>
     </div>
   );

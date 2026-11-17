@@ -514,7 +514,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...(state.presetFinish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
     };
     try {
-      const snapshot = await computeAnalyticsAsync(config);
+      // Project loading owns a single modal progress view through its final analytics pass; a
+      // second background-activity card would duplicate that feedback.
+      const snapshot = await computeAnalyticsAsync(config, !state.projectLoadInProgress);
       if (get()._postEditRequestId !== requestId) return;
       set((state) => ({
         // A confirmed split node (GitHub issue #221) exists only in the WASM-returned snapshot

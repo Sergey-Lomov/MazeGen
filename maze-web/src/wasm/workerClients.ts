@@ -47,9 +47,10 @@ export function generateMazeAsync(seed: number, config: GenerateConfig): Promise
  * previous one, so rapid rule edits do not leave a pool of stale cycle analyses running in the
  * background. `confirmPostEdit`'s request id still protects the store from a result that raced
  * with another state change after the worker completed. */
-export function computeAnalyticsAsync(config: ComputeAnalyticsConfig): Promise<MazeSnapshot> {
+export function computeAnalyticsAsync(config: ComputeAnalyticsConfig, reportBackgroundActivity = true): Promise<MazeSnapshot> {
   analyticsPool.cancelAll(new Error("Analytics request superseded"));
-  return trackActivity("analytics", analyticsPool.run({ config }).promise.then(validateSnapshot));
+  const work = analyticsPool.run({ config }).promise.then(validateSnapshot);
+  return reportBackgroundActivity ? trackActivity("analytics", work) : work;
 }
 
 /** Terminates every worker. Called on page shutdown and on hot module replacement. */

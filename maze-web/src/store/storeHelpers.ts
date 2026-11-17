@@ -646,6 +646,7 @@ export function buildResetDownstreamState() {
     error: null,
     generationStatus: "idle" as const,
     generationProgress: null,
+    projectLoadInProgress: false,
     fieldEditConfirmation: null,
     debugArena: null, debugStep: 0, debugStale: false,
     postEditCommands: [], postEditBaseline: null, postEditDerived: null,

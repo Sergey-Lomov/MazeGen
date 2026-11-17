@@ -3119,5 +3119,7 @@
   "activity.analytics_info": "The maze is being re-analyzed in the background: quality control, statistics and the route are recalculated after a change of the quality settings or the maze. The report and the highlighted issues update when it finishes.",
   "activity.info": "Details",
   "activity.collapse": "Fold background processes into one",
-  "activity.expand": "Background processes: {count}. Click to show them"
+  "activity.expand": "Background processes: {count}. Click to show them",
+  "project.load_progress_title": "Loading project",
+  "project.load_progress_analytics": "Building analytics"
 }
