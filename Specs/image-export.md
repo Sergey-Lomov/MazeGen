@@ -572,7 +572,10 @@ follow-up sub-issue's concern.
 ### "Shared style" — centralized marker/corner-style settings (GitHub issue #322, generalized to a generic parameter-link engine by #643)
 
 Both render mode settings panels have a "Shared style" section, always the first section (before
-"Background"). It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
+"Background"). Its `cornerStyle` and `floorLabelType` controls stay at the section root: corner
+style also drives wall/corridor joins, so it is not marker-only. The remaining settings are arranged
+in collapsed-by-default "Markers", "Marker layout", and "Text" subsections, whose expanded state is
+stored independently for each render mode. It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
 `markerFillColor`, `markerBorderColor`, `markerBorderWidth`, `gapWidth`, `labelFont`, `markerTextSize` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
 into both `VectorByWallsSettings` and `VectorByCorridorsSettings`) that would otherwise need editing
 separately on every marker-like field that conceptually shares them:

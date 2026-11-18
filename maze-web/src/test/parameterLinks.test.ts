@@ -93,11 +93,11 @@ describe("registry color descriptors", () => {
   it("resolves label and group in the current locale on every read (GitHub issue #742)", () => {
     const entry = VECTOR_BY_WALLS_PARAM_REGISTRY.markerSize;
     expect(entry.label).toBe("Marker size");
-    expect(entry.group).toEqual(["Shared style"]);
+    expect(entry.group).toEqual(["Shared style", "Markers"]);
     setLocale("ru", { reload: false });
     try {
       expect(entry.label).toBe("Размер маркера");
-      expect(entry.group).toEqual(["Общий стиль"]);
+      expect(entry.group).toEqual(["Общий стиль", "Маркеры"]);
     } finally {
       setLocale("en", { reload: false });
     }
