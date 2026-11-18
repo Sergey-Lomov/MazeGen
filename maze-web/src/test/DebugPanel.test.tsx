@@ -184,6 +184,51 @@ describe("DebugPanel", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("groups controls into always-visible timeline and display sections", () => {
+    const arena = { ...threeStepArena(), debugValueNames: [{ name: "recursion_stack", kind: "sequence" as const }] };
+    useMazeStore.setState({
+      debugArena: arena,
+      debugStep: 0,
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+    });
+    render(<DebugPanel />);
+
+    for (const name of ["Timeline", "Display"]) {
+      const section = screen.getByRole("region", { name });
+      expect(section.querySelector("button[aria-expanded]")).toBeNull();
+    }
+    const timeline = screen.getByRole("region", { name: "Timeline" });
+    const timelineButtons = [...timeline.querySelectorAll("button")];
+    expect(timelineButtons.map((button) => button.getAttribute("aria-label"))).toEqual(["Previous step", "Next step", "Play"]);
+    expect(timelineButtons[2].querySelector("svg")).toHaveAttribute("fill", "currentColor");
+    expect(screen.getByRole("slider")).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Delay between autoplay steps" })).toBeInTheDocument();
+    expect(screen.getByText("ms")).toBeInTheDocument();
+    expect(screen.getByText("Auto-switch floors")).toBeInTheDocument();
+  });
+
+  it("clamps the autoplay delay through NumberInput on blur", () => {
+    const actions = useMazeStore.getInitialState();
+    useMazeStore.setState({
+      debugArena: threeStepArena(),
+      debugStep: 0,
+      debugAutoPlayDelay: 500,
+      setDebugAutoPlayDelay: actions.setDebugAutoPlayDelay,
+    });
+    render(<DebugPanel />);
+    const delay = screen.getByRole("spinbutton", { name: "Delay between autoplay steps" }) as HTMLInputElement;
+
+    fireEvent.change(delay, { target: { value: "10" } });
+    fireEvent.blur(delay);
+    expect(useMazeStore.getState().debugAutoPlayDelay).toBe(50);
+    expect(delay.value).toBe("50");
+
+    fireEvent.change(delay, { target: { value: "10000" } });
+    fireEvent.blur(delay);
+    expect(useMazeStore.getState().debugAutoPlayDelay).toBe(9999);
+    expect(delay.value).toBe("9999");
+  });
+
   it("clicking the SidePanel close button exits debug mode and stops autoplay", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, debugMode: true });
     render(<DebugPanel />);

@@ -445,6 +445,8 @@
   "generation.split_diag_dangling_sibling": "Узел {index}, грань {face}: связанный узел больше не существует.",
 
   "debug.title": "Отладка",
+  "debug.timeline_section": "Таймлайн",
+  "debug.display_section": "Отображение",
   "debug.outdated_warning": "Снимок отладки устарел, перегенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",
   "debug.next_step": "Следующий шаг",
@@ -452,7 +454,8 @@
   "debug.stop": "Стоп",
   "debug.play": "Пуск",
   "debug.exit": "Выйти из отладки",
-  "debug.delay_ms": "Задержка автозапуска (мс)",
+  "debug.delay_between_steps": "Задержка между шагами автовоспроизведения",
+  "debug.milliseconds": "мс",
   "debug.auto_switch_floor": "Автопереключение этажей",
   "debug.search.placeholder": "Поиск по шагам",
   "debug.search.next": "Следующее совпадение",
