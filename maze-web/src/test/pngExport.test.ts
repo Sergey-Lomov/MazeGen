@@ -35,4 +35,16 @@ describe("downloadPngExport", () => {
 
     expect(document.querySelector("a[download='maze-export.png']")).toBeNull();
   });
+
+  it("uses a user-supplied file name", () => {
+    const blob = new Blob(["fake png bytes"], { type: "image/png" });
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    downloadPngExport(blob, "labyrinth.png");
+
+    expect(downloadName).toBe("labyrinth.png");
+  });
 });

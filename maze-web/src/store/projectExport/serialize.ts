@@ -184,6 +184,6 @@ export function downloadJsonFile(data: unknown, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function downloadProjectFile(state: MazeState): void {
-  downloadJsonFile(serializeProject(state), `maze-project${PROJECT_FILE_EXTENSION}`);
+export function downloadProjectFile(state: MazeState, fileName = `maze-project${PROJECT_FILE_EXTENSION}`): void {
+  downloadJsonFile(serializeProject(state), fileName);
 }

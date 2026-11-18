@@ -3,11 +3,12 @@ import { useMazeStore } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { Inline } from "../Layout";
 import { AlertModal } from "../AlertModal";
+import { FileNameModal, timestampedBaseName } from "../FileNameModal";
 import { readJsonFile } from "../jsonFile";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
 import {
-  downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError,
+  downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError, QUALITY_PRESET_FILE_EXTENSION,
   type ProjectFileQuality,
 } from "../../store/projectExport";
 import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
@@ -72,6 +73,7 @@ export function QualityFeature() {
   const loadQualityPreset = useMazeStore((s) => s.loadQualityPreset);
   const presetInputRef = useRef<HTMLInputElement>(null);
   const [skippedIds, setSkippedIds] = useState<string[] | null>(null);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   // The store only has room for "a number" or "disabled" (null) — it can't remember what number
   // was last set while disabled. Re-enabling the switch should restore that last value, not snap
@@ -171,7 +173,7 @@ export function QualityFeature() {
       </div>
       <div style={styles.divider} />
       <Inline gap="itemGap">
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadQualityPresetFile(useMazeStore.getState())}>
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => setSaveDialogOpen(true)}>
           {m["quality.preset.save"]()}
         </Button>
         <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
@@ -186,6 +188,14 @@ export function QualityFeature() {
         style={{ display: "none" }}
         onChange={handlePresetFileChange}
       />
+      {saveDialogOpen && (
+        <FileNameModal
+          defaultBaseName={timestampedBaseName("maze-quality")}
+          extension={QUALITY_PRESET_FILE_EXTENSION}
+          onConfirm={(fileName) => { setSaveDialogOpen(false); downloadQualityPresetFile(useMazeStore.getState(), fileName); }}
+          onCancel={() => setSaveDialogOpen(false)}
+        />
+      )}
       {skippedIds && (
         <AlertModal
           message={m["quality.preset.skipped_ids"]({ ids: skippedIds.join(", ") })}

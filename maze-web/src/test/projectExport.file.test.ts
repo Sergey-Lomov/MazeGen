@@ -33,6 +33,18 @@ describe("downloadProjectFile", () => {
     // dialog's `accept` filter then hides.
     expect(createObjectURL.mock.calls[0][0].type).toBe("application/octet-stream");
   });
+
+  it("uses a user-supplied file name", () => {
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:mock-url"), revokeObjectURL: vi.fn() });
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    downloadProjectFile(makeState(), "my-maze.maze");
+
+    expect(downloadName).toBe("my-maze.maze");
+  });
 });
 
 describe("projectFileAccept", () => {

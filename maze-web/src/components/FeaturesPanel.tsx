@@ -1,5 +1,5 @@
 ﻿import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
@@ -7,6 +7,7 @@ import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FlatIconButton } from "./FlatIconButton";
 import { SaveIconButton } from "./SaveIconButton";
+import { FileNameModal, timestampedBaseName } from "./FileNameModal";
 import { LoadIconButton } from "./LoadIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
@@ -24,7 +25,7 @@ import { notify } from "../notifications/notificationStore";
 import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
@@ -193,19 +194,27 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const loadProject = useMazeStore((s) => s.loadProject);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [projectSaveDialogOpen, setProjectSaveDialogOpen] = useState(false);
+  const [debugDownload, setDebugDownload] = useState<{ baseName: string; payload: NonNullable<ReturnType<typeof buildExactGenerateCallPayload>> } | null>(null);
 
   function handleSave() {
-    downloadProjectFile(useMazeStore.getState());
+    setProjectSaveDialogOpen(true);
   }
 
   function handleSaveDebugConfig() {
     const payload = buildExactGenerateCallPayload(useMazeStore.getState);
     if (!payload) return;
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    setDebugDownload({ baseName: timestampedBaseName(`maze-debug-call-${payload.seed}`), payload });
+  }
+
+  function confirmSaveDebugConfig(fileName: string) {
+    if (!debugDownload) return;
+    setDebugDownload(null);
+    const blob = new Blob([JSON.stringify(debugDownload.payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `maze-debug-call-${payload.seed}.json`;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -454,6 +463,22 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
           style={{ display: "none" }}
           onChange={handleFileChange}
         />
+        {projectSaveDialogOpen && (
+          <FileNameModal
+            defaultBaseName={timestampedBaseName("maze-project")}
+            extension={PROJECT_FILE_EXTENSION}
+            onConfirm={(fileName) => { setProjectSaveDialogOpen(false); downloadProjectFile(useMazeStore.getState(), fileName); }}
+            onCancel={() => setProjectSaveDialogOpen(false)}
+          />
+        )}
+        {debugDownload !== null && (
+          <FileNameModal
+            defaultBaseName={debugDownload.baseName}
+            extension=".json"
+            onConfirm={confirmSaveDebugConfig}
+            onCancel={() => setDebugDownload(null)}
+          />
+        )}
       </div>
     </div>
   );

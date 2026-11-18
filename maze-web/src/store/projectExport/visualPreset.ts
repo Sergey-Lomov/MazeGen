@@ -67,6 +67,6 @@ export function parseVisualPreset(raw: unknown): VisualPresetFile {
   };
 }
 
-export function downloadVisualPresetFile(state: MazeState): void {
-  downloadJsonFile(serializeVisualPreset(state), `maze-visual-preset${VISUAL_PRESET_FILE_EXTENSION}`);
+export function downloadVisualPresetFile(state: MazeState, fileName = `maze-style${VISUAL_PRESET_FILE_EXTENSION}`): void {
+  downloadJsonFile(serializeVisualPreset(state), fileName);
 }
