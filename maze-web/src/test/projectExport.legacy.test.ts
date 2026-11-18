@@ -35,6 +35,12 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.ui.openCard).toBe("basic_config");
   });
 
+  it("accepts zones as ui.openCard", () => {
+    const data = valid_without_optional_sections();
+    data.ui = { openCard: "zones" };
+    expect(parseAndValidate(data).ui.openCard).toBe("zones");
+  });
+
   it("maps the removed floors card to field_setup when loading ui.openCard", () => {
     const data = valid_without_optional_sections();
     data.ui = { openCard: "floors" };

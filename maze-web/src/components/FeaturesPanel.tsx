@@ -10,6 +10,7 @@ import { SaveIconButton } from "./SaveIconButton";
 import { LoadIconButton } from "./LoadIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
+import { ZonesFeature } from "./features/ZonesFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
@@ -28,6 +29,7 @@ import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
+import { countManualZones } from "../pixi/selectors/zoneSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -58,6 +60,13 @@ export function presetConnectionsSubtitle(
     ? m["preset.subtitle_count"]({ count: n })
     : m["preset.subtitle_count_plural"]({ count: n });
   return base;
+}
+
+export function zonesSubtitle(manualZoneCount: number): string {
+  if (manualZoneCount === 0) return m["zones.subtitle_none"]();
+  return manualZoneCount === 1
+    ? m["zones.subtitle_count"]({ count: manualZoneCount })
+    : m["zones.subtitle_count_plural"]({ count: manualZoneCount });
 }
 
 export function getTessellationKindLabel(kind: TessellationKind): string {
@@ -160,6 +169,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const floorFields = useMazeStore((s) => s.floorFields);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
+  const zones = useMazeStore((s) => s.zones);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -286,6 +296,13 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
+  // Always green once available: zones have no invalid state, even with none defined.
+  const zonesStatus: FeatureStatus = fieldBlocking ? "unavailable" : "set";
+  const zonesComment = !tessellationConfirmed
+    ? m["status.confirm_tessellation_first"]()
+    : fieldBlocking
+    ? m["status.configure_field_first"]()
+    : undefined;
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
     : presetInvalidCount > 0
@@ -349,6 +366,16 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
         onOpen={() => handleToggle("field_setup")}
       >
         <FieldSetupFeature />
+      </FeatureCard>
+      <FeatureCard
+        title={m["zones.title"]()}
+        status={zonesStatus}
+        comment={zonesComment}
+        subtitle={fieldBlocking ? undefined : zonesSubtitle(countManualZones(zones))}
+        expanded={openCard === "zones"}
+        onOpen={() => handleToggle("zones")}
+      >
+        <ZonesFeature />
       </FeatureCard>
       <FeatureCard
         title={m["preset.title"]()}

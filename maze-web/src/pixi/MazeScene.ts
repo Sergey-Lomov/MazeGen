@@ -7,6 +7,7 @@ import { SeamHoverTracker } from "./SeamHoverTracker";
 import { FieldEditController } from "./FieldEditController";
 import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
+import { ZonesRenderer } from "./ZonesRenderer";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
 import { PostEditRenderer } from "./PostEditRenderer";
@@ -44,6 +45,7 @@ type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldCon
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   basic_config: (st) => st.previewFieldConfig,
   field_setup: (st) => st.floorFields[st.activeFloorId].fieldConfig,
+  zones: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   preset_connections: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   quality: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   generation: (st) => st.activeFieldConfig,
@@ -86,6 +88,8 @@ export class MazeScene {
   private fieldEditController: FieldEditController;
   private primitivePreviewOverlay: PrimitivePreviewOverlay;
   private primitivePreviewContainer: Container;
+  private zonesRenderer: ZonesRenderer;
+  private zonesContainer: Container;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
   private seamHoverTracker: SeamHoverTracker;
@@ -138,6 +142,7 @@ export class MazeScene {
 
     this.fieldEditorOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
+    this.zonesContainer = new Container();
     this.presetConnectionsContainer = new Container();
     this.postEditContainer = new Container();
     this.tessellationContainer = new Container();
@@ -151,6 +156,7 @@ export class MazeScene {
     this.syncedLayers = [
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
+      this.zonesContainer,
       this.presetConnectionsContainer,
       this.postEditContainer,
       this.tessellationContainer,
@@ -184,6 +190,7 @@ export class MazeScene {
 
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
+    this.zonesRenderer = new ZonesRenderer(this.zonesContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.seamHoverTracker = new SeamHoverTracker(this.viewport, this.app.stage);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
@@ -222,6 +229,7 @@ export class MazeScene {
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
+      this.zonesRenderer,
       this.presetConnectionsRenderer,
       this.postEditRenderer,
       this.tessellationRenderer,
@@ -733,6 +741,7 @@ export class MazeScene {
     this.teleportConnectorEditController.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
+    this.zonesRenderer.destroy();
     this.presetConnectionsRenderer.destroy();
     this.seamHoverTracker.destroy();
     this.presetConnectionsController.destroy();

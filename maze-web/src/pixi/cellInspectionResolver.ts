@@ -2,6 +2,9 @@ import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import { buildCellInspection, postEditEdgesToDto } from "./selectors/mazeSelectors";
 import { buildPresetCellInspection } from "./selectors/presetCellInspection";
+import { cellExistsAt } from "./fieldValidity";
+import { resolveFieldAtOf } from "../store/storeHelpers";
+import { buildZonesCellInspection } from "./selectors/zoneSelectors";
 import type { PresetSplitLabelContext } from "./presetSplitLabels";
 import { presetConnectionsOnLevel } from "./fieldEditUtils";
 import { buildActiveCells } from "./selectors/fieldSelectors";
@@ -125,6 +128,12 @@ const CARDS_WITH_MAZE: ReadonlySet<FeatureId> = new Set(["generation", "post_edi
  *  `NodeDto`/`EdgeDto` graph yet — a distinct pre-generation state shape, not a `MazeSource`. */
 export function resolveCellInspection(st: MazeState, x: number, y: number): string {
   const activeFloorIndex = Math.max(st.floors.findIndex((f) => f.id === st.activeFloorId), 0);
+
+  if (st.openCard === "zones") {
+    // Zones never hold a cell outside the field (`filterZonesToField`), so the readout stays bare there.
+    if (!cellExistsAt(resolveFieldAtOf(st), [x, y], activeFloorIndex)) return `x:${x}, y:${y}`;
+    return buildZonesCellInspection(st.zones, activeFloorIndex, x, y);
+  }
 
   if (st.openCard === "preset_connections") {
     const field = st.floorFields[st.activeFloorId];

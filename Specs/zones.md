@@ -38,6 +38,25 @@ resolveFieldAt)` (`pixi/fieldValidity.ts`) removes cells whose point is not a ce
 field or whose floor no longer exists. Zone ids, names, kinds and order are kept; a zone left with
 no cells stays, so its id remains stable.
 
+## Zones card (GitHub issue #1028)
+
+Feature card `zones` (`FeatureId`), placed after Field and before Presets.
+
+- Status: `unavailable` until a field is set (same condition as Presets), otherwise always `set`
+  (green), even with no zones. Subtitle: number of manual zones.
+- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). All three are
+  transient: zones are not persisted yet, so loading a project resets them.
+- Two toggles, "Show auto zones" and "Show manual zones".
+- `ZonesRenderer` (feature renderer, visible only while the card is open) draws the active floor's
+  field with the cell grid (faint inner walls) and the outer walls, as the presets renderer does, and
+  over them each zone passing the toggles as a region (`RegionHighlightRenderer`). Zones are first
+  cut to the field (`filterZonesToField`), so no cell outside it is drawn. A zone's colour comes from
+  its position in the full zone list, so toggling never recolours.
+- Hover: the cell inspector text (`resolveCellInspection`) lists every zone holding the cell, in zone
+  order, regardless of the toggles (`x:1, y:2 | Zone A, Zone B`; an unnamed zone shows as `#id`). A
+  cell outside the field shows bare coordinates.
+- `ui.openCard` in a project file accepts `zones`.
+
 ## Web mirror
 
 `maze-web/src/wasm/mazeService.ts`: `Zone`, `ZoneKind`, `ZoneCellWire`, `normalizeZones`,

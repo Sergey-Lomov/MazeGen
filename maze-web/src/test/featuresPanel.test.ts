@@ -5,6 +5,7 @@ import {
   computeGenerationCard,
   computeImageExportCard,
   presetConnectionsSubtitle,
+  zonesSubtitle,
   getTessellationKindLabel,
 } from "../components/FeaturesPanel";
 import { resolveIssue } from "../components/issueRegistry";
@@ -213,5 +214,16 @@ describe("getTessellationKindLabel", () => {
     expect(getTessellationKindLabel("square")).toBeTruthy();
     expect(getTessellationKindLabel("hex")).toBeTruthy();
     expect(getTessellationKindLabel("tri")).toBeTruthy();
+  });
+});
+
+describe("zonesSubtitle", () => {
+  it("reports no manual zones, one and many through distinct messages", () => {
+    const none = zonesSubtitle(0);
+    const one = zonesSubtitle(1);
+    const many = zonesSubtitle(3);
+    expect(new Set([none, one, many]).size).toBe(3);
+    expect(one).toContain("1");
+    expect(many).toContain("3");
   });
 });
