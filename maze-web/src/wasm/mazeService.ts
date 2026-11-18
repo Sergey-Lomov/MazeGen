@@ -376,6 +376,37 @@ export function getTessellationCellTypes(config: { tessellation: WasmTessellatio
   return getWasm().tessellation_cell_types(config) as TessellationCellTypes;
 }
 
+/** Zone kind — mirrors `maze-core`'s `ZoneKind`: derived by the application or drawn by the user. */
+export type ZoneKind = "auto" | "manual";
+
+/** A zone cell on the wire: `[floor, x, y]`, `floor` being the index in `floors`. */
+export type ZoneCellWire = [number, number, number];
+
+/** Mirrors `maze-wasm`'s `ZoneDto`: a named set of cells with a stable id. Cells outside the field
+ *  are dropped on the web side (`filterZonesToField`) before zones are sent: core rejects them. */
+export interface Zone {
+  id: number;
+  name: string;
+  kind: ZoneKind;
+  cells: ZoneCellWire[];
+}
+
+/// Validates zones against the tessellation and returns them with cells deduplicated and in core's
+/// order (`zones_normalize`). Throws naming the zone and the first invalid cell, or a duplicate id.
+export function normalizeZones(config: { tessellation: WasmTessellationConfig; zones: Zone[] }): Zone[] {
+  return getWasm().zones_normalize(config) as Zone[];
+}
+
+/// Cell-to-zones lookup (`zones_of_cells`): `result[i]` holds the ids, in zone order, of the zones
+/// containing `config.cells[i]`. For hover tooltips.
+export function getZonesOfCells(config: {
+  tessellation: WasmTessellationConfig;
+  zones: Zone[];
+  cells: ZoneCellWire[];
+}): number[][] {
+  return getWasm().zones_of_cells(config) as number[][];
+}
+
 /** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
 export type FieldOpError =
   | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" }

@@ -70,7 +70,9 @@ export const styles: Record<string, React.CSSProperties> = {
   },
   emptyStateText: { ...typography.body },
   emptyStateSubtext: { ...muted(typography.caption) },
-  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  linkSections: { display: "flex", flexDirection: "column", gap: spacing.sectionGap },
+  linkSection: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: 12 },
   row: {
     display: "flex",
     flexDirection: "column",

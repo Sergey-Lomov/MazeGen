@@ -1,4 +1,5 @@
 import { encodePoint } from "./tessellationProjection";
+import type { Zone } from "../wasm/mazeService";
 import { presetEndpointFromKey, presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import {
   resolveCells, type ResolveFieldAt,
@@ -30,6 +31,19 @@ function fieldSetCache(resolveFieldAt: ResolveFieldAt): (level: number | undefin
 function pointInField(getFieldSet: (level: number | undefined) => Set<number> | undefined, point: [number, number], level: number | undefined): boolean {
   const set = getFieldSet(level);
   return set !== undefined && set.has(encodePoint(point[0], point[1]));
+}
+
+/** Zones with every cell outside the field dropped (a removed cell, a shrunk tessellation, a floor
+ * that no longer exists) — the web-side filter applied before zones go to core, same approach as
+ * the preset filters (`buildValidPresetConnections`). Zone order, ids, names and kinds are kept; a
+ * zone left with no cells stays, so its id remains stable. A cell's `floor` is the `level` index
+ * `resolveFieldAt` takes. */
+export function filterZonesToField(zones: Zone[], resolveFieldAt: ResolveFieldAt): Zone[] {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  return zones.map((zone) => ({
+    ...zone,
+    cells: zone.cells.filter(([floor, x, y]) => pointInField(getFieldSet, [x, y], floor)),
+  }));
 }
 
 /** Whether `point` has a cell on floor `level` — the single-lookup form of `pointInField`, for

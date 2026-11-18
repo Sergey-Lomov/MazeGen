@@ -26,7 +26,7 @@ export interface BackgroundImage {
   layer: BackgroundImageLayerMode;
   opacity: number;
 }
-export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
+export type FeatureId = "basic_config" | "field_setup" | "zones" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
   | { kind: "setSelectedShape"; shape: PresetFieldShapeName }

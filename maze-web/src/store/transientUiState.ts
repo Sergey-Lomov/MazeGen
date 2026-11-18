@@ -6,6 +6,7 @@ import { postEditTransientUi } from "./slices/postEditSlice";
 import { presetConnectionsTransientUi } from "./slices/presetConnectionsSlice";
 import { tessellationTransientUi } from "./slices/tessellationSlice";
 import { initialTopologyState } from "./slices/topologySlice";
+import { zonesTransientUi } from "./slices/zonesSlice";
 import type { MazeState } from "./storeTypes";
 
 /** Resting value of every UI mode, pending placement, prompt, hover and open panel (GitHub issue #946).
@@ -23,4 +24,5 @@ export const TRANSIENT_UI_STATE = {
   ...postEditTransientUi,
   ...imageExportTransientUi,
   ...initialTopologyState,
+  ...zonesTransientUi,
 } satisfies Partial<MazeState>;

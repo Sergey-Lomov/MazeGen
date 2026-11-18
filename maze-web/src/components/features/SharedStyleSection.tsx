@@ -7,6 +7,7 @@ import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
+import { SectionHeader } from "../SectionHeader";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { AutoFitButton } from "./TextFitContext";
@@ -132,18 +133,43 @@ export function SharedStyleSection<P extends LinkPath>({
   onLayoutChange,
   onScaleChange,
   priorityColors,
+  isExpanded,
+  onToggle,
 }: {
   settings: SharedStyleSourceFields & MarkerLayoutSettingsFields;
   onChange: (patch: Partial<SharedStyleSourceFields>) => void;
   onLayoutChange: (mode: MarkerLayoutMode) => void;
   onScaleChange: (v: number) => void;
+  isExpanded: (id: string) => boolean;
+  onToggle: (id: string) => void;
   /** "Priority" project colors (GitHub issue #503) for the fill / border color rows. */
   priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
 }) {
   return (
     <div style={styles.block}>
-      <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_markers"]()}</div>
-      <div style={styles.group}>
+      <LinkedSelectRow
+        label={m["image_export.vector_by_walls.marker_corner_style"]()}
+        value={settings.cornerStyle}
+        options={[
+          { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+          { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
+        ]}
+        onChange={(cornerStyle) => onChange({ cornerStyle })}
+        linkTarget={"cornerStyle" as P}
+      />
+      <LinkedSelectRow
+        label={m["image_export.floors.general_style_floor_label"]()}
+        value={settings.floorLabelType}
+        options={[
+          { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+          { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+          { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+        ]}
+        onChange={(floorLabelType) => onChange({ floorLabelType })}
+        linkTarget={"floorLabelType" as P}
+      />
+      <SectionHeader label={m["image_export.vector_by_walls.shared_style_subsection_markers"]()} expanded={isExpanded("shared_style_markers")} onToggle={() => onToggle("shared_style_markers")} />
+      {isExpanded("shared_style_markers") && <div style={styles.group}>
         <MarkerAppearanceRows
           settings={{
             shape: settings.markerShape,
@@ -155,6 +181,7 @@ export function SharedStyleSection<P extends LinkPath>({
             borderWidth: settings.markerBorderWidth,
             gapWidth: settings.gapWidth,
           }}
+          showCornerStyle={false}
           onChange={(patch) => {
             const mapped: Partial<SharedStyleSourceFields> = {};
             if (patch.shape !== undefined) mapped.markerShape = patch.shape;
@@ -180,13 +207,13 @@ export function SharedStyleSection<P extends LinkPath>({
           priorityColors={priorityColors}
           fields={{ fillColor: PC.sharedMarkerFill, borderColor: PC.sharedMarkerBorder }}
         />
-      </div>
-      <div style={typography.body}>{m["image_export.marker_layout.section"]()}</div>
-      <div style={styles.group}>
+      </div>}
+      <SectionHeader label={m["image_export.marker_layout.section"]()} expanded={isExpanded("marker_layout")} onToggle={() => onToggle("marker_layout")} />
+      {isExpanded("marker_layout") && <div style={styles.group}>
         <MarkerLayoutRows layout={settings.markerLayout} onLayoutChange={onLayoutChange} scale={settings.markerScale} onScaleChange={onScaleChange} />
-      </div>
-      <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
-      <div style={styles.group}>
+      </div>}
+      <SectionHeader label={m["image_export.vector_by_walls.shared_style_subsection_text"]()} expanded={isExpanded("shared_style_text")} onToggle={() => onToggle("shared_style_text")} />
+      {isExpanded("shared_style_text") && <div style={styles.group}>
         <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} warningKinds={SHARED_TEXT_KINDS} />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_text_size"]()}
@@ -209,18 +236,7 @@ export function SharedStyleSection<P extends LinkPath>({
           format={(v) => String(v)}
           linkTarget={"markerTextMargin" as P}
         />
-      </div>
-      <LinkedSelectRow
-        label={m["image_export.floors.general_style_floor_label"]()}
-        value={settings.floorLabelType}
-        options={[
-          { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
-          { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
-          { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
-        ]}
-        onChange={(floorLabelType) => onChange({ floorLabelType })}
-        linkTarget={"floorLabelType" as P}
-      />
+      </div>}
     </div>
   );
 }

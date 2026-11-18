@@ -14,6 +14,7 @@ import { createImageExportSlice } from "./slices/imageExportSlice";
 import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
 import { createTopologySlice } from "./slices/topologySlice";
+import { createZonesSlice } from "./slices/zonesSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
@@ -57,6 +58,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
   ...createImageExportSlice(...a),
   ...createFloorsSlice(...a),
   ...createTopologySlice(...a),
+  ...createZonesSlice(...a),
 
   loadProject: async (file) => {
     const [set, get] = a;

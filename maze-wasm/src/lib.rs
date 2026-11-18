@@ -13,6 +13,7 @@ mod runner;
 pub mod strategies_catalog;
 mod tessellation_dispatch;
 mod topology;
+mod zones;
 
 use generation_config::GenerateConfig;
 use result::GenerateResult;
@@ -32,6 +33,7 @@ pub use geometry::{
 };
 pub use strategies_catalog::available_strategies;
 pub use topology::{topology_edit, topology_info};
+pub use zones::{zones_normalize, zones_of_cells};
 
 #[wasm_bindgen]
 pub fn generate(seed: u64, config: JsValue) -> Result<GenerateResult, JsValue> {

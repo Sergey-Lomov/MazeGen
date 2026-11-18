@@ -36,6 +36,7 @@ pub mod trihexagonal;
 pub mod truncated_hexagonal;
 pub mod truncated_trihexagonal;
 pub mod voronoi;
+pub mod zone;
 
 pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
@@ -94,6 +95,7 @@ pub use truncated_trihexagonal::{
     TruncatedTrihexagonalTessellation,
 };
 pub use voronoi::{VoronoiFace, VoronoiParams, VoronoiPoint, VoronoiTessellation};
+pub use zone::{Zone, ZoneCell, ZoneId, ZoneIndex, ZoneKind, ZoneSet};
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by
 /// `Field`/`MultiLevelField` (every level of a maze uses the same instance). Built
