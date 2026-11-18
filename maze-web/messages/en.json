@@ -2893,6 +2893,8 @@
   "input_hint.rounded_to_cylinder": "Rounded to the nearest size where the edges of the cylinder meet.",
   "input_hint.clamped_min": "Value was adjusted to the allowed range {min}–{max}.",
   "input_hint.clamped_max": "Value was adjusted to the allowed range {min}–{max}.",
+  "input_hint.clamped_min_only": "Value was raised to the minimum of {min}.",
+  "input_hint.clamped_max_only": "Value was lowered to the maximum of {max}.",
   "input_hint.restored": "The last valid value was restored.",
   "input_hint.text_truncated": "Text was shortened to fit this field.",
   "input_hint.character_rejected": "This character is not allowed.",
