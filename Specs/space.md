@@ -4,6 +4,8 @@ Geometry layer of `maze-core` — how a maze's cells and their adjacency are rep
 
 Module: `maze-core/src/space/`.
 
+Zones (named cell sets with stable ids, built on `Tessellation::CellId`) live in `space::zone`, see `Specs/zones.md`.
+
 ## Tessellation
 
 > **Current API.** Superseded by "Target model: extensible tessellation" at the end of this file
