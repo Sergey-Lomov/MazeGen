@@ -160,7 +160,7 @@ bubbles never passes a spot that hovers the whole group and the highlight does n
 
 ### `ListCell` / `ListCellAction` (`components/ListCell.tsx`)
 
-One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour dot, `badge`
+One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour swatch, `badge`
 pinned right — an `IdBubble`), an optional details row, an optional body, and an `actions` area at the
 right end of the title row or of the details row (`actionsPlacement`). `ListCellAction` is the 22×22
 icon button: `title` is both tooltip and accessible name, `danger` tints it with the error colour,
