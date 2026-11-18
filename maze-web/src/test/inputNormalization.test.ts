@@ -14,9 +14,9 @@ describe("normalizeNumberCommit", () => {
 
   it("reports minimum and maximum clamps", () => {
     expect(normalizeNumberCommit("-1", "5", { min: 0 }).reason)
-      .toEqual({ kind: "clamped_min", min: "0", max: "∞", value: "0" });
+      .toEqual({ kind: "clamped_min", min: "0", value: "0" });
     expect(normalizeNumberCommit("11", "5", { max: 10 }).reason)
-      .toEqual({ kind: "clamped_max", min: "−∞", max: "10", value: "10" });
+      .toEqual({ kind: "clamped_max", max: "10", value: "10" });
   });
 
   it("reports invalid-draft restoration", () => {

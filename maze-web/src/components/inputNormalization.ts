@@ -7,8 +7,8 @@ export type InputNormalizationReason =
   | { kind: "decimal_separator_rejected" }
   | { kind: "rounded"; value: string }
   | { kind: "rounded_to_gluing"; shape: "cylinder" | "torus"; value: string }
-  | { kind: "clamped_min"; min: string; max: string; value: string }
-  | { kind: "clamped_max"; min: string; max: string; value: string }
+  | { kind: "clamped_min"; min: string; max?: string; value: string }
+  | { kind: "clamped_max"; min?: string; max: string; value: string }
   | { kind: "restored"; value: string }
   | { kind: "text_truncated" }
   | { kind: "character_rejected" }
@@ -36,9 +36,13 @@ export function inputHintReason(reason: InputNormalizationReason): FieldHintReas
         message: () => reason.shape === "torus" ? m["input_hint.rounded_to_torus"]() : m["input_hint.rounded_to_cylinder"](),
       };
     case "clamped_min":
-      return { key: reason.kind, message: () => m["input_hint.clamped_min"]({ min: reason.min, max: reason.max }) };
+      return reason.max === undefined
+        ? { key: reason.kind, message: () => m["input_hint.clamped_min_only"]({ min: reason.min }) }
+        : { key: reason.kind, message: () => m["input_hint.clamped_min"]({ min: reason.min, max: reason.max }) };
     case "clamped_max":
-      return { key: reason.kind, message: () => m["input_hint.clamped_max"]({ min: reason.min, max: reason.max }) };
+      return reason.min === undefined
+        ? { key: reason.kind, message: () => m["input_hint.clamped_max_only"]({ max: reason.max }) }
+        : { key: reason.kind, message: () => m["input_hint.clamped_max"]({ min: reason.min, max: reason.max }) };
     case "restored":
       return { key: reason.kind, message: () => m["input_hint.restored"]() };
     case "text_truncated":
@@ -74,11 +78,11 @@ export function normalizeNumberCommit(
   const rounded = options.integer ? Math.round(parsed) : parsed;
   if (options.min !== undefined && rounded < options.min) {
     const value = String(options.min);
-    return { raw, value, reason: { kind: "clamped_min", min: value, max: options.max === undefined ? "∞" : String(options.max), value } };
+    return { raw, value, reason: { kind: "clamped_min", min: value, max: options.max === undefined ? undefined : String(options.max), value } };
   }
   if (options.max !== undefined && rounded > options.max) {
     const value = String(options.max);
-    return { raw, value, reason: { kind: "clamped_max", min: options.min === undefined ? "−∞" : String(options.min), max: value, value } };
+    return { raw, value, reason: { kind: "clamped_max", min: options.min === undefined ? undefined : String(options.min), max: value, value } };
   }
 
   const value = String(rounded);

@@ -203,7 +203,7 @@ the web side does not repeat the constants that the sheet may hold a larger fiel
 
 The cell size input commits on blur, on Enter, or once typing has paused for a second (`CELL_SIZE_IDLE_MS`;
 only a value that already reads as a size of at least the minimum, so a half-typed `1` is left to the blur),
-not on every keystroke, and has a minimum of 3 mm (in minimum side mode, the side that matches that cell size). Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+not on every keystroke, and has a minimum side length of 2 mm. In cell-size mode, the minimum is the diameter that corresponds to a 2 mm minimum side; tessellations without a minimum-side mode retain the 3 mm measure minimum. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
 does not confirm the dialog.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,

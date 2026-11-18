@@ -18,7 +18,7 @@ describe("ElevatorSpanRow", () => {
     fireEvent.blur(input);
     expect(input).toHaveValue("1");
     expect(screen.getByTestId("field-hint")).toHaveTextContent(
-      m["input_hint.clamped_min"]({ min: "1", max: "∞" }),
+      m["input_hint.clamped_min_only"]({ min: "1" }),
     );
   });
 });

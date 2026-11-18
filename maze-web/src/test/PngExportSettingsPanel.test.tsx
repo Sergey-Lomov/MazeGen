@@ -146,7 +146,7 @@ describe("PngExportSettingsPanel", () => {
     fireEvent.blur(input);
     expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(0);
     expect(screen.getByTestId("field-hint")).toHaveTextContent(
-      m["input_hint.clamped_min"]({ min: "0", max: "∞" }),
+      m["input_hint.clamped_min_only"]({ min: "0" }),
     );
   });
 

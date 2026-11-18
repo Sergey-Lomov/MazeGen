@@ -15,7 +15,7 @@ import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { IconActionButton } from "./IconActionButton";
 import { SearchInput } from "./SearchInput";
-import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
+import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { resolveIssueLabel } from "./features/qualityI18n";
 import { useLocale } from "../i18n/useLocale";
@@ -483,8 +483,10 @@ export function DebugEventTree() {
           layoutStyle={styles.searchBox}
         />
         <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
-        <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
-        <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
+        <div style={styles.searchNavActions}>
+          <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
+          <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
+        </div>
       </div>
       <div ref={scrollRef} style={styles.scroll}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -560,7 +562,7 @@ const styles: Record<string, React.CSSProperties> = {
   searchRow: {
     display: "flex",
     alignItems: "center",
-    gap: spacing.itemGap,
+    gap: spacing.rowGap,
     padding: `6px ${spacing.rowGap}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
@@ -574,16 +576,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     fontVariantNumeric: "tabular-nums",
   },
-  searchNavBtn: {
+  searchNavActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    padding: inset.iconButtonInset,
-    background: "transparent",
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    cursor: "pointer",
-    flexShrink: 0,
+    gap: spacing.itemGap,
   },
   // Absolute inside the column's reserved right padding — out of flow, so it never shifts the
   // digits regardless of how many there are.

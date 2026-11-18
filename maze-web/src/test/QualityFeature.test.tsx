@@ -68,7 +68,7 @@ describe("QualityFeature quality preset load (GitHub issue #751)", () => {
     fireEvent.blur(input);
     expect(useMazeStore.getState().repairMaxIterations).toBe(1);
     expect(screen.getByTestId("field-hint")).toHaveTextContent(
-      m["input_hint.clamped_min"]({ min: "1", max: "∞" }),
+      m["input_hint.clamped_min_only"]({ min: "1" }),
     );
   });
 

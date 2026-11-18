@@ -54,6 +54,9 @@ const CELL_SIZE_IDLE_MS = 1000;
 /** The minimum side length the dialog opens with (GitHub issue #1002). */
 const DEFAULT_MIN_SIDE_MM = 8;
 
+/** Smallest accepted physical side length for a regular printed cell (GitHub issue #1041). */
+const MIN_PRINT_SIDE_MM = 2;
+
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
   const floors = useMazeStore((s) => s.floors);
@@ -78,7 +81,11 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   useEffect(() => () => clearTimeout(cellSizeIdleTimer.current), []);
   // The calculation always works with the cell size (diameter); a minimum side length is converted.
   const toCellSizeMm = (value: number) => printMeasureFromEntered(config, inputMode, value);
-  const minEnteredMm = printEnteredFromMeasure(config, inputMode, MIN_PRINT_CELL_SIZE_MM);
+  // A regular cell is constrained by its smallest side, even when the input displays its diameter.
+  // Irregular cells do not offer the minimum-side mode, so retain the existing measure minimum.
+  const minEnteredMm = sizeModes.includes("min_side")
+    ? printEnteredFromMeasure(config, inputMode, printMeasureFromEntered(config, "min_side", MIN_PRINT_SIDE_MM))
+    : printEnteredFromMeasure(config, inputMode, MIN_PRINT_CELL_SIZE_MM);
   const cellSizeMm = toCellSizeMm(parseNumber(cellSizeText));
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);

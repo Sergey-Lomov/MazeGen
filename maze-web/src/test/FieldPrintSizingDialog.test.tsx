@@ -166,6 +166,28 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     expect(started[0].request.input.cellSizeMm).toBeCloseTo(8 * Math.SQRT2);
   });
 
+  it("clamps the minimum side to 2 mm without displaying an infinite upper bound (GitHub issue #1041)", () => {
+    renderDialog();
+
+    fireEvent.change(cellSizeInput(), { target: { value: "1" } });
+    fireEvent.blur(cellSizeInput());
+
+    expect(cellSizeInput()).toHaveValue("2");
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.clamped_min_only"]({ min: "2" }),
+    );
+  });
+
+  it("derives the cell-size minimum from a 2 mm minimum side (GitHub issue #1041)", () => {
+    renderDialog();
+    fireEvent.change(screen.getByDisplayValue(m["field.print_sizing.input_mode_min_side"]()), { target: { value: "cell_size" } });
+
+    fireEvent.change(cellSizeInput(), { target: { value: "2" } });
+    fireEvent.blur(cellSizeInput());
+
+    expect(Number(cellSizeInput().value)).toBeCloseTo(2 * Math.SQRT2);
+  });
+
   it("takes a typed minimum side length as the cell size of the same cells (GitHub issue #1002)", async () => {
     renderDialog();
     expect(screen.getAllByText(m["field.print_sizing.min_side"]())).toHaveLength(2);
