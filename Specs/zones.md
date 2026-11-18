@@ -51,11 +51,33 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
   field with the cell grid (faint inner walls) and the outer walls, as the presets renderer does, and
   over them each zone passing the toggles as a region (`RegionHighlightRenderer`). Zones are first
   cut to the field (`filterZonesToField`), so no cell outside it is drawn. A zone's colour comes from
-  its position in the full zone list, so toggling never recolours.
+  its position in the full zone list (`zoneColors`), so toggling never recolours. The scheme is the
+  glues' one (`distributeHueGroups` from `AUTO_HUE_BASE_COLOR`).
 - Hover: the cell inspector text (`resolveCellInspection`) lists every zone holding the cell, in zone
   order, regardless of the toggles (`x:1, y:2 | Zone A, Zone B`; an unnamed zone shows as `#id`). A
   cell outside the field shows bare coordinates.
 - `ui.openCard` in a project file accepts `zones`.
+
+## Zones list (GitHub issue #1030)
+
+A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zonesPanelOpen`).
+
+- Top switch, as "Gluings" / "Folds" in the topology panel (`zonesListMode`): "Auto zones (n)" and
+  "Manual zones (n)", `n` the number of zones of that kind. The manual section ends with an "Add zone"
+  button (appends an empty manual zone; real editing is tracked separately). Ids come from a store
+  counter (`nextZoneId`) that only grows, so the id of a deleted zone is never reused.
+- Zone card: a rounded colour square sized to the font (`1em`, thin neutral border) with the zone's
+  canvas colour (`EntityColorSwatch`, shared with the glue cards) after the name (`#id` while
+  unnamed), the number of cells, and `L{n}` floor badges of the floors the zone occupies
+  (`FloorBadgeRow`, standard blue info `Bubble`s, click to go to the floor; only on a multi-floor maze).
+- Eye icon (open/closed) in the card's top right corner toggles the zone's visibility on the canvas
+  (`hiddenZoneIds`); it applies on top of the two kind toggles. Manual cards also have edit (disabled
+  until the editor exists) and delete (with a confirmation dialog) icon buttons.
+- Hover: the hovered card's zone (`hoveredZoneId`) is drawn by `ZonesRenderer` on its own layer over
+  the other zones, fully opaque (a hover change redraws only that layer), regardless of the kind
+  toggles and the zone's visibility, only if it has cells on the active floor. The active floor never
+  changes. The hover is cleared when the panel closes or unmounts, or the section switches.
+- All of the above state is transient, like the rest of the zones state.
 
 ## Web mirror
 

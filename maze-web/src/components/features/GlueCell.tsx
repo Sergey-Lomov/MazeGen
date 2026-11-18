@@ -9,6 +9,7 @@ import { glueColorsByGroup } from "../../pixi/selectors/glueColors";
 import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
+import { EntityColorSwatch, cssColor } from "../EntityColorSwatch";
 import { ListCell, ListCellAction } from "../ListCell";
 import { REASON_LABELS } from "./TopologyProblemBubble";
 import { sharedStyles } from "../../styles/shared";
@@ -18,7 +19,7 @@ import * as m from "~/paraglide/messages";
 /// The CSS colour of each glue's arrow on the canvas, by glue id: the same hue the arrow layer draws it in.
 export function glueDotColors(cfg: FieldConfig | undefined, topology: WireTopology | null): Map<number, string> {
   const colors = new Map<number, string>();
-  for (const [group, color] of glueColorsByGroup(cfg, topology)) colors.set(group, `#${color.toString(16).padStart(6, "0")}`);
+  for (const [group, color] of glueColorsByGroup(cfg, topology)) colors.set(group, cssColor(color));
   return colors;
 }
 
@@ -88,7 +89,7 @@ export function GlueCell({ glue, topology, info, fieldConfig, dotColor, setHover
       onMouseEnter={() => setHover({ glue: glue.id, fold: null })}
       onMouseLeave={() => setHover(null)}
       title={m["topology.glue_title"]({ id: String(glue.id + 1) })}
-      titleAddon={dotColor !== null && <span data-testid="topology-glue-dot" style={{ ...styles.colorDot, background: dotColor }} />}
+      titleAddon={dotColor !== null && <EntityColorSwatch data-testid="topology-glue-dot" color={dotColor} />}
       actionsPlacement="title"
       actions={editing && (
         <>
@@ -131,7 +132,6 @@ const styles: Record<string, React.CSSProperties> = {
   error: { ...typography.body, color: ui.text.error, overflowWrap: "anywhere" },
   // Everything in a glue cell but its title is one level in; the side bubbles add their own level.
   cellBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2, paddingLeft: indent.tree },
-  colorDot: { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
   run: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2 },
   sides: { paddingLeft: indent.tree },
 };
