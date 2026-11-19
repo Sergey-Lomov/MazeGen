@@ -291,7 +291,25 @@ export type IssuePayloadDto =
       kind: "indeterminate_distance";
       pairs: IssueUndecidedPairPayload[];
     }
+  | {
+      kind: "violated_node_shape_limits";
+      violations: IssueShapeLimitViolationPayload[];
+    }
 ;
+
+/**
+ * One violated node-shape limit — mirrors `maze_core`'s `IssueShapeLimitViolationPayload`.
+ * `cell_type` is the shape template key (`regular:4`); `shape` and `counterparts` are `NodeShape::key()` strings (`dead_end`, `straight`, `turn_<deg>`,
+ * `junction_<sides>_<ranks>`); `counterparts` is ordered closest first.
+ */
+export interface IssueShapeLimitViolationPayload {
+  cell_type: string;
+  shape: string;
+  kind: "excess" | "deficit";
+  amount: number;
+  nodes: number[];
+  counterparts: string[];
+}
 
 /**
  * One pair a geometric check could not decide — mirrors `maze_core`'s

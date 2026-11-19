@@ -1111,12 +1111,19 @@ mod tests {
             BoundaryRequest::Faces,
         ))
         .unwrap();
-        assert!(snapshot
-            .cells
-            .iter()
-            .all(|cell| cell.boundary == BoundaryDto::Faces));
+        assert!(
+            snapshot
+                .cells
+                .iter()
+                .all(|cell| cell.boundary == BoundaryDto::Faces)
+        );
         assert_eq!(snapshot.allowed_groups.len(), 1);
-        assert!(snapshot.cells.iter().all(|cell| cell.allowed_group == Some(0)));
+        assert!(
+            snapshot
+                .cells
+                .iter()
+                .all(|cell| cell.allowed_group == Some(0))
+        );
     }
 
     /// The snapshot's cells with `offsets` checked against their faces' neighbors and zeroed, the
@@ -1191,7 +1198,9 @@ mod tests {
                     if commands.is_empty() {
                         commands.push(PathCommandDto::MoveTo {
                             to: match segment {
-                                SegmentDto::Line { from, .. } | SegmentDto::Arc { from, .. } => *from,
+                                SegmentDto::Line { from, .. } | SegmentDto::Arc { from, .. } => {
+                                    *from
+                                }
                             },
                         });
                     }
@@ -1233,7 +1242,10 @@ mod tests {
         let cells = expected.iter().map(|cell| cell.cell).collect();
         let mut request = request(TessellationKind::Radial, cells);
         request.tessellation = cfg;
-        assert_eq!(without_offsets(geometry_snapshot(&request).unwrap()), expected);
+        assert_eq!(
+            without_offsets(geometry_snapshot(&request).unwrap()),
+            expected
+        );
     }
 
     /// A 4x2 square field whose east edge is glued to its west edge (face 0 = east, 2 = west).
@@ -1498,7 +1510,8 @@ mod tests {
             };
             let cells = cells_in_region(&request).unwrap();
             let snapshot =
-                geometry_snapshot(&request_with(kind, cells.clone(), BoundaryRequest::Faces)).unwrap();
+                geometry_snapshot(&request_with(kind, cells.clone(), BoundaryRequest::Faces))
+                    .unwrap();
             let faces: usize = snapshot.cells.iter().map(|cell| cell.faces.len()).sum();
             let shared: usize = snapshot
                 .cells

@@ -32,6 +32,7 @@ import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewM
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isEntityVisible, useVisibilityContext } from "../ParamFields";
+import { useCheckAvailability } from "../useCheckAvailability";
 
 // Height of the bottom "new stage" drop zone strip (the top one is `EDGE_ZONE_PX` high, see `useQualityDnd`).
 const BOTTOM_ZONE_PX = 36;
@@ -106,6 +107,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const visibility = useVisibilityContext();
+  const unavailableOf = useCheckAvailability();
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
@@ -269,6 +271,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         label: resolveCheckLabel(c.id, c.label),
         description: resolveCheckDescription(c.id, c.description),
         params: c.params,
+        unavailable: unavailableOf(c),
       }));
   }
 

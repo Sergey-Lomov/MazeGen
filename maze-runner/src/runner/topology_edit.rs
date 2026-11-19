@@ -262,8 +262,20 @@ fn connections_between<T: Tessellation>(
         }
         if let Some(neighbor_idx) = faces_b.iter().position(|&f| f == neighbor_face) {
             connections.push([
-                end_dto(codec, FoldEnd { cell: a.cell, face_idx }),
-                end_dto(codec, FoldEnd { cell: b.cell, face_idx: neighbor_idx }),
+                end_dto(
+                    codec,
+                    FoldEnd {
+                        cell: a.cell,
+                        face_idx,
+                    },
+                ),
+                end_dto(
+                    codec,
+                    FoldEnd {
+                        cell: b.cell,
+                        face_idx: neighbor_idx,
+                    },
+                ),
             ]);
         }
     }
@@ -343,7 +355,10 @@ impl TessellationVisitor for Info<'_> {
                     .collect(),
                 None,
             ),
-            Err(error) => (Vec::new(), Some(error_dto(&*tessellation, codec, &error, &[]))),
+            Err(error) => (
+                Vec::new(),
+                Some(error_dto(&*tessellation, codec, &error, &[])),
+            ),
         };
         let topology = decode_current(self.request, &*tessellation, codec, &fingerprint)?;
         field
@@ -416,7 +431,12 @@ impl TessellationVisitor for Edit<'_> {
         // A refused edit leaves `topology` as it was, so the candidate's fold order is rebuilt
         // from it to point at the sides of an inactive fold.
         let group = edited.map_err(|e| {
-            encode_error(&error_dto(t, codec, &e, &candidate_ends(&topology, &change)))
+            encode_error(&error_dto(
+                t,
+                codec,
+                &e,
+                &candidate_ends(&topology, &change),
+            ))
         })?;
         Ok(TopologyEditResult {
             topology: encode_topology(&topology, codec.to_xy),

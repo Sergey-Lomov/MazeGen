@@ -435,6 +435,11 @@ impl Tessellation for VoronoiTessellation {
     type CellId = VoronoiPoint;
     type Face = VoronoiFace;
 
+    /// None: its cells vary in size, so none stands for a type.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        Vec::new()
+    }
+
     fn cells_vary_in_size(&self) -> bool {
         true
     }

@@ -164,6 +164,25 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                             .collect(),
                     }
                 }
+                IssuePayload::ViolatedNodeShapeLimits { violations } => {
+                    IssuePayloadDto::ViolatedNodeShapeLimits {
+                        violations: violations
+                            .into_iter()
+                            .map(|i| crate::dto_issues::IssueShapeLimitViolationPayloadDto {
+                                cell_type: i.cell_type,
+                                shape: i.shape,
+                                kind: match i.kind {
+                                    maze_core::quality_control::LimitViolationKind::Excess => "excess",
+                                    maze_core::quality_control::LimitViolationKind::Deficit => "deficit",
+                                }
+                                .to_string(),
+                                amount: i.amount,
+                                nodes: i.nodes,
+                                counterparts: i.counterparts,
+                            })
+                            .collect(),
+                    }
+                }
                 IssuePayload::InvalidCrossElementGroup { groups } => {
                     IssuePayloadDto::InvalidCrossElementGroup {
                         groups: cross_element_group_map_dto(groups),

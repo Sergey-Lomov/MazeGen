@@ -60,6 +60,14 @@ beforeEach(() => {
 });
 
 describe("QualityFeature quality preset load (GitHub issue #751)", () => {
+  it("offers a timestamped immutable-extension file name before saving rules", () => {
+    render(<QualityFeature />);
+    fireEvent.click(screen.getByRole("button", { name: m["quality.preset.save"]() }));
+
+    expect((screen.getByRole("textbox", { name: m["file_name.label"]() }) as HTMLInputElement).value).toMatch(/^maze-quality-\d{8}$/);
+    expect(screen.getByText(".mazequality")).toBeInTheDocument();
+  });
+
   it("explains a lower-bound clamp on blur even when the result equals the stored value", () => {
     useMazeStore.setState({ repairMaxIterations: 1 });
     const { container } = render(<QualityFeature />);

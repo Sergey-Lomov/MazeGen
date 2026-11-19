@@ -15,6 +15,9 @@ interface Props {
   /** Integer field — keeps decimal-separator drafts visible but uncommitted, and rounds + clamps
    * the value on blur. A float field only clamps. */
   integer?: boolean;
+  /** An empty field is a valid, committed value (`""`) instead of being restored to the last valid
+   * one — for optional numbers such as an unbounded limit. */
+  allowEmpty?: boolean;
   disabled?: boolean;
   name?: string;
   id?: string;
@@ -31,6 +34,10 @@ interface Props {
    * can't see). Shown as the field hint whenever a new object is passed; `null`/`undefined` is
    * ignored. */
   externalReason?: InputNormalizationReason | null;
+  /** A validation error the owner found in this field (a cross-field rule the field cannot see).
+   * Whenever a new object is passed the field takes focus and shows `message` as an error hint;
+   * the hint is dropped when `null` replaces it or the field is next edited. */
+  externalError?: { message: () => string } | null;
 }
 
 // A numeric `<input>` that never lets a transiently-empty field escape as a committed value.
@@ -39,8 +46,10 @@ interface Props {
 // last valid value. Integer fields additionally reject decimal separators and round+clamp on
 // blur; float fields only clamp. Rejected drafts stay visible like TextInput drafts and are never
 // committed, so the field hint explains why the typed character was not accepted.
-export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, ariaLabel, autoFocus, style, onClick, onBlurCommit, externalReason }: Props) {
+export function NumberInput({ value, onChange, min, max, integer, allowEmpty, disabled, name = "number-input", id, ariaLabel, autoFocus, style, onClick, onBlurCommit, externalReason, externalError }: Props) {
   const hint = useFieldHint();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const errorShownRef = useRef(false);
   // Local display string — decoupled from `value` while the field is focused so the user can
   // clear it and type a new number without the prop snapping it back mid-edit.
   const [draft, setDraft] = useState(value);
@@ -60,9 +69,31 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
     // eslint-disable-next-line react-hooks/exhaustive-deps -- show on each new reason object only
   }, [externalReason]);
 
+  useEffect(() => {
+    if (!externalError) {
+      if (errorShownRef.current) hint.dismiss();
+      errorShownRef.current = false;
+      return;
+    }
+    errorShownRef.current = true;
+    // Deferred: a field that mounts with the error (its tab was just opened) has no hint anchor yet.
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+      hint.show({ key: "external_error", message: externalError.message, tone: "error" });
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react to each new error object only
+  }, [externalError]);
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;
     setDraft(raw);
+    if (allowEmpty && raw.trim() === "") {
+      lastValidRef.current = "";
+      hint.dismiss();
+      onChange("");
+      return;
+    }
     const separatorRejected = Boolean(integer && /[.,]/.test(raw));
     const transientDraft = raw === "" || raw === "-" || /^-?\d+[eE]?$/.test(raw) || (!integer && /^-?(?:\d+\.?\d*|\.\d*)$/.test(raw));
     const result: NormalizerResult<string> = {
@@ -90,6 +121,12 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
 
   function handleBlur() {
     focusedRef.current = false;
+    if (allowEmpty && draft.trim() === "") {
+      setDraft("");
+      onChange("");
+      onBlurCommit?.("");
+      return;
+    }
     const result = normalizeNumberCommit(draft, lastValidRef.current, { min, max, integer });
     if (result.value !== draft) setDraft(result.value);
     lastValidRef.current = result.value;
@@ -124,7 +161,7 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
   return (
     <>
       <input
-        ref={hint.anchorRef as React.Ref<HTMLInputElement>}
+        ref={(el) => { inputRef.current = el; hint.anchorRef(el); }}
         type="text"
         inputMode="decimal"
         role="spinbutton"

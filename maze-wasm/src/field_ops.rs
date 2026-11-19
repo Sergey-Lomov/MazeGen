@@ -1,8 +1,8 @@
+use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
 use maze_runner::runner::field_ops::{
     self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
     PresetRequest, ReflectRequest, TranslateRequest,
 };
-use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
 use maze_runner::runner::print_sizing::{self, PrintSizingRequest};
 use wasm_bindgen::prelude::*;
 
@@ -94,6 +94,30 @@ pub fn tessellation_cell_type_sizes(tessellation: JsValue) -> Result<JsValue, Js
     let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
     match cell_sizes::cell_type_sizes(&tessellation) {
         Ok(types) => Ok(serde_wasm_bindgen::to_value(&types).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Per cell type (`{ cell_type, example_cell, shapes }`), the `NodeShape::key()` of every node
+/// shape the tessellation can produce (GitHub issue #1008) — the vocabulary of the
+/// `node_shape_limits` check's editor. Independent of any field. The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_node_shapes(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match maze_runner::runner::node_shapes::tessellation_node_shapes(&tessellation) {
+        Ok(shapes) => Ok(serde_wasm_bindgen::to_value(&shapes).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// `{ irregular, max_cell_sides }` of a tessellation — what a descriptor's `requires` is matched
+/// against to decide whether a check is available (GitHub issue #1008). Independent of any field.
+/// The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_traits(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match maze_runner::runner::tessellation_traits::tessellation_traits(&tessellation) {
+        Ok(traits) => Ok(serde_wasm_bindgen::to_value(&traits).unwrap()),
         Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
     }
 }

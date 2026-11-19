@@ -175,6 +175,11 @@ impl Tessellation for RhombitrihexagonalTessellation {
     type CellId = RhombitrihexagonalPoint;
     type Face = RhombitrihexagonalFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        super::multi_shape::anchor_samples()
+    }
+
     fn is_valid_cell(&self, _cell: RhombitrihexagonalPoint) -> bool {
         true
     }

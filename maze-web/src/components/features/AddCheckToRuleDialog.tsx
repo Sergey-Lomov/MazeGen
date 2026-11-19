@@ -3,7 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { ParamFields, defaultParamValue } from "./ParamFields";
-import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
+import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription, resolveUnavailableReason } from "./qualityI18n";
+import type { UnavailableReason } from "./checkAvailability";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import { notAllowedCursor } from "../../styles/cursors";
 import * as m from "~/paraglide/messages";
@@ -19,6 +20,9 @@ export interface CheckCandidateVM {
   label: string;
   description: string;
   params: ParamDescriptor[];
+  /** Why the current tessellation rules this check out, `null`/absent when it can be added. The
+   *  candidate stays listed, disabled, with the reason as a tooltip. */
+  unavailable?: UnavailableReason | null;
 }
 
 interface Props {
@@ -39,7 +43,7 @@ interface Props {
  * rule), this targets an existing rule. */
 export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Props) {
   const addCheck = useMazeStore((s) => s.addCheck);
-  const [selectedId, setSelectedId] = useState<string>(candidates[0]?.typeId ?? "");
+  const [selectedId, setSelectedId] = useState<string>(candidates.find((c) => !c.unavailable)?.typeId ?? "");
   // Param edits made in this dialog before the check is actually added — keyed by check type id
   // so switching the selection and coming back preserves what was typed (mirrors CheckSelectDialog).
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
@@ -63,6 +67,8 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
   const items = candidates.map((c) => ({
     id: c.typeId,
     label: resolveCheckLabel(c.typeId, c.label),
+    disabled: !!c.unavailable,
+    disabledReason: c.unavailable ? resolveUnavailableReason(c.unavailable) : undefined,
   }));
 
   const rightPanel = selected ? (

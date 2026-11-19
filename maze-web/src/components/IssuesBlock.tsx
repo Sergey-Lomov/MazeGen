@@ -3,6 +3,7 @@ import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
+import "./features/nodeShapeVocabulary";
 import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, presetLockElementsFor, TILE_GRANULARITY_CHECKS, isFullyPresetLocked } from "./issueRegistry";
 import { resolveIssueHighlight, type NormalizedIssuePayload, type NormalizedEdgeGroup, type NormalizedRegionGroup } from "./issueHighlight";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
@@ -163,6 +164,9 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         const nodes = payload.nodes[sourceCheck] ?? null;
         return nodes == null ? null : { kind: "invalidDeadEnd" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
       }
+      case "violated_node_shape_limits":
+        // Flat payload (one check produces it), so `sourceCheck` does not narrow anything.
+        return { kind: "violatedNodeShapeLimits" as const, nodes: payload.violations.flatMap((i) => i.nodes) };
       case "invalid_split_tile": {
         const groups = payload.groups[sourceCheck] ?? null;
         if (groups == null) return null;
@@ -418,6 +422,8 @@ const issueStyles: Record<string, React.CSSProperties> = {
     margin: 0,
     ...muted(typography.body),
     lineHeight: 1.5,
+    // Bullet lists in a description (`node_shape_limits`) are newline-separated.
+    whiteSpace: "pre-line",
   },
   presetLockedSummary: {
     margin: `${spacing.itemGap}px 0 0`,

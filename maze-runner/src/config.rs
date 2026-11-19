@@ -327,6 +327,46 @@ pub(crate) fn parse_split_patterns_param(
     build_split_patterns(&dtos)
 }
 
+/// Parses a `node_shape_limits` check's `limits` param (GitHub issue #1008): a JSON object keyed by
+/// cell type (a shape template key such as `regular:4`) holding an object keyed by
+/// `NodeShape::key()` with `{"min": u32|null, "max": u32|null}` values. Unknown shape keys,
+/// inverted ranges and malformed JSON are dropped (an empty result means "no limits"), the same
+/// "invalid falls back to the documented default" contract `parse_split_patterns_param` follows.
+pub(crate) fn parse_node_shape_limits_param(
+    param: Option<&String>,
+) -> maze_core::graph::node_shape::NodeShapeLimits {
+    use maze_core::graph::node_shape::{CountRange, NodeShape, NodeShapeLimits};
+    let mut limits = NodeShapeLimits::new();
+    let Some(raw) = param else {
+        return limits;
+    };
+    let Ok(by_cell_type) = serde_json::from_str::<
+        std::collections::BTreeMap<String, std::collections::BTreeMap<String, NodeShapeLimitDto>>,
+    >(raw) else {
+        return limits;
+    };
+    for (cell_type, shapes) in by_cell_type {
+        for (key, dto) in shapes {
+            let Some(shape) = NodeShape::from_key(&key) else {
+                continue;
+            };
+            let Some(range) = CountRange::new(dto.min, dto.max) else {
+                continue;
+            };
+            limits = limits.with(cell_type.clone(), shape, range);
+        }
+    }
+    limits
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+struct NodeShapeLimitDto {
+    #[serde(default)]
+    min: Option<u32>,
+    #[serde(default)]
+    max: Option<u32>,
+}
+
 /// Parses a `params["split_config"]`-style value (`AddSplitStrategy`'s own pattern-selection
 /// config, GitHub issue #247) — the exact same wire shape `GenerateConfig.split_generation` uses
 /// (`SplitGenerationConfigDto`), reused as-is rather than a bespoke parallel shape, since
@@ -442,4 +482,53 @@ fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
         e.elevator_span_max = e.elevator_span_min;
     }
     e
+}
+
+#[cfg(test)]
+mod node_shape_limits_param_tests {
+    use super::parse_node_shape_limits_param;
+    use maze_core::graph::node_shape::{CountRange, NodeShape, TypedShape};
+
+    #[test]
+    fn parses_ranges_and_drops_invalid_entries() {
+        let raw = r#"{
+            "regular:4": {
+                "turn_90": {"min": 2, "max": 5},
+                "dead_end": {"max": 3},
+                "straight": {"min": 4, "max": 1},
+                "not_a_shape": {"min": 1}
+            },
+            "regular:8": {"turn_135": {"min": 1}}
+        }"#
+        .to_string();
+        let limits = parse_node_shape_limits_param(Some(&raw));
+        assert_eq!(
+            limits.get(&TypedShape::new("regular:4", NodeShape::Turn(90))),
+            CountRange::new(Some(2), Some(5)).unwrap()
+        );
+        assert_eq!(
+            limits.get(&TypedShape::new("regular:4", NodeShape::DeadEnd)),
+            CountRange::new(None, Some(3)).unwrap()
+        );
+        assert_eq!(
+            limits.get(&TypedShape::new("regular:8", NodeShape::Turn(135))),
+            CountRange::new(Some(1), None).unwrap()
+        );
+        assert_eq!(
+            limits.get(&TypedShape::new("regular:8", NodeShape::Turn(90))),
+            CountRange::default(),
+            "the same shape of another cell type is a different limit"
+        );
+        assert_eq!(
+            limits.iter().count(),
+            3,
+            "inverted range and unknown key dropped"
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_param_means_no_limits() {
+        assert!(parse_node_shape_limits_param(None).is_empty());
+        assert!(parse_node_shape_limits_param(Some(&"[1]".to_string())).is_empty());
+    }
 }

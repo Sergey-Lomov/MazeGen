@@ -69,7 +69,8 @@ export type NormalizedIssuePayload<Id> =
   | { kind: "areaDeficit" }
   | { kind: "missingElevatorStopCount"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidCrossElementGroup"; entries: NormalizedCrossElementEntry<Id>[] }
-  | { kind: "indeterminateDistance"; pairs: [Id, Id][] };
+  | { kind: "indeterminateDistance"; pairs: [Id, Id][] }
+  | { kind: "violatedNodeShapeLimits"; nodes: Id[] };
 
 /** A resolved cycle highlight — connected edges drawn as a line (`asWall: false`, loop/teleport/
  *  split-route groups) or as the shared wall between two adjacent cells (`asWall: true`, a
@@ -166,6 +167,14 @@ export function resolveIssueHighlight<Id>(payload: NormalizedIssuePayload<Id>): 
       // style as the teleport/vertical-passage endpoint cells) -- a pair has no on-field segment
       // of its own (GitHub issue #838).
       const nodes = dedupe(payload.pairs.flat());
+      return nodes.length > 0 ? { cycle: null, region: { groups: nodes.map((n) => ({ nodes: [n], isSplit: false })) } } : { cycle: null, region: null };
+    }
+
+    case "violatedNodeShapeLimits": {
+      // Every node of every violated shape, one singleton group per node (same style as dead
+      // ends) -- the nodes of a shape are scattered over the maze, never one contiguous region
+      // (GitHub issue #1008).
+      const nodes = dedupe(payload.nodes);
       return nodes.length > 0 ? { cycle: null, region: { groups: nodes.map((n) => ({ nodes: [n], isSplit: false })) } } : { cycle: null, region: null };
     }
 

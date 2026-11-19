@@ -2,6 +2,8 @@ import type { MazeState, QcRuleState, CheckInstance, NestedStrategyState } from 
 import type { ParamDescriptor, ParamKind } from "../../wasm/types";
 import type { TessellationConfig } from "../../fieldConfig";
 import { cellTypeKeysOf, shapeKeysOf } from "../../pixi/shapeTemplates";
+import { activeLimitCount, parseNodeShapeLimits } from "../../components/features/nodeShapeLimits";
+import { checkUnavailableReason } from "../../components/features/checkAvailability";
 
 type QcState = Pick<MazeState, "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams">;
 export type QcTessellationResult = Pick<MazeState, "rules">;
@@ -82,6 +84,9 @@ function filterParams(
       value = filtered?.raw ?? raw;
     } else if (p.kind.type === "split_generation_config") {
       value = filterSplitConfig(raw, shapes);
+    } else if (p.kind.type === "node_shape_limits") {
+      // Limits are keyed by the tessellation's cell types and shapes; none carry over.
+      value = activeLimitCount(parseNodeShapeLimits(raw)) > 0 ? "{}" : raw;
     } else if (p.visibility?.type === "cell_type") {
       value = filterCellTypeParam(raw, p.visibility.key, cellTypes());
     }
@@ -150,6 +155,9 @@ function reindexWeights(
  *  `tessellation` (the config being switched to) provides. A check whose non-empty pattern filter
  *  (its own, or the rule-level one it consumes) loses every pattern is removed instead of being
  *  left with an empty list, since an empty filter means "any split tile". Strategy weights indexed against a rule-level pattern list are re-indexed to match.
+ *  Node-shape limits (GitHub issue #1008) are keyed by the tessellation's cell types, so they reset to none.
+ *  A check the new tessellation makes unavailable (`CheckDescriptor.requires`, e.g. node-shape limits
+ *  on irregular cells) is removed.
  *  Returns the input `rules` reference unchanged when nothing is affected, so
  *  callers can detect data loss by identity. */
 export function qcForTessellation(state: QcState, tessellation: TessellationConfig): QcTessellationResult {
@@ -188,6 +196,10 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
         continue;
       }
       const descriptor = state.availableChecks.find((c) => c.id === check.typeId);
+      if (descriptor && checkUnavailableReason(descriptor, tessellation)) {
+        checksChanged = true;
+        continue;
+      }
       const params = filterParams(check.params, descriptor?.params ?? [], shapes, cellTypes);
       if (params === null) {
         checksChanged = true;

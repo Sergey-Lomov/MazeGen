@@ -2,12 +2,15 @@ import React from "react";
 import { Modal } from "../Modal";
 import { SelectableList, SelectableRow } from "../SelectableList";
 import { WarningIcon } from "../WarningIcon";
+import { Tooltip } from "../Tooltip";
 import { ui, dialogSpacing, typography, spacing } from "../../styles/theme";
 
 interface Item {
   id: string;
   label: string;
   disabled?: boolean;
+  /** Tooltip over a disabled row, naming why it cannot be picked. */
+  disabledReason?: string;
   /** Shows a warning icon after the label (e.g. an experimental strategy). */
   warning?: boolean;
   /** Groups this item under a section header, in first-seen order. Items without a
@@ -33,18 +36,26 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPa
 
   const values = items.filter((item) => !item.disabled).map((item) => item.id);
 
-  const renderItem = (item: Item) => (
-    <SelectableRow
-      key={item.id}
-      value={item.id}
-      selected={item.id === selectedId}
-      disabled={item.disabled}
-      indented={item.section !== undefined}
-      trailing={item.warning && <WarningIcon />}
-    >
-      {item.label}
-    </SelectableRow>
-  );
+  const renderItem = (item: Item) => {
+    const row = (
+      <SelectableRow
+        key={item.id}
+        value={item.id}
+        selected={item.id === selectedId}
+        disabled={item.disabled}
+        indented={item.section !== undefined}
+        trailing={item.warning && <WarningIcon />}
+      >
+        {item.label}
+      </SelectableRow>
+    );
+    // The list owns keyboard focus, so the wrapper is no tab stop; the bubble still shows on hover.
+    return item.disabled && item.disabledReason ? (
+      <Tooltip key={item.id} content={item.disabledReason} placement="right" block focusable={false}>
+        {row}
+      </Tooltip>
+    ) : row;
+  };
 
   const body = (
     <div style={styles.content}>

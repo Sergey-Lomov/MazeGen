@@ -538,6 +538,44 @@ export function getTessellationCellTypeSizes(tessellation: WasmTessellationConfi
   return getWasm().tessellation_cell_type_sizes(tessellation) as CellTypeSizes[];
 }
 
+/// The node shapes of one cell type (GitHub issue #1008). `exampleCell` is a fully surrounded cell
+/// of that type — the tile the shapes are drawn on.
+export interface CellTypeShapes {
+  cellType: string;
+  exampleCell: [number, number];
+  /** Angular rank of every face of the example cell, indexed like its faces — what a junction shape
+   *  key's face numbers refer to. */
+  faceRanks: number[];
+  /** `NodeShape::key()` of every shape. */
+  shapes: string[];
+}
+
+/// Per cell type, the node shapes the tessellation can produce — the vocabulary of the
+/// `node_shape_limits` editor; independent of any field.
+export function getTessellationNodeShapes(tessellation: WasmTessellationConfig): CellTypeShapes[] {
+  const raw = getWasm().tessellation_node_shapes(tessellation) as {
+    cell_type: string;
+    example_cell: [number, number];
+    face_ranks: number[];
+    shapes: string[];
+  }[];
+  return raw.map((t) => ({ cellType: t.cell_type, exampleCell: t.example_cell, faceRanks: t.face_ranks, shapes: t.shapes }));
+}
+
+/// What a tessellation is like, as far as a check's availability depends on it (GitHub issue
+/// #1008) — matched against a `CheckDescriptor.requires`.
+export interface TessellationTraits {
+  /** Cells of one type differ in size and shape (Voronoi): no fixed vocabulary of cell shapes. */
+  irregular: boolean;
+  /** Sides of the largest sampled cell; 0 when the tessellation offers no sample cells. */
+  maxCellSides: number;
+}
+
+export function getTessellationTraits(tessellation: WasmTessellationConfig): TessellationTraits {
+  const raw = getWasm().tessellation_traits(tessellation) as { irregular: boolean; max_cell_sides: number };
+  return { irregular: raw.irregular, maxCellSides: raw.max_cell_sides };
+}
+
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
 export function translateFieldCells(
   tessellation: WasmTessellationConfig,

@@ -1,10 +1,15 @@
 use crate::check_descriptor::{
-    CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, comparison_param,
-    cross_element_include_param, cycle_kind_param, floor_scope_param, forbid_cell_type_param,
+    CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, TessellationRequirement,
+    comparison_param, cross_element_include_param, cycle_kind_param, floor_scope_param, forbid_cell_type_param,
     geometric_floor_mode_param, region_class_filter_param, teleport_direction_param,
     teleport_floor_kind_param, vertical_passage_count_incoming_param,
     vertical_passage_same_type_only_param, vertical_passage_type_param,
 };
+
+/// Largest cell (in sides) `node_shape_limits` is offered for (GitHub issue #1008): a product limit,
+/// not a technical one — the editor lists every shape of a cell type, and beyond an octagon that
+/// list grows too long to work with (351 shapes for a dodecagon).
+const NODE_SHAPE_LIMITS_MAX_CELL_SIDES: u32 = 8;
 use maze_core::quality_control::{
     AREA_MISSING_ELEVATOR_STOPS, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT,
     CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
@@ -85,7 +90,7 @@ use maze_core::quality_control::{
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
-    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VIOLATED_NODE_SHAPE_LIMITS,
 };
 use wasm_bindgen::prelude::*;
 
@@ -108,6 +113,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
             params: vec![],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "unreachable_finish",
@@ -116,6 +122,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
             params: vec![],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_duplicates_connection",
@@ -124,6 +131,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
             params: vec![],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_waypoint_distance",
@@ -165,6 +173,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // legitimate common configuration (e.g. "entry far from start" AND separately "exit
             // far from finish") — same rationale as min_region_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_geometric_length",
@@ -186,6 +195,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 geometric_floor_mode_param(TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_graph_distance",
@@ -206,6 +216,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(Comparison::Lt),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_super_hub_avoidance",
@@ -234,6 +245,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_split_intersection",
@@ -250,6 +262,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "teleport_group_proximity",
@@ -291,6 +304,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // separately "exits close to each other") -- same rationale as
             // teleport_waypoint_distance's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_teleport_count",
@@ -315,6 +329,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // legitimate configuration -- same rationale as min_region_count's
             // multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_teleport_ratio",
@@ -336,6 +351,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_teleport_count",
@@ -361,6 +377,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // configuration (e.g. "at most N bidirectional" AND separately "at most M
             // inter-floor") -- same rationale as min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_teleport_density",
@@ -384,6 +401,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See max_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_one_way_count",
@@ -405,6 +423,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_one_way_ratio",
@@ -426,6 +445,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "one_way_waypoint_distance",
@@ -458,6 +478,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
             // multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "one_way_group_geometric_proximity",
@@ -480,6 +501,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // Multiple instances with different distance thresholds are a legitimate simultaneous
             // configuration -- same rationale as teleport_group_proximity's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "one_way_group_graph_proximity",
@@ -497,6 +519,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "one_way_group_super_hub",
@@ -514,6 +537,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_one_way_count",
@@ -534,6 +558,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_one_way_ratio",
@@ -554,6 +579,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_loops_count",
@@ -575,6 +601,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_loop_density",
@@ -606,6 +633,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "loop_length",
@@ -627,6 +655,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 cycle_kind_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "external_escape_diversity",
@@ -647,6 +676,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 cycle_kind_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "loop_distance_from_start",
@@ -667,6 +697,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 cycle_kind_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "loop_distance_from_finish",
@@ -687,6 +718,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 cycle_kind_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_loop_density",
@@ -707,6 +739,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_loops_count",
@@ -727,6 +760,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "scc_count",
@@ -744,6 +778,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_region_size",
@@ -764,6 +799,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 region_class_filter_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_region_ratio",
@@ -784,6 +820,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 region_class_filter_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_region_size",
@@ -804,6 +841,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 region_class_filter_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_region_ratio",
@@ -824,6 +862,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 region_class_filter_param(),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_region_count",
@@ -876,6 +915,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
             // one active instance to express "different minimums per class").
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_distance_from_waypoint",
@@ -908,6 +948,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
             // multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_teleport_intersection",
@@ -924,6 +965,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_pattern_shape",
@@ -939,6 +981,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_dead_end_count",
@@ -959,6 +1002,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_dead_end_density",
@@ -979,6 +1023,26 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
+        },
+        CheckDescriptor {
+            id: "node_shape_limits",
+            label: "Node shape limits",
+            description: "Fires if the number of nodes of a shape (dead end, straight, turn by angle, junction by degree) falls outside its configured min/max range. Counts ordinary two-way passages over the whole maze.",
+            issue_kinds: vec![kind_str(VIOLATED_NODE_SHAPE_LIMITS)],
+            params: vec![ParamDescriptor {
+                id: "limits",
+                label: "Shape limits",
+                kind: ParamKindDto::NodeShapeLimits,
+                visibility: None,
+            }],
+            visibility: None,
+            requires: vec![
+                TessellationRequirement::RegularCells,
+                TessellationRequirement::MaxCellSides {
+                    max: NODE_SHAPE_LIMITS_MAX_CELL_SIDES,
+                },
+            ],
         },
         CheckDescriptor {
             id: "max_split_count",
@@ -999,6 +1063,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_split_density",
@@ -1019,6 +1084,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_group_geometric_proximity",
@@ -1042,6 +1108,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // configuration -- same rationale as one_way_group_geometric_proximity's
             // multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_group_graph_proximity",
@@ -1059,6 +1126,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_count",
@@ -1080,6 +1148,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_density",
@@ -1101,6 +1170,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_node_connection_count",
@@ -1133,6 +1203,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // simultaneous configuration -- same rationale as split_distance_from_waypoint's
             // multiple instances.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_node_connection_per_neighbor",
@@ -1150,6 +1221,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_node_connection_per_face",
@@ -1167,6 +1239,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "split_node_connection_traversal_distance",
@@ -1184,6 +1257,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_split_tile_node_count",
@@ -1201,6 +1275,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_vertical_passage_count",
@@ -1225,6 +1300,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_vertical_passage_ratio",
@@ -1249,6 +1325,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_vertical_passage_count",
@@ -1274,6 +1351,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_vertical_passage_ratio",
@@ -1299,6 +1377,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "vertical_passage_group_geometric_proximity",
@@ -1328,6 +1407,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "vertical_passage_group_graph_proximity",
@@ -1352,6 +1432,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_stop_count",
@@ -1372,6 +1453,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_span",
@@ -1392,6 +1474,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(ELEVATOR_SPAN_DEFAULT_COMPARISON),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_count",
@@ -1409,6 +1492,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_density",
@@ -1426,6 +1510,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_elevator_count",
@@ -1443,6 +1528,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_elevator_density",
@@ -1460,6 +1546,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_stops_per_area_count",
@@ -1480,6 +1567,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_stops_per_area_density",
@@ -1500,6 +1588,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_elevator_stops",
@@ -1517,6 +1606,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_elevator_stops_per_floor",
@@ -1534,6 +1624,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_stops_skip",
@@ -1551,6 +1642,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_stops_span",
@@ -1568,6 +1660,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_stop_count",
@@ -1585,6 +1678,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "min_elevator_height",
@@ -1602,6 +1696,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "max_elevator_stop_gap",
@@ -1619,6 +1714,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_stop_group_geometric_proximity",
@@ -1641,6 +1737,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "elevator_stop_group_graph_proximity",
@@ -1658,6 +1755,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
             }],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "cross_element_geometric_proximity",
@@ -1722,6 +1820,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // Multiple instances with different type sets / thresholds are a legitimate
             // simultaneous configuration -- same rationale as teleport_group_proximity.
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "cross_element_graph_proximity",
@@ -1783,6 +1882,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
             ],
             visibility: None,
+            requires: Vec::new(),
         },
         CheckDescriptor {
             id: "cross_element_cell_type",
@@ -1861,6 +1961,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // Multiple instances with different element sets / forbidden types are a legitimate
             // simultaneous configuration -- same rationale as the proximity checks.
             visibility: Some(EntityVisibility::MultiCellTypeOnly),
+            requires: Vec::new(),
         },
     ]
 }
@@ -1868,6 +1969,27 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // GitHub issue #1008: a tessellation requirement is deliberate per check, same opt-in
+    // discipline as the visibility tag above.
+    #[test]
+    fn only_node_shape_limits_has_tessellation_requirements() {
+        let checks = available_checks_list();
+        let restricted: Vec<&str> = checks
+            .iter()
+            .filter(|c| !c.requires.is_empty())
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(restricted, vec!["node_shape_limits"]);
+        let limits = checks.iter().find(|c| c.id == "node_shape_limits").unwrap();
+        assert_eq!(
+            limits.requires,
+            vec![
+                TessellationRequirement::RegularCells,
+                TessellationRequirement::MaxCellSides { max: 8 },
+            ]
+        );
+    }
 
     // GitHub issue #349 follow-up: every check that only makes sense with vertical passages/
     // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs

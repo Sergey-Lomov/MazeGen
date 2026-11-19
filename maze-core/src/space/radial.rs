@@ -437,6 +437,11 @@ impl Tessellation for RadialTessellation {
     type CellId = RadialPoint;
     type Face = RadialFace;
 
+    /// None: its cells vary in size, so none stands for a type.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        Vec::new()
+    }
+
     fn cells_vary_in_size(&self) -> bool {
         true
     }

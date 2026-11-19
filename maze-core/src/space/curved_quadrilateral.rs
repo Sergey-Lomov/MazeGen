@@ -98,6 +98,11 @@ impl Tessellation for CurvedQuadrilateralTessellation {
     type CellId = CurvedQuadrilateralPoint;
     type Face = CurvedQuadrilateralFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        vec![CurvedQuadrilateralPoint { x: 0, y: 0 }]
+    }
+
     fn is_valid_cell(&self, _cell: CurvedQuadrilateralPoint) -> bool {
         true
     }

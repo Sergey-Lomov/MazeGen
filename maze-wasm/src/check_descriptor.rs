@@ -93,6 +93,12 @@ pub enum ParamKindDto {
     /// uses; see `maze-runner`'s `parse_split_config_param`), not the flat `PatternList` shape
     /// above — a `PatternList` param has no mode switch or node-count field of its own.
     SplitGenerationConfig,
+    /// Per-shape node-count limits of `node_shape_limits` (GitHub issue #1008) — signals the web UI
+    /// to render the dedicated limits editor. Value is a JSON object keyed by `NodeShape::key()` with
+    /// `{"min": u32|null, "max": u32|null}` entries (see `maze-runner`'s
+    /// `parse_node_shape_limits_param`); the shapes offered come from the
+    /// `tessellation_node_shapes` export.
+    NodeShapeLimits,
     /// `AddSplitStrategy`'s own construction-time param (GitHub issue #389) — pattern topology no
     /// longer lives here (moved to the rule-level `split_patterns` param, see
     /// `RuleParamDescriptorDto`), so this only carries `max_split_nodes`'s default. The web UI
@@ -128,6 +134,27 @@ pub struct CheckDescriptor {
     /// `None` means always offered — see `EntityVisibility`'s own doc comment.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<EntityVisibility>,
+    /// What the tessellation must be like for this check to be offered (GitHub issue #1008). Empty
+    /// means always available — see `TessellationRequirement`'s own doc comment.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<TessellationRequirement>,
+}
+
+/// A condition on the tessellation a check needs (GitHub issue #1008) — the *availability* tag, next
+/// to `EntityVisibility` but with a different effect: a check whose requirement fails is still
+/// listed in the selection dialogs, disabled, with a tooltip naming the reason, instead of being
+/// hidden (the user can see the rule exists and why it is out of reach). A rule already built on
+/// the check is dropped when a tessellation change makes it unavailable (`qcForTessellation`).
+/// Purely a UI hint: core/wasm never branch on it, and `tessellation_traits` is what the web client
+/// matches it against. A check lists several requirements when each can fail for its own reason;
+/// the first failing one is the reason shown.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TessellationRequirement {
+    /// Not available on a tessellation whose cells vary in size (`TessellationTraits::irregular`).
+    RegularCells,
+    /// Not available when a cell has more than `max` sides (`TessellationTraits::max_cell_sides`).
+    MaxCellSides { max: u32 },
 }
 
 /// Rule-level parameter descriptor (GitHub issue #253) — same shape as `ParamDescriptor` plus

@@ -47,6 +47,7 @@ pub enum IssueKind {
     IndeterminateDistance,
     InvalidDeadEnd,
     InvalidDeadEndGroup,
+    ViolatedNodeShapeLimits,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -180,6 +181,11 @@ pub const INVALID_DEAD_END: IssueKind = IssueKind::InvalidDeadEnd;
 /// the maximum dead-end count and density checks; its groups retain every candidate node in the
 /// affected scope together with the excess count for consistent warning/debug attribution.
 pub const INVALID_DEAD_END_GROUP: IssueKind = IssueKind::InvalidDeadEndGroup;
+/// The mix of node shapes (`NodeShape`) violates configured per-shape count limits — see GitHub
+/// issue #1008 and `Specs/node-shape-limits.md`. A semantic category, not tied to one producing
+/// check. Carries `ViolatedNodeShapeLimitsIssue`: per violated shape, the excess or deficit, the
+/// shape's current nodes and the ordered counterpart shapes a node may be converted to or from.
+pub const VIOLATED_NODE_SHAPE_LIMITS: IssueKind = IssueKind::ViolatedNodeShapeLimits;
 
 /// The maze has fewer split tiles than some check requires (currently `SplitCountCheck`/
 /// `SplitDensityCheck`) — part of epic #246. Mirrors `MISSING_LOOPS`'s role for loops: a

@@ -6,7 +6,7 @@ mod types;
 pub use types::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload, IssueUndecidedPairPayload,
+    IssueShapeLimitViolationPayload, IssueSplitTilePayload, IssueUndecidedPairPayload,
 };
 
 use super::distance_diagnostics::IndeterminateReason;
@@ -22,7 +22,7 @@ use super::issue_kinds::{
     InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
     MissingElevatorsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingSplitTilesIssue,
     MissingTeleportsIssue, MissingVerticalPassagesIssue,
-    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
+    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, ViolatedNodeShapeLimitsIssue,
 };
 use super::issue_kinds::{InvalidCrossElementGroupIssue, InvalidCrossElementIssue};
 use crate::generation::PresetState;
@@ -331,6 +331,25 @@ pub fn resolve_issue_payload<T: Tessellation>(
         && let Some(payload) = resolve_dead_end_group_map(groups, invalid_sources)
     {
         return payload;
+    }
+
+    if let Some(ViolatedNodeShapeLimitsIssue { violations, .. }) =
+        issue.as_any().downcast_ref::<ViolatedNodeShapeLimitsIssue>()
+        && !violations.is_empty()
+    {
+        return IssuePayload::ViolatedNodeShapeLimits {
+            violations: violations
+                .iter()
+                .map(|i| IssueShapeLimitViolationPayload {
+                    cell_type: i.shape.cell_type.clone(),
+                    shape: i.shape.shape.key(),
+                    kind: i.kind,
+                    amount: i.amount,
+                    nodes: i.nodes.iter().map(|&n| n as u32).collect(),
+                    counterparts: i.counterparts.iter().map(|s| s.key()).collect(),
+                })
+                .collect(),
+        };
     }
 
     if let Some(deficit_issue) = issue

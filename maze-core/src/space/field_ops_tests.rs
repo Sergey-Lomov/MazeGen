@@ -378,6 +378,9 @@ fn a_tessellation_can_withhold_operations() {
         fn shape_descriptors(&self) -> &[ShapeDescriptor] {
             SquareTessellation.shape_descriptors()
         }
+        fn sample_cells(&self) -> Vec<SquarePoint> {
+            SquareTessellation.sample_cells()
+        }
         fn shape_of(&self, c: SquarePoint) -> Option<CellShape<'_>> {
             SquareTessellation.shape_of(c)
         }

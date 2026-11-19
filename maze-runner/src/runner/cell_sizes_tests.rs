@@ -31,7 +31,10 @@ fn sizes(kind: TessellationKind, cells: Vec<[i32; 2]>) -> Vec<CellTypeSizes> {
 
 #[test]
 fn square_cells_have_one_type_with_equal_sides() {
-    let result = sizes(TessellationKind::Square, rect_cells(TessellationKind::Square, 3, 2));
+    let result = sizes(
+        TessellationKind::Square,
+        rect_cells(TessellationKind::Square, 3, 2),
+    );
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].count, 6);
     assert!(result[0].regular);
@@ -51,7 +54,11 @@ fn counts_of_all_types_add_up_to_the_cells() {
         let cells = rect_cells(kind, 4, 4);
         let total = cells.len();
         let result = sizes(kind, cells);
-        assert_eq!(result.iter().map(|t| t.count).sum::<usize>(), total, "{kind:?}");
+        assert_eq!(
+            result.iter().map(|t| t.count).sum::<usize>(),
+            total,
+            "{kind:?}"
+        );
         assert!(result.iter().all(|t| t.regular), "{kind:?}");
     }
 }
@@ -76,9 +83,13 @@ fn irregular_type_has_no_size() {
             .clone(),
     };
     let cells = (0..4).flat_map(|x| (0..4).map(move |y| [x, y])).collect();
-    let result = cell_sizes(&CellSizesRequest { tessellation, presets: vec![], cells })
-        .unwrap()
-        .types;
+    let result = cell_sizes(&CellSizesRequest {
+        tessellation,
+        presets: vec![],
+        cells,
+    })
+    .unwrap()
+    .types;
     assert_eq!(result.len(), 1);
     assert!(!result[0].regular);
     assert!(result[0].sides.is_empty());
@@ -87,7 +98,10 @@ fn irregular_type_has_no_size() {
 
 #[test]
 fn cell_with_unequal_sides_lists_each_length_longest_first() {
-    let result = sizes(TessellationKind::Brick, rect_cells(TessellationKind::Brick, 3, 3));
+    let result = sizes(
+        TessellationKind::Brick,
+        rect_cells(TessellationKind::Brick, 3, 3),
+    );
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].sides.len(), 2);
     assert!(result[0].sides[0] > result[0].sides[1]);
@@ -108,9 +122,13 @@ fn radial_cells_are_irregular() {
         params: BTreeMap::from([("radius".to_string(), 4)]),
     })
     .unwrap();
-    let result = cell_sizes(&CellSizesRequest { tessellation, presets: vec![], cells })
-        .unwrap()
-        .types;
+    let result = cell_sizes(&CellSizesRequest {
+        tessellation,
+        presets: vec![],
+        cells,
+    })
+    .unwrap()
+    .types;
     assert!(result.iter().all(|t| !t.regular));
 }
 
@@ -118,17 +136,21 @@ fn radial_cells_are_irregular() {
 fn point_outside_the_tessellation_is_refused() {
     let tessellation = TessellationConfig {
         kind: TessellationKind::Radial,
-        params: serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic", "max_cells": 100 })
-            .as_object()
-            .unwrap()
-            .clone(),
+        params:
+            serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic", "max_cells": 100 })
+                .as_object()
+                .unwrap()
+                .clone(),
     };
     let result = cell_sizes(&CellSizesRequest {
         tessellation,
         presets: vec![],
         cells: vec![[0, 0], [500, 0]],
     });
-    assert!(matches!(result, Err(FieldOpWireError::InvalidRequest { .. })));
+    assert!(matches!(
+        result,
+        Err(FieldOpWireError::InvalidRequest { .. })
+    ));
 }
 
 #[test]
@@ -200,7 +222,10 @@ fn type_sizes_match_the_sizes_measured_from_a_field() {
             assert_eq!(sample.key, measured.key, "{kind:?}");
             assert_eq!(sample.count, 0, "{kind:?}");
             assert_eq!(sample.regular, measured.regular, "{kind:?}");
-            assert!((sample.diameter - measured.diameter).abs() < 1e-9, "{kind:?}");
+            assert!(
+                (sample.diameter - measured.diameter).abs() < 1e-9,
+                "{kind:?}"
+            );
             assert_eq!(sample.sides.len(), measured.sides.len(), "{kind:?}");
         }
     }
@@ -217,5 +242,9 @@ fn type_sizes_of_a_varying_tessellation_have_no_size() {
     };
     let result = cell_type_sizes(&tessellation).unwrap();
     assert!(!result.is_empty());
-    assert!(result.iter().all(|t| !t.regular && t.sides.is_empty() && t.diameter == 0.0));
+    assert!(
+        result
+            .iter()
+            .all(|t| !t.regular && t.sides.is_empty() && t.diameter == 0.0)
+    );
 }

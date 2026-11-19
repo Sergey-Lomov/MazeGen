@@ -91,7 +91,7 @@ pub use checks::{
     MinLoopsCountCheck, MinOneWayCountCheck, MinOneWayRatioCheck, MinRegionCountCheck,
     MinRegionRatioCheck, MinRegionSizeCheck, MinTeleportCountCheck, MinTeleportRatioCheck,
     MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck, MissingEndpointsCheck,
-    ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+    NodeShapeLimitsCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
@@ -147,13 +147,13 @@ pub use issue::{
     IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT, MISSING_ELEVATOR_STOP_COUNT,
     MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS, MISSING_ONE_WAYS, MISSING_REGIONS,
     MISSING_SPLIT_TILES, MISSING_TELEPORTS, MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION,
-    REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED, UNREACHABLE_FINISH,
+    REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED, VIOLATED_NODE_SHAPE_LIMITS, UNREACHABLE_FINISH,
 };
 pub use issue_kinds::{
     AreaMissingElevatorStopsIssue, CrossElementCellViolation, CrossElementCloseNodes,
     CrossElementGroupKind,
     CycleAnalysisOverflowedIssue, DeadEndGroupKind, ElevatorGroupKind, ElevatorNodes,
-    ElevatorStopGroupKind, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
+    ElevatorStopGroupKind, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue, LimitViolationKind,
     IndeterminateDistanceIssue, InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidDeadEndGroupIssue,
     InvalidDeadEndIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
     InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidGroupIssue,
@@ -167,14 +167,16 @@ pub use issue_kinds::{
     MissingElevatorsIssue, MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue,
     MissingRegionsIssue, MissingSplitTilesIssue, MissingTeleportsIssue,
     MissingVerticalPassagesIssue, OneWayGroupKind, RegionNeedsExpansionIssue,
-    RegionNeedsShrinkIssue, RepairLimitKind, RepairLimitReachedIssue, SharedCycle, SplitGroupKind,
-    SplitNodeConnectionGroupKind, SplitNodeGroupKind, SplitRouteEdge, SplitTileNodes,
-    TeleportGroupKind, UnreachableFinishIssue, VerticalPassageGroupKind,
+    RegionNeedsShrinkIssue, RepairLimitKind, RepairLimitReachedIssue, ShapeLimitViolation, SharedCycle,
+    SplitGroupKind, SplitNodeConnectionGroupKind, SplitNodeGroupKind, SplitRouteEdge,
+    SplitTileNodes, TeleportGroupKind, ViolatedNodeShapeLimitsIssue, UnreachableFinishIssue,
+    VerticalPassageGroupKind,
 };
 pub use issue_payload::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload, IssueUndecidedPairPayload, resolve_issue_payload,
+    IssueShapeLimitViolationPayload, IssueSplitTilePayload, IssueUndecidedPairPayload,
+    resolve_issue_payload,
 };
 pub use repair_area::RepairArea;
 pub use rule::{Rule, RuleIterationOutcome, RuleTrait};

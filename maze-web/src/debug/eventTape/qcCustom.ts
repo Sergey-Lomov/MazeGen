@@ -41,7 +41,21 @@ export type IssuePayload =
   | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> }
   | { kind: "InvalidCrossElementGroup"; groups: Map<string, CrossElementEntry[][]> }
   | { kind: "InvalidCrossElement"; elements: Map<string, CrossElementEntry[]> }
-  | { kind: "IndeterminateDistance"; pairs: UndecidedPair[] };
+  | { kind: "IndeterminateDistance"; pairs: UndecidedPair[] }
+  | { kind: "ViolatedNodeShapeLimits"; violations: ShapeLimitViolation[] };
+
+/** Mirrors `IssueShapeLimitViolationPayload` in `maze-core/src/quality_control/issue_payload/types.rs` —
+ *  one violated node-shape limit (GitHub issue #1008). `cellType` is the shape template key
+ *  (`regular:4`); `shape`/`counterparts` are `NodeShape::key()` strings; `counterparts` is ordered
+ *  closest first. */
+export interface ShapeLimitViolation {
+  cellType: string;
+  shape: string;
+  kind: "excess" | "deficit";
+  amount: number;
+  nodes: bigint[];
+  counterparts: string[];
+}
 
 /** Mirrors `IssueUndecidedPairPayload` in `maze-core/src/quality_control/issue_payload/types.rs` —
  *  one pair a geometric check could not decide (GitHub issue #838): a representative node per side
@@ -560,6 +574,34 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 17) {
     const { value: elements, next } = readStrKeyedCrossElements(bytes, offset + 1);
     return { value: { kind: "InvalidCrossElement", elements }, next };
+  }
+  if (tag === 18) {
+    const count = readU32(bytes, offset + 1);
+    let pos = offset + 5;
+    const violations: ShapeLimitViolation[] = [];
+    for (let i = 0; i < count; i++) {
+      const { value: cellType, next: afterCellType } = readStr(bytes, pos);
+      const { value: shape, next: afterShape } = readStr(bytes, afterCellType);
+      const kind = bytes[afterShape] === 0 ? "excess" : "deficit";
+      const amount = readU32(bytes, afterShape + 1);
+      const nodeCount = readU32(bytes, afterShape + 5);
+      pos = afterShape + 9;
+      const nodes: bigint[] = [];
+      for (let n = 0; n < nodeCount; n++) {
+        nodes.push(BigInt(readU32(bytes, pos)));
+        pos += 4;
+      }
+      const counterpartCount = readU32(bytes, pos);
+      pos += 4;
+      const counterparts: string[] = [];
+      for (let c = 0; c < counterpartCount; c++) {
+        const { value, next } = readStr(bytes, pos);
+        counterparts.push(value);
+        pos = next;
+      }
+      violations.push({ cellType, shape, kind, amount, nodes, counterparts });
+    }
+    return { value: { kind: "ViolatedNodeShapeLimits", violations }, next: pos };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }
