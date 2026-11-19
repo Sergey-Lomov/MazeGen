@@ -123,6 +123,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_elevator_stop_group.label"] as MessageFn,
     description: m["issue.invalid_elevator_stop_group.description"] as MessageFn,
   },
+  violated_node_shape_limits: {
+    label: m["issue.violated_node_shape_limits.label"] as MessageFn,
+    description: m["issue.violated_node_shape_limits.description"] as MessageFn,
+  },
   invalid_dead_end_group: {
     label: m["issue.invalid_dead_end_group.label"] as MessageFn,
     description: m["issue.invalid_dead_end_group.description"] as MessageFn,
@@ -190,6 +194,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_elevator_stop: m["issue_select.section.elevators"] as MessageFn,
   invalid_elevator_stop_group: m["issue_select.section.elevators"] as MessageFn,
   invalid_dead_end_group: m["issue_select.section.cross_element"] as MessageFn,
+  violated_node_shape_limits: m["issue_select.section.cross_element"] as MessageFn,
   missing_elevators: m["issue_select.section.elevators"] as MessageFn,
   area_missing_elevator_stops: m["issue_select.section.elevators"] as MessageFn,
   missing_elevator_stop_count: m["issue_select.section.elevators"] as MessageFn,
@@ -231,6 +236,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_elevator_stop: m["issue_select.short_label.validate"] as MessageFn,
   invalid_elevator_stop_group: m["issue_select.short_label.validate_stop_groups"] as MessageFn,
   invalid_dead_end_group: m["issue.invalid_dead_end_group.label"] as MessageFn,
+  violated_node_shape_limits: m["issue.violated_node_shape_limits.label"] as MessageFn,
   missing_elevators: m["issue_select.short_label.add_elevators"] as MessageFn,
   area_missing_elevator_stops: m["issue_select.short_label.add_stops_to_maze"] as MessageFn,
   missing_elevator_stop_count: m["issue_select.short_label.add_stops_to_elevator"] as MessageFn,

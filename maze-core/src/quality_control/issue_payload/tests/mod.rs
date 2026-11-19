@@ -77,6 +77,7 @@ macro_rules! merged_checks_keep_own_edges_test {
 mod area;
 mod elevator;
 mod loops;
+mod node_shapes;
 mod one_way;
 mod regions;
 mod split;

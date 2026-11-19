@@ -38,6 +38,10 @@ impl Tessellation for GappedSquareTessellation {
         SquareTessellation.shape_descriptors()
     }
 
+    fn sample_cells(&self) -> Vec<SquarePoint> {
+        SquareTessellation.sample_cells()
+    }
+
     fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
         SquareTessellation.shape_of(cell)
     }
@@ -85,6 +89,10 @@ impl Tessellation for ScaledSquareTessellation {
 
     fn shape_descriptors(&self) -> &[ShapeDescriptor] {
         SquareTessellation.shape_descriptors()
+    }
+
+    fn sample_cells(&self) -> Vec<SquarePoint> {
+        SquareTessellation.sample_cells()
     }
 
     fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
@@ -141,6 +149,10 @@ impl Tessellation for BasisSquareTessellation {
 
     fn shape_descriptors(&self) -> &[ShapeDescriptor] {
         SquareTessellation.shape_descriptors()
+    }
+
+    fn sample_cells(&self) -> Vec<SquarePoint> {
+        SquareTessellation.sample_cells()
     }
 
     fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {

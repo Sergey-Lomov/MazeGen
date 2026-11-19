@@ -41,7 +41,8 @@ export type IssueKindId =
   | "invalid_cross_element_group"
   | "indeterminate_distance"
   | "invalid_dead_end"
-  | "invalid_dead_end_group";
+  | "invalid_dead_end_group"
+  | "violated_node_shape_limits";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_endpoints",
@@ -85,4 +86,5 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "indeterminate_distance",
   "invalid_dead_end",
   "invalid_dead_end_group",
+  "violated_node_shape_limits",
 ] as const;

@@ -25,7 +25,7 @@ pub(crate) fn unique_neighbors(graph: &Graph, node: NodeId) -> Vec<NodeId> {
 /// adjacent tile. Uses the `outgoing`-indexed `outgoing_edges`/`edge_between_kind` (O(degree)
 /// each) rather than scanning `graph.edges()` (O(E)) — this runs once per node in
 /// `compute_node_stats_scoped`, so an O(E) scan per node would be O(V·E) overall.
-fn shape_neighbors(graph: &Graph, node: NodeId) -> Vec<NodeId> {
+pub(crate) fn shape_neighbors(graph: &Graph, node: NodeId) -> Vec<NodeId> {
     let mut v: Vec<NodeId> = graph
         .outgoing_edges(node)
         .filter(|e| e.kind == EdgeKind::Basic)
@@ -46,7 +46,16 @@ pub fn classify_node<T: Tessellation>(
     node: NodeId,
     field: &MultiLevelField<T>,
 ) -> GeometricNodeClass {
-    let neighbors = shape_neighbors(graph, node);
+    classify_by_neighbors(node, &shape_neighbors(graph, node), field)
+}
+
+/// The class of `node` given its `shape_neighbors` — the one place that decides what a dead end,
+/// a straight, a turn and a junction are; `classify_node_shape` refines its result.
+pub(crate) fn classify_by_neighbors<T: Tessellation>(
+    node: NodeId,
+    neighbors: &[NodeId],
+    field: &MultiLevelField<T>,
+) -> GeometricNodeClass {
     match neighbors.len() {
         0 | 1 => GeometricNodeClass::DeadEnd,
         2 => {

@@ -433,7 +433,10 @@ thread_local! {
 pub(super) fn spoil_extent_focus() {
     EXTENT_FOCUS.with(|focus| {
         if let Some(active) = focus.get() {
-            focus.set(Some(ExtentFocus { exact: false, ..active }));
+            focus.set(Some(ExtentFocus {
+                exact: false,
+                ..active
+            }));
         }
     });
 }
@@ -584,7 +587,9 @@ fn focused_cells<T: Tessellation + ?Sized>(
                 let high = Point::new((low.x + tile).min(max.x), (low.y + tile).min(max.y));
                 let candidates = tessellation
                     .candidate_cells(low, high, MAX_REGION_CANDIDATES)
-                    .ok_or_else(|| FieldOpError::InvalidPreset("preset is too large".to_string()))?;
+                    .ok_or_else(|| {
+                        FieldOpError::InvalidPreset("preset is too large".to_string())
+                    })?;
                 let accepted = candidates
                     .into_iter()
                     .filter(|&cell| accepts(cell))
@@ -711,21 +716,21 @@ pub(super) fn convex_cells<T: Tessellation + ?Sized>(
         high_vertex = Point::new(high_vertex.x.max(vertex.x), high_vertex.y.max(vertex.y));
     }
     let slack = Point::new(PRESET_EPS + GEOM_EPS, PRESET_EPS + GEOM_EPS) * 1e3;
-    low = Point::new(low.x.max(low_vertex.x - slack.x), low.y.max(low_vertex.y - slack.y));
-    high = Point::new(high.x.min(high_vertex.x + slack.x), high.y.min(high_vertex.y + slack.y));
-    cells_where(
-        tessellation,
-        low,
-        high,
-        inclusion,
-        |p| {
-            vertices
-                .iter()
-                .zip(vertices.iter().cycle().skip(1))
-                .all(|(&a, &b)| {
-                    let edge = b - a;
-                    edge.cross(p - a) >= -(PRESET_EPS + GEOM_EPS) * edge.length()
-                })
-        },
-    )
+    low = Point::new(
+        low.x.max(low_vertex.x - slack.x),
+        low.y.max(low_vertex.y - slack.y),
+    );
+    high = Point::new(
+        high.x.min(high_vertex.x + slack.x),
+        high.y.min(high_vertex.y + slack.y),
+    );
+    cells_where(tessellation, low, high, inclusion, |p| {
+        vertices
+            .iter()
+            .zip(vertices.iter().cycle().skip(1))
+            .all(|(&a, &b)| {
+                let edge = b - a;
+                edge.cross(p - a) >= -(PRESET_EPS + GEOM_EPS) * edge.length()
+            })
+    })
 }

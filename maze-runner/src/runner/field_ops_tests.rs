@@ -98,20 +98,39 @@ fn box_preset_carries_its_gluing_as_a_valid_wire_topology() {
     let request = preset(
         TessellationKind::Square,
         "box",
-        &[("width", 3), ("height", 3), ("depth", 3), ("net", 0), ("mode", 0), ("aspect", 100)],
+        &[
+            ("width", 3),
+            ("height", 3),
+            ("depth", 3),
+            ("net", 0),
+            ("mode", 0),
+            ("aspect", 100),
+        ],
     );
     let cells = build_preset(&request).unwrap();
     assert_eq!(cells.len(), 54);
-    let dto = preset_topology(&request).unwrap().expect("box defines folds");
+    let dto = preset_topology(&request)
+        .unwrap()
+        .expect("box defines folds");
     assert_eq!(dto.fingerprint, "square{}");
     assert_eq!(dto.folds.len(), 21);
     assert_eq!(dto.groups.len(), 7);
     let by_faces = preset(
         TessellationKind::Square,
         "box",
-        &[("width", 3), ("height", 3), ("depth", 3), ("net", 1), ("mode", 1), ("aspect", 100)],
+        &[
+            ("width", 3),
+            ("height", 3),
+            ("depth", 3),
+            ("net", 1),
+            ("mode", 1),
+            ("aspect", 100),
+        ],
     );
-    assert_eq!(preset_topology(&by_faces).unwrap().unwrap().groups.len(), 12);
+    assert_eq!(
+        preset_topology(&by_faces).unwrap().unwrap().groups.len(),
+        12
+    );
     let topology = crate::topology_wire::decode_topology(
         &dto,
         &SquareTessellation,
@@ -124,7 +143,11 @@ fn box_preset_carries_its_gluing_as_a_valid_wire_topology() {
 
 #[test]
 fn shape_presets_carry_no_topology() {
-    let request = preset(TessellationKind::Square, "rect", &[("cols", 3), ("rows", 2)]);
+    let request = preset(
+        TessellationKind::Square,
+        "rect",
+        &[("cols", 3), ("rows", 2)],
+    );
     assert_eq!(preset_topology(&request).unwrap(), None);
     let unknown = preset(TessellationKind::Square, "nope", &[]);
     assert!(preset_topology(&unknown).is_err());

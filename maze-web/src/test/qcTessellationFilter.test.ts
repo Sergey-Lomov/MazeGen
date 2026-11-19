@@ -8,7 +8,8 @@ import type { QcRuleState } from "../store/storeTypes";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
-  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
+  getTessellationTraits: vi.fn((config: { kind: string }) => ({ irregular: config.kind === "voronoi", maxCellSides: config.kind === "truncated_trihexagonal" ? 12 : 6 })) }));
 
 const HEX = tessellationConfigOf("hex");
 
@@ -109,6 +110,57 @@ describe("qcForTessellation", () => {
     const result = qcForTessellation(state, HEX);
     expect(JSON.parse(result.rules[0].strategyParams.split_config).patterns).toEqual([hex]);
     expect(JSON.parse(result.rules[0].nestedStrategies[0].params.split_config).patterns).toEqual([hex]);
+  });
+});
+
+describe("qcForTessellation node shape limits", () => {
+  const limitsCheck: CheckDescriptor = {
+    id: "node_shape_limits", label: "", description: "", issue_kinds: ["violated_node_shape_limits"],
+    params: [{ id: "limits", label: "", kind: { type: "node_shape_limits" } }],
+  };
+  const state = (limits: string) => ({
+    ...qcState([rule("r", { checks: [{ localId: 0, typeId: "node_shape_limits", params: { limits }, disabled: false }] })]),
+    availableChecks: [limitsCheck],
+  });
+
+  it("resets configured limits to none", () => {
+    const result = qcForTessellation(state('{"regular:4":{"turn_90":{"min":1,"max":null}}}'), HEX);
+    expect(result.rules[0].checks[0].params.limits).toBe("{}");
+  });
+
+  it("keeps the same references when no limit is configured", () => {
+    const empty = state("{}");
+    expect(qcForTessellation(empty, HEX).rules).toBe(empty.rules);
+  });
+});
+
+describe("qcForTessellation check availability", () => {
+  const restricted: CheckDescriptor = {
+    id: "node_shape_limits", label: "", description: "", issue_kinds: ["violated_node_shape_limits"], params: [],
+    requires: [{ type: "regular_cells" }, { type: "max_cell_sides", max: 8 }],
+  };
+  const free = checks[1];
+  const state = () => ({
+    ...qcState([rule("r", { checks: [
+      { localId: 0, typeId: "node_shape_limits", params: {}, disabled: false },
+      { localId: 1, typeId: free.id, params: {}, disabled: false },
+    ] })]),
+    availableChecks: [restricted, free],
+  });
+
+  it("keeps the check on a tessellation that meets its requirements", () => {
+    const kept = state();
+    expect(qcForTessellation(kept, HEX).rules).toBe(kept.rules);
+  });
+
+  it("removes only the check an irregular tessellation rules out", () => {
+    const result = qcForTessellation(state(), { kind: "voronoi", params: {} });
+    expect(result.rules[0].checks.map((c) => c.typeId)).toEqual([free.id]);
+  });
+
+  it("removes the check when a cell has too many sides", () => {
+    const result = qcForTessellation(state(), tessellationConfigOf("truncated_trihexagonal"));
+    expect(result.rules[0].checks.map((c) => c.typeId)).toEqual([free.id]);
   });
 });
 

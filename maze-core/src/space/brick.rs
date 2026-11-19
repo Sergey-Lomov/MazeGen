@@ -101,6 +101,11 @@ impl Tessellation for BrickTessellation {
     type CellId = BrickPoint;
     type Face = BrickFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        vec![BrickPoint { x: 0, y: 0 }]
+    }
+
     fn is_valid_cell(&self, _cell: BrickPoint) -> bool {
         true
     }

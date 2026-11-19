@@ -1,3 +1,4 @@
+use crate::quality_control::LimitViolationKind;
 use std::collections::HashMap;
 
 /// One flagged edge-group element (a cycle, a one-way/teleport group, or a single flagged edge
@@ -245,6 +246,27 @@ pub enum IssuePayload {
     IndeterminateDistance {
         pairs: Vec<IssueUndecidedPairPayload>,
     },
+    /// Every violated node-shape limit of an `ViolatedNodeShapeLimitsIssue` (GitHub issue #1008),
+    /// flat — one check (`node_shape_limits`) produces it and the merged issue already unifies the
+    /// per-shape entries, so there is no per-source-check keying. Mirrors
+    /// `IssuePayloadDto::ViolatedNodeShapeLimits`.
+    ViolatedNodeShapeLimits {
+        violations: Vec<IssueShapeLimitViolationPayload>,
+    },
+}
+
+/// One violated node-shape limit resolved for the wire boundary. `cell_type` is the shape template
+/// key (`regular:4`) of the cells the limit applies to; `shape` and `counterparts` are
+/// `NodeShape::key()` strings (the tessellation-specific vocabulary is open-ended, so no closed
+/// wire enum); `counterparts` keeps the issue's closest-first order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IssueShapeLimitViolationPayload {
+    pub cell_type: String,
+    pub shape: String,
+    pub kind: LimitViolationKind,
+    pub amount: u32,
+    pub nodes: Vec<u32>,
+    pub counterparts: Vec<String>,
 }
 
 /// One pair a geometric check could not decide, resolved for the wire boundary: a representative

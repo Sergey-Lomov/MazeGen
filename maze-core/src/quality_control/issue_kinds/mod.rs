@@ -46,6 +46,7 @@ mod missing_vertical_passages;
 mod region_needs_expansion;
 mod region_needs_shrink;
 mod repair_limit_reached;
+mod violated_node_shape_limits;
 mod unreachable_finish;
 
 pub use area_missing_elevator_stops::AreaMissingElevatorStopsIssue;
@@ -95,6 +96,7 @@ pub use missing_vertical_passages::MissingVerticalPassagesIssue;
 pub use region_needs_expansion::RegionNeedsExpansionIssue;
 pub use region_needs_shrink::RegionNeedsShrinkIssue;
 pub use repair_limit_reached::{RepairLimitKind, RepairLimitReachedIssue};
+pub use violated_node_shape_limits::{LimitViolationKind, ShapeLimitViolation, ViolatedNodeShapeLimitsIssue};
 pub use unreachable_finish::UnreachableFinishIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle

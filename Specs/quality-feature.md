@@ -592,6 +592,40 @@ round-trips unchanged regardless of floor count. (A `forceShowHidden`-style stor
 first in `isEntityVisible`, would be a trivial way to add a "show hidden anyway" toggle later,
 precisely because nothing is ever reset when hidden.)
 
+## Check availability (GitHub issue #1008)
+
+`TessellationRequirement` (`maze-web/src/wasm/types.ts`, mirroring `maze-wasm/src/check_descriptor.rs`)
+is a declarative tag on `CheckDescriptor.requires` saying what the tessellation must be like for the
+check to be offered. Unlike `EntityVisibility` (hidden), a check that fails a requirement stays
+**listed but disabled**, with a tooltip naming the reason, so the user sees the rule exists and why it
+is out of reach. Empty/absent `requires` means always available.
+
+```ts
+type TessellationRequirement =
+  | { type: "regular_cells" }                    // not on a tessellation with cells that vary in size
+  | { type: "max_cell_sides"; max: number };     // not when a cell has more than `max` sides
+```
+
+- `checkUnavailableReason` runs inside selectors and store updates, so a config core rejects (a half-edited
+  preview) is logged and read as "available" rather than throwing; generation reports such a config itself.
+- Core/wasm compute nothing from the tag. `tessellation_traits(config)` (`maze-runner`
+  `runner/tessellation_traits.rs`, wasm export) reports `{ irregular, max_cell_sides }` read from the
+  tessellation's own sample cells (`Tessellation::sample_cells`, Specs/space.md; `irregular` from
+  `cells_vary_in_size`, `max_cell_sides` the largest sample's face count, 0 without samples), so it is independent of any field; web caches it per config.
+- `unavailableReason(requires, traits)` (`components/features/checkAvailability.ts`) is the single
+  interpreter: the first failing requirement becomes an `UnavailableReason`
+  (`irregular_tessellation` | `cell_sides_exceed`); a new requirement is a new arm there, a new
+  `UnavailableReason` and a new `resolveUnavailableReason` text (`qualityI18n/availability.ts`), not a
+  bespoke check at a call site. `useCheckAvailability()` evaluates against the applied tessellation.
+- `ItemSelectDialog` items take `disabled` + `disabledReason` (a `Tooltip` over the row). Consumers:
+  `IssueSelectDialog` (a kind is disabled when every check offering it is unavailable; the tooltip
+  is its first check's reason), `CheckSelectDialog`, `AddCheckToRuleDialog` (`CheckCandidateVM.unavailable`).
+  The initial selection skips disabled items.
+- **Tessellation change:** `qcForTessellation` removes checks the new tessellation makes unavailable
+  (same data-loss path as pattern filters, so the confirmation dialog warns).
+- First consumer: `node_shape_limits` (`Specs/node-shape-limits.md`, "Availability"). Which checks carry a
+  requirement is an explicit id list pinned by `only_node_shape_limits_has_tessellation_requirements`.
+
 ## Store: rule-related state and actions
 
 ```typescript

@@ -47,6 +47,7 @@ impl IssueKind {
             IssueKind::IndeterminateDistance => "indeterminate_distance",
             IssueKind::InvalidDeadEnd => "invalid_dead_end",
             IssueKind::InvalidDeadEndGroup => "invalid_dead_end_group",
+            IssueKind::ViolatedNodeShapeLimits => "violated_node_shape_limits",
         }
     }
 
@@ -97,6 +98,7 @@ impl IssueKind {
             "indeterminate_distance" => Some(IssueKind::IndeterminateDistance),
             "invalid_dead_end" => Some(IssueKind::InvalidDeadEnd),
             "invalid_dead_end_group" => Some(IssueKind::InvalidDeadEndGroup),
+            "violated_node_shape_limits" => Some(IssueKind::ViolatedNodeShapeLimits),
             _ => None,
         }
     }

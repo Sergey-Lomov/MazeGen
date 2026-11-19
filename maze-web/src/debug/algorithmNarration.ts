@@ -1,6 +1,7 @@
 import { type PresetSetupEvent, type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type VertexBasedEvent, type QcEvent, type IssuePayload, kruskalMergedRoot } from "./eventTape";
 import { resolveCheckLabel, resolveStrategyLabel } from "../components/features/qualityI18n";
 import { resolveIssueSourceLabel } from "../components/issueRegistry";
+import "../components/features/nodeShapeVocabulary";
 import { resolveIssueHighlight, type NormalizedIssuePayload } from "../components/issueHighlight";
 import { cellTypeLabel, generatedElementLabel } from "../i18n/cellTypeLabel";
 import * as m from "~/paraglide/messages";
@@ -567,6 +568,8 @@ export function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePay
       return { kind: "missingElevatorStopCount", groups: [...payload.groups.values()].flat().map((g) => ({ edges: g.edges })) };
     case "IndeterminateDistance":
       return { kind: "indeterminateDistance", pairs: payload.pairs.map((p) => p.nodes) };
+    case "ViolatedNodeShapeLimits":
+      return { kind: "violatedNodeShapeLimits", nodes: payload.violations.flatMap((i) => i.nodes) };
     case "InvalidCrossElementGroup":
       return {
         kind: "invalidCrossElementGroup",

@@ -51,6 +51,7 @@ export const CHECK_IDS = [
   "min_vertical_passage_count",
   "min_vertical_passage_ratio",
   "missing_endpoints",
+  "node_shape_limits",
   "one_way_group_geometric_proximity",
   "one_way_group_graph_proximity",
   "one_way_group_super_hub",
@@ -186,6 +187,7 @@ export const ISSUE_KIND_IDS = [
   "region_needs_expansion",
   "region_needs_shrink",
   "unreachable_finish",
+  "violated_node_shape_limits",
 ] as const;
 
 export const PARAM_IDS = [
@@ -239,6 +241,7 @@ export const PARAM_IDS = [
   "junction_weight",
   "length",
   "length_interval",
+  "limits",
   "locality",
   "loop_one_way_chance",
   "max",

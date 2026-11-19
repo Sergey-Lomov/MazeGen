@@ -291,6 +291,33 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.levels[&lf].is_straight(from, via, to)
     }
 
+    /// Interior angle in degrees of the pass `from -> via -> to` (`Field::pass_angle_degrees`).
+    /// `None` for a cross-level triple or an unknown node, mirroring `is_straight`.
+    pub fn pass_angle_degrees(&self, from: NodeId, via: NodeId, to: NodeId) -> Option<f64> {
+        let (lf, lv, lt) = (
+            self.level_of(from)?,
+            self.level_of(via)?,
+            self.level_of(to)?,
+        );
+        if lf != lv || lv != lt {
+            return None;
+        }
+        self.levels[&lf].pass_angle_degrees(from, via, to)
+    }
+
+    /// `Field::neighbor_face_ranks` on `via`'s level; `None` when a neighbor lies on another level.
+    pub fn neighbor_face_ranks(
+        &self,
+        via: NodeId,
+        neighbors: &[NodeId],
+    ) -> Option<(usize, Vec<usize>)> {
+        let level = self.level_of(via)?;
+        if neighbors.iter().any(|&n| self.level_of(n) != Some(level)) {
+            return None;
+        }
+        self.levels[&level].neighbor_face_ranks(via, neighbors)
+    }
+
     /// Removes `node` from the aggregator entirely — resolves both its level and cell
     /// internally, unlike `Field::remove_node_at` which takes the cell explicitly (redundant
     /// once it's derivable from `node`). Panics if `node` doesn't belong to any level, mirroring

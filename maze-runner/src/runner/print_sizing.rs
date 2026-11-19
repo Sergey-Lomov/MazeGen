@@ -137,7 +137,11 @@ impl<T: Tessellation> Sizer<'_, T> {
         // A cylinder or torus is sized as the plane, then moved down to a size that closes up
         // (GitHub issue #894).
         let glued = is_glued(&request.preset);
-        let plane_preset = if glued { "rect" } else { request.preset.as_str() };
+        let plane_preset = if glued {
+            "rect"
+        } else {
+            request.preset.as_str()
+        };
         let plane_params = if glued {
             ShapeParams::from([
                 ("cols".to_string(), get(&request.params, "cols")),
@@ -206,7 +210,10 @@ impl<T: Tessellation> Sizer<'_, T> {
             return Ok((cols >= 1.0 && rows >= 1.0).then(|| {
                 with(
                     params,
-                    &[("cols", cols.min(u32::MAX as f64) as u32), ("rows", rows.min(u32::MAX as f64) as u32)],
+                    &[
+                        ("cols", cols.min(u32::MAX as f64) as u32),
+                        ("rows", rows.min(u32::MAX as f64) as u32),
+                    ],
                 )
             }));
         }
@@ -344,7 +351,8 @@ impl<T: Tessellation> Sizer<'_, T> {
                 let fill = (bounds.width * request.cell_side_mm) / request.usable_width_mm
                     + (bounds.height * request.cell_side_mm) / request.usable_height_mm;
                 // On an exact tie the narrower field wins, as when the columns were walked up.
-                if cell_count > best_cell_count || (cell_count == best_cell_count && fill >= best_fill)
+                if cell_count > best_cell_count
+                    || (cell_count == best_cell_count && fill >= best_fill)
                 {
                     best = Some((cols, rows));
                     best_cell_count = cell_count;
@@ -491,7 +499,11 @@ impl<T: Tessellation> Sizer<'_, T> {
                 } else {
                     f64::from(size / 2).floor()
                 };
-                let cut = if cut.is_finite() { cut.max(0.0) as u32 } else { 0 };
+                let cut = if cut.is_finite() {
+                    cut.max(0.0) as u32
+                } else {
+                    0
+                };
                 cut.min(size.saturating_sub(1)).max(1)
             };
             let next = with(
@@ -499,11 +511,21 @@ impl<T: Tessellation> Sizer<'_, T> {
                 &[
                     (
                         "cols",
-                        smaller(cols, too_wide, request.usable_width_mm, bounds.width * request.cell_side_mm),
+                        smaller(
+                            cols,
+                            too_wide,
+                            request.usable_width_mm,
+                            bounds.width * request.cell_side_mm,
+                        ),
                     ),
                     (
                         "rows",
-                        smaller(rows, too_high, request.usable_height_mm, bounds.height * request.cell_side_mm),
+                        smaller(
+                            rows,
+                            too_high,
+                            request.usable_height_mm,
+                            bounds.height * request.cell_side_mm,
+                        ),
                     ),
                 ],
             );
@@ -583,9 +605,7 @@ fn first_accepted(mut bounds_of: impl FnMut(u32) -> Bounds) -> u32 {
 /// `fits_at` is monotone (true up to a limit); the search gallops from `hint` toward the limit and
 /// bisects the bracket, so a good hint costs a handful of calls.
 fn largest_fitting(mut fits_at: impl FnMut(u32) -> bool, hint: f64, min: u32, max: u32) -> u32 {
-    let start = hint
-        .round()
-        .clamp(f64::from(min), f64::from(max)) as i64;
+    let start = hint.round().clamp(f64::from(min), f64::from(max)) as i64;
     let (min, max) = (i64::from(min), i64::from(max));
     let mut low: i64; // fits, or min - 1
     let mut high: i64; // does not fit, or max + 1

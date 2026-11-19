@@ -126,7 +126,10 @@ fn rect_search_matches_a_full_scan(smooth: bool) {
             let (cols, rows) = (get(&result.params, "cols"), get(&result.params, "rows"));
             assert_eq!(cols * rows, count, "{kind:?} at {cell_side_mm} mm");
             let chosen = fit_of(cols, rows).unwrap();
-            assert!((chosen - fill).abs() < 1e-9, "{kind:?} at {cell_side_mm} mm");
+            assert!(
+                (chosen - fill).abs() < 1e-9,
+                "{kind:?} at {cell_side_mm} mm"
+            );
         }
     }
 }
@@ -151,7 +154,9 @@ fn radial_search_matches_a_walk(smooth: bool) {
             // does not fit ends the walk.
             let largest = (1..=60u32)
                 .filter(|&size| shape_at(size).is_some())
-                .take_while(|&size| shape_at(size).is_some_and(|b| fits_sheet(b, &request).is_some()))
+                .take_while(|&size| {
+                    shape_at(size).is_some_and(|b| fits_sheet(b, &request).is_some())
+                })
                 .last();
             let result = print_sizing(&request).unwrap();
             assert_eq!(
@@ -176,9 +181,16 @@ fn a_cylinder_and_a_torus_close_up_and_stay_on_the_sheet() {
             let Some(result) = print_sizing(&request).unwrap() else {
                 continue;
             };
-            let list: Vec<(&str, u32)> = result.params.iter().map(|(n, &v)| (n.as_str(), v)).collect();
+            let list: Vec<(&str, u32)> = result
+                .params
+                .iter()
+                .map(|(n, &v)| (n.as_str(), v))
+                .collect();
             let measured = measure(kind, preset, &list, &request).unwrap();
-            assert!(fits_sheet(measured, &request).is_some(), "{kind:?} {preset}");
+            assert!(
+                fits_sheet(measured, &request).is_some(),
+                "{kind:?} {preset}"
+            );
             assert!((measured.width - result.width).abs() < 1e-9);
         }
     }
@@ -186,30 +198,58 @@ fn a_cylinder_and_a_torus_close_up_and_stay_on_the_sheet() {
 
 #[test]
 fn an_axis_aligned_rect_is_sized_by_division() {
-    let mut request = request(TessellationKind::Square, "rect", &[("cols", 1), ("rows", 1)], 5.0);
+    let mut request = request(
+        TessellationKind::Square,
+        "rect",
+        &[("cols", 1), ("rows", 1)],
+        5.0,
+    );
     request.axis_aligned = true;
     let result = print_sizing(&request).unwrap().unwrap();
-    assert_eq!((get(&result.params, "cols"), get(&result.params, "rows")), (9, 11));
+    assert_eq!(
+        (get(&result.params, "cols"), get(&result.params, "rows")),
+        (9, 11)
+    );
 }
 
 #[test]
 fn a_result_on_the_search_cap_reports_it() {
-    let tiny = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 0.01);
+    let tiny = request(
+        TessellationKind::Hex,
+        "rect",
+        &[("cols", 1), ("rows", 1)],
+        0.01,
+    );
     let capped = print_sizing(&tiny).unwrap().unwrap();
     assert_eq!(capped.limit, Some(MAX_RECT_DIMENSION));
 
-    let normal = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 5.0);
+    let normal = request(
+        TessellationKind::Hex,
+        "rect",
+        &[("cols", 1), ("rows", 1)],
+        5.0,
+    );
     assert_eq!(print_sizing(&normal).unwrap().unwrap().limit, None);
 
     // An axis-aligned rectangle is sized by division and has no cap.
-    let mut divided = request(TessellationKind::Square, "rect", &[("cols", 1), ("rows", 1)], 0.01);
+    let mut divided = request(
+        TessellationKind::Square,
+        "rect",
+        &[("cols", 1), ("rows", 1)],
+        0.01,
+    );
     divided.axis_aligned = true;
     assert_eq!(print_sizing(&divided).unwrap().unwrap().limit, None);
 }
 
 #[test]
 fn nothing_fits_a_cell_larger_than_the_sheet() {
-    let request = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 300.0);
+    let request = request(
+        TessellationKind::Hex,
+        "rect",
+        &[("cols", 1), ("rows", 1)],
+        300.0,
+    );
     assert_eq!(print_sizing(&request).unwrap(), None);
 }
 
@@ -238,13 +278,25 @@ fn largest_fitting_finds_the_limit_from_any_hint() {
 #[test]
 fn a_radial_search_starts_from_the_smallest_size_core_accepts() {
     // A trihexagonal triangle is refused below side 3, yet a sheet fits much more than that.
-    let request = request(TessellationKind::Trihexagonal, "triangle", &[("side", 1)], 10.0);
-    let sized = print_sizing(&request).unwrap().expect("a triangle fits the sheet");
+    let request = request(
+        TessellationKind::Trihexagonal,
+        "triangle",
+        &[("side", 1)],
+        10.0,
+    );
+    let sized = print_sizing(&request)
+        .unwrap()
+        .expect("a triangle fits the sheet");
     let side = get(&sized.params, "side");
     assert!(side >= 3);
     let fits = |side: u32| {
-        measure(TessellationKind::Trihexagonal, "triangle", &[("side", side)], &request)
-            .is_some_and(|bounds| fits_sheet(bounds, &request).is_some())
+        measure(
+            TessellationKind::Trihexagonal,
+            "triangle",
+            &[("side", side)],
+            &request,
+        )
+        .is_some_and(|bounds| fits_sheet(bounds, &request).is_some())
     };
     assert!(fits(side));
     assert!(!fits(side + 1));
@@ -266,7 +318,10 @@ impl crate::runner::tessellation_factory::TessellationVisitor for FocusAgainstFu
         use crate::runner::field_ops::measure_extents_with;
         let directions = [
             [[1.0, 0.0], [0.0, 1.0]],
-            [[0.5, 0.866_025_403_784_438_6], [-0.866_025_403_784_438_6, 0.5]],
+            [
+                [0.5, 0.866_025_403_784_438_6],
+                [-0.866_025_403_784_438_6, 0.5],
+            ],
             [[1.0, 0.3], [0.2, 1.0]],
             [[0.0, -1.0], [1.0, 0.0]],
         ];
@@ -326,17 +381,27 @@ fn extents_measured_with_the_focus_match_the_whole_shape() {
 fn a_found_size_is_one_core_can_build() {
     // GitHub issue #939: a size too large to be built must not be found, whatever the cell size.
     for kind in kinds_with_rect() {
-        for (preset, shape) in [("rect", vec![("cols", 4), ("rows", 4)]), ("circle", vec![("radius", 1)]), ("triangle", vec![("side", 1)])] {
+        for (preset, shape) in [
+            ("rect", vec![("cols", 4), ("rows", 4)]),
+            ("circle", vec![("radius", 1)]),
+            ("triangle", vec![("side", 1)]),
+        ] {
             let mut request = request(kind, preset, &shape, 3.0);
             request.usable_width_mm = 1100.0;
             request.usable_height_mm = 800.0;
-            let Some(sized) = print_sizing(&request).unwrap() else { continue };
+            let Some(sized) = print_sizing(&request).unwrap() else {
+                continue;
+            };
             let built = crate::runner::field_ops::build_preset(&PresetRequest {
                 tessellation: config(kind),
                 preset: preset.to_string(),
                 params: sized.params.clone(),
             });
-            assert!(built.is_ok(), "{kind:?} {preset} {:?}: {built:?}", sized.params);
+            assert!(
+                built.is_ok(),
+                "{kind:?} {preset} {:?}: {built:?}",
+                sized.params
+            );
         }
     }
 }
@@ -346,12 +411,20 @@ fn a_box_is_scaled_keeping_its_proportions_and_every_side_at_least_one() {
     let sides = params(&[("width", 4), ("height", 2), ("depth", 1)]);
     let scaled = scaled_box(&sides, 8);
     assert_eq!(
-        (get(&scaled, "width"), get(&scaled, "height"), get(&scaled, "depth")),
+        (
+            get(&scaled, "width"),
+            get(&scaled, "height"),
+            get(&scaled, "depth")
+        ),
         (8, 4, 2)
     );
     let thin = scaled_box(&sides, 1);
     assert_eq!(
-        (get(&thin, "width"), get(&thin, "height"), get(&thin, "depth")),
+        (
+            get(&thin, "width"),
+            get(&thin, "height"),
+            get(&thin, "depth")
+        ),
         (1, 1, 1)
     );
     // A box with no sides yet still gets one cell per side to grow from.
@@ -369,10 +442,16 @@ fn the_limit_estimate_survives_a_flat_or_degenerate_size() {
 
 #[test]
 fn snapping_looks_only_at_sizes_at_or_below_within_the_range() {
-    assert_eq!(around_size(20).collect::<Vec<_>>(), (4..=20).rev().collect::<Vec<_>>());
+    assert_eq!(
+        around_size(20).collect::<Vec<_>>(),
+        (4..=20).rev().collect::<Vec<_>>()
+    );
     assert_eq!(around_size(3).collect::<Vec<_>>(), vec![3, 2, 1]);
     assert_eq!(around_size(0).count(), 0);
-    assert_eq!(around_size(MAX_RECT_DIMENSION + 10).next(), Some(MAX_RECT_DIMENSION));
+    assert_eq!(
+        around_size(MAX_RECT_DIMENSION + 10).next(),
+        Some(MAX_RECT_DIMENSION)
+    );
 }
 
 /// GitHub issue #957: 3.12.12 on A4 landscape with 5 mm margins and a 10.1 mm (circumcircle
@@ -385,16 +464,25 @@ fn smoothing_gives_back_the_room_of_the_cells_it_removes() {
     let mut plain = request(kind, "rect", &[("cols", 2), ("rows", 2)], side);
     plain.usable_width_mm = 287.0;
     plain.usable_height_mm = 200.0;
-    let smooth = PrintSizingRequest { smooth: true, ..plain.clone() };
+    let smooth = PrintSizingRequest {
+        smooth: true,
+        ..plain.clone()
+    };
 
     let plain_result = print_sizing(&plain).unwrap().unwrap();
     let smooth_result = print_sizing(&smooth).unwrap().unwrap();
     assert_eq!(
-        (get(&plain_result.params, "cols"), get(&plain_result.params, "rows")),
+        (
+            get(&plain_result.params, "cols"),
+            get(&plain_result.params, "rows")
+        ),
         (29, 23)
     );
     assert_eq!(
-        (get(&smooth_result.params, "cols"), get(&smooth_result.params, "rows")),
+        (
+            get(&smooth_result.params, "cols"),
+            get(&smooth_result.params, "rows")
+        ),
         (29, 25)
     );
     // The answer reports the size of the smoothed field, which fits the sheet.

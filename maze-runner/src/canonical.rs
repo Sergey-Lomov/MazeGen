@@ -21,7 +21,8 @@ use maze_core::{
     graph::{EdgeKind, Graph},
     ids::NodeId,
     quality_control::{
-        Issue, IssueEdgeGroupPayload, IssuePayload, IssueRegionPayload, IssueSplitTilePayload,
+        LimitViolationKind, Issue, IssueEdgeGroupPayload, IssuePayload, IssueRegionPayload,
+        IssueSplitTilePayload,
         resolve_issue_payload,
     },
     space::{MultiLevelField, Tessellation},
@@ -319,6 +320,19 @@ fn canonical_payload(payload: &IssuePayload, cells: &CellIndex) -> Value {
             "indeterminate_distance": sorted_values(pairs.iter().map(|p| json!({
                 "pair": sorted_strings(p.nodes.iter().map(|&n| cells.cell_u32(n)).collect()),
                 "unsupported": p.unsupported,
+            })).collect())
+        }),
+        IssuePayload::ViolatedNodeShapeLimits { violations } => json!({
+            "violated_node_shape_limits": sorted_values(violations.iter().map(|i| json!({
+                "cell_type": i.cell_type,
+                "shape": i.shape,
+                "kind": match i.kind {
+                    LimitViolationKind::Excess => "excess",
+                    LimitViolationKind::Deficit => "deficit",
+                },
+                "amount": i.amount,
+                "nodes": node_set(cells, &i.nodes),
+                "counterparts": i.counterparts,
             })).collect())
         }),
         IssuePayload::InvalidCrossElementGroup { groups } => json!({

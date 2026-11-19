@@ -55,6 +55,11 @@ impl Tessellation for HexTessellation {
     type CellId = HexPoint;
     type Face = HexFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        vec![HexPoint { q: 0, r: 0 }]
+    }
+
     /// The one type is named by the cell's polygon, like the types of the mixed tilings.
     fn cell_types(&self) -> &[super::CellType] {
         &CELL_TYPES

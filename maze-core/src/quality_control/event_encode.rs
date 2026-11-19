@@ -1,4 +1,5 @@
 use crate::graph::EdgeKind;
+use crate::quality_control::issue_kinds::LimitViolationKind;
 use crate::ids::NodeId;
 use crate::quality_control::issue::IssueKind;
 use crate::quality_control::issue_kinds::RepairLimitKind;
@@ -132,6 +133,27 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
                 out.extend_from_slice(&pair.nodes[0].to_le_bytes());
                 out.extend_from_slice(&pair.nodes[1].to_le_bytes());
                 out.push(pair.unsupported as u8);
+            }
+        }
+        IssuePayload::ViolatedNodeShapeLimits { violations } => {
+            out.push(17);
+            out.extend_from_slice(&(violations.len() as u32).to_le_bytes());
+            for violation in violations {
+                write_str(out, &violation.cell_type);
+                write_str(out, &violation.shape);
+                out.push(match violation.kind {
+                    LimitViolationKind::Excess => 0,
+                    LimitViolationKind::Deficit => 1,
+                });
+                out.extend_from_slice(&violation.amount.to_le_bytes());
+                out.extend_from_slice(&(violation.nodes.len() as u32).to_le_bytes());
+                for node in &violation.nodes {
+                    out.extend_from_slice(&node.to_le_bytes());
+                }
+                out.extend_from_slice(&(violation.counterparts.len() as u32).to_le_bytes());
+                for shape in &violation.counterparts {
+                    write_str(out, shape);
+                }
             }
         }
     }

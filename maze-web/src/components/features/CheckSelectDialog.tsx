@@ -3,7 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { ParamFields, isEntityVisible, defaultParamValue } from "./ParamFields";
-import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
+import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription, resolveUnavailableReason } from "./qualityI18n";
+import { useCheckAvailability } from "./useCheckAvailability";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -32,7 +33,9 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   // retired) can't be picked here if it's already active in some existing rule — adding it
   // anyway would be silently rejected by `createRule`.
 
-  const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
+  // A check the current tessellation rules out stays listed, disabled, with the reason as a tooltip.
+  const unavailableOf = useCheckAvailability();
+  const [selectedId, setSelectedId] = useState<string>(availableChecks.find((c) => !unavailableOf(c))?.id ?? "");
   // Param edits made in this dialog before the check is actually added — keyed by check id so
   // switching the selection and coming back preserves what was typed (mirrors useParamEditor's
   // per-entity values, but nothing commits to the store until the flow finishes).
@@ -53,10 +56,15 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
     }
   }
 
-  const items = availableChecks.map((c) => ({
-    id: c.id,
-    label: resolveCheckLabel(c.id, c.label),
-  }));
+  const items = availableChecks.map((c) => {
+    const reason = unavailableOf(c);
+    return {
+      id: c.id,
+      label: resolveCheckLabel(c.id, c.label),
+      disabled: reason !== null,
+      disabledReason: reason ? resolveUnavailableReason(reason) : undefined,
+    };
+  });
 
   const rightPanel = selectedCheck ? (
     <>
