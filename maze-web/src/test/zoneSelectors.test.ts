@@ -16,7 +16,7 @@ describe("zones list", () => {
     expect(countZonesOfKind(zones, "auto")).toBe(1);
     expect(countZonesOfKind(zones, "manual")).toBe(2);
     expect(zoneDisplayName(zones[0])).toBe("Auto A");
-    expect(zoneDisplayName(zones[2])).toBe("#3");
+    expect(zoneDisplayName(zones[2])).toBe("Zone #3");
   });
 
   it("lists the floors a zone occupies, ascending and distinct", () => {
@@ -63,7 +63,9 @@ describe("zones slice list state", () => {
     const s = () => useMazeStore.getState();
     useMazeStore.setState({ zones: [], nextZoneId: 1 });
     s().addManualZone();
+    s().setZoneEditId(null);
     s().addManualZone();
+    s().setZoneEditId(null);
     s().removeZone(2);
     s().addManualZone();
     expect(s().zones.map((zone) => zone.id)).toEqual([1, 3]);

@@ -141,6 +141,8 @@ export function renderRegionContours(
   cornerStyle: CellHighlightCornerStyle,
   borderWidth: number,
   borderDash?: { dash: number; gap: number },
+  /** Colour of the border; the fill's `color` when omitted. */
+  borderColor = color,
 ): void {
   const depth = contours.map((contour) => contours.reduce(
     (count, other) => count + (other !== contour && pointInsideContour(contour[0], other) ? 1 : 0), 0,
@@ -169,11 +171,11 @@ export function renderRegionContours(
     for (let i = 0; i < contours.length; i++) {
       const contourInset = depth[i] % 2 === 0 ? inset : -inset;
       if (borderDash) {
-        drawDashedLoop(g, insetPolygon(contours[i], contourInset), color, borderWidth, borderDash);
+        drawDashedLoop(g, insetPolygon(contours[i], contourInset), borderColor, borderWidth, borderDash);
         continue;
       }
       drawCellHighlightPath(g, contours[i], contourInset, cornerStyle);
-      g.stroke({ color, alpha: 1, width: borderWidth });
+      g.stroke({ color: borderColor, alpha: 1, width: borderWidth });
     }
   }
 }

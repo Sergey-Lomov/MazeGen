@@ -12,7 +12,7 @@ export function glueColorsByGroup(cfg: FieldConfig | undefined, topology: WireTo
   try {
     const arrows = seamArrowsFor(cfg, topology ?? null);
     arrows.forEach((arrow, index) => {
-      if (arrow.group !== null) colors.set(arrow.group, glueColor(index, arrows.length, false));
+      if (arrow.group !== null) colors.set(arrow.group, glueColor(index));
     });
   } catch {
     // A field mid-reset has no geometry to read; the colours come back with the next render.
