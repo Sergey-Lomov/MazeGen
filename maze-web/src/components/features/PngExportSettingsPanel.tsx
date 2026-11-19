@@ -8,6 +8,7 @@ import { FlatIconButton } from "../FlatIconButton";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
@@ -458,7 +459,7 @@ const styles = {
   shortLabel: { ...typography.body },
   labelDisabled: { opacity: 0.4 },
   control: { height: controlRowHeight, boxSizing: "border-box" as const },
-  inputDisabled: { opacity: 0.4, cursor: "not-allowed" as const },
+  inputDisabled: { opacity: 0.4, cursor: notAllowedCursor },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
 } as const;

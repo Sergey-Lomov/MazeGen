@@ -51,7 +51,7 @@ fn violated_node_shape_limits_without_violations_has_no_payload() {
 }
 
 #[test]
-fn violated_node_shape_limits_wire_layout_matches_the_tag_17_reader() {
+fn violated_node_shape_limits_wire_layout_matches_the_tag_18_reader() {
     let payload = IssuePayload::ViolatedNodeShapeLimits {
         violations: vec![IssueShapeLimitViolationPayload {
             cell_type: "regular:8".to_string(),
@@ -65,7 +65,7 @@ fn violated_node_shape_limits_wire_layout_matches_the_tag_17_reader() {
     let mut bytes = Vec::new();
     write_issue_payload(&mut bytes, &payload);
 
-    let mut expected = vec![17];
+    let mut expected = vec![18];
     expected.extend(1u32.to_le_bytes());
     expected.extend(9u32.to_le_bytes());
     expected.extend(b"regular:8");

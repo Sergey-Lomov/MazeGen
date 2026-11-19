@@ -19,10 +19,10 @@ function str(text: string): number[] {
 }
 
 describe("readIssuePayload", () => {
-  it("decodes IssuePayload::ViolatedNodeShapeLimits (tag 17) with the layout maze-core's wire test pins", () => {
-    // Same bytes as `violated_node_shape_limits_wire_layout_matches_the_tag_17_reader` in maze-core.
+  it("decodes IssuePayload::ViolatedNodeShapeLimits (tag 18) with the layout maze-core's wire test pins", () => {
+    // Same bytes as `violated_node_shape_limits_wire_layout_matches_the_tag_18_reader` in maze-core.
     const bytes = new Uint8Array([
-      17,
+      18,
       ...u32le(1), // 1 violation
       ...str("regular:8"), // cell type
       ...str("straight"),

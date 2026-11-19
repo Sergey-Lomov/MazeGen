@@ -284,6 +284,10 @@ export type IssuePayloadDto =
       groups: Record<string, CrossElementPayloadEntry[][]>;
     }
   | {
+      kind: "invalid_cross_element";
+      elements: Record<string, CrossElementPayloadEntry[]>;
+    }
+  | {
       kind: "indeterminate_distance";
       pairs: IssueUndecidedPairPayload[];
     }
@@ -296,7 +300,7 @@ export type IssuePayloadDto =
 /**
  * One violated node-shape limit — mirrors `maze_core`'s `IssueShapeLimitViolationPayload`.
  * `cell_type` is the shape template key (`regular:4`); `shape` and `counterparts` are `NodeShape::key()` strings (`dead_end`, `straight`, `turn_<deg>`,
- * `junction_<n>`); `counterparts` is ordered closest first.
+ * `junction_<sides>_<ranks>`); `counterparts` is ordered closest first.
  */
 export interface IssueShapeLimitViolationPayload {
   cell_type: string;

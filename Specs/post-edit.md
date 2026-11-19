@@ -1002,6 +1002,8 @@ When the manage-split-nodes tool selects a point whose panel is already open ben
 
 **Active-tool lifecycle for the split-node panel (GitHub issue #699):** the panel is visible only while `manage_split_nodes` is the active post-edit tool. Selecting any other post-edit tool clears `postEditFocusedPoint` (and `postEditFocusedPointCovered`), unmounting the panel. This rule supersedes the older active-tool wording in the detailed panel description above.
 
+**Split-node diagnostics (GitHub issue #1022):** This supersedes the earlier header-strip description: the editor uses the shared `WarningsSection` above its content. Its **Warnings (N)** header is collapsed initially, remains present at zero warnings, and uses warning attention styling when diagnostics exist. Expanding it shows the current `splitNodeDiagnostics` messages as standard warning bubbles, with group spacing between the header and bubbles and a divider before the editor content.
+
 ### Split-target prompt (GitHub issue #474)
 
 The current split-node panel presents node-anchored items in an **Elements** section rather than Start/Finish controls or badges. Element rows match preset mode, with post-edit entity IDs rendered after coordinate/floor bubbles; clicking an ID opens the Changes log filtered to that entity. Link bubbles use semantic split-node names (for example `Cor1`) whenever the topology is recognized. Changing floors from a target bubble keeps the panel open.

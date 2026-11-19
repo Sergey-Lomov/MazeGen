@@ -31,7 +31,7 @@ import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
 import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
-import { isEntityVisible } from "../ParamFields";
+import { isEntityVisible, useVisibilityContext } from "../ParamFields";
 import { useCheckAvailability } from "../useCheckAvailability";
 
 // Height of the bottom "new stage" drop zone strip (the top one is `EDGE_ZONE_PX` high, see `useQualityDnd`).
@@ -106,7 +106,7 @@ interface Props {
 export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibility = useVisibilityContext();
   const unavailableOf = useCheckAvailability();
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
@@ -265,7 +265,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   function candidatesFor(slot: StrategySlotVM): CheckCandidateVM[] {
     return availableChecks
       .filter((c) => c.issue_kinds[0] === slot.kind)
-      .filter((c) => isEntityVisible(c.visibility, floorCount))
+      .filter((c) => isEntityVisible(c.visibility, visibility))
       .map((c) => ({
         typeId: c.id,
         label: resolveCheckLabel(c.id, c.label),
@@ -277,7 +277,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
 
   // Cheap existence check for render: avoids mapping every candidate just to learn there are none.
   function hasCandidates(slot: StrategySlotVM): boolean {
-    return availableChecks.some((c) => c.issue_kinds[0] === slot.kind && isEntityVisible(c.visibility, floorCount));
+    return availableChecks.some((c) => c.issue_kinds[0] === slot.kind && isEntityVisible(c.visibility, visibility));
   }
 
   function handleAddCheckClick(slot: StrategySlotVM) {

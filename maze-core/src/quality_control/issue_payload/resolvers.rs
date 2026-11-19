@@ -1,5 +1,5 @@
 use super::super::issue_kinds::{
-    ElevatorNodes, SplitRouteEdge, SplitTileNodes, canonical_cycle_key,
+    CrossElementCellViolation, ElevatorNodes, SplitRouteEdge, SplitTileNodes, canonical_cycle_key,
 };
 use super::super::repair_area::RepairArea;
 use super::types::{
@@ -1034,6 +1034,38 @@ pub(super) fn resolve_cross_element_group_payload<T: Tessellation>(
         None
     } else {
         Some(IssuePayload::InvalidCrossElementGroup { groups: out })
+    }
+}
+
+/// Resolves every element flagged by `CrossElementCellTypeCheck` (GitHub issue #824) into one
+/// `CrossElementPayloadEntry` per logical element, keyed by the check instance(s) that flagged it
+/// (`invalid_sources`). Each entry is narrowed to the element's offending occurrence nodes, the
+/// same way a proximity group member is narrowed to its close nodes.
+pub(super) fn resolve_cross_element_payload<T: Tessellation>(
+    violations: &[CrossElementCellViolation],
+    invalid_sources: &HashMap<CrossElement, Vec<String>>,
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
+    let mut offending: Vec<(CrossElement, Vec<NodeId>)> = Vec::new();
+    for violation in violations {
+        match offending.iter_mut().find(|(e, _)| *e == violation.element) {
+            Some((_, nodes)) => nodes.push(violation.node),
+            None => offending.push((violation.element.clone(), vec![violation.node])),
+        }
+    }
+    let mut out: HashMap<String, Vec<CrossElementPayloadEntry>> = HashMap::new();
+    for (element, nodes) in &offending {
+        let entry = cross_element_entry(element, nodes, graph, field, preset_state);
+        for source in invalid_sources.get(element).into_iter().flatten() {
+            out.entry(source.clone()).or_default().push(entry.clone());
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidCrossElement { elements: out })
     }
 }
 

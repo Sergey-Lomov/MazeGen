@@ -140,6 +140,6 @@ export function prepareQualityPresetLoad(raw: unknown, registry: QualityRegistry
   return { quality: result.quality, skipped: skippedQualityIdList(result.skipped) };
 }
 
-export function downloadQualityPresetFile(state: MazeState): void {
-  downloadJsonFile(serializeQualityPreset(state), `maze-quality-preset${QUALITY_PRESET_FILE_EXTENSION}`);
+export function downloadQualityPresetFile(state: MazeState, fileName = `maze-quality${QUALITY_PRESET_FILE_EXTENSION}`): void {
+  downloadJsonFile(serializeQualityPreset(state), fileName);
 }

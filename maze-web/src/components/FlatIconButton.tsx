@@ -16,6 +16,8 @@ type Props = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children" | "c
   suppressHover?: boolean;
   /** Additional semantic class without replacing the shared surface class. */
   extraClassName?: string;
+  /** Standard action hit-area size. Compact keeps the normal 18 px row footprint. */
+  size?: "default" | "compact";
   /** Allows a surrounding component to own the tooltip while retaining the shared surface. */
   withTooltip?: boolean;
   /** Makes the tooltip anchor fill its parent cross-axis. */
@@ -25,9 +27,9 @@ type Props = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children" | "c
 };
 
 /** Shared square surface for compact icon-only actions. */
-export function FlatIconButton({ title, children, layoutStyle, type = "button", ariaLabel, variant = "default", active = false, suppressHover = false, extraClassName, withTooltip = true, tooltipStretch = false, tooltipLayoutStyle, ...props }: Props) {
+export function FlatIconButton({ title, children, layoutStyle, type = "button", ariaLabel, variant = "default", active = false, suppressHover = false, extraClassName, size = "default", withTooltip = true, tooltipStretch = false, tooltipLayoutStyle, ...props }: Props) {
   const button = (
-    <button {...props} type={type} className={`btn-flat-icon${variant === "danger" ? " btn-flat-icon-danger" : ""}${variant === "contextual" ? " btn-flat-icon-contextual" : ""}${active ? " btn-flat-icon-active" : ""}${suppressHover ? " btn-flat-icon-no-hover" : ""}${extraClassName ? ` ${extraClassName}` : ""}`} style={layoutStyle} aria-label={ariaLabel ?? title}>
+    <button {...props} type={type} className={`btn-flat-icon${size === "compact" ? " btn-flat-icon-compact" : ""}${variant === "danger" ? " btn-flat-icon-danger" : ""}${variant === "contextual" ? " btn-flat-icon-contextual" : ""}${active ? " btn-flat-icon-active" : ""}${suppressHover ? " btn-flat-icon-no-hover" : ""}${extraClassName ? ` ${extraClassName}` : ""}`} style={layoutStyle} aria-label={ariaLabel ?? title}>
       {children}
     </button>
   );

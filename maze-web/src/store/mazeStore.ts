@@ -7,13 +7,14 @@ import { guardPresetEdits } from "./presetEditGuard";
 import { createTessellationSlice } from "./slices/tessellationSlice";
 import { createFloorFieldSlice } from "./slices/floorFieldSlice";
 import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
-import { createGenerationSlice, generateWithSeed } from "./slices/generationSlice";
+import { createGenerationSlice, generateWithSeedAsync } from "./slices/generationSlice";
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
 import { createTopologySlice } from "./slices/topologySlice";
+import { createZonesSlice } from "./slices/zonesSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
@@ -28,6 +29,9 @@ import { warmCartesianCache } from "../pixi/cartesianCache";
 import { resolveFieldConfig } from "../pixi/tessellationCells";
 import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
 import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./slices/postEditSliceHelpers";
+
+/** Identifies the newest project load so an older asynchronous load cannot hide its progress UI. */
+let latestProjectLoadRequestId = 0;
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
@@ -54,6 +58,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
   ...createImageExportSlice(...a),
   ...createFloorsSlice(...a),
   ...createTopologySlice(...a),
+  ...createZonesSlice(...a),
 
   loadProject: async (file) => {
     const [set, get] = a;
@@ -296,18 +301,22 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       return;
     }
 
-    // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
+    // Regenerate the saved maze in the same worker-backed path as a user-initiated generation.
+    // This keeps a large project load off the main thread and lets the shared
+    // GenerationProgressOverlay provide the same feedback and cancellation affordance.
     // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below
     // if a saved postEdit exists, then confirmPostEdit recomputes analytics over the restored
     // state either way (see the final confirmPostEdit call below).
-    set({ lastUsedSeed: file.generation.seed });
-    generateWithSeed(file.generation.seed, get, set, file.generation.qcExperiment);
+    const projectLoadRequestId = ++latestProjectLoadRequestId;
+    set({ lastUsedSeed: file.generation.seed, projectLoadInProgress: true });
+    try {
+      await generateWithSeedAsync(file.generation.seed, get, set, file.generation.qcExperiment);
 
     // Only proceed with post-edit and analytics if generation succeeded
-    if (get().generationStatus !== "done") {
-      set({ openCard: targetOpenCard });
+      if (get().generationStatus !== "done") {
+        set({ openCard: targetOpenCard });
       return;
-    }
+      }
 
     // After generation: if postEdit was saved, replay it over the freshly-built baseline
     // (GitHub issue #543) — fail-closed: if a single command doesn't resolve (corrupted file, or a
@@ -377,7 +386,9 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
 
     // A later load (or post-edit action) supersedes this confirmation. It owns the selected card,
     // so an older async load must not reveal its own saved card over the newer state.
-    if (get()._postEditRequestId !== confirmationRequestId) return;
+      if (get()._postEditRequestId !== confirmationRequestId) {
+      return;
+      }
     // A saved post-edit teleport is absent from the regenerated baseline. Restore manual paths
     // only after the command log has been confirmed, otherwise the stale-path synchronizer drops
     // them before that teleport exists again (GitHub issue #955).
@@ -387,7 +398,10 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       get().nodes,
     );
     get().setManualTeleportConnectorPaths(paths);
-    set({ openCard: targetOpenCard });
+      set({ openCard: targetOpenCard });
+    } finally {
+      if (projectLoadRequestId === latestProjectLoadRequestId) set({ projectLoadInProgress: false });
+    }
   },
 }, a[0], a[1]));
 

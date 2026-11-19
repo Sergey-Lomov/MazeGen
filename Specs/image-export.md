@@ -2,6 +2,8 @@
 
 The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today. Below the export formats, "Save style" / "Load style" buttons save and load the card's whole visual configuration as a standalone style file (GitHub issue #750 — see `Specs/project-file.md`'s "Visual preset" section).
 
+Every image export opens the shared filename dialog before rendering. The generated timestamped base name (`maze-export-DDHHmmss` for PNG) is selected, while `.png` is a separate immutable suffix; confirmation exports immediately while still allowing a replacement base name. Save is disabled for a blank base name.
+
 **Floor-label backplate corners.** With corner radius `0`, the body, border, and surface-colour gap cutout all retain sharp corners. A non-zero radius expands consistently through the border and gap layers for both rectangle and parallelogram backplates.
 
 ## Feature Card Status
@@ -572,7 +574,10 @@ follow-up sub-issue's concern.
 ### "Shared style" — centralized marker/corner-style settings (GitHub issue #322, generalized to a generic parameter-link engine by #643)
 
 Both render mode settings panels have a "Shared style" section, always the first section (before
-"Background"). It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
+"Background"). Its `cornerStyle` and `floorLabelType` controls stay at the section root: corner
+style also drives wall/corridor joins, so it is not marker-only. The remaining settings are arranged
+in collapsed-by-default "Markers", "Marker layout", and "Text" subsections, whose expanded state is
+stored independently for each render mode. It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
 `markerFillColor`, `markerBorderColor`, `markerBorderWidth`, `gapWidth`, `labelFont`, `markerTextSize` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
 into both `VectorByWallsSettings` and `VectorByCorridorsSettings`) that would otherwise need editing
 separately on every marker-like field that conceptually shares them:
@@ -832,7 +837,8 @@ a DFS along all existing links (disabled ones included, since `validateLinkGraph
 `wouldCreateCycle(links, source, target)` is true when `source` is in `reachableFrom(links, target)` or
 `source === target`.
 `addLink` refuses such a link (returns `settings`/`links` unchanged). `LinkEditor` keeps those Source
-candidates listed but disabled (`ParamPicker`'s `disabledPaths`): dimmed, not-allowed cursor, a cycle
+candidates listed but disabled (`ParamPicker`'s `disabledPaths`): dimmed, the shared muted-slate
+Lucide Ban cursor, a cycle
 icon after the label, not clickable, and a tooltip on the whole row (a group row whose leaves are all
 disabled, `allLeavesDisabled`, is dimmed and gets the icon too) ("Source unavailable: it would create
 a cyclic dependency between links."). An already-picked source that a newly chosen Target makes cyclic

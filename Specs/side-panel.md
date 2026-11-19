@@ -133,6 +133,17 @@ Small presentational components that the side panels and dialogs share. They lay
 hover, click and highlight behavior stays with the caller through the usual DOM props (`style` is
 always merged last).
 
+### `SearchInput` (`components/SearchInput.tsx`)
+
+Every text search or free-text filter uses this component. It is a controlled `type="text"` field,
+never a native `type="search"`: a non-empty query gets the same in-field clear action everywhere,
+clearing is immediate and retains focus, and committed query updates are debounced by 150 ms. The
+field is 24 px high; its 18 px compact clear action has a 3 px top/bottom/right inset. Its font,
+dimensions, inset, border, clear label and hover treatment are not configurable; callers may
+supply their own `onKeyDown` only for context-specific keyboard behavior. `tools/check-search-input.mjs`
+runs before the web test suite and production build; it rejects native search controls, raw
+search/filter inputs, and regression of the currently migrated consumers.
+
 ### `Bubble` (`components/Bubble.tsx`)
 
 The monospace chip. `variant`: `neutral` (references an entity, `ui.debug.refHighlight`), `success`
@@ -149,7 +160,7 @@ bubbles never passes a spot that hovers the whole group and the highlight does n
 
 ### `ListCell` / `ListCellAction` (`components/ListCell.tsx`)
 
-One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour dot, `badge`
+One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour swatch, `badge`
 pinned right — an `IdBubble`), an optional details row, an optional body, and an `actions` area at the
 right end of the title row or of the details row (`actionsPlacement`). `ListCellAction` is the 22×22
 icon button: `title` is both tooltip and accessible name, `danger` tints it with the error colour,

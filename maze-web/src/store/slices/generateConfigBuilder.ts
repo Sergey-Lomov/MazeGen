@@ -448,7 +448,10 @@ export async function generateWithSeedAsync(seed: number, get: StoreGet, set: St
   const prepared = prepareGeneration(get, set, qcExperiment);
   if (!prepared) return;
   set({ generationProgress: 0 });
-  const job = startGenerateMaze(seed, prepared.config, (progress) => {
+  // A worker normally reports progress asynchronously, but keep the callback safe for a client
+  // that reports eagerly as well (including alternate worker implementations).
+  let job: import("../../wasm/workerPool").WorkerJob<GenerateMazeResult> | null = null;
+  job = startGenerateMaze(seed, prepared.config, (progress) => {
     if (activeGeneration === job) set({ generationProgress: Math.max(0, Math.min(100, progress)) });
   });
   activeGeneration = job;

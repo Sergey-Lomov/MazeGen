@@ -6,7 +6,7 @@ import * as m from "~/paraglide/messages";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
-  useMazeStore.setState({ generationProgress: null });
+  useMazeStore.setState({ generationProgress: null, projectLoadInProgress: false });
 });
 
 afterEach(() => {
@@ -30,5 +30,18 @@ describe("GenerationProgressOverlay", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(1); });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps project loading and its analytics pass in the same non-cancellable dialog", () => {
+    render(<GenerationProgressOverlay />);
+    act(() => { useMazeStore.setState({ projectLoadInProgress: true, generationProgress: null }); });
+
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(m["project.load_progress_title"]());
+    expect(screen.getByRole("status")).toHaveTextContent(m["project.load_progress_analytics"]());
+    expect(screen.queryByRole("button", { name: m["common.cancel"]() })).toBeNull();
+
+    act(() => { useMazeStore.setState({ generationProgress: 70 }); });
+    expect(screen.queryByRole("button", { name: m["common.cancel"]() })).toBeNull();
   });
 });

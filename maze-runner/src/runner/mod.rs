@@ -29,7 +29,7 @@ use prepare::{Prepared, PreparedVisitor, dispatch};
 use stages::{Repaired, run_generation, run_repair, seed_graph};
 use std::collections::HashMap;
 
-pub use rule_factory::{build_check_types, build_qc_and_repair};
+pub use rule_factory::{build_check_types, build_qc_and_repair, validate_cell_type_params};
 
 /// Result of a single `run_from_config` call — everything a test might want to inspect.
 pub struct MazeRunResult {

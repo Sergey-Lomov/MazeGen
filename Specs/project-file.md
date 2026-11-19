@@ -14,6 +14,10 @@ are the Save / Load buttons in the `FeaturesPanel` footer (`maze-web/src/compone
 
 ## Save
 
+Every save flow opens the shared filename dialog with its generated timestamped base name selected, so the user can confirm immediately or replace it. Project saves default to `maze-project-DDHHmmss.maze`, visual styles to `maze-style-DDHHmmss.mazestyle`, and quality rules to `maze-quality-DDHHmmss.mazequality`. The timestamp is the local day of month, hour, minute, and second. The extension is displayed separately, cannot be edited, and Save is disabled for a blank base name.
+
+The debug-config export in the footer uses the same dialog, defaulting to `maze-debug-call-<seed>-DDHHmmss.json`.
+
 `downloadProjectFile(state)` (`serialize.ts`): `serializeProject(state)` → `downloadJsonFile` (shared
 with the visual preset): JSON → `Blob` → `ObjectURL` → temporary `<a download="maze-project.maze">` →
 click → revoke. The `imageExport` section is built by `serializeImageExport(state)`, also shared with

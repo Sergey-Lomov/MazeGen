@@ -445,11 +445,22 @@ describe("DebugEventTree step-message search", () => {
   });
 
   beforeEach(() => {
-    useMazeStore.setState({ debugArena: twoStepArena(), debugStep: 0, debugSearchQuery: "", debugFocusNodeIndex: null, debugFocusToken: 0 });
+    vi.useFakeTimers();
+    useMazeStore.setState({
+      debugArena: twoStepArena(), debugStep: 0, debugSearchQuery: "", debugFocusNodeIndex: null, debugFocusToken: 0,
+      setDebugSearchQuery: useMazeStore.getInitialState().setDebugSearchQuery,
+    });
   });
+
+  afterEach(() => vi.useRealTimers());
 
   function searchInput() {
     return screen.getByPlaceholderText(m["debug.search.placeholder"]()) as HTMLInputElement;
+  }
+
+  function search(value: string) {
+    fireEvent.change(searchInput(), { target: { value } });
+    act(() => vi.advanceTimersByTime(150));
   }
 
   it("marks the collapsed ancestor scope of a match with a dot, without jumping", () => {
@@ -459,7 +470,7 @@ describe("DebugEventTree step-message search", () => {
     // Tree is fully collapsed — "Cell" ("Cell marked visited"/"Cell added to stack"/"Cell removed
     // from stack") matches 3 event rows nested under the collapsed "Generation" row, which is the
     // only rendered ancestor and so is the one that carries the dot.
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
 
     const generationRow = screen.getByText(m["debug.tree.source_scope.generation"]()).closest("[data-index]")!;
     expect(generationRow.querySelector('[data-testid="search-match-dot"]')).toBeInTheDocument();
@@ -471,7 +482,7 @@ describe("DebugEventTree step-message search", () => {
     render(<DebugEventTree />);
     expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
-    fireEvent.change(searchInput(), { target: { value: "passage added" } });
+    search("passage added");
 
     // Only EdgeAdded ("Passage added ...") matches.
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
@@ -491,7 +502,7 @@ describe("DebugEventTree step-message search", () => {
       setDebugStep: realActions.setDebugStep, focusDebugNode: realActions.focusDebugNode,
     });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
     // matches[0] = VertexVisited (step 1). Enter -> matches[1] = VertexPushed (step 2, mutating).
     fireEvent.keyDown(searchInput(), { key: "Enter" });
 
@@ -505,7 +516,7 @@ describe("DebugEventTree step-message search", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ focusDebugNode, setDebugStep });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
     // 3 matches: VertexVisited (step 1), VertexPushed (step 2), VertexPopped (step 3). Initial
     // current = matches[0]; first Enter -> matches[1].
     fireEvent.keyDown(searchInput(), { key: "Enter" });
@@ -522,7 +533,7 @@ describe("DebugEventTree step-message search", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
     // current = matches[0]; Shift+Enter wraps to matches[2] (VertexPopped, step 3).
     fireEvent.keyDown(searchInput(), { key: "Enter", shiftKey: true });
     expect(setDebugStep).toHaveBeenLastCalledWith(3);
@@ -532,7 +543,7 @@ describe("DebugEventTree step-message search", () => {
     const focusDebugNode = vi.fn();
     useMazeStore.setState({ focusDebugNode });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "passage added" } }); // exactly 1 match
+    search("passage added"); // exactly 1 match
 
     expect(getTooltipControl(m["debug.search.next"]())).toBeDisabled();
     expect(getTooltipControl(m["debug.search.prev"]())).toBeDisabled();
@@ -545,7 +556,7 @@ describe("DebugEventTree step-message search", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ focusDebugNode, setDebugStep });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "step" } }); // "Step 1" + "Step 2" headers
+    search("step"); // "Step 1" + "Step 2" headers
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
 
     fireEvent.keyDown(searchInput(), { key: "Enter" }); // -> "Step 2" scope (nodeIndex 7)
@@ -566,7 +577,7 @@ describe("DebugEventTree step-message search", () => {
     render(<DebugEventTree />);
     expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
     // 3 matches: VertexVisited (step 1), VertexPushed (step 2), VertexPopped (step 3). Counter
     // starts at matches[0].
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
@@ -581,10 +592,10 @@ describe("DebugEventTree step-message search", () => {
 
   it("the input reflects debugSearchQuery, including an external reset to empty", () => {
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    act(() => useMazeStore.setState({ debugSearchQuery: "Cell" }));
     expect(searchInput().value).toBe("Cell");
 
-    act(() => useMazeStore.getState().setDebugMode(false));
+    act(() => useMazeStore.setState({ debugSearchQuery: "" }));
     expect(searchInput().value).toBe("");
   });
 
@@ -604,13 +615,13 @@ describe("DebugEventTree step-message search", () => {
       debugStep: 0,
     });
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: m["debug.tree.vertex_pushed"]().toLowerCase() } });
+    search(m["debug.tree.vertex_pushed"]().toLowerCase());
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
   });
 
   it("recomputes matches and resets the current match when the tape changes under an active query", () => {
     render(<DebugEventTree />);
-    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    search("Cell");
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
 
     // Swap in the generation+QC tape — "Cell" no longer matches anything there.

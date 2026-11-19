@@ -1,12 +1,16 @@
 import React, { useEffect } from "react";
+import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import { ui, radius, typography, muted, inset, spacing } from "../styles/theme";
+import { ui, radius, typography, muted, inset, spacing, indent } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { SidePanel } from "./SidePanel";
+import { WarningBubble } from "./WarningBubble";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
 import { Tooltip } from "./Tooltip";
+import { FlatIconButton } from "./FlatIconButton";
+import { NumberInput } from "./NumberInput";
 import * as m from "~/paraglide/messages";
 import type { EventedEventKind } from "../wasm/mazeService";
 
@@ -107,94 +111,93 @@ export function DebugPanel() {
       title={m["debug.title"]()}
       stackKey="debug"
       onClose={handleClose}
-      warnings={debugStale ? [m["debug.outdated_warning"]()] : undefined}
     >
-      <div style={styles.controls}>
-        {/* Step buttons */}
-        <Tooltip content={m["debug.prev_step"]()}><button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }}>❮</button></Tooltip>
-        <Tooltip content={m["debug.next_step"]()}><button className="hoverable" style={styles.toolbarBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }}>❯</button></Tooltip>
-
-        {/* Autoplay */}
-        <Tooltip content={playing ? m["debug.stop"]() : m["debug.play"]()}><button
-          className="hoverable"
-          style={styles.toolbarBtn}
-          onClick={() => setPlaying(p => !p)}
-        >
-          {playing ? "⏹" : "▶"}
-        </button></Tooltip>
-
-        {/* Delay */}
-        <Tooltip content={m["debug.delay_ms"]()}><input
-          type="text"
-          name="debug-delay-ms"
-          style={styles.delayInput}
-          value={delayDraft}
-          onChange={(e) => setDelayDraft(e.target.value)}
-          onBlur={() => {
-            const v = Math.max(50, Math.min(9999, parseInt(delayDraft, 10) || delayMs));
-            setDelayMs(v);
-            setDelayDraft(String(v));
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          }}
-        /></Tooltip>
-        <span style={styles.label}>ms</span>
-      </div>
-
-      {multiFloor && (
-        <div style={styles.autoSwitchFloorRow}>
-          <ToggleRow
-            label={m["debug.auto_switch_floor"]()}
-            checked={debugAutoSwitchFloor}
-            onChange={toggleDebugAutoSwitchFloor}
-          />
-        </div>
-      )}
-
-      <div style={styles.stepRow}>
-        <Tooltip content={m["debug.focus_step"]()}><span
-          className="hoverable"
-          style={styles.stepLabel}
-          onClick={focusDebugStep}
-        >
-          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{total === 0 ? 0 : debugStep + 1}</span>
-          {" / "}
-          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
-        </span></Tooltip>
-        <StepSlider
-          value={debugStep}
-          max={total - 1}
-          style={styles.slider}
+      {debugStale && <div style={styles.warning}><WarningBubble message={m["debug.outdated_warning"]()} /></div>}
+      <section style={styles.timelineSection} aria-label={m["debug.timeline_section"]()}>
+        <div style={styles.stepRow}>
+          <FlatIconButton title={m["debug.prev_step"]()} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }}>
+            <ChevronLeft size={16} />
+          </FlatIconButton>
+          <Tooltip content={m["debug.focus_step"]()}><span
+            className="hoverable"
+            style={styles.stepLabel}
+            onClick={focusDebugStep}
+          >
+            <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{total === 0 ? 0 : debugStep + 1}</span>
+            {" / "}
+            <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
+          </span></Tooltip>
+          <StepSlider
+            value={debugStep}
+            max={total - 1}
+            style={styles.slider}
           // GitHub issue #350 / #451: the step slider never auto-switches the active floor — not
           // during the drag and not on release (`switchFloor: false` on every tick and on the
           // settle). Scrubbing across floors used to flicker the active floor on every tick (#350),
           // and applying the switch on release made the view jump away from the user's chosen floor
           // the moment they let go (#451). Every other trigger (autoplay, next/prev, tree row
           // click) still auto-switches via the single-argument `setDebugStep`.
-          onChange={(v) => { setPlaying(false); setDebugStep(v, false); }}
-          onChangeEnd={(v) => setDebugStep(v, false)}
-        />
-      </div>
+            onChange={(v) => { setPlaying(false); setDebugStep(v, false); }}
+            onChangeEnd={(v) => setDebugStep(v, false)}
+          />
+          <FlatIconButton title={m["debug.next_step"]()} disabled={atEnd} onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }}>
+            <ChevronRight size={16} />
+          </FlatIconButton>
+        </div>
 
-      {(debugArena.debugValueNames.length > 0 || debugArena.algorithmKind === "kruskal") && (
-        <div style={styles.debugValuesRow}>
-          {debugArena.debugValueNames.map(({ name }) => (
+        <div style={styles.controls}>
+          <FlatIconButton title={playing ? m["debug.stop"]() : m["debug.play"]()} onClick={() => setPlaying(p => !p)}>
+            {playing ? <Pause size={16} fill="currentColor" strokeWidth={0} /> : <Play size={16} fill="currentColor" strokeWidth={0} />}
+          </FlatIconButton>
+
+          {/* Delay */}
+          <Tooltip content={m["debug.delay_between_steps"]()} focusable={false}><NumberInput
+            name="debug-delay-ms"
+            style={styles.delayInput}
+            value={delayDraft}
+            min={50}
+            max={9999}
+            integer
+            ariaLabel={m["debug.delay_between_steps"]()}
+            onChange={setDelayDraft}
+            onBlurCommit={(value) => {
+              const delay = Number(value);
+              setDelayMs(delay);
+              setDelayDraft(String(delay));
+            }}
+          /></Tooltip>
+          <span style={styles.label}>{m["debug.milliseconds"]()}</span>
+        </div>
+      </section>
+
+      {(multiFloor || debugArena.debugValueNames.length > 0 || debugArena.algorithmKind === "kruskal") && (
+        <section style={styles.section} aria-label={m["debug.display_section"]()}>
+          <div style={styles.sectionLabel}>{m["debug.display_section"]()}</div>
+          <div style={styles.debugValuesRow}>
+            {multiFloor && (
+              <ToggleRow
+                label={m["debug.auto_switch_floor"]()}
+                checked={debugAutoSwitchFloor}
+                onChange={toggleDebugAutoSwitchFloor}
+              />
+            )}
+            {debugArena.debugValueNames.map(({ name }) => (
             <ToggleRow
               key={name}
               label={debugValueLabel(name, debugArena.algorithmKind)}
               checked={debugValueToggles.has(name)}
               onChange={() => toggleDebugValue(name)}
             />
-          ))}
-          {debugArena.algorithmKind === "kruskal" && (
+            ))}
+            {debugArena.algorithmKind === "kruskal" && (
             <ToggleRow
               label={m["debug.value.kruskal_dsu_groups"]()}
               checked={showKruskalDsuGroups}
               onChange={toggleKruskalDsuGroups}
             />
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       )}
 
       <DebugEventTree />
@@ -203,29 +206,12 @@ export function DebugPanel() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  controls: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.rowGap,
-    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
-    background: ui.bg.panelAlt,
-    borderBottom: `1px solid ${ui.border.default}`,
-    flexShrink: 0,
-  },
-  stepRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.rowGap,
+  warning: {
     padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  autoSwitchFloorRow: {
-    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
-    borderBottom: `1px solid ${ui.border.default}`,
-    flexShrink: 0,
-  },
-  debugValuesRow: {
+  section: {
     display: "flex",
     flexDirection: "column" as const,
     gap: spacing.itemGap,
@@ -233,23 +219,33 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  toolbarBtn: {
-    ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
-    cursor: "default",
-    padding: `0 ${inset.panelInsetX}px`,
+  timelineSection: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: spacing.itemGap,
+    padding: `${inset.panelInsetY}px 0`,
+    borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
-    height: 28,
-    boxSizing: "border-box" as const,
-    borderRadius: radius.sm,
+  },
+  sectionLabel: sharedStyles.sectionHeader,
+  controls: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    lineHeight: 1,
-    appearance: "none" as const,
-    paddingBottom: 2,
+    gap: spacing.rowGap,
+    padding: `0 ${inset.panelInsetX}px`,
+  },
+  stepRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.rowGap,
+    padding: `0 ${inset.panelInsetX}px`,
+  },
+  debugValuesRow: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: spacing.itemGap,
+    paddingLeft: indent.tree,
   },
   delayInput: {
     ...typography.field,

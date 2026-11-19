@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
 import { Button } from "../Button";
@@ -10,10 +10,11 @@ import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
 import { downloadPngExport } from "./pngExport";
+import { FileNameModal, timestampedBaseName } from "../FileNameModal";
 import { readJsonFile } from "../jsonFile";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
-import { downloadVisualPresetFile, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError } from "../../store/projectExport";
+import { downloadVisualPresetFile, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError, VISUAL_PRESET_FILE_EXTENSION } from "../../store/projectExport";
 import * as m from "~/paraglide/messages";
 
 const VISUAL_PRESET_LOAD_SOURCE = "visual_preset_load";
@@ -41,6 +42,7 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
   const exportTopologyOpen = useMazeStore((s) => s.exportTopologyOpen);
   const teleportConnectorEdit = useMazeStore((s) => s.teleportConnectorEdit);
   const finishTeleportConnectorEdit = useMazeStore((s) => s.finishTeleportConnectorEdit);
+  const [pendingDownload, setPendingDownload] = useState<{ kind: "png" | "style"; defaultBaseName: string; extension: string } | null>(null);
 
   function handleClick(mode: RenderModeId) {
     bringSidePanelToFront("image-export-render-mode");
@@ -53,11 +55,20 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
     setOpenExportFormatSettings(format);
   }
 
-  async function handleExportClick(format: ExportFormatId) {
-    if (format === "png") {
-      const blob = await onExportPng(pngExportSettings);
-      if (blob) downloadPngExport(blob);
+  function handleExportClick(format: ExportFormatId) {
+    if (format === "png") setPendingDownload({ kind: "png", defaultBaseName: timestampedBaseName("maze-export"), extension: ".png" });
+  }
+
+  async function confirmDownload(fileName: string) {
+    const kind = pendingDownload?.kind;
+    setPendingDownload(null);
+    if (kind === "style") {
+      downloadVisualPresetFile(useMazeStore.getState(), fileName);
+      return;
     }
+    if (kind !== "png") return;
+    const blob = await onExportPng(pngExportSettings);
+    if (blob) downloadPngExport(blob, fileName);
   }
 
   function handlePresetFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -126,7 +137,7 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
       <Inline gap="itemGap" align="stretch">
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadVisualPresetFile(useMazeStore.getState())}>
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => setPendingDownload({ kind: "style", defaultBaseName: timestampedBaseName("maze-style"), extension: VISUAL_PRESET_FILE_EXTENSION })}>
           {m["image_export.visual_preset.save"]()}
         </Button>
         <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
@@ -141,6 +152,15 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
         style={{ display: "none" }}
         onChange={handlePresetFileChange}
       />
+
+      {pendingDownload !== null && (
+        <FileNameModal
+          defaultBaseName={pendingDownload.defaultBaseName}
+          extension={pendingDownload.extension}
+          onConfirm={confirmDownload}
+          onCancel={() => setPendingDownload(null)}
+        />
+      )}
 
       {openMode && (
         <SidePanel title={openMode.label()} stackKey="image-export-render-mode" onClose={() => setOpenRenderModeSettings(null)}>

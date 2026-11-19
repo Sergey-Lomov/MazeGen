@@ -88,6 +88,8 @@ export interface GenerationState {
   generationStatus: "idle" | "done" | "error";
   /** Current worker-reported completion percentage, or `null` when no generation is active. */
   generationProgress: number | null;
+  /** A project is regenerating its saved maze and restoring its derived state. */
+  projectLoadInProgress: boolean;
   // Active feature card
   openCard: FeatureId;
   // Debug state — read-only projection, does not mutate production graph

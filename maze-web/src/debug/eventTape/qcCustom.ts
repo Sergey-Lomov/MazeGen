@@ -40,6 +40,7 @@ export type IssuePayload =
   | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> }
   | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> }
   | { kind: "InvalidCrossElementGroup"; groups: Map<string, CrossElementEntry[][]> }
+  | { kind: "InvalidCrossElement"; elements: Map<string, CrossElementEntry[]> }
   | { kind: "IndeterminateDistance"; pairs: UndecidedPair[] }
   | { kind: "ViolatedNodeShapeLimits"; violations: ShapeLimitViolation[] };
 
@@ -364,6 +365,63 @@ export interface CrossElementEntry {
   presetLocked: boolean;
 }
 
+/** Reads one `write_cross_element_entry` record: `kind` string, edge-pair list, node list, an
+ *  optional tile behind a presence byte, then `removable` and `preset_locked` bytes. */
+function readCrossElementEntry(bytes: Uint8Array, offset: number): { value: CrossElementEntry; next: number } {
+  let pos = offset;
+  const { value: kind, next: afterKind } = readStr(bytes, pos);
+  pos = afterKind;
+  const edgeCount = readU32(bytes, pos);
+  pos += 4;
+  const edges: [bigint, bigint][] = [];
+  for (let e = 0; e < edgeCount; e++) {
+    edges.push([BigInt(readU32(bytes, pos)), BigInt(readU32(bytes, pos + 4))]);
+    pos += 8;
+  }
+  const nodeCount = readU32(bytes, pos);
+  pos += 4;
+  const nodes: bigint[] = [];
+  for (let n = 0; n < nodeCount; n++) {
+    nodes.push(BigInt(readU32(bytes, pos)));
+    pos += 4;
+  }
+  let tile: SplitTile | null = null;
+  const hasTile = bytes[pos] !== 0;
+  pos += 1;
+  if (hasTile) {
+    const { value: t, next } = readSplitTile(bytes, pos);
+    tile = t;
+    pos = next;
+  }
+  const removable = bytes[pos] !== 0;
+  pos += 1;
+  const presetLocked = bytes[pos] !== 0;
+  pos += 1;
+  return { value: { kind, edges, nodes, tile, removable, presetLocked }, next: pos };
+}
+
+/** Reads the `HashMap<String, Vec<CrossElementPayloadEntry>>` wire shape
+ *  `write_str_keyed_cross_elements` produces (`IssuePayload::InvalidCrossElement`'s `elements`). */
+function readStrKeyedCrossElements(bytes: Uint8Array, offset: number): { value: Map<string, CrossElementEntry[]>; next: number } {
+  const value = new Map<string, CrossElementEntry[]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const count = readU32(bytes, pos);
+    pos += 4;
+    const entries: CrossElementEntry[] = [];
+    for (let k = 0; k < count; k++) {
+      const { value: entry, next } = readCrossElementEntry(bytes, pos);
+      pos = next;
+      entries.push(entry);
+    }
+    value.set(key, entries);
+  }
+  return { value, next: pos };
+}
+
 /** Reads the `HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>` wire shape
  *  `write_str_keyed_cross_element_groups` produces (`IssuePayload::InvalidCrossElementGroup`'s
  *  `groups`) — each entry is a length-prefixed list of pairs, each pair a length-prefixed list of
@@ -384,35 +442,9 @@ function readStrKeyedCrossElementGroups(bytes: Uint8Array, offset: number): { va
       pos += 4;
       const members: CrossElementEntry[] = [];
       for (let m = 0; m < memberCount; m++) {
-        const { value: kind, next: afterKind } = readStr(bytes, pos);
-        pos = afterKind;
-        const edgeCount = readU32(bytes, pos);
-        pos += 4;
-        const edges: [bigint, bigint][] = [];
-        for (let e = 0; e < edgeCount; e++) {
-          edges.push([BigInt(readU32(bytes, pos)), BigInt(readU32(bytes, pos + 4))]);
-          pos += 8;
-        }
-        const nodeCount = readU32(bytes, pos);
-        pos += 4;
-        const nodes: bigint[] = [];
-        for (let n = 0; n < nodeCount; n++) {
-          nodes.push(BigInt(readU32(bytes, pos)));
-          pos += 4;
-        }
-        let tile: SplitTile | null = null;
-        const hasTile = bytes[pos] !== 0;
-        pos += 1;
-        if (hasTile) {
-          const { value: t, next } = readSplitTile(bytes, pos);
-          tile = t;
-          pos = next;
-        }
-        const removable = bytes[pos] !== 0;
-        pos += 1;
-        const presetLocked = bytes[pos] !== 0;
-        pos += 1;
-        members.push({ kind, edges, nodes, tile, removable, presetLocked });
+        const { value: entry, next: afterEntry } = readCrossElementEntry(bytes, pos);
+        pos = afterEntry;
+        members.push(entry);
       }
       pairs.push(members);
     }
@@ -540,6 +572,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
     return { value: { kind: "IndeterminateDistance", pairs }, next: pos };
   }
   if (tag === 17) {
+    const { value: elements, next } = readStrKeyedCrossElements(bytes, offset + 1);
+    return { value: { kind: "InvalidCrossElement", elements }, next };
+  }
+  if (tag === 18) {
     const count = readU32(bytes, offset + 1);
     let pos = offset + 5;
     const violations: ShapeLimitViolation[] = [];

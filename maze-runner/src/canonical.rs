@@ -347,6 +347,16 @@ fn canonical_payload(payload: &IssuePayload, cells: &CellIndex) -> Value {
                 })).collect()
             ))
         }),
+        IssuePayload::InvalidCrossElement { elements } => json!({
+            "invalid_cross_element": by_source(elements, |entry| json!({
+                "kind": entry.kind,
+                "edges": edge_pairs(cells, &entry.edges),
+                "nodes": node_set(cells, &entry.nodes),
+                "tile": entry.tile.as_ref().map(|t| split_tile(cells, t)),
+                "removable": entry.removable,
+                "preset_locked": entry.preset_locked,
+            }))
+        }),
     }
 }
 

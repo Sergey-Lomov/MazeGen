@@ -14,7 +14,8 @@ import type { EventedEventKind } from "../wasm/mazeService";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { IconActionButton } from "./IconActionButton";
-import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
+import { SearchInput } from "./SearchInput";
+import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { resolveIssueLabel } from "./features/qualityI18n";
 import { useLocale } from "../i18n/useLocale";
@@ -469,22 +470,23 @@ export function DebugEventTree() {
   return (
     <div style={styles.container}>
       <div style={styles.searchRow}>
-        <input
-          type="text"
+        <SearchInput
           name="debug-search"
           value={debugSearchQuery}
-          onChange={(e) => setDebugSearchQuery(e.target.value)}
+          onValueChange={setDebugSearchQuery}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
             navigate(e.shiftKey ? -1 : 1);
           }}
           placeholder={m["debug.search.placeholder"]()}
-          style={styles.searchInput}
+          layoutStyle={styles.searchBox}
         />
         <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
-        <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
-        <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
+        <div style={styles.searchNavActions}>
+          <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
+          <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
+        </div>
       </div>
       <div ref={scrollRef} style={styles.scroll}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -560,35 +562,24 @@ const styles: Record<string, React.CSSProperties> = {
   searchRow: {
     display: "flex",
     alignItems: "center",
-    gap: spacing.itemGap,
+    gap: spacing.rowGap,
     padding: `6px ${spacing.rowGap}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  searchInput: {
-    ...typography.field,
+  searchBox: {
     flex: 1,
     minWidth: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    padding: "2px 6px",
   },
   searchCounter: {
     ...muted(typography.caption),
     flexShrink: 0,
     fontVariantNumeric: "tabular-nums",
   },
-  searchNavBtn: {
+  searchNavActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    padding: inset.iconButtonInset,
-    background: "transparent",
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    cursor: "pointer",
-    flexShrink: 0,
+    gap: spacing.itemGap,
   },
   // Absolute inside the column's reserved right padding — out of flow, so it never shifts the
   // digits regardless of how many there are.

@@ -16,6 +16,7 @@ import { nodeShapesOf } from "./nodeShapeVocabulary";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
 import { useMazeStore } from "../../store/mazeStore";
+import { cellTypeKeysOf } from "../../pixi/shapeTemplates";
 import * as m from "~/paraglide/messages";
 
 // Resolves an `EntityVisibility` condition against current maze state (GitHub issue #349) — the
@@ -23,12 +24,29 @@ import * as m from "~/paraglide/messages";
 // and whole checks/strategies (the selection dialogs' candidate filtering), so a new tag is a new
 // match arm here, not a new bespoke check scattered across call sites. `undefined` (no tag) is
 // always visible.
-export function isEntityVisible(visibility: EntityVisibility | undefined, floorCount: number): boolean {
+export interface VisibilityContext {
+  floorCount: number;
+  /** Keys of the cell types the active tessellation provides. */
+  cellTypeKeys: readonly string[];
+}
+
+export function isEntityVisible(visibility: EntityVisibility | undefined, ctx: VisibilityContext): boolean {
   if (!visibility) return true;
   switch (visibility.type) {
     case "multi_floor_only":
-      return floorCount >= 2;
+      return ctx.floorCount >= 2;
+    case "multi_cell_type_only":
+      return ctx.cellTypeKeys.length >= 2;
+    case "cell_type":
+      return ctx.cellTypeKeys.includes(visibility.key);
   }
+}
+
+/** The live maze state `isEntityVisible` resolves visibility tags against. */
+export function useVisibilityContext(): VisibilityContext {
+  const floorCount = useMazeStore((s) => s.floors.length);
+  const tessellation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig.tessellation);
+  return { floorCount, cellTypeKeys: cellTypeKeysOf(tessellation) };
 }
 
 const OPTION_WIDTH_BUFFER = 10;
@@ -127,8 +145,8 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
 }
 
 export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride, onSelectParam, selectedParamId }: Props) {
-  const floorCount = useMazeStore((s) => s.floors.length);
-  const visibleParams = params.filter((p) => isEntityVisible(p.visibility, floorCount));
+  const visibility = useVisibilityContext();
+  const visibleParams = params.filter((p) => isEntityVisible(p.visibility, visibility));
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceId = useId();
   const [containerWidth, setContainerWidth] = useState(0);

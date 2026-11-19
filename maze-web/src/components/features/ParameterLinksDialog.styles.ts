@@ -1,5 +1,6 @@
 import type React from "react";
 import { ui, radius, typography, muted, disabled as disabledText, spacing, dialogSpacing, controlRowHeight } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import { sharedStyles } from "../../styles/shared";
 
 export const styles: Record<string, React.CSSProperties> = {
@@ -69,7 +70,9 @@ export const styles: Record<string, React.CSSProperties> = {
   },
   emptyStateText: { ...typography.body },
   emptyStateSubtext: { ...muted(typography.caption) },
-  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  linkSections: { display: "flex", flexDirection: "column", gap: spacing.sectionGap },
+  linkSection: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: 12 },
   row: {
     display: "flex",
     flexDirection: "column",
@@ -106,14 +109,14 @@ export const styles: Record<string, React.CSSProperties> = {
   // own — an opaque background matching the dialog's (`Modal`'s `ui.bg.panel`) is what actually
   // clips them instead of letting them bleed through underneath (GitHub issue #645 follow-up).
   editorColumnTitle: { ...typography.body, position: "sticky" as const, top: 0, background: ui.bg.panel, paddingBottom: spacing.elementsGap, zIndex: 1 },
-  pickerSearch: { ...sharedStyles.inputSm, boxSizing: "border-box" as const, width: "100%", flexShrink: 0 },
+  pickerSearch: { width: "100%", flexShrink: 0 },
   pickerList: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   pickerRow: { ...typography.body, cursor: "default", padding: "2px 4px", borderRadius: 3 },
   // GitHub issue #688 — dims a hidden leaf/group row so it reads as inactive at a glance, on top of
   // the closed-eye badge; applied before `pickerRowSelected` so a selected-but-inactive row still
   // shows its selection highlight.
   pickerRowInactive: { ...muted(typography.body) },
-  pickerRowDisabled: { ...disabledText(typography.body), cursor: "not-allowed" },
+  pickerRowDisabled: { ...disabledText(typography.body), cursor: notAllowedCursor },
   pickerRowLocked: { opacity: 0.6 },
   pickerRowSelected: { background: ui.state.selected },
   pickerGroupRow: {

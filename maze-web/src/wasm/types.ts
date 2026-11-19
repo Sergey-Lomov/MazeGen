@@ -110,7 +110,11 @@ export type EntityVisibility =
    *  `cross_floor_weight`/`elevator_stop_weight` params (GitHub issue #390), and every
    *  check/strategy that only makes sense with vertical passages/elevators, which don't exist on
    *  a single-floor maze (GitHub issue #349 follow-up). */
-  { type: "multi_floor_only" };
+  | { type: "multi_floor_only" }
+  /** Hidden whenever the active tessellation has a single cell type (GitHub issue #824). */
+  | { type: "multi_cell_type_only" }
+  /** Hidden unless the active tessellation provides the cell type `key` (GitHub issue #824). */
+  | { type: "cell_type"; key: string };
 
 export interface ParamDescriptor {
   id: string;

@@ -154,7 +154,7 @@ describe("NumberInput", () => {
       fireEvent.change(input, { target: { value: "99" } });
       fireEvent.blur(input);
       expect(screen.getByTestId("field-hint")).toHaveTextContent(
-        m["input_hint.clamped_max"]({ min: "−∞", max: "10" }),
+        m["input_hint.clamped_max_only"]({ max: "10" }),
       );
     });
 

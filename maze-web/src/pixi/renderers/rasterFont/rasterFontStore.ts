@@ -401,6 +401,11 @@ export function addManualFontName(name: string): boolean {
   return true;
 }
 
+/** Whether the user typed `family` in by name as an installed font. */
+export function isManualFontName(family: string): boolean {
+  return manualNames.has(family.trim());
+}
+
 /** Families typed in by name, sorted. */
 export function manualFontNames(): string[] {
   return [...manualNames].sort();

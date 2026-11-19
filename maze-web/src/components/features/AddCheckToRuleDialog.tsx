@@ -6,6 +6,7 @@ import { ParamFields, defaultParamValue } from "./ParamFields";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription, resolveUnavailableReason } from "./qualityI18n";
 import type { UnavailableReason } from "./checkAvailability";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
@@ -149,6 +150,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnDisabled: {
     opacity: 0.4,
-    cursor: "not-allowed",
+    cursor: notAllowedCursor,
   },
 };

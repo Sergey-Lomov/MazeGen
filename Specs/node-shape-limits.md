@@ -171,7 +171,7 @@ occurrence order and drops duplicates). Different checks flagging different shap
   nodes, counterparts }` carries the cell type key and `NodeShape::key()` strings (`shape`, `counterparts`, closest first),
   `LimitViolationKind` and base-graph node ids. Mirrored by `IssuePayloadDto::ViolatedNodeShapeLimits`
   (`kind` is `"excess" | "deficit"`) and canonicalized by `maze-runner`'s `canonical.rs`.
-- **Debug tape**: QC event wire tag `17` (`write_issue_payload` / `readIssuePayload`): per violation the
+- **Debug tape**: QC event wire tag `18` (`write_issue_payload` / `readIssuePayload`): per violation the
   cell type string, the shape string, a kind byte (0 excess, 1 deficit), `amount: u32`, a counted node list and a counted list of
   strings. The debug tree highlights all nodes of all violations as singleton cells.
 - **Runner**: `qc_kind_registry!` maps `node_shape_limits` to `ViolatedNodeShapeLimits`

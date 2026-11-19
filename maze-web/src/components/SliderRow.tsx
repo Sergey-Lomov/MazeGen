@@ -3,6 +3,7 @@ import { NumberInput } from "./NumberInput";
 import { Tooltip } from "./Tooltip";
 import { sharedStyles } from "../styles/shared";
 import { controlRowHeight, typography, spacing } from "../styles/theme";
+import { notAllowedCursor } from "../styles/cursors";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -93,7 +94,7 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
               aria-label={m["common.exact_input"]()}
               disabled={disabled}
               onClick={() => setEditingValue(true)}
-              style={{ ...valueStyle, height: controlRowHeight, boxSizing: "border-box", border: "none", borderRadius: 3, padding: "2px 3px", fontFamily: "inherit", cursor: disabled ? "not-allowed" : "text" }}
+              style={{ ...valueStyle, height: controlRowHeight, boxSizing: "border-box", border: "none", borderRadius: 3, padding: "2px 3px", fontFamily: "inherit", cursor: disabled ? notAllowedCursor : "text" }}
             >
               {displayedValue}
             </button>

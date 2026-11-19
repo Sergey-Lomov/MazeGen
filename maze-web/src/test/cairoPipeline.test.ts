@@ -3,7 +3,7 @@ import { computeDigitalExportFit } from "../pixi/imageExport/exportFit";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import { useMazeStore } from "../store/mazeStore";
-import { computeAnalyticsAsync, generateMaze } from "../wasm/mazeService";
+import { computeAnalyticsAsync, generateMaze, startGenerateMaze } from "../wasm/mazeService";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
@@ -18,6 +18,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
   getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
+  startGenerateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -64,6 +65,11 @@ describe("Cairo application pipeline", () => {
     useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
     vi.mocked(generateMaze).mockReset();
     vi.mocked(generateMaze).mockReturnValue({ snapshot: generatedSnapshot, debugTape: undefined });
+    vi.mocked(startGenerateMaze).mockReset();
+    vi.mocked(startGenerateMaze).mockImplementation((seed, config, onProgress) => {
+      onProgress(100);
+      return { promise: Promise.resolve(generateMaze(seed, config)), cancel: vi.fn() } as never;
+    });
     vi.mocked(computeAnalyticsAsync).mockReset();
     vi.mocked(computeAnalyticsAsync).mockResolvedValue(editedSnapshot);
   });
@@ -151,9 +157,14 @@ describe("Cairo application pipeline", () => {
     void useMazeStore.getState().loadProject(file);
     expect(useMazeStore.getState().openCard).toBe("basic_config");
 
+    await vi.waitFor(() => {
+      expect(computeAnalyticsAsync).toHaveBeenCalled();
+    });
+    expect(computeAnalyticsAsync).toHaveBeenLastCalledWith(expect.anything(), false);
     resolveAnalytics(editedSnapshot);
     await vi.waitFor(() => {
       expect(useMazeStore.getState().openCard).toBe("post_edit");
+      expect(useMazeStore.getState().projectLoadInProgress).toBe(false);
     });
   });
 });

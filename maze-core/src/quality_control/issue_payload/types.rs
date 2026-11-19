@@ -240,6 +240,12 @@ pub enum IssuePayload {
     InvalidCrossElementGroup {
         groups: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>,
     },
+    /// Keyed by source check id — each entry is one flagged logical element (GitHub issue #824),
+    /// resolved like a cross-element group member and narrowed to its offending occurrence nodes.
+    /// Produced by `CrossElementCellTypeCheck`. Mirrors `IssuePayloadDto::InvalidCrossElement`.
+    InvalidCrossElement {
+        elements: HashMap<String, Vec<CrossElementPayloadEntry>>,
+    },
     /// Every pair a geometric check could not decide (GitHub issue #838, `IndeterminateDistance`),
     /// each located by a representative node per side. No source check: the issue is raised by
     /// the engine, not by a `Check`. Mirrors `IssuePayloadDto::IndeterminateDistance`.

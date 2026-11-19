@@ -216,7 +216,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // ui (optional section — defaults for old files)
   const uiObj = optSection(migrated, "ui", "ui");
-  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
+  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "zones", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
   const ui: ProjectFileUi = {
     showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
     showPresetLocks: optBool(uiObj, "showPresetLocks", true),

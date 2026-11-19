@@ -24,6 +24,12 @@ pub enum EntityVisibility {
     /// strategy that only makes sense with vertical passages/elevators, which don't exist on a
     /// single-floor maze (GitHub issue #349 follow-up).
     MultiFloorOnly,
+    /// Hidden whenever the active tessellation has a single cell type, so there is nothing to tell
+    /// apart by type. First consumer: `cross_element_cell_type` (GitHub issue #824).
+    MultiCellTypeOnly,
+    /// Hidden unless the active tessellation provides the cell type `key`. Used by the per-type
+    /// `forbid_cell_type_<key>` params of `cross_element_cell_type` (GitHub issue #824).
+    CellType { key: &'static str },
 }
 
 #[derive(Serialize)]
@@ -386,6 +392,22 @@ pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
         label: "Count incoming",
         kind: ParamKindDto::Bool { default },
         visibility: None,
+    }
+}
+
+/// One "forbid this cell type" bool param of `cross_element_cell_type` (GitHub issue #824),
+/// shown only while the active tessellation provides the type `key`. The id is
+/// `FORBID_CELL_TYPE_PARAM_PREFIX` + `key`; default off.
+pub fn forbid_cell_type_param(
+    id: &'static str,
+    label: &'static str,
+    key: &'static str,
+) -> ParamDescriptor {
+    ParamDescriptor {
+        id,
+        label,
+        kind: ParamKindDto::Bool { default: false },
+        visibility: Some(EntityVisibility::CellType { key }),
     }
 }
 

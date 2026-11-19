@@ -3,6 +3,7 @@ import type { MazeState } from "../../store/storeTypes";
 import type { WireFoldEnd, WireTopology } from "../../wasm/types";
 import { getSeamModel } from "../selectors/seams";
 import { displayTransform } from "../tessellationGeometry";
+import { TESSELLATION_UI } from "../geometry/tessellationUi";
 import { applyTransform } from "../geometry/worldTransform";
 import { cutLineOf, cutSettingOf, cutTabShift, lineSpans, sheetSpan, type Vec2 } from "./cutLines";
 import { floorGroupCuts, tilePolygons } from "./exportContent";
@@ -202,7 +203,7 @@ function computeGlueTabs(
   let tiles: Vec2[][] | null = null;
   const cutLines = [...cuts.values()];
   let slide: Vec2 | null = null;
-  const layout: GlueTabLayout = { tabs: [], hasCuts: cuts.size > 0 && cfg.tessellation.kind !== "square", missingEnds: [], missingLines: [] };
+  const layout: GlueTabLayout = { tabs: [], hasCuts: cuts.size > 0 && !TESSELLATION_UI[cfg.tessellation.kind].editor.glueTabsFitCutLines, missingEnds: [], missingLines: [] };
   for (const group of topology.groups) {
     const line = cuts.get(group.id);
     if (!line) {

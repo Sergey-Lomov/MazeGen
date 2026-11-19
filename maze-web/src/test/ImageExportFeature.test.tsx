@@ -99,12 +99,23 @@ describe("ImageExportFeature", () => {
     expect(load.parentElement).toBe(save.parentElement);
   });
 
-  it("clicking the PNG button calls onExportPng with the current settings", () => {
+  it("offers a timestamped immutable-extension file name before saving a style", () => {
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    fireEvent.click(screen.getByRole("button", { name: m["image_export.visual_preset.save"]() }));
+
+    expect((screen.getByRole("textbox", { name: m["file_name.label"]() }) as HTMLInputElement).value).toMatch(/^maze-style-\d{8}$/);
+    expect(screen.getByText(".mazestyle")).toBeInTheDocument();
+  });
+
+  it("confirms the PNG file name before calling onExportPng with the current settings", async () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls" });
     const onExportPng = vi.fn(() => Promise.resolve(null));
     render(<ImageExportFeature onExportPng={onExportPng} />);
     fireEvent.click(screen.getByRole("button", { name: m["image_export.format.png.label"]() }));
-    expect(onExportPng).toHaveBeenCalledWith(useMazeStore.getState().pngExportSettings);
+    expect((screen.getByRole("textbox", { name: m["file_name.label"]() }) as HTMLInputElement).value).toMatch(/^maze-export-\d{8}$/);
+    expect(screen.getByText(".png")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: m["file_name.save"]() }));
+    await waitFor(() => expect(onExportPng).toHaveBeenCalledWith(useMazeStore.getState().pngExportSettings));
   });
 
   // GitHub issue #629: opening one settings panel no longer clears the other — both may stay open

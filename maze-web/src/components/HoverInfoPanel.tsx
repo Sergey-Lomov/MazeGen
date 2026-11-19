@@ -64,6 +64,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   useMazeStore((s) => s.debugMode);
   useMazeStore((s) => s.debugArena);
   useMazeStore((s) => s.debugStep);
+  useMazeStore((s) => s.zones);
   useMazeStore((s) => s.presetSplitPoints);
   useMazeStore((s) => s.presetConnections);
   useMazeStore((s) => s.activeFieldConfig);

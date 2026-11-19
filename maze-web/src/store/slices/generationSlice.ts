@@ -91,6 +91,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   vertexSettingsPanelOpen: false,
   generationStatus: "idle" as const,
   generationProgress: null,
+  projectLoadInProgress: false,
   openCard: "basic_config" as const,
   debugMode: false,
   debugAutoPlayDelay: 200,

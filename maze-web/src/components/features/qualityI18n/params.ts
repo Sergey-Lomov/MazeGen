@@ -1,4 +1,5 @@
 import * as m from "~/paraglide/messages";
+import { resolveCellTypeLabel } from "./cellTypes";
 
 type MessageFn = () => string;
 
@@ -574,6 +575,26 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   include_start: {
     label: m["param.include_start.label"] as MessageFn,
     description: m["param.include_start.description"] as MessageFn,
+  },
+  forbid_cell_type_triangle: {
+    label: () => m["param.forbid_cell_type.label"]({ cell_type: resolveCellTypeLabel("triangle") }),
+    description: () => m["param.forbid_cell_type.description"]({ cell_type: resolveCellTypeLabel("triangle") }),
+  },
+  forbid_cell_type_square: {
+    label: () => m["param.forbid_cell_type.label"]({ cell_type: resolveCellTypeLabel("square") }),
+    description: () => m["param.forbid_cell_type.description"]({ cell_type: resolveCellTypeLabel("square") }),
+  },
+  forbid_cell_type_hexagon: {
+    label: () => m["param.forbid_cell_type.label"]({ cell_type: resolveCellTypeLabel("hexagon") }),
+    description: () => m["param.forbid_cell_type.description"]({ cell_type: resolveCellTypeLabel("hexagon") }),
+  },
+  forbid_cell_type_octagon: {
+    label: () => m["param.forbid_cell_type.label"]({ cell_type: resolveCellTypeLabel("octagon") }),
+    description: () => m["param.forbid_cell_type.description"]({ cell_type: resolveCellTypeLabel("octagon") }),
+  },
+  forbid_cell_type_dodecagon: {
+    label: () => m["param.forbid_cell_type.label"]({ cell_type: resolveCellTypeLabel("dodecagon") }),
+    description: () => m["param.forbid_cell_type.description"]({ cell_type: resolveCellTypeLabel("dodecagon") }),
   },
   include_finish: {
     label: m["param.include_finish.label"] as MessageFn,

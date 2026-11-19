@@ -8,6 +8,7 @@ import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { messageForTitleKey } from "../../pixi/splitPatternTitles";
 import { Tooltip } from "../Tooltip";
+import { WarningsSection } from "../WarningsSection";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -257,9 +258,11 @@ export function SplitNodesDialogView<E>({
       title={title}
       stackKey={notificationSource === "post_edit" ? "post-edit-split-nodes" : "preset-split-nodes"}
       onClose={onClose}
-      warnings={warnings}
       onTopChange={onTopChange}
     >
+      <div style={styles.warningsSection}>
+        <WarningsSection warnings={warnings} testId="split-node-warnings" />
+      </div>
       <div style={styles.tileArea}>
         {blueprints && blueprints.length > 0 && (
           <Stack gap="itemGap">
@@ -547,6 +550,12 @@ export const dialogPanelStyles: Record<string, React.CSSProperties> = {
 
 const styles: Record<string, React.CSSProperties> = {
   ...dialogPanelStyles,
+  // Separate the warnings header from the panel chrome; SidePanel's body has no intrinsic top
+  // padding, so without this inset the header row touches the panel header.
+  warningsSection: { paddingTop: spacing.groupGap },
+  // `WarningsSection` owns the breathing room above its divider. Do not add a second top inset
+  // here: blueprints should begin directly after that section rather than reading as a new pane.
+  tileArea: { ...dialogPanelStyles.tileArea, paddingTop: 0 },
   // Horizontally scrolling strip of small blueprint thumbnails (GitHub issue #235) — each button
   // renders `TileFaceEditor` at a fixed small size instead of a text label, so a blueprint reads
   // as a preview of what it'll produce rather than a name to guess from.

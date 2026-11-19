@@ -4,6 +4,8 @@ Geometry layer of `maze-core` — how a maze's cells and their adjacency are rep
 
 Module: `maze-core/src/space/`.
 
+Zones (named cell sets with stable ids, built on `Tessellation::CellId`) live in `space::zone`, see `Specs/zones.md`.
+
 ## Tessellation
 
 > **Current API.** Superseded by "Target model: extensible tessellation" at the end of this file
@@ -279,8 +281,8 @@ The sketch fixes semantics, not exact signatures.
 
 ### Cell types
 
-Status (GitHub issue #822): core API, config resolution and UI query are implemented; no QC rule
-or generator consumes them yet.
+Status (GitHub issues #822, #824): core API, config resolution and UI query are implemented; the
+`cross_element_cell_type` QC check (`quality_control.md`) consumes them; no generator does yet.
 
 - **`CellType`** is a tessellation-defined class of cells with a stable key (e.g. `octagon`,
   `square`), unique within the instance. `cell_types()` lists every type of the instance once and

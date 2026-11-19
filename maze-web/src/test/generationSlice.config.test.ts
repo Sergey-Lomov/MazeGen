@@ -25,6 +25,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
   reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
+  startGenerateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -38,7 +39,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
-import { generateMaze, computeAnalytics, computeAnalyticsAsync } from "../wasm/mazeService";
+import { generateMaze, startGenerateMaze, computeAnalytics, computeAnalyticsAsync } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 import { fieldOf } from "./fieldConfigFixtures";
 import { configAllCells } from "../pixi/tessellationCells";
@@ -47,6 +48,11 @@ beforeEach(() => {
   // `loadProject` waits for the registry unless it is already loaded (GitHub issue #967).
   useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  vi.mocked(startGenerateMaze).mockReset();
+  vi.mocked(startGenerateMaze).mockImplementation((_, __, onProgress) => {
+    onProgress(100);
+    return { promise: Promise.resolve(generateMaze(_, __)), cancel: vi.fn() } as never;
+  });
   vi.mocked(computeAnalyticsAsync).mockReset();
   vi.mocked(computeAnalyticsAsync).mockResolvedValue(mockSnapshot);
 });
@@ -296,52 +302,52 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugArena).toBeNull();
   });
 
-  it("loadProject clamps the restored debugStep to the freshly regenerated arena's last step", () => {
+  it("loadProject clamps the restored debugStep to the freshly regenerated arena's last step", async () => {
     const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n]]); // totalSteps = 2, lastStep = 1
     vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
     const file = serializeProject(useMazeStore.getState());
     file.debug = { ...file.debug, debugMode: true, debugStep: 99 }; // saved step beyond this run's range
-    useMazeStore.getState().loadProject(file);
+    await useMazeStore.getState().loadProject(file);
     expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
-  it("loadProject restores the saved debugStep as-is when it's within the regenerated arena's range", () => {
+  it("loadProject restores the saved debugStep as-is when it's within the regenerated arena's range", async () => {
     const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]); // totalSteps = 3, lastStep = 2
     vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
     const file = serializeProject(useMazeStore.getState());
     file.debug = { ...file.debug, debugMode: true, debugStep: 1 };
-    useMazeStore.getState().loadProject(file);
+    await useMazeStore.getState().loadProject(file);
     expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
-  it("loadProject skips generation when the project was saved without a generated maze (GitHub issue #932)", () => {
+  it("loadProject skips generation when the project was saved without a generated maze (GitHub issue #932)", async () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], mazeDirty: false, postEditDirty: false });
     const idleFile = serializeProject(useMazeStore.getState());
     vi.mocked(generateMaze).mockClear();
-    useMazeStore.getState().loadProject(idleFile);
+    await useMazeStore.getState().loadProject(idleFile);
     expect(generateMaze).not.toHaveBeenCalled();
     expect(useMazeStore.getState().generationStatus).toBe("idle");
     expect(useMazeStore.getState().openCard).toBe(idleFile.ui.openCard);
 
     // Saved flags are restored on the skip path too, and a post-edit-only project still generates.
     const presetsOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, presets: true } };
-    useMazeStore.getState().loadProject(presetsOnly);
+    await useMazeStore.getState().loadProject(presetsOnly);
     expect(generateMaze).not.toHaveBeenCalled();
     expect(useMazeStore.getState().presetsDirty).toBe(true);
     const postEditOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, postEdit: true } };
-    useMazeStore.getState().loadProject(postEditOnly);
-    expect(generateMaze).toHaveBeenCalledTimes(1);
-    vi.mocked(generateMaze).mockClear();
+    await useMazeStore.getState().loadProject(postEditOnly);
+    expect(startGenerateMaze).toHaveBeenCalledTimes(1);
+    vi.mocked(startGenerateMaze).mockClear();
 
     useMazeStore.getState().generate();
     const doneFile = serializeProject(useMazeStore.getState());
     expect(doneFile.dirtyFlags.maze).toBe(true);
     vi.mocked(generateMaze).mockClear();
-    useMazeStore.getState().loadProject(doneFile);
-    expect(generateMaze).toHaveBeenCalledTimes(1);
+    await useMazeStore.getState().loadProject(doneFile);
+    expect(startGenerateMaze).toHaveBeenCalledTimes(1);
     expect(useMazeStore.getState().generationStatus).toBe("done");
   });
 
@@ -486,7 +492,7 @@ describe("mazeStore generation misc actions", () => {
     expect(field.freeFieldPoints.cairo).toEqual(points);
   });
 
-  it("loadProject normalizes a stale/too-low saved id counter up to the replayed log's own high-water mark (GitHub issue #564 second follow-up)", () => {
+  it("loadProject normalizes a stale/too-low saved id counter up to the replayed log's own high-water mark (GitHub issue #564 second follow-up)", async () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
     useMazeStore.getState().generate();
@@ -504,7 +510,7 @@ describe("mazeStore generation misc actions", () => {
     file.postEdit = { ...file.postEdit!, nextTeleportId: 1 };
 
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
-    useMazeStore.getState().loadProject(file);
+    await useMazeStore.getState().loadProject(file);
     expect(useMazeStore.getState().postEditDraftTeleports.map((t) => t.id)).toEqual(["t1"]);
     // Normalized past the log's own high-water mark (id 1 already minted), not left at the file's
     // stale value of 1 — the next teleport must not collide with the one the log already created.

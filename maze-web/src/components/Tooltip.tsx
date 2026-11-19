@@ -59,6 +59,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   const [open, setOpen] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressDismissed = useRef(false);
+  const windowBlurred = useRef(false);
   const { refs, floatingStyles } = useFeedbackFloating(placement);
 
   const clearHoverTimer = () => {
@@ -90,6 +91,16 @@ export function Tooltip({ content, children, placement = "bottom", block = false
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, refs]);
+
+  // The window loses focus while the anchor holds it (a native dialog opened): the browser
+  // refocuses the anchor when the window returns, which must not show the bubble.
+  useEffect(() => {
+    const onWindowBlur = () => {
+      if ((refs.reference.current as Element | null)?.contains(document.activeElement)) windowBlurred.current = true;
+    };
+    window.addEventListener("blur", onWindowBlur);
+    return () => window.removeEventListener("blur", onWindowBlur);
+  }, [refs]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,10 +154,17 @@ export function Tooltip({ content, children, placement = "bottom", block = false
           pressDismissed.current = false;
           return;
         }
+        // Focus restored with the window (a file picker closed): the pointer is elsewhere, so
+        // showing the bubble would leave it stuck.
+        if (windowBlurred.current) {
+          windowBlurred.current = false;
+          return;
+        }
         if (active) setOpen(true);
       }}
       onBlur={() => {
         pressDismissed.current = false;
+        clearHoverTimer();
         setOpen(false);
       }}
       onKeyDown={(e) => {

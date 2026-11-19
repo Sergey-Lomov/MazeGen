@@ -645,6 +645,26 @@ not a single active value) and action `toggleDebugValue(name)`. Reset to empty o
 (mirrors the existing `hoveredDebugRef` reset) and on every new `generate()` call (a fresh run may
 expose a different debug-value name set than the previous one).
 
+### Debug panel structure
+
+`DebugPanel.tsx` groups its controls into an unlabeled timeline area and a **Display** section
+(auto-switch floors and debug-value toggles). The timeline area has a full-width navigation row
+(previous/next, current-step counter, and slider), then a centered autoplay row (play/pause and
+delay); it uses the normal horizontal panel inset directly, without a nested-content indent or a
+redundant visible heading. Timeline controls must remain immediately available, while the display
+controls are few and do not warrant a hidden state.
+
+The stale-snapshot warning stays as its own persistent strip immediately below the panel header,
+above all sections. It is intentionally not folded into a section or the dismissible `SidePanel`
+warning mechanism: it is the only debug warning, does not arise from an action in this panel, and
+must remain prominent whenever the debug snapshot is outdated.
+
+Playback actions use `FlatIconButton` with filled Lucide Play/Pause glyphs and the shared
+tooltip/accessibility contract. Delay uses `NumberInput`, accepts only whole milliseconds, and
+clamps to 50–9999 on blur. The virtualized event tree remains specialized rather than being forced
+into `ListCell`: its variable-height rows, hierarchy, and scroll behavior are not a side-panel
+list-cell use case.
+
 ### UI: per-value toggle row
 
 `DebugPanel.tsx` renders one toggle row per `debugArena.debugValueNames` entry (section hidden

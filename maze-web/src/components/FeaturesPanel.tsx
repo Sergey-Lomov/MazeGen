@@ -1,5 +1,5 @@
 ﻿import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
@@ -7,9 +7,11 @@ import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FlatIconButton } from "./FlatIconButton";
 import { SaveIconButton } from "./SaveIconButton";
+import { FileNameModal, timestampedBaseName } from "./FileNameModal";
 import { LoadIconButton } from "./LoadIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
+import { ZonesFeature } from "./features/ZonesFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
@@ -23,11 +25,12 @@ import { notify } from "../notifications/notificationStore";
 import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
+import { countManualZones } from "../pixi/selectors/zoneSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -58,6 +61,13 @@ export function presetConnectionsSubtitle(
     ? m["preset.subtitle_count"]({ count: n })
     : m["preset.subtitle_count_plural"]({ count: n });
   return base;
+}
+
+export function zonesSubtitle(manualZoneCount: number): string {
+  if (manualZoneCount === 0) return m["zones.subtitle_none"]();
+  return manualZoneCount === 1
+    ? m["zones.subtitle_count"]({ count: manualZoneCount })
+    : m["zones.subtitle_count_plural"]({ count: manualZoneCount });
 }
 
 export function getTessellationKindLabel(kind: TessellationKind): string {
@@ -160,6 +170,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const floorFields = useMazeStore((s) => s.floorFields);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
+  const zones = useMazeStore((s) => s.zones);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -183,19 +194,27 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const loadProject = useMazeStore((s) => s.loadProject);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [projectSaveDialogOpen, setProjectSaveDialogOpen] = useState(false);
+  const [debugDownload, setDebugDownload] = useState<{ baseName: string; payload: NonNullable<ReturnType<typeof buildExactGenerateCallPayload>> } | null>(null);
 
   function handleSave() {
-    downloadProjectFile(useMazeStore.getState());
+    setProjectSaveDialogOpen(true);
   }
 
   function handleSaveDebugConfig() {
     const payload = buildExactGenerateCallPayload(useMazeStore.getState);
     if (!payload) return;
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    setDebugDownload({ baseName: timestampedBaseName(`maze-debug-call-${payload.seed}`), payload });
+  }
+
+  function confirmSaveDebugConfig(fileName: string) {
+    if (!debugDownload) return;
+    setDebugDownload(null);
+    const blob = new Blob([JSON.stringify(debugDownload.payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `maze-debug-call-${payload.seed}.json`;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -286,6 +305,13 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
+  // Always green once available: zones have no invalid state, even with none defined.
+  const zonesStatus: FeatureStatus = fieldBlocking ? "unavailable" : "set";
+  const zonesComment = !tessellationConfirmed
+    ? m["status.confirm_tessellation_first"]()
+    : fieldBlocking
+    ? m["status.configure_field_first"]()
+    : undefined;
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
     : presetInvalidCount > 0
@@ -349,6 +375,16 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
         onOpen={() => handleToggle("field_setup")}
       >
         <FieldSetupFeature />
+      </FeatureCard>
+      <FeatureCard
+        title={m["zones.title"]()}
+        status={zonesStatus}
+        comment={zonesComment}
+        subtitle={fieldBlocking ? undefined : zonesSubtitle(countManualZones(zones))}
+        expanded={openCard === "zones"}
+        onOpen={() => handleToggle("zones")}
+      >
+        <ZonesFeature />
       </FeatureCard>
       <FeatureCard
         title={m["preset.title"]()}
@@ -427,6 +463,22 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
           style={{ display: "none" }}
           onChange={handleFileChange}
         />
+        {projectSaveDialogOpen && (
+          <FileNameModal
+            defaultBaseName={timestampedBaseName("maze-project")}
+            extension={PROJECT_FILE_EXTENSION}
+            onConfirm={(fileName) => { setProjectSaveDialogOpen(false); downloadProjectFile(useMazeStore.getState(), fileName); }}
+            onCancel={() => setProjectSaveDialogOpen(false)}
+          />
+        )}
+        {debugDownload !== null && (
+          <FileNameModal
+            defaultBaseName={debugDownload.baseName}
+            extension=".json"
+            onConfirm={confirmSaveDebugConfig}
+            onCancel={() => setDebugDownload(null)}
+          />
+        )}
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
-import { ParamFields, isEntityVisible, defaultParamValue } from "./ParamFields";
+import { ParamFields, isEntityVisible, defaultParamValue, useVisibilityContext } from "./ParamFields";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
@@ -38,15 +38,15 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const rule = rules.find((r) => r.id === ruleId);
   const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
+  const visibility = useVisibilityContext();
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
-  const floorCount = useMazeStore((s) => s.floors.length);
   const addSplitPatternsOverride = selectedId === "add_split"
     ? parseRuleSplitPatterns(rule?.params.split_patterns)
     : undefined;
 
   const candidates = availableStrategies
     .filter((s) => s.handles === kind)
-    .filter((s) => isEntityVisible(s.visibility, floorCount));
+    .filter((s) => isEntityVisible(s.visibility, visibility));
 
   function handleSelect() {
     if (selectedId === NO_FIX_STRATEGY_ID) {

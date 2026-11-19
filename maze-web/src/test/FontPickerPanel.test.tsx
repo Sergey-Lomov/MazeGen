@@ -82,7 +82,12 @@ const weightSelect = () => screen.getByTestId("font-picker-weight") as HTMLSelec
 const weightOptions = () => [...weightSelect().options].map((o) => o.value);
 const pickWeight = (weight: number) => fireEvent.change(weightSelect(), { target: { value: String(weight) } });
 const filter = (name: "msdf" | "vec" | "used" | "locale") => screen.getByTestId(`font-picker-filter-${name}`);
-const search = (text: string) => fireEvent.change(screen.getByTestId("font-picker-search"), { target: { value: text } });
+const search = (text: string) => {
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByTestId("font-picker-search"), { target: { value: text } });
+  act(() => vi.advanceTimersByTime(150));
+  vi.useRealTimers();
+};
 
 const MSDF_LABELS = Object.values(MSDF_FONTS).map((font) => font.label);
 // The list holds the bundled fonts first, then the browser ones.
@@ -256,10 +261,9 @@ describe("FontPickerPanel", () => {
     expect(selectedName()).toBe("Consolas");
   });
 
-  it("keeps a saved family the machine does not report in the list", async () => {
+  it("does not list a saved family that the machine's readable font list lacks", async () => {
     await renderPanel({ font: { family: "Missing Sans", weight: 400 } });
-    expect(browserNames()).toEqual(["Missing Sans", "Arial", "Consolas", "Georgia"]);
-    expect(selectedName()).toBe("Missing Sans");
+    expect(browserNames()).toEqual(["Arial", "Consolas", "Georgia"]);
   });
 
   it("previews a font on click without committing", async () => {
