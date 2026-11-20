@@ -101,7 +101,8 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   `zonesWithDraft` / `overridesWithDraft` give the canvas and the editor panel the zones as edited. Zones are not
   part of generation, so no edit asks for confirmation or invalidates results.
 - Edits act on the active floor's cells of the zone; cells on other floors are kept. Switching floors switches
-  the floor being edited.
+  the floor being edited. Opening an existing zone for editing (`setZoneEditId`) moves to its lowest floor, unless the
+  active floor already holds some of its cells (GitHub issue #1032).
 - A zone holds only cells of the active floor's field: Add, point, shapes, connected area, paste and mirror drop
   cells outside the field (`cellsInActiveField`), and a smoothing preview does not mark them as excluded. Connected
   area in Add mode fills the field cells outside the zone connected to the clicked cell. A move that would leave
@@ -146,10 +147,35 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
 - "Show other zones" off is applied again when a zone starts or stops being edited (`hidesOtherZones`).
 - The hover highlight follows the tool's reach (`zoneToolReaches`): Add highlights field cells only; Remove and
   Select the zone's own cells, even outside the field. A right-click gesture does not change a later hover.
+- Above "Done" a destructive "Clear" button (disabled while the zone has no cells) asks for confirmation, then removes every cell of the draft on every floor (`clearZoneCells`); the group links, name and colour stay. It is still a draft change: "Done" commits it, the close cross drops it.
 - The panel ends with a caption-styled info line "Size: N cells" (all the zone's cells, on every floor). The zones
   sharing a cell with it on any floor (`zoneIntersections`) are the Intersections section.
 - The mirror preview marks every symmetric cell, but the cells the tool cannot change (Add outside the field, Remove
   outside the zone) are drawn dim (`MIRROR_DIM_ALPHA`, as the cells smoothing leaves out of a shape).
+
+## Zone combination (GitHub issue #1032)
+
+A combine tool button (two overlapping circles, hotkey `C`, no modifier; `ZONE_COMBINE_SHORTCUT`) sits at the end of the Tools row of
+the zone editor only (`FieldToolsSection`, `FieldEditController`). It toggles `ZoneCombinePanel` (`zoneCombine { op, otherId }`,
+`null` while closed; transient; `toggleZoneCombine`, stack key `zone-combine`), a side panel over the zone editor, in plain
+sections (header, content indented by `indent.tree`), the confirm button right after them:
+
+- Mode: "Union", "Intersection", "Subtraction" (`ZoneCombineOp`, `setZoneCombineOp`; the chosen zone is kept).
+- Zone: the other zones (every zone but the draft; `ListCell`s). A click picks the zone (`setZoneCombineOther`): the
+  picked cell has the 3 px `current` bar on its left. Hovering a cell highlights that zone on the canvas. Deleting the
+  picked zone clears the choice. The list takes the height the other sections leave and scrolls only when it does not fit.
+- Result: with no zone chosen, a low-contrast "Choose a zone"; with one, a line per floor the operation changes:
+  `L{n}` badge and a colon (only on a multi-floor maze), then `+N` (add colour) or `-N` (remove colour), then the zone's
+  cell count on that floor after the operation in brackets with the word "cells". When nothing changes, a warning
+  bubble inside the section says the edited zone will not change; another says it will become empty.
+- "Apply" (disabled until a zone is chosen) writes the result to the draft (`applyZoneCombine`) and closes the panel, so
+  the result is committed or cancelled with the zone ("Done" / close cross). The close cross of the panel (`cancelZoneCombine`)
+  closes it without applying. Ending the editor drops it too.
+
+The result is computed on cells of every floor (`combineZoneCells`): union adds the other zone's cells, intersection keeps
+the shared ones, subtraction drops the other's. The other zone is taken as stored, the current one as its draft.
+Preview (`previewZoneCombine`): `ZonesRenderer` draws the active floor's cells that would be added and removed (both zones first
+cut to the field, like every zone it draws) on a layer over the hover layer, redrawn alone when only the panel's choice changes, so the per-floor report is where changes on other floors are visible.
 
 ## Zone groups (GitHub issue #1035)
 

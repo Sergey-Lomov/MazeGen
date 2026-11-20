@@ -16,7 +16,7 @@ import { fieldOperationAvailable } from "../../pixi/fieldOps";
 import { smoothingOf, zoneEditActive } from "../../pixi/fieldEditTarget";
 import { colorToHex } from "../colorFormat";
 import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
-import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
+import { canActivateFieldPrimitive, fieldPrimitiveShortcut, ZONE_COMBINE_SHORTCUT } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
 /** The shape tools shared by the custom field editor (`FieldSetupFeature`) and the zone editor
@@ -42,6 +42,9 @@ export function FieldToolsSection({ leadingGap = true }: { leadingGap?: boolean 
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
   const fieldHasSelection = useMazeStore((s) => s.fieldHasSelection);
   const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
+  const zoneEditing = useMazeStore((s) => zoneEditActive(s));
+  const combineOpen = useMazeStore((s) => s.zoneCombine !== null);
+  const toggleCombine = useMazeStore((s) => s.toggleZoneCombine);
   const reflectAvailable = fieldOperationAvailable(fieldConfig.tessellation, "reflect");
 
   function renderClipboardTool(tool: "copy" | "paste", block: FieldClipboardBlock | null) {
@@ -108,6 +111,18 @@ export function FieldToolsSection({ leadingGap = true }: { leadingGap?: boolean 
           })}
           {renderClipboardTool("copy", fieldClipboardBlock("copy", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
           {renderClipboardTool("paste", fieldClipboardBlock("paste", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
+          {zoneEditing && (
+            <ToolIconButton
+              selected={combineOpen}
+              disabled={fieldEditLocked}
+              title={m["zones.combine_tool"]()}
+              shortcut={[ZONE_COMBINE_SHORTCUT]}
+              preservesFieldSelection
+              onClick={toggleCombine}
+            >
+              {combineIcon()}
+            </ToolIconButton>
+          )}
           </Inline>
     </>
   );
@@ -274,6 +289,17 @@ function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
         </svg>
       );
   }
+}
+
+/** Two overlapping circles: the zone combination tool. */
+function combineIcon(): React.ReactNode {
+  const { size, color, strokeWidth } = toolIconProps();
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="9" cy="12" r="6" stroke={color} strokeWidth={strokeWidth} />
+      <circle cx="15" cy="12" r="6" stroke={color} strokeWidth={strokeWidth} />
+    </svg>
+  );
 }
 
 function operationIcon(operation: FieldOperation): React.ReactNode {

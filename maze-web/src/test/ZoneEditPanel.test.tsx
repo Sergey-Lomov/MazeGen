@@ -29,6 +29,17 @@ describe("ZoneEditPanel", () => {
     expect(screen.getByText(m["zones.default_name"]({ id: 2 }))).toBeInTheDocument();
   });
 
+  it("Clear asks for confirmation, then empties the draft", () => {
+    setup(1);
+    fireEvent.click(screen.getByText(m["zones.clear"]()));
+    expect(useMazeStore.getState().zoneEditDraft?.cells).toHaveLength(2);
+    fireEvent.click(screen.getByText(m["common.cancel"]()));
+    expect(useMazeStore.getState().zoneEditDraft?.cells).toHaveLength(2);
+    fireEvent.click(screen.getByText(m["zones.clear"]()));
+    fireEvent.click(screen.getByText(m["common.ok"]()));
+    expect(useMazeStore.getState().zoneEditDraft?.cells).toEqual([]);
+  });
+
   it("hides the Intersections section when nothing intersects", () => {
     setup(3);
     expect(screen.queryByText(m["zones.intersections_title"]())).toBeNull();

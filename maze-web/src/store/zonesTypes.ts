@@ -1,4 +1,5 @@
 import type { Zone } from "../wasm/mazeService";
+import type { ZoneCombine, ZoneCombineOp } from "../pixi/selectors/zoneCombine";
 
 /** Section of the zones list: the zones of one kind. */
 export type ZonesListMode = "auto" | "manual";
@@ -55,6 +56,9 @@ export interface ZonesState {
   zoneEditDraftGroupIds: number[];
   /** Names of groups to create holding the draft zone on "Done". */
   zoneEditDraftNewGroups: string[];
+  /** The combine panel's state (GitHub issue #1032), `null` while the panel is closed; the preview is shown until
+   *  it is applied or closed. Transient, and dropped whenever the editor ends. */
+  zoneCombine: ZoneCombine | null;
   /** Whether the zones other than the edited one are drawn while a zone is edited. */
   showOtherZones: boolean;
   /** Explicit colours (0xRRGGBB) by zone id. Such a zone keeps its colour and still takes its slot in
@@ -102,6 +106,17 @@ export interface ZonesActions {
   commitZoneEdit: () => void;
   /** Leaves the editor discarding the draft: a new zone never reaches `zones`, an existing one stays as it was. */
   cancelZoneEdit: () => void;
+  /** Opens the combine panel on the draft (union, no zone chosen); closes it when it is already open. */
+  toggleZoneCombine: () => void;
+  setZoneCombineOp: (op: ZoneCombineOp) => void;
+  /** Chooses the zone the draft is combined with; ids of the draft itself or of no zone are ignored. */
+  setZoneCombineOther: (id: number | null) => void;
+  /** Applies the previewed combination to the draft's cells (every floor) and closes the panel. */
+  applyZoneCombine: () => void;
+  /** Closes the combine panel without applying. */
+  cancelZoneCombine: () => void;
+  /** Removes every cell, on every floor, from the zone being edited (its draft). */
+  clearZoneCells: () => void;
   setShowOtherZones: (v: boolean) => void;
   setZoneSmoothing: (v: boolean) => void;
   /** Rename / recolour the zone being edited (its draft); no-op while no zone is edited. */
