@@ -1,6 +1,9 @@
 import type { NodeDto } from "../../wasm/types";
 import type { Zone, ZoneKind } from "../../wasm/mazeService";
 import { glueColor } from "../renderers/SeamArrowRenderer";
+import { brightColor, colorToRgb, rgbToColor } from "../../store/colorMath";
+import { canvas } from "../colorTokens";
+import { COMPONENT_MASK_ALPHA } from "../renderConstants";
 import * as m from "~/paraglide/messages";
 
 export interface ZoneRegions {
@@ -19,9 +22,22 @@ export function zoneColors(zones: Zone[], overrides: Readonly<Record<number, num
   return zones.map((zone, index) => overrides[zone.id] ?? glueColor(index));
 }
 
+/** The zones as the canvas and the editor see them: the draft replaces its zone, or is appended when new. */
+export function zonesWithDraft(zones: Zone[], draft: Zone | null): Zone[] {
+  if (!draft) return zones;
+  return zones.some((z) => z.id === draft.id) ? zones.map((z) => (z.id === draft.id ? draft : z)) : [...zones, draft];
+}
+
+/** The colour overrides with the draft's colour applied (`null`: automatic). */
+export function overridesWithDraft(overrides: Record<number, number>, draft: Zone | null, draftColor: number | null): Record<number, number> {
+  if (!draft) return overrides;
+  const { [draft.id]: _dropped, ...rest } = overrides;
+  return draftColor === null ? rest : { ...rest, [draft.id]: draftColor };
+}
+
 /** Whether the zones other than the edited one are left undrawn: a zone is being edited and "show other zones" is off. */
-export function hidesOtherZones(state: { zoneEditId: number | null; showOtherZones: boolean }): boolean {
-  return state.zoneEditId !== null && !state.showOtherZones;
+export function hidesOtherZones(state: { zoneEditDraft: Zone | null; showOtherZones: boolean }): boolean {
+  return state.zoneEditDraft !== null && !state.showOtherZones;
 }
 
 export function isZoneKindShown(kind: ZoneKind, showAuto: boolean, showManual: boolean): boolean {
@@ -67,13 +83,33 @@ export function buildZoneRegions(
  *  (the list hover). Coloured as `buildZoneRegions` colours it; `null` when the zone is not in the
  *  list or has no cell on the floor. */
 export function buildZoneHoverRegion(zones: Zone[], zoneId: number, floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}): ZoneRegions | null {
-  const regions = collectZoneRegions(zones, floorIndex, (zone) => zone.id === zoneId, colorOverrides);
+  return buildZonesHoverRegion(zones, [zoneId], floorIndex, colorOverrides);
+}
+
+/** `buildZoneHoverRegion` for several zones at once (the hover of a zone group's card). */
+export function buildZonesHoverRegion(zones: Zone[], zoneIds: readonly number[], floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}): ZoneRegions | null {
+  const wanted = new Set(zoneIds);
+  const regions = collectZoneRegions(zones, floorIndex, (zone) => wanted.has(zone.id), colorOverrides);
   return regions.groups.length === 0 ? null : regions;
+}
+
+/** Colours of a zone's chip beside the canvas: the border and text are the zone's region border colour,
+ *  the background is the region fill (the zone colour at the regions' own alpha) over the floor. */
+export function zoneChipColors(color: number): { bg: number; text: number } {
+  const fill = colorToRgb(color);
+  const floor = colorToRgb(canvas.floor.default);
+  const mix = (f: number, b: number) => f * COMPONENT_MASK_ALPHA + b * (1 - COMPONENT_MASK_ALPHA);
+  return { bg: rgbToColor({ r: mix(fill.r, floor.r), g: mix(fill.g, floor.g), b: mix(fill.b, floor.b) }), text: brightColor(color) };
 }
 
 /** Ascending floor indices the zone has cells on. */
 export function zoneFloors(zone: Zone): number[] {
   return [...new Set(zone.cells.map(([floor]) => floor))].sort((a, b) => a - b);
+}
+
+/** Display name of a zone group: its name, or "Group #id" while unnamed. */
+export function zoneGroupDisplayName(group: { id: number; name: string }): string {
+  return group.name === "" ? m["zone_groups.default_name"]({ id: group.id }) : group.name;
 }
 
 /** Display name of a zone: its name, or "Zone #id" while unnamed. */

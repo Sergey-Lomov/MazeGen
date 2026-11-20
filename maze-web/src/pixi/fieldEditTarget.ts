@@ -15,25 +15,24 @@ export function activeFloorIndexOf(state: Pick<MazeState, "floors" | "activeFloo
   return Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
 }
 
-/** The zone being edited, or `null` while no zone is. */
-export function editedZoneOf(state: Pick<MazeState, "zones" | "zoneEditId">): Zone | null {
-  if (state.zoneEditId === null) return null;
-  return state.zones.find((zone) => zone.id === state.zoneEditId) ?? null;
+/** The zone being edited (its draft), or `null` while no zone is. */
+export function editedZoneOf(state: Pick<MazeState, "zoneEditDraft">): Zone | null {
+  return state.zoneEditDraft;
 }
 
-/** Whether the zone editor owns the shape tools: the zones card is open on an existing zone. */
-export function zoneEditActive(state: Pick<MazeState, "openCard" | "zones" | "zoneEditId">): boolean {
+/** Whether the zone editor owns the shape tools: the zones card is open on a zone draft. */
+export function zoneEditActive(state: Pick<MazeState, "openCard" | "zoneEditDraft">): boolean {
   return state.openCard === "zones" && editedZoneOf(state) !== null;
 }
 
 /** The persistent smoothing switch the tools follow: the zone editor has its own (off by default), the
  *  field editor the field's. The hold-`S` inversion applies on top of either. */
-export function smoothingOf(state: Pick<MazeState, "openCard" | "zones" | "zoneEditId" | "zoneSmoothing" | "smoothPrimitives">): boolean {
+export function smoothingOf(state: Pick<MazeState, "openCard" | "zoneEditDraft" | "zoneSmoothing" | "smoothPrimitives">): boolean {
   return zoneEditActive(state) ? state.zoneSmoothing : state.smoothPrimitives;
 }
 
 /** Whether the shape tools are live: the custom field editor or the zone editor. */
-export function fieldToolsActive(state: Pick<MazeState, "openCard" | "zones" | "zoneEditId" | "floorFields" | "activeFloorId">): boolean {
+export function fieldToolsActive(state: Pick<MazeState, "openCard" | "zoneEditDraft" | "floorFields" | "activeFloorId">): boolean {
   if (state.openCard === "field_setup") return state.floorFields[state.activeFloorId].fieldEditMode === "custom";
   return zoneEditActive(state);
 }

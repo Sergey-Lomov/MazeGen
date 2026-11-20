@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { ZoneEditPanel } from "../components/features/ZoneEditPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesTransientUi } from "../store/slices/zonesSlice";
@@ -13,7 +13,7 @@ const zones: Zone[] = [
 ];
 
 function setup(editId: number) {
-  useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones, nextZoneId: 4, zoneEditId: editId, activeFloorId: useMazeStore.getState().floors[0].id });
+  useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones, nextZoneId: 4, zoneEditDraft: zones.find((z) => z.id === editId) ?? null, activeFloorId: useMazeStore.getState().floors[0].id });
   const done: string[] = [];
   render(<ZoneEditPanel onDone={() => done.push("done")} onCancel={() => done.push("cancel")} />);
   return done;
@@ -51,10 +51,10 @@ describe("ZoneEditPanel", () => {
     setup(1);
     const reset = screen.getByRole("button", { name: m["zones.color_reset"]() });
     expect(reset).toBeDisabled();
-    act(() => useMazeStore.getState().setZoneColor(1, 0x123456));
+    act(() => useMazeStore.getState().setZoneColor(0x123456));
     expect(screen.getByRole("button", { name: m["zones.color_reset"]() })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: m["zones.color_reset"]() }));
-    expect(1 in useMazeStore.getState().zoneColorOverrides).toBe(false);
+    expect(useMazeStore.getState().zoneEditDraftColor).toBeNull();
   });
 
   it("Done calls onDone, not onCancel", () => {
@@ -66,6 +66,51 @@ describe("ZoneEditPanel", () => {
   it("renames the zone from the name field", () => {
     setup(1);
     fireEvent.change(screen.getByDisplayValue("Hall"), { target: { value: "Lobby" } });
-    expect(useMazeStore.getState().zones[0].name).toBe("Lobby");
+    expect(useMazeStore.getState().zoneEditDraft?.name).toBe("Lobby");
+    expect(useMazeStore.getState().zones[0].name).toBe("Hall");
   });
 });
+
+describe("zone editor groups", () => {
+  beforeEach(() => useMazeStore.setState({
+    ...zonesTransientUi, openCard: "zones", activeFloorId: useMazeStore.getState().floors[0].id, zones, nextZoneId: 4, zoneEditDraft: zones[1], zoneEditDraftGroupIds: [1],
+    zoneGroups: [{ id: 1, name: "Has", zoneIds: [2] }, { id: 2, name: "Free", zoneIds: [] }], nextZoneGroupId: 3,
+  }));
+
+  it("lists the zone's groups and removes it from one with the trash", () => {
+    render(<ZoneEditPanel onDone={() => {}} onCancel={() => {}} />);
+    const rows = screen.getAllByTestId("zone-group-row");
+    expect(rows).toHaveLength(1);
+    fireEvent.click(within(rows[0]).getByRole("button", { name: m["zone_groups.remove_zone"]() }));
+    expect(useMazeStore.getState().zoneEditDraftGroupIds).toEqual([]);
+    // Only the draft changed: the group keeps the zone until Done.
+    expect(useMazeStore.getState().zoneGroups[0].zoneIds).toEqual([2]);
+    expect(screen.getByText(m["zones.no_groups"]())).toBeInTheDocument();
+  });
+
+  it("New group queues a group to create on Done; its trash takes it back, and no group exists meanwhile", () => {
+    render(<ZoneEditPanel onDone={() => {}} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: m["zone_groups.add_to_group"]() }));
+    fireEvent.click(screen.getByText(m["zone_groups.new"]()));
+    fireEvent.change(screen.getAllByRole("textbox").at(-1)!, { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByText(m["common.ok"]()));
+    expect(useMazeStore.getState().zoneEditDraftNewGroups).toEqual(["Fresh"]);
+    expect(useMazeStore.getState().zoneGroups).toHaveLength(2);
+    const row = screen.getAllByTestId("zone-group-row").find((r) => r.textContent?.includes("Fresh"))!;
+    fireEvent.click(within(row).getByRole("button", { name: m["zone_groups.remove_zone"]() }));
+    expect(useMazeStore.getState().zoneEditDraftNewGroups).toEqual([]);
+  });
+
+  it("the plus opens the picker; a click adds the zone and closes it", () => {
+    render(<ZoneEditPanel onDone={() => {}} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: m["zone_groups.add_to_group"]() }));
+    // Only the group without the zone is offered.
+    const cells = screen.getAllByTestId("zone-group-cell");
+    expect(cells).toHaveLength(1);
+    fireEvent.click(within(cells[0]).getByText("Free"));
+    expect(useMazeStore.getState().zoneEditDraftGroupIds).toEqual([1, 2]);
+    expect(useMazeStore.getState().zoneGroups[1].zoneIds).toEqual([]);
+    expect(screen.queryByTestId("zone-group-cell")).toBeNull();
+  });
+});
+

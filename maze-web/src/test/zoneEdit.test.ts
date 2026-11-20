@@ -19,7 +19,7 @@ function setup(zones: Zone[], overrides: Partial<ReturnType<typeof useMazeStore.
     floorFields: { floor_0: base, floor_1: base },
     zones,
     nextZoneId: 10,
-    zoneEditId: 1,
+    zoneEditDraft: zones.find((z) => z.id === 1) ?? null,
     ...overrides,
   });
 }
@@ -33,9 +33,9 @@ describe("zone editing target", () => {
     setup([zone([])]);
     expect(zoneEditActive(useMazeStore.getState())).toBe(true);
     expect(fieldToolsActive(useMazeStore.getState())).toBe(true);
-    useMazeStore.setState({ zoneEditId: 99 });
+    useMazeStore.setState({ zoneEditDraft: null });
     expect(zoneEditActive(useMazeStore.getState())).toBe(false);
-    useMazeStore.setState({ zoneEditId: 1, openCard: "generation" });
+    useMazeStore.setState({ zoneEditDraft: zone([]), openCard: "generation" });
     expect(zoneEditActive(useMazeStore.getState())).toBe(false);
   });
 
@@ -64,20 +64,22 @@ describe("zone editing target", () => {
     setup([zone([[1, 7, 7]])]);
     const store = useMazeStore.getState();
     store.addZoneCells([[0, 0], [1, 0], [0, 0]]);
-    const added = useMazeStore.getState().zones[0].cells;
+    const added = useMazeStore.getState().zoneEditDraft!.cells;
     expect(added).toContainEqual([1, 7, 7]);
     expect(added.filter(([f]) => f === 0)).toEqual([[0, 0, 0], [0, 1, 0]]);
     useMazeStore.getState().removeZoneCells([[0, 0], [3, 3]]);
-    expect(useMazeStore.getState().zones[0].cells.filter(([f]) => f === 0)).toEqual([[0, 1, 0]]);
-    expect(useMazeStore.getState().zones[0].cells).toContainEqual([1, 7, 7]);
+    expect(useMazeStore.getState().zoneEditDraft!.cells.filter(([f]) => f === 0)).toEqual([[0, 1, 0]]);
+    expect(useMazeStore.getState().zoneEditDraft!.cells).toContainEqual([1, 7, 7]);
   });
 
-  it("keeps the zones array when an edit changes nothing", () => {
+  it("keeps the draft when an edit changes nothing, and never touches the zones list", () => {
     setup([zone([[0, 0, 0]])]);
-    const before = useMazeStore.getState().zones;
+    const before = useMazeStore.getState().zoneEditDraft;
+    const zonesBefore = useMazeStore.getState().zones;
     useMazeStore.getState().addZoneCells([[0, 0]]);
     useMazeStore.getState().removeZoneCells([[4, 4]]);
-    expect(useMazeStore.getState().zones).toBe(before);
+    expect(useMazeStore.getState().zoneEditDraft).toBe(before);
+    expect(useMazeStore.getState().zones).toBe(zonesBefore);
   });
 
   it("caches the zone's floor points per cells array", () => {
@@ -88,82 +90,165 @@ describe("zone editing target", () => {
 });
 
 describe("zone editor lifecycle", () => {
+  const s = () => useMazeStore.getState();
   beforeEach(() => useMazeStore.setState({ ...zonesTransientUi }));
 
-  it("opens a newly added zone for editing", () => {
-    useMazeStore.getState().addManualZone();
-    const state = useMazeStore.getState();
-    expect(state.zoneEditId).toBe(state.zones[0].id);
-  });
-
-  it("stops editing when the zone is deleted or the panel closes", () => {
-    useMazeStore.getState().addManualZone();
-    const id = useMazeStore.getState().zones[0].id;
-    useMazeStore.getState().removeZone(id);
-    expect(useMazeStore.getState().zoneEditId).toBeNull();
-    useMazeStore.getState().addManualZone();
-    useMazeStore.getState().setZonesPanelOpen(false);
-    expect(useMazeStore.getState().zoneEditId).toBeNull();
-  });
-
-  it("cancel deletes a zone added in this session but keeps an existing one", () => {
-    useMazeStore.getState().addManualZone();
-    useMazeStore.getState().cancelZoneEdit();
-    expect(useMazeStore.getState().zones).toHaveLength(0);
-    expect(useMazeStore.getState().zoneEditId).toBeNull();
-
-    useMazeStore.getState().addManualZone();
-    const id = useMazeStore.getState().zones[0].id;
-    useMazeStore.getState().setZoneEditId(null);
-    useMazeStore.getState().setZoneEditId(id);
-    useMazeStore.getState().cancelZoneEdit();
-    expect(useMazeStore.getState().zones).toHaveLength(1);
-    expect(useMazeStore.getState().zoneEditId).toBeNull();
-  });
-
-  it("discards an unconfirmed new zone when the editor is left any way but Done", () => {
-    const s = () => useMazeStore.getState();
+  it("opens a newly added zone as a draft without touching the zones list", () => {
     s().addManualZone();
-    s().setZoneColor(s().zones[0].id, 0x123456);
+    expect(s().zones).toHaveLength(0);
+    expect(s().zoneEditDraft).toEqual({ id: 1, name: "", kind: "manual", cells: [] });
+    expect(s().zoneEditDraft?.id).toBe(1);
+    expect(s().zoneEditIsNew).toBe(true);
+  });
+
+  it("Done commits a new draft with its colour; an edit of a stored zone only lands on Done", () => {
     s().addManualZone();
-    expect(s().zones.map((z) => z.id)).toEqual([2]);
+    s().setZoneName("Hall");
+    s().setZoneColor(0x123456);
+    expect(s().zones).toHaveLength(0);
     expect(s().zoneColorOverrides).toEqual({});
+    s().commitZoneEdit();
+    expect(s().zones.map((z) => z.name)).toEqual(["Hall"]);
+    expect(s().zoneColorOverrides).toEqual({ 1: 0x123456 });
+    expect(s().zoneEditDraft).toBeNull();
 
+    s().setZoneEditId(1);
+    s().setZoneName("Yard");
+    s().setZoneColor(null);
+    expect(s().zones[0].name).toBe("Hall");
+    expect(s().zoneColorOverrides).toEqual({ 1: 0x123456 });
+    s().setZoneEditId(null);
+    expect(s().zones[0].name).toBe("Yard");
+    expect(s().zoneColorOverrides).toEqual({});
+  });
+
+  it("cancel drops a new draft and restores a stored zone", () => {
+    s().addManualZone();
+    s().cancelZoneEdit();
+    expect(s().zones).toHaveLength(0);
+    expect(s().zoneEditDraft).toBeNull();
+    expect(s().zoneEditDraft).toBeNull();
+
+    s().addManualZone();
+    s().commitZoneEdit();
+    s().setZoneEditId(1);
+    s().setZoneName("Changed");
+    s().cancelZoneEdit();
+    expect(s().zones).toHaveLength(1);
+    expect(s().zones[0].name).toBe("");
+    expect(s().zoneEditDraft).toBeNull();
+  });
+
+  it("adding again while a new zone is edited changes nothing", () => {
+    s().addManualZone();
+    s().setZoneColor(0x123456);
+    s().addManualZone();
+    expect(s().zoneEditDraft?.id).toBe(1);
+    expect(s().zoneEditIsNew).toBe(true);
+    expect(s().zoneEditDraftColor).toBe(0x123456);
+    expect(s().nextZoneId).toBe(2);
+  });
+
+  it("leaving the editor any way but Done discards the draft", () => {
+    s().addManualZone();
+    s().addZoneEditNewGroup("G");
     s().setZonesPanelOpen(false);
     expect(s().zones).toHaveLength(0);
+    expect(s().zoneGroups).toEqual([]);
+    expect(s().zoneEditDraft).toBeNull();
+    expect(s().zoneEditDraftNewGroups).toEqual([]);
 
     s().addManualZone();
-    s().setZoneEditId(null);
+    s().commitZoneEdit();
+    const id = s().zones[0].id;
+    s().addManualZone();
+    s().setZoneEditId(id);
     expect(s().zones).toHaveLength(1);
-    s().setZoneEditId(s().zones[0].id);
+    expect(s().zoneEditDraft?.id).toBe(id);
     s().setZonesPanelOpen(false);
     expect(s().zones).toHaveLength(1);
+    expect(s().zoneEditDraft).toBeNull();
+  });
+
+  it("group links go into the draft and reach the groups only on Done", () => {
+    useMazeStore.setState({ zoneGroups: [{ id: 7, name: "Has", zoneIds: [] }, { id: 8, name: "Other", zoneIds: [] }], nextZoneGroupId: 9 });
+    s().addManualZone();
+    s().addZoneEditGroup(7);
+    s().addZoneEditGroup(7);
+    s().addZoneEditGroup(99);
+    s().addZoneEditNewGroup("Fresh");
+    s().addZoneEditNewGroup("Gone");
+    s().removeZoneEditNewGroup(1);
+    expect(s().zoneEditDraftGroupIds).toEqual([7]);
+    expect(s().zoneGroups.every((g) => g.zoneIds.length === 0)).toBe(true);
+    s().commitZoneEdit();
+    expect(s().zoneGroups).toEqual([
+      { id: 7, name: "Has", zoneIds: [1] },
+      { id: 8, name: "Other", zoneIds: [] },
+      { id: 9, name: "Fresh", zoneIds: [1] },
+    ]);
+    expect(s().nextZoneGroupId).toBe(10);
+
+    s().setZoneEditId(1);
+    expect(s().zoneEditDraftGroupIds).toEqual([7, 9]);
+    s().removeZoneEditGroup(7);
+    expect(s().zoneGroups[0].zoneIds).toEqual([1]);
+    s().commitZoneEdit();
+    expect(s().zoneGroups[0].zoneIds).toEqual([]);
+  });
+
+  it("Done of the zone editor also relinks an open group draft, so the group's Done keeps the zone", () => {
+    useMazeStore.setState({ zoneGroups: [{ id: 7, name: "G", zoneIds: [] }], nextZoneGroupId: 8 });
+    s().addManualZone();
+    s().addZoneEditGroup(7);
+    s().setZoneGroupEditId(7);
+    s().commitZoneEdit();
+    expect(s().zoneGroupEditDraft?.zoneIds).toEqual([1]);
+    s().commitZoneGroupEdit();
+    expect(s().zoneGroups[0].zoneIds).toEqual([1]);
+  });
+
+  it("deleting the edited zone closes the editor", () => {
+    s().addManualZone();
+    s().commitZoneEdit();
+    s().setZoneEditId(1);
+    s().removeZone(1);
+    expect(s().zoneEditDraft).toBeNull();
+    expect(s().zoneEditDraft).toBeNull();
   });
 
   it("renames a zone and keeps colour overrides out of the other zones' slots", () => {
-    useMazeStore.getState().addManualZone();
-    useMazeStore.getState().setZoneEditId(null);
-    useMazeStore.getState().addManualZone();
-    useMazeStore.getState().setZoneEditId(null);
-    const [a, b] = useMazeStore.getState().zones;
-    useMazeStore.getState().setZoneName(a.id, "Hall");
-    expect(useMazeStore.getState().zones[0].name).toBe("Hall");
+    s().addManualZone();
+    s().commitZoneEdit();
+    s().addManualZone();
+    s().commitZoneEdit();
+    const [a, b] = s().zones;
+    s().setZoneEditId(a.id);
+    s().setZoneName("Hall");
+    s().commitZoneEdit();
+    expect(s().zones[0].name).toBe("Hall");
 
-    const before = zoneColors(useMazeStore.getState().zones);
-    useMazeStore.getState().addManualZone();
-    useMazeStore.getState().setZoneEditId(null);
-    expect(zoneColors(useMazeStore.getState().zones).slice(0, 2)).toEqual(before);
-    useMazeStore.getState().removeZone(useMazeStore.getState().zones[2].id);
-    useMazeStore.getState().setZoneColor(a.id, 0x123456);
-    const after = zoneColors(useMazeStore.getState().zones, useMazeStore.getState().zoneColorOverrides);
+    const before = zoneColors(s().zones);
+    s().addManualZone();
+    s().commitZoneEdit();
+    expect(zoneColors(s().zones).slice(0, 2)).toEqual(before);
+    s().removeZone(s().zones[2].id);
+    s().setZoneEditId(a.id);
+    s().setZoneColor(0x123456);
+    s().commitZoneEdit();
+    const after = zoneColors(s().zones, s().zoneColorOverrides);
     expect(after[0]).toBe(0x123456);
     expect(after[1]).toBe(before[1]);
 
-    useMazeStore.getState().setZoneColor(a.id, null);
-    expect(useMazeStore.getState().zoneColorOverrides).toEqual({});
-    useMazeStore.getState().setZoneColor(b.id, 0xabcdef);
-    useMazeStore.getState().removeZone(b.id);
-    expect(useMazeStore.getState().zoneColorOverrides).toEqual({});
+    s().setZoneEditId(a.id);
+    s().setZoneColor(null);
+    s().commitZoneEdit();
+    expect(s().zoneColorOverrides).toEqual({});
+    s().setZoneEditId(b.id);
+    s().setZoneColor(0xabcdef);
+    s().commitZoneEdit();
+    s().removeZone(b.id);
+    expect(s().zoneColorOverrides).toEqual({});
   });
 });
 
@@ -183,14 +268,14 @@ describe("zone smoothing", () => {
     const state = useMazeStore.getState();
     expect(state.zoneSmoothing).toBe(false);
     expect(smoothingOf(state)).toBe(false);
-    expect(smoothingOf({ ...state, zoneEditId: null })).toBe(true);
+    expect(smoothingOf({ ...state, zoneEditDraft: null })).toBe(true);
   });
 });
 
 describe("zone hover reach and visibility", () => {
   it("lets Add reach field cells only and Remove the zone's own cells", () => {
     const zone: Zone = { id: 1, name: "", kind: "manual", cells: [[0, 0, 0]] };
-    useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones: [zone], zoneEditId: 1 });
+    useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones: [zone], zoneEditDraft: zone });
     const state = useMazeStore.getState();
     const inField = [...activeFieldCellKeys(state)].map(decodePoint)[0];
     expect(zoneToolReaches(state, "add", inField[0], inField[1])).toBe(true);
@@ -200,8 +285,8 @@ describe("zone hover reach and visibility", () => {
   });
 
   it("hides the other zones only while a zone is edited with the switch off", () => {
-    expect(hidesOtherZones({ zoneEditId: 1, showOtherZones: false })).toBe(true);
-    expect(hidesOtherZones({ zoneEditId: 1, showOtherZones: true })).toBe(false);
-    expect(hidesOtherZones({ zoneEditId: null, showOtherZones: false })).toBe(false);
+    expect(hidesOtherZones({ zoneEditDraft: zone([]), showOtherZones: false })).toBe(true);
+    expect(hidesOtherZones({ zoneEditDraft: zone([]), showOtherZones: true })).toBe(false);
+    expect(hidesOtherZones({ zoneEditDraft: null, showOtherZones: false })).toBe(false);
   });
 });
