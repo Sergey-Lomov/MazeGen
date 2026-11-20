@@ -1,8 +1,8 @@
-import React, { useEffect } from "react";
-import { RotateCcw } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Plus, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { editedZoneOf } from "../../pixi/fieldEditTarget";
-import { zoneColors, zoneDisplayName, zoneFloors, zoneIntersections } from "../../pixi/selectors/zoneSelectors";
+import { overridesWithDraft, zoneColors, zoneDisplayName, zoneChipColors, zoneFloors, zoneGroupDisplayName, zoneIntersections, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
 import { Button } from "../Button";
 import { UnregisteredColorRow } from "../ColorRow";
 import { SidePanel } from "../SidePanel";
@@ -13,34 +13,54 @@ import { FloorBadgeRow } from "../FloorBadgeRow";
 import { TextFieldRow } from "../TextFieldRow";
 import { ToggleRow } from "../ToggleRow";
 import { ToolTooltip } from "../ToolIconButton";
-import { typography, spacing, indent } from "../../styles/theme";
+import { typography, disabled, spacing, indent } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
+import { cssColor } from "../EntityColorSwatch";
+import { ListCellAction } from "../ListCell";
+import { ZoneGroupNameDialog, ZoneGroupPickerDialog } from "./ZoneGroupDialogs";
 import { FieldToolsSection, SmoothingToggleRow } from "./FieldToolsSection";
 import * as m from "~/paraglide/messages";
 
 /** Zone editing side panel (GitHub issue #1031): the shape tools of the field editor, acting on the
- *  cells of one manual zone on the active floor. Every change goes straight into the zone, and the
- *  tools can only reach cells that are part of the field. The close cross cancels (a zone added in this
- *  session is deleted); "Done" keeps the zone. Sections: Properties (name, colour), Editing (modes,
+ *  cells of one manual zone on the active floor. Changes go into a draft, not the zones list, and the
+ *  tools can only reach cells that are part of the field. The close cross discards the draft; "Done" commits it. Sections: Properties (name, colour), Editing (modes,
  *  tools, smoothing, other zones) and Intersections (only while the zone overlaps another). */
 export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const zone = useMazeStore((s) => editedZoneOf(s));
-  const zones = useMazeStore((s) => s.zones);
-  const overrides = useMazeStore((s) => s.zoneColorOverrides);
+  const storedZones = useMazeStore((s) => s.zones);
+  const storedOverrides = useMazeStore((s) => s.zoneColorOverrides);
+  const draftColor = useMazeStore((s) => s.zoneEditDraftColor);
+  const zones = useMemo(() => zonesWithDraft(storedZones, zone), [storedZones, zone]);
+  const overrides = useMemo(() => overridesWithDraft(storedOverrides, zone, draftColor), [storedOverrides, zone, draftColor]);
   const showOtherZones = useMazeStore((s) => s.showOtherZones);
   const setShowOtherZones = useMazeStore((s) => s.setShowOtherZones);
   const setZoneName = useMazeStore((s) => s.setZoneName);
   const setZoneColor = useMazeStore((s) => s.setZoneColor);
   const setHover = useMazeStore((s) => s.setHoveredZone);
+  const groups = useMazeStore((s) => s.zoneGroups);
+  const draftGroupIds = useMazeStore((s) => s.zoneEditDraftGroupIds);
+  const newGroups = useMazeStore((s) => s.zoneEditDraftNewGroups);
+  const addToGroup = useMazeStore((s) => s.addZoneEditGroup);
+  const removeFromGroup = useMazeStore((s) => s.removeZoneEditGroup);
+  const addNewGroup = useMazeStore((s) => s.addZoneEditNewGroup);
+  const removeNewGroup = useMazeStore((s) => s.removeZoneEditNewGroup);
+  const [dialog, setDialog] = useState<"pick" | "name" | null>(null);
 
   // The hover belongs to the panel: it must not outlive it.
   useEffect(() => () => setHover(null), [setHover]);
 
   if (!zone) return null;
   const count = zone.cells.length;
+  const zoneGroups = groups.filter((g) => draftGroupIds.includes(g.id));
   const multiFloor = zoneFloors(zone).length > 1;
   const crossing = zoneIntersections(zones, zone);
   const color = zoneColors(zones, overrides)[zones.findIndex((z) => z.id === zone.id)];
+  // The zones' bubbles read as the zone's colour on the canvas, as in the groups list.
+  const allColors = zoneColors(zones, overrides);
+  const chipColorsOf = (id: number) => {
+    const chip = zoneChipColors(allColors[zones.findIndex((z) => z.id === id)]);
+    return { bg: cssColor(chip.bg), text: cssColor(chip.text) };
+  };
   const automaticColor = !(zone.id in overrides);
 
   return (
@@ -49,11 +69,11 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
         <Stack gap="itemGap">
         <div style={styles.sectionHeader}>{m["zones.properties"]()}</div>
         <Stack gap="itemGap" style={styles.content}>
-            <TextFieldRow label={m["zones.name"]()} value={zoneDisplayName(zone)} onChange={(name) => setZoneName(zone.id, name)} inputWidth={160} />
+            <TextFieldRow label={m["zones.name"]()} value={zoneDisplayName(zone)} onChange={(name) => setZoneName(name)} inputWidth={160} />
             <UnregisteredColorRow
               label={m["zones.color"]()}
               color={color}
-              onChange={(next) => setZoneColor(zone.id, next)}
+              onChange={(next) => setZoneColor(next)}
               resetButton={
                 <ToolTooltip
                   title={m["zones.color_reset"]()}
@@ -63,7 +83,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
                     title={m["zones.color_reset"]()}
                     withTooltip={false}
                     disabled={automaticColor}
-                    onClick={() => setZoneColor(zone.id, null)}
+                    onClick={() => setZoneColor(null)}
                   >
                     <RotateCcw size={16} />
                   </FlatIconButton>
@@ -82,6 +102,30 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
           </Stack>
         </Stack>
 
+        <Stack gap="itemGap">
+          <div style={styles.sectionHeaderRow}>
+            <div style={styles.sectionHeader}>{m["zones.groups_title"]()}</div>
+            <FlatIconButton title={m["zone_groups.add_to_group"]()} onClick={() => setDialog("pick")} layoutStyle={{ marginLeft: "auto" }}>
+              <Plus size={16} />
+            </FlatIconButton>
+          </div>
+          <Stack gap="itemGap" style={styles.content}>
+            {zoneGroups.length + newGroups.length === 0 && <span style={styles.placeholder}>{m["zones.no_groups"]()}</span>}
+            {zoneGroups.map((group) => (
+              <div key={group.id} style={styles.groupRow} data-testid="zone-group-row">
+                <span style={styles.groupName}>{zoneGroupDisplayName(group)}</span>
+                <ListCellAction action="delete" title={m["zone_groups.remove_zone"]()} danger onAction={() => removeFromGroup(group.id)} />
+              </div>
+            ))}
+            {newGroups.map((name, index) => (
+              <div key={`new-${index}`} style={styles.groupRow} data-testid="zone-group-row">
+                <span style={styles.groupName}>{name}</span>
+                <ListCellAction action="delete" title={m["zone_groups.remove_zone"]()} danger onAction={() => removeNewGroup(index)} />
+              </div>
+            ))}
+          </Stack>
+        </Stack>
+
         {crossing.length > 0 && (
           <Stack gap="itemGap">
             <div style={styles.sectionHeader}>{m["zones.intersections_title"]()}</div>
@@ -91,7 +135,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
               {crossing.map(({ zone: other, floor }) => (
                 <BubbleHoverZone key={`${other.id}-${floor}`} onMouseEnter={() => setHover(other.id)} onMouseLeave={() => setHover(null)}>
                   <Inline gap="itemGap">
-                    <Bubble>{zoneDisplayName(other)}</Bubble>
+                    <Bubble colors={chipColorsOf(other.id)}>{zoneDisplayName(other)}</Bubble>
                     {multiFloor && <BubbleArrow>-</BubbleArrow>}
                     {multiFloor && <FloorBadgeRow levels={[floor]} />}
                   </Inline>
@@ -106,6 +150,8 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
         </Button>
         <span style={styles.info}>{m[count === 1 ? "zones.size" : "zones.size_plural"]({ count })}</span>
       </Stack>
+      {dialog === "pick" && <ZoneGroupPickerDialog excludeIds={draftGroupIds} onPick={addToGroup} onClose={() => setDialog(null)} onNew={() => setDialog("name")} />}
+      {dialog === "name" && <ZoneGroupNameDialog onConfirm={addNewGroup} onClose={() => setDialog(null)} />}
     </SidePanel>
   );
 }
@@ -115,4 +161,8 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeader: sharedStyles.sectionHeader,
   content: { paddingLeft: indent.tree, minWidth: 0, boxSizing: "border-box", width: "100%" },
   info: { ...typography.caption },
+  placeholder: { ...disabled(typography.body) },
+  sectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  groupRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
+  groupName: { ...typography.body, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 };

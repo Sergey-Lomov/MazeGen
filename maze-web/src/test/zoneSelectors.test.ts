@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Zone } from "../wasm/mazeService";
 import {
-  buildZoneHoverRegion, buildZoneRegions, buildZonesCellInspection, countManualZones, countZonesOfKind, zoneDisplayName, zoneFloors, zonesOfCell,
+  buildZoneHoverRegion, buildZoneRegions, overridesWithDraft, zonesWithDraft, buildZonesCellInspection, countManualZones, countZonesOfKind, zoneDisplayName, zoneFloors, zonesOfCell,
 } from "../pixi/selectors/zoneSelectors";
 import { useMazeStore } from "../store/mazeStore";
 
@@ -10,6 +10,25 @@ const zones: Zone[] = [
   { id: 2, name: "Manual B", kind: "manual", cells: [[0, 1, 0], [0, 2, 0]] },
   { id: 3, name: "", kind: "manual", cells: [] },
 ];
+
+describe("zones with the editor draft", () => {
+  it("replaces the zone of the draft, appends a new one and leaves the array alone without a draft", () => {
+    const draft: Zone = { ...zones[1], name: "Edited" };
+    expect(zonesWithDraft(zones, null)).toBe(zones);
+    expect(zonesWithDraft(zones, draft).map((z) => z.name)).toEqual(["Auto A", "Edited", ""]);
+    const added: Zone = { id: 9, name: "New", kind: "manual", cells: [] };
+    expect(zonesWithDraft(zones, added).map((z) => z.id)).toEqual([1, 2, 3, 9]);
+    expect(zones).toHaveLength(3);
+  });
+
+  it("applies the draft colour over the stored one, or drops it for automatic", () => {
+    const overrides = { 2: 0x111111, 3: 0x222222 };
+    expect(overridesWithDraft(overrides, null, 0x333333)).toBe(overrides);
+    expect(overridesWithDraft(overrides, zones[1], 0x333333)).toEqual({ 2: 0x333333, 3: 0x222222 });
+    expect(overridesWithDraft(overrides, zones[1], null)).toEqual({ 3: 0x222222 });
+    expect(overrides).toEqual({ 2: 0x111111, 3: 0x222222 });
+  });
+});
 
 describe("zones list", () => {
   it("counts zones per kind and names unnamed ones by id", () => {
@@ -45,6 +64,7 @@ describe("zones slice list state", () => {
   it("toggles visibility, adds a manual zone and cleans up on delete", () => {
     const s = () => useMazeStore.getState();
     s().addManualZone();
+    s().commitZoneEdit();
     const added = s().zones[s().zones.length - 1];
     expect(added.kind).toBe("manual");
     s().toggleZoneVisibility(added.id);
@@ -68,6 +88,7 @@ describe("zones slice list state", () => {
     s().setZoneEditId(null);
     s().removeZone(2);
     s().addManualZone();
+    s().commitZoneEdit();
     expect(s().zones.map((zone) => zone.id)).toEqual([1, 3]);
   });
 

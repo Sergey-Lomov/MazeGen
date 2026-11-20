@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ToggleRow } from "../ToggleRow";
 import { Button } from "../Button";
 import { bringSidePanelToFront } from "../SidePanel";
 import { Stack } from "../Layout";
+import { startNewZone } from "./zoneEditorActions";
 import { ZonesPanel } from "./ZonesPanel";
 import { ZoneEditPanel } from "./ZoneEditPanel";
+import { ZoneGroupsPanel, ZoneGroupEditPanel } from "./ZoneGroupsPanel";
 import * as m from "~/paraglide/messages";
 
 export function ZonesFeature() {
@@ -14,16 +17,32 @@ export function ZonesFeature() {
   const setShowManualZones = useMazeStore((s) => s.setShowManualZones);
   const zonesPanelOpen = useMazeStore((s) => s.zonesPanelOpen);
   const setZonesPanelOpen = useMazeStore((s) => s.setZonesPanelOpen);
-  const zoneEditing = useMazeStore((s) => s.zoneEditId !== null && s.zones.some((z) => z.id === s.zoneEditId));
-  const setZoneEditId = useMazeStore((s) => s.setZoneEditId);
-  const setZonesListMode = useMazeStore((s) => s.setZonesListMode);
-  const addManualZone = useMazeStore((s) => s.addManualZone);
+  const zoneEditing = useMazeStore((s) => s.zoneEditDraft !== null);
+  const commitZoneEdit = useMazeStore((s) => s.commitZoneEdit);
   const cancelZoneEdit = useMazeStore((s) => s.cancelZoneEdit);
+  const zoneGroupsPanelOpen = useMazeStore((s) => s.zoneGroupsPanelOpen);
+  const setZoneGroupsPanelOpen = useMazeStore((s) => s.setZoneGroupsPanelOpen);
+  const zoneGroupEditId = useMazeStore((s) => s.zoneGroupEditId);
+  const commitZoneGroupEdit = useMazeStore((s) => s.commitZoneGroupEdit);
+  const cancelZoneGroupEdit = useMazeStore((s) => s.cancelZoneGroupEdit);
+
+  // Leaving the zones card ends editing: unconfirmed drafts are dropped, the lists stay as they are.
+  useEffect(() => () => {
+    useMazeStore.getState().cancelZoneEdit();
+    useMazeStore.getState().cancelZoneGroupEdit();
+  }, []);
 
   return (
     <Stack gap="itemGap">
       <ToggleRow label={m["zones.show_auto"]()} checked={showAutoZones} onChange={setShowAutoZones} />
       <ToggleRow label={m["zones.show_manual"]()} checked={showManualZones} onChange={setShowManualZones} />
+      <Button
+        variant="primary"
+        layoutStyle={{ width: "100%" }}
+        onClick={startNewZone}
+      >
+        {m["zones.add"]()}
+      </Button>
       <Button
         variant="secondary"
         layoutStyle={{ width: "100%" }}
@@ -35,20 +54,21 @@ export function ZonesFeature() {
         {m["zones.open_list"]()}
       </Button>
       <Button
-        variant="primary"
+        variant="secondary"
         layoutStyle={{ width: "100%" }}
         onClick={() => {
-          // The new zone's editor opens over the manual zones list.
-          bringSidePanelToFront("zones");
-          setZonesListMode("manual");
-          setZonesPanelOpen(true);
-          addManualZone();
+          bringSidePanelToFront("zone-groups");
+          setZoneGroupsPanelOpen(true);
         }}
       >
-        {m["zones.add"]()}
+        {m["zone_groups.open_list"]()}
       </Button>
+      {zoneGroupsPanelOpen && <ZoneGroupsPanel onClose={() => setZoneGroupsPanelOpen(false)} />}
+      {zoneGroupsPanelOpen && zoneGroupEditId !== null && (
+        <ZoneGroupEditPanel groupId={zoneGroupEditId} onDone={commitZoneGroupEdit} onCancel={cancelZoneGroupEdit} />
+      )}
       {zonesPanelOpen && <ZonesPanel onClose={() => setZonesPanelOpen(false)} />}
-      {zonesPanelOpen && zoneEditing && <ZoneEditPanel onDone={() => setZoneEditId(null)} onCancel={cancelZoneEdit} />}
+      {zonesPanelOpen && zoneEditing && <ZoneEditPanel onDone={commitZoneEdit} onCancel={cancelZoneEdit} />}
     </Stack>
   );
 }

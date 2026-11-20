@@ -9,7 +9,7 @@ import { filterZonesToField } from "./fieldValidity";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import type { Zone } from "../wasm/mazeService";
 import type { FieldConfig } from "../fieldConfig";
-import { buildZoneHoverRegion, buildZoneRegions, hidesOtherZones } from "./selectors/zoneSelectors";
+import { buildZonesHoverRegion, buildZoneRegions, hidesOtherZones, overridesWithDraft, zonesWithDraft } from "./selectors/zoneSelectors";
 import { COMPONENT_MASK_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { brightColor } from "../store/colorMath";
@@ -110,12 +110,14 @@ export class ZonesRenderer extends BaseFieldRenderer {
       state.showManualZones !== prev.showManualZones ||
       state.hiddenZoneIds !== prev.hiddenZoneIds ||
       state.zoneColorOverrides !== prev.zoneColorOverrides ||
+      state.zoneEditDraft !== prev.zoneEditDraft ||
+      state.zoneEditDraftColor !== prev.zoneEditDraftColor ||
       state.showOtherZones !== prev.showOtherZones ||
       // Entering or leaving the editor hides or restores the other zones while "show other zones" is off.
       (hidesOtherZones(state) !== hidesOtherZones(prev))
     ) {
       this.redrawAll(state);
-    } else if (state.hoveredZoneId !== prev.hoveredZoneId || state.zoneEditId !== prev.zoneEditId) {
+    } else if (state.hoveredZoneId !== prev.hoveredZoneId || state.hoveredZoneIds !== prev.hoveredZoneIds) {
       // A list hover moves often: only its own layer is redrawn.
       this.redrawHover(state);
     }
@@ -133,11 +135,12 @@ export class ZonesRenderer extends BaseFieldRenderer {
     const { preset: outerWalls } = buildPresetWallGroups(this.cachedCells, new Map(), cfg);
     this.walls.render({ edges: outerWalls }, cfg);
 
-    const fieldZones = filterZonesToField(state.zones, resolveFieldAtOf(state));
+    const fieldZones = filterZonesToField(zonesWithDraft(state.zones, state.zoneEditDraft), resolveFieldAtOf(state));
+    const overrides = overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor);
     // While a zone is edited, "show other zones" off leaves only that zone (drawn by the hover layer).
     const { nodes, groups } = hidesOtherZones(state)
       ? { nodes: [], groups: [] }
-      : buildZoneRegions(fieldZones, activeFloorIndex(state), state.showAutoZones, state.showManualZones, state.hiddenZoneIds, state.zoneColorOverrides);
+      : buildZoneRegions(fieldZones, activeFloorIndex(state), state.showAutoZones, state.showManualZones, state.hiddenZoneIds, overrides);
     this.zones.render({
       nodes,
       regionGroups: [],
@@ -155,14 +158,17 @@ export class ZonesRenderer extends BaseFieldRenderer {
 
   private redrawHover(state: MazeState): void {
     if (!this.cfg || !this.root.visible) return;
-    this.drawHover(state, filterZonesToField(state.zones, resolveFieldAtOf(state)), this.cfg);
+    this.drawHover(state, filterZonesToField(zonesWithDraft(state.zones, state.zoneEditDraft), resolveFieldAtOf(state)), this.cfg);
   }
 
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
     // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
-    const shownId = state.hoveredZoneId ?? state.zoneEditId;
-    const hover = shownId === null ? null : buildZoneHoverRegion(fieldZones, shownId, activeFloorIndex(state), state.zoneColorOverrides);
+    // A group card's hover shows its zones together; one zone's own hover wins over it.
+    const shownIds = state.hoveredZoneId !== null ? [state.hoveredZoneId]
+      : state.hoveredZoneIds.length > 0 ? state.hoveredZoneIds
+      : state.zoneEditDraft ? [state.zoneEditDraft.id] : [];
+    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor));
     this.hoverZone.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],

@@ -64,12 +64,13 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
 
 - Top switch, as "Gluings" / "Folds" in the topology panel (`zonesListMode`): "Auto zones (n)" and
   "Manual zones (n)", `n` the number of zones of that kind. The "Add zone" button is on the feature card and
-  at the end of the manual list (appends an empty manual zone, opens the manual list and the zone editor over it). Ids come from a store
+  at the end of the manual list (opens the manual list and the editor of a new empty manual zone over it; the zone is only a draft until "Done"). Ids come from a store
   counter (`nextZoneId`) that only grows, so the id of a deleted zone is never reused.
 - Zone card: a rounded colour square sized to the font (`1em`, thin neutral border) with the zone's
   canvas colour (`EntityColorSwatch`, shared with the glue cards) after the name (`#id` while
-  unnamed), the number of cells, and `L{n}` floor badges of the floors the zone occupies
+  unnamed), "Cells: n" (a fixed label, so no plural forms), and `L{n}` floor badges of the floors the zone occupies
   (`FloorBadgeRow`, standard blue info `Bubble`s, click to go to the floor; only on a multi-floor maze).
+- A third line lists the zone's groups ("Groups: A, B", "No groups" when none).
 - Eye icon (open/closed) in the card's top right corner toggles the zone's visibility on the canvas
   (`hiddenZoneIds`); it applies on top of the two kind toggles. Manual cards also have edit (opens the zone editor) and
   delete (with a confirmation dialog) icon buttons.
@@ -82,9 +83,9 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
 ## Zone editor (GitHub issue #1031)
 
 Editing a manual zone (the edit button of its card, or "Add zone" on the zones feature card, which opens
-the manual list and a new zone's editor together) opens `ZoneEditPanel` (`zoneEditId`) over the list ("Done"
+the manual list and a new zone's editor together) opens `ZoneEditPanel` (the zone being edited is the draft `zoneEditDraft`; there is no separate edit id) over the list ("Done"
 closes it, the list stays). Closing the list, deleting the zone or
-leaving the zones card ends editing. The panel offers every shape tool of the custom field editor, through the
+leaving the zones card (`ZonesFeature` unmounting drops the unconfirmed zone and group drafts) ends editing. The panel offers every shape tool of the custom field editor, through the
 same components (`FieldToolsSection`, `SmoothingToggleRow`): Add / Remove / Select modes, point, shapes, polygon,
 parallelogram, connected area, mirror, copy and paste, smoothing, with the same hotkeys and gestures. The tools
 are not duplicated: `FieldEditController`, `FieldEditorOverlay`, the mirror panel and the scene read the edit
@@ -92,9 +93,13 @@ target through `pixi/fieldEditTarget.ts` (`editFieldOf`, `fieldToolsActive`, `zo
 either the floor's custom field or a view of it whose `fieldPoints` are the edited zone's cells on the active
 floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared with the field editor.
 
-- Every change goes straight into the zone (`addZoneCells`, `removeZoneCells`, `moveZoneCells`, the mirror
-  through `applyMirror`); there is no draft. Zones are not part of generation, so no edit asks for confirmation or
-  invalidates results.
+- Every change goes into a draft, not the zone list: `zoneEditDraft` is a working copy of the zone (a new zone
+  exists only as its draft) and `zoneEditDraftColor` its explicit colour (`null`: automatic). The shape tools
+  (`addZoneCells`, `removeZoneCells`, `moveZoneCells`, the mirror through `applyMirror`), the name and the colour
+  write there. `zones` and `zoneColorOverrides` take the draft only on "Done" (`commitZoneEdit`; a new zone is
+  appended), so a list never shows a half-edited or unconfirmed zone. `editedZoneOf` returns the draft, and
+  `zonesWithDraft` / `overridesWithDraft` give the canvas and the editor panel the zones as edited. Zones are not
+  part of generation, so no edit asks for confirmation or invalidates results.
 - Edits act on the active floor's cells of the zone; cells on other floors are kept. Switching floors switches
   the floor being edited.
 - A zone holds only cells of the active floor's field: Add, point, shapes, connected area, paste and mirror drop
@@ -103,14 +108,14 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   the field is refused as a whole (the preview keeps its last valid position).
 - The zone being edited is drawn by `ZonesRenderer` like a hovered one (opaque, whatever the toggles say). While
   a selection move is pending, the overlay shows the moved cells, and the source cells stay drawn.
-- The panel is split into plain (not collapsible) sections, content indented by `indent.tree`. Properties: the zone name input (`setZoneName`, shows the default
+- The panel is split into plain (not collapsible) sections, content indented by `indent.tree`. Properties: the zone name input (`setZoneName(name)`, on the draft only; shows the default
   name of an unnamed zone) and the colour row with a counter-clockwise-arrow reset `FlatIconButton` (tooltip "Automatic color";
   disabled with the second tooltip line "Already applied" while the colour is automatic). Editing: Modes, Tools,
   smoothing and "Show other zones". Intersections: shown only while the zone shares cells with others, one line
   per zone and floor of the overlap (a `Bubble` with the zone name; when the edited zone spans several floors,
   then ` - ` and an `L{n}` floor badge, so a zone overlapping on two floors has two lines); hovering a line highlights that zone and the edited one stops being highlighted
-  (`hoveredZoneId` wins over `zoneEditId`). An explicit colour
-  (`zoneColorOverrides`, by zone id, set with `setZoneColor`, reset to automatic by `null`) always wins over the
+  (`hoveredZoneId` wins over the edited zone). An explicit colour
+  (`zoneColorOverrides`, by zone id, the editor's `setZoneColor(color)` writes `zoneEditDraftColor`, `null` is automatic; "Done" moves it here) always wins over the
   automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours shared with the
   glues (`glueColor`): a zone takes the colour at its position in the list; every further round of 8 is a group
   of the glues' hue scheme (`hueGroupColors`, positions 0, +1, -1, +2, ...: lightness and hue shifted), so no two
@@ -130,9 +135,14 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   region colour made bright (`brightColor`: same hue, high lightness and chroma), so it stands out on a dark region.
 - An unnamed zone is called "Zone #id" everywhere (`zones.default_name`).
 - The zones layer sits below the field editor overlay and tool previews, so highlights and shapes draw over it.
-- The close cross cancels (`cancelZoneEdit`): a zone added in this session (`zoneEditIsNew`) is deleted, an
-  existing one stays as edited. "Done" keeps the zone. Any other way out of an unconfirmed new zone discards it
-  too: closing the list, "Add zone" again, or the edit button of another zone.
+- The close cross cancels (`cancelZoneEdit`): the draft is dropped, so a new zone (`zoneEditIsNew`) never reaches the
+  list and an existing one stays as it was. "Done" commits the draft. Any other way out discards it too: closing the
+  list, or the edit button of another zone. The Groups section is part of the draft too (`zoneEditDraftGroupIds`, the
+  ids of the existing groups holding the zone, and `zoneEditDraftNewGroups`, names of groups to create): `Done`
+  applies the links to `zoneGroups` (and to an open group draft, so that its "Done" does not write the old members back) and creates the new groups holding the zone, the cancel leaves `zoneGroups`
+  untouched. "Add zone" while a new zone is still being edited adds nothing; both "Add zone" buttons (the card's
+  and the manual list's) go through `startNewZone` (`zoneEditorActions.ts`), which also raises the editor over the
+  list, so the button works whichever of the two panels is on top.
 - "Show other zones" off is applied again when a zone starts or stops being edited (`hidesOtherZones`).
 - The hover highlight follows the tool's reach (`zoneToolReaches`): Add highlights field cells only; Remove and
   Select the zone's own cells, even outside the field. A right-click gesture does not change a later hover.
@@ -140,6 +150,45 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   sharing a cell with it on any floor (`zoneIntersections`) are the Intersections section.
 - The mirror preview marks every symmetric cell, but the cells the tool cannot change (Add outside the field, Remove
   outside the zone) are drawn dim (`MIRROR_DIM_ALPHA`, as the cells smoothing leaves out of a shape).
+
+## Zone groups (GitHub issue #1035)
+
+A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.ts`). State is transient like the
+zones: `zoneGroups`, `nextZoneGroupId` (only grows, an id is never reused), `zoneGroupsPanelOpen`, `zoneGroupEditId`,
+`zoneGroupEditDraft`, `zoneGroupEditIsNew`.
+
+- The zones card buttons are, in order, "Add zone", "Zones list", "Groups list". "Groups list" opens `ZoneGroupsPanel`
+  (stack key `zone-groups`). A group cell shows the name (`Group #id` while unnamed, `#` in every language), the zone
+  "Zones: n, cells: m" (distinct cells of all its zones) and `L{n}` badges of the floors its zones occupy
+  (`FloorBadgeRow`, only on a multi-floor maze), a pencil
+  (opens the group) and a trash (delete with a confirmation). Under them one bubble per zone of the group
+  (`zoneChipColors`: border and text the zone's region border colour, background its region fill over the floor),
+  spaced by `spacing.elementsGap`. Clicking a bubble goes to the zone's first floor when it has no cell on the
+  active one.
+  "Add group" at the bottom (`startNewGroup`, `zoneEditorActions.ts`) opens an empty group as a draft: it joins the list on "Done". While a new group is still being edited it adds nothing, but raises its editor over the list again.
+- Hover: a group card highlights all its zones together (`hoveredZoneIds`, drawn like `hoveredZoneId`); a zone's
+  bubble highlights only that zone (`hoveredZoneId` wins over `hoveredZoneIds`). Both clear when the panel closes.
+- The pencil opens `ZoneGroupEditPanel` over the list. Top: the name input. Then two collapsible sections with the
+  count in brackets, built of `ZoneCell` (the zones list's cell, exported from `ZonesPanel`):
+  "Zones (n)", the group's zones, each with a trash (`onRemove`) and a placeholder when empty; "Candidates (n)", the
+  zones outside the group, each with a flat `+` (`onAdd`), with one placeholder when every zone is already in the
+  group and another when no zone exists at all. An existing group opens with Zones expanded and Candidates
+  collapsed, a new one the other way round.
+- Below, a primary "Done" button, disabled with an explaining tooltip while the group has no zones. "Done"
+  commits the draft (`commitZoneGroupEdit`). The name, the zones and the candidates act on a working copy
+  (`zoneGroupEditDraft`) and `zoneGroups` takes it only then, so the list never shows a half-edited or unconfirmed
+  group. The close cross drops the draft (`cancelZoneGroupEdit`): a new group (`zoneGroupEditIsNew`) never reaches
+  the list. Closing the groups list, "Add group" again or the pencil of another group drop an unconfirmed draft too.
+- Zone editor, section "Groups" above Intersections: every group the draft zone is in, plus the groups still to be created (name and a trash that
+  takes the zone out of it, "No groups" when none) and a `+` at the end of the header. The `+` opens
+  `ZoneGroupPickerDialog`: the groups list as `GroupCell`s (`onPick`: no actions, hover highlight or bubble
+  reactions; a click hands the group over to the draft and closes), without the groups the zone is already in, a placeholder when
+  empty, and a "New group" button that closes it and opens `ZoneGroupNameDialog` (a name field, Cancel / OK; OK
+  adds the name to the draft's groups to create). Both dialogs are generic (`excludeIds` / `onPick` / `onConfirm`).
+- Placeholders keep the body font and only use the lower-contrast disabled colour; a list that shows a placeholder has
+  no top separator. The picker dialog has no separators and a full-width "New group" button. The zone editor's
+  Intersections bubbles use the same zone colours as the group cards' (`zoneChipColors`).
+- Deleting a zone drops its id from every group and from the group draft (`withoutZone`).
 
 ## Web mirror
 
