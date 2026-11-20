@@ -12,6 +12,7 @@ use maze_core::{
         MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS,
         MISSING_ONE_WAYS, MISSING_REGIONS, MISSING_SPLIT_TILES, MISSING_TELEPORTS,
         MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK,
+        VIOLATED_NODE_SHAPE_LIMITS,
     },
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
@@ -23,17 +24,18 @@ use maze_core::{
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
         MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
-        MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
-        OneWayToWallStrategy, PriorityDeadEndStrategy, PriorityMissingLoopsStrategy,
-        PriorityRegionMergeStrategy, RandomEndpointsStrategy, ReduceSccCountStrategy,
-        RegionShrinkSplitStrategy, RemoveElevatorStopStrategy, RemoveElevatorStrategy,
-        RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy, RemoveSplitStrategy,
-        RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
-        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
+        MissingTeleportsStrategy, NodeShapeRebalanceStrategy, OneWayGroupSelectStrategy,
+        OneWayToPassageStrategy, OneWayToWallStrategy, PriorityDeadEndStrategy,
+        PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy, RandomEndpointsStrategy,
+        ReduceSccCountStrategy, RegionShrinkSplitStrategy, RemoveElevatorStopStrategy,
+        RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy,
+        RemoveSplitStrategy, RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
+        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy,
+        SizeThresholdRegionMergeStrategy, SplitGroupSelectStrategy,
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
+        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -79,7 +81,9 @@ fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatch
         maze_core::repair::NestedDispatchKind::Unordered => NestedDispatchKindDto::Unordered,
         maze_core::repair::NestedDispatchKind::Weighted => NestedDispatchKindDto::Weighted,
         maze_core::repair::NestedDispatchKind::Priority => NestedDispatchKindDto::Priority,
-        maze_core::repair::NestedDispatchKind::SizeThreshold => NestedDispatchKindDto::SizeThreshold,
+        maze_core::repair::NestedDispatchKind::SizeThreshold => {
+            NestedDispatchKindDto::SizeThreshold
+        }
     }
 }
 
@@ -1378,6 +1382,29 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             ),
             nested_slots: vec![],
             visibility: Some(EntityVisibility::MultiFloorOnly),
+        },
+        StrategyDescriptor {
+            id: "node_shape_rebalance",
+            handles: VIOLATED_NODE_SHAPE_LIMITS.as_str(),
+            params: strategy_params_dto(
+                <NodeShapeRebalanceStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::ViolatedNodeShapeLimitsIssue,
+                >>::params(&NodeShapeRebalanceStrategy),
+                &[],
+            ),
+            experimental: <NodeShapeRebalanceStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::ViolatedNodeShapeLimitsIssue,
+            >>::is_experimental(&NodeShapeRebalanceStrategy),
+            nested_suppressed_params: <NodeShapeRebalanceStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::ViolatedNodeShapeLimitsIssue,
+            >>::nested_suppressed_params(
+                &NodeShapeRebalanceStrategy
+            ),
+            nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "remove_vertical_passage",

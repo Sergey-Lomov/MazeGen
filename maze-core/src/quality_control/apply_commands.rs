@@ -50,6 +50,29 @@ pub fn apply_commands<T: Tessellation>(
     let proposed = commands.len();
     let mut applied = 0;
     for cmd in commands {
+        // An all-or-nothing group: rehearsed on a working copy, committed (and narrated through
+        // its members' own events) only when every member holds, otherwise declined as a whole.
+        if let MutationCommand::Atomic { commands: members } = &cmd {
+            let mut rehearsal = maze.draft();
+            let dry = apply_commands(&mut rehearsal, preset_state, members.clone(), None, None);
+            if dry.applied == dry.proposed {
+                apply_commands(
+                    maze,
+                    preset_state,
+                    members.clone(),
+                    event_log.as_deref_mut(),
+                    debug_state.as_deref_mut(),
+                );
+                applied += 1;
+            } else if let Some(log) = event_log.as_mut() {
+                for leaf in cmd.leaves() {
+                    if let Some(event) = declined_event_for_command(leaf, maze) {
+                        log.emit(event);
+                    }
+                }
+            }
+            continue;
+        }
         // `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` carry only an opaque
         // `EdgeId` — meaningless to web-side debug narration on its own (GitHub issue #171's
         // follow-up fix: `bubbleLabel` used to mis-render it as a `NodeId`, crashing once the id
@@ -264,6 +287,9 @@ pub fn apply_commands<T: Tessellation>(
                     replaced_nodes = new_nodes;
                     ok
                 }
+                MutationCommand::Atomic { .. } => {
+                    unreachable!("an atomic group is applied before the per-command revalidation")
+                }
             }
         };
         // A removed or replaced node may be the maze's start/finish: move the endpoint onto the
@@ -306,6 +332,33 @@ pub fn apply_commands<T: Tessellation>(
         }
     }
     ApplyOutcome { proposed, applied }
+}
+
+/// The `*Declined` event of `cmd` as if it had been rejected right now — for a member of an atomic
+/// group that never ran. Resolves what `apply_commands` resolves before applying (the endpoints of
+/// an `EdgeId`, the nodes of a replaced point), from the still untouched `maze`.
+fn declined_event_for_command<T: Tessellation>(
+    cmd: &MutationCommand,
+    maze: &Maze<T>,
+) -> Option<QcEvent> {
+    let edge_endpoints = match cmd {
+        MutationCommand::RemoveEdge { id }
+        | MutationCommand::RemoveEdgeWithReverse { id }
+        | MutationCommand::RemoveTeleportWithReverse { id }
+        | MutationCommand::RemoveVerticalPassageWithReverse { id } => {
+            maze.graph.edge(*id).map(|e| (e.from, e.to))
+        }
+        _ => None,
+    };
+    let old_point_nodes = match cmd {
+        MutationCommand::ReplacePointNodes { at, .. } => maze
+            .field
+            .level_of(*at)
+            .zip(maze.field.cell_of(*at))
+            .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
+        _ => None,
+    };
+    qc_event_for_command(cmd, false, edge_endpoints, false, old_point_nodes, None)
 }
 
 /// Moves `meta.start`/`meta.finish` off any node in `removed` onto one of `survivors` (the nodes
@@ -511,6 +564,8 @@ fn qc_event_for_command(
                 nodes: nodes.clone(),
             }
         }
+        // A group is narrated through its members, never as one event.
+        (MutationCommand::Atomic { .. }, _) => return None,
     })
 }
 
@@ -592,6 +647,8 @@ pub(super) fn qc_event_proposed_for_command<T: Tessellation>(
                 nodes: nodes.clone(),
             }
         }
+        // A group is narrated through its members (`MutationCommand::leaves`), never as one event.
+        MutationCommand::Atomic { .. } => return None,
     })
 }
 

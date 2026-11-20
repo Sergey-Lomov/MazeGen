@@ -33,6 +33,7 @@ pub mod missing_one_ways_from_wall;
 mod missing_one_ways_shared;
 pub mod missing_regions;
 pub mod missing_teleports;
+pub mod node_shape_rebalance;
 pub mod one_way_group_select;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
@@ -54,6 +55,7 @@ pub mod remove_teleport;
 pub mod remove_vertical_passage;
 pub mod replace_elevator_with_passages;
 pub mod scored_endpoints;
+pub mod size_threshold_region_merge;
 pub(crate) mod split_core;
 pub mod split_group_select;
 pub mod split_node_connection_group_select;
@@ -65,7 +67,6 @@ pub mod teleport_region_merge;
 pub mod vertical_passage_group_select;
 pub mod vertical_passage_region_merge;
 pub mod vertical_target;
-pub mod size_threshold_region_merge;
 pub mod weighted_dead_end;
 pub mod weighted_region_merge;
 
@@ -162,6 +163,7 @@ pub use missing_teleports::{
     PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH,
     PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK,
 };
+pub use node_shape_rebalance::NodeShapeRebalanceStrategy;
 pub use one_way_group_select::{
     OneWayGroupSelectStrategy, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET,
 };
@@ -201,6 +203,11 @@ pub use replace_elevator_with_passages::{
     ReplaceElevatorWithPassagesStrategy,
 };
 pub use scored_endpoints::{ScoreWeights, ScoredEndpointsStrategy, score_for_route};
+pub use size_threshold_region_merge::{
+    PARAM_MAX_SIZE as SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE,
+    SLOT_MERGE_TARGET as SIZE_THRESHOLD_REGION_MERGE_SLOT_MERGE_TARGET,
+    SizeThresholdRegionMergeStrategy,
+};
 pub use split_group_select::{
     PRIORITY_LEAST_CONNECTED, PRIORITY_LEAST_VOLUMINOUS, PRIORITY_MOST_CONNECTED,
     PRIORITY_MOST_VOLUMINOUS, SLOT_FIX_TARGET as SPLIT_GROUP_SELECT_SLOT_FIX_TARGET,
@@ -247,11 +254,6 @@ pub use vertical_passage_region_merge::{
     PARAM_CONNECTION_MODE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_CONNECTION_MODE,
     PARAM_DIRECTION_BALANCE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE,
     VerticalPassageRegionMergeStrategy,
-};
-pub use size_threshold_region_merge::{
-    PARAM_MAX_SIZE as SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE,
-    SLOT_MERGE_TARGET as SIZE_THRESHOLD_REGION_MERGE_SLOT_MERGE_TARGET,
-    SizeThresholdRegionMergeStrategy,
 };
 pub use weighted_dead_end::{
     SLOT_REPAIR_TARGET as WEIGHTED_DEAD_END_SLOT_REPAIR_TARGET, WeightedDeadEndStrategy,

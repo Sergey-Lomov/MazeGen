@@ -172,7 +172,8 @@ pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, 
         | MutationCommand::SetStart(_)
         | MutationCommand::SetFinish(_)
         | MutationCommand::RemoveNode { .. }
-        | MutationCommand::ReplacePointNodes { .. } => None,
+        | MutationCommand::ReplacePointNodes { .. }
+        | MutationCommand::Atomic { .. } => None,
     }
 }
 
@@ -394,7 +395,10 @@ mod tests {
         let mut calls = 0;
         let any_fixed = run_merge_loop(&invalid, |_region, _needy, excluded| {
             calls += 1;
-            [7, 8].into_iter().find(|n| !excluded.contains(n)).map(|n| (n, false))
+            [7, 8]
+                .into_iter()
+                .find(|n| !excluded.contains(n))
+                .map(|n| (n, false))
         });
         assert!(!any_fixed);
         assert_eq!(calls, 3, "two failed neighbors, then none left");

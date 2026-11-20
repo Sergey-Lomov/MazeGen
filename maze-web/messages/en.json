@@ -1477,6 +1477,8 @@
   "strategy.split_route_cut.description": "For each flagged too-short route between two nodes of the same split tile, picks one edge along the route to cut — delegating a split-tile edge's removal to a nested strategy, cutting any other edge itself.",
   "strategy.add_vertical_passage.label": "Random vertical passage",
   "strategy.add_vertical_passage.description": "Adds the full computed count of missing vertical passage edges in one pass, picking a random node whose adjacent floor resolves a target for each.",
+  "strategy.node_shape_rebalance.label": "Node shape rebalance",
+  "strategy.node_shape_rebalance.description": "Rebalances node shape counts toward the configured limits by opening or closing passages, keeping the maze connected and respecting preset edges.",
   "strategy.remove_vertical_passage.label": "Vertical passage removal",
   "strategy.remove_vertical_passage.description": "Removes each vertical passage flagged invalid by a per-vertical-passage validation check.",
   "strategy.vertical_passage_group_select.label": "Close-pair vertical passage removal",

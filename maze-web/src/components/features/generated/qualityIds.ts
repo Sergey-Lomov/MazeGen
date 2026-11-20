@@ -111,6 +111,7 @@ export const STRATEGY_IDS = [
   "missing_one_ways_from_wall",
   "missing_regions",
   "missing_teleports",
+  "node_shape_rebalance",
   "one_way_group_select",
   "one_way_to_passage",
   "one_way_to_wall",
