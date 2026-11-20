@@ -78,6 +78,7 @@ const dotStyle: React.CSSProperties = {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
+    position: "relative",
     borderBottom: `1px solid ${ui.border.default}`,
   },
   cardExpanded: {

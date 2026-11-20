@@ -90,13 +90,14 @@ describe("ImageExportFeature", () => {
     expect(settings.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it("stretches the visual preset buttons to a shared height", () => {
+  it("uses discoverable icon controls for visual preset actions", () => {
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     const save = screen.getByRole("button", { name: m["image_export.visual_preset.save"]() });
     const load = screen.getByRole("button", { name: m["image_export.visual_preset.load"]() });
 
-    expect(save.parentElement).toHaveStyle({ alignItems: "stretch" });
-    expect(load.parentElement).toBe(save.parentElement);
+    expect(save.querySelector("svg.lucide-save")).toBeInTheDocument();
+    expect(load.querySelector("svg.lucide-folder-open")).toBeInTheDocument();
+    expect(load.parentElement?.parentElement).toBe(save.parentElement?.parentElement);
   });
 
   it("offers a timestamped immutable-extension file name before saving a style", () => {
