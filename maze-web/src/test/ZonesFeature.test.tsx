@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ZonesFeature } from "../components/features/ZonesFeature";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import * as m from "~/paraglide/messages";
 
 const raised = vi.hoisted(() => vi.fn());
@@ -12,7 +12,7 @@ vi.mock("../components/SidePanel", async (importActual) => {
 });
 
 describe("ZonesFeature", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi, openCard: "zones" }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones" }));
 
   it("adds a zone from the card: manual list and the zone editor open together", () => {
     render(<ZonesFeature />);

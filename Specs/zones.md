@@ -2,7 +2,7 @@
 
 A zone is a named set of cells with a stable id and a kind. Consumers (the zones feature renderer,
 the export renderer, QC rules) reference a zone by id and ask which zones a cell belongs to
-(GitHub issue #1029). UI, editing and persistence are out of scope and tracked separately.
+(GitHub issue #1029). UI and editing are out of scope and tracked separately; persistence is in `Specs/project-file.md`.
 
 ## Core model
 
@@ -44,8 +44,8 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
 
 - Status: `unavailable` until a field is set (same condition as Presets), otherwise always `set`
   (green), even with no zones. Subtitle: number of manual zones.
-- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). All three are
-  transient: zones are not persisted yet, so loading a project resets them.
+- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). The toggles are
+  transient; zones are saved with the project (`Specs/project-file.md`, "Zones").
 - Two toggles, "Show auto zones" and "Show manual zones".
 - `ZonesRenderer` (feature renderer, visible only while the card is open) draws the active floor's
   field with the cell grid (faint inner walls) and the outer walls, as the presets renderer does, and
@@ -78,7 +78,7 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
   the other zones, fully opaque (a hover change redraws only that layer), regardless of the kind
   toggles and the zone's visibility, only if it has cells on the active floor. The active floor never
   changes. The hover is cleared when the panel closes or unmounts, or the section switches.
-- All of the above state is transient, like the rest of the zones state.
+- Hidden zones, the mode and the hover are transient (reset on load); the zones themselves are saved.
 
 ## Zone editor (GitHub issue #1031)
 
@@ -120,7 +120,7 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   glues (`glueColor`): a zone takes the colour at its position in the list; every further round of 8 is a group
   of the glues' hue scheme (`hueGroupColors`, positions 0, +1, -1, +2, ...: lightness and hue shifted), so no two
   zones share a colour. Whatever the number of zones, adding a zone or colouring another one never moves the rest. Deleting the zone drops its override.
-  Overrides are transient like the zones.
+  Overrides are saved with the project like the zones.
 - "Show other zones" (`showOtherZones`, default on), under Smoothing, off hides every zone but the edited one while editing.
 - The mirror panel shows an Add / Remove toggle (the floor's `fieldOperation`) only while a zone is edited; the
   field editor keeps it in its Modes section.
@@ -153,9 +153,8 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
 
 ## Zone groups (GitHub issue #1035)
 
-A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.ts`). State is transient like the
-zones: `zoneGroups`, `nextZoneGroupId` (only grows, an id is never reused), `zoneGroupsPanelOpen`, `zoneGroupEditId`,
-`zoneGroupEditDraft`, `zoneGroupEditIsNew`.
+A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.ts`). State: `zoneGroups` and `nextZoneGroupId` (only grows, an id is never reused) are saved with the project; `zoneGroupsPanelOpen`, `zoneGroupEditId`,
+`zoneGroupEditDraft`, `zoneGroupEditIsNew` are transient.
 
 - The zones card buttons are, in order, "Add zone", "Zones list", "Groups list". "Groups list" opens `ZoneGroupsPanel`
   (stack key `zone-groups`). A group cell shows the name (`Group #id` while unnamed, `#` in every language), the zone

@@ -158,6 +158,12 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       // Every UI mode, prompt, hover and open panel of the previous session ends here, before the
       // saved project's own UI state is restored below (GitHub issue #946).
       ...TRANSIENT_UI_STATE,
+      // zones and groups are saved with the project (GitHub issue #1048); the reset above only clears their UI
+      zones: file.zones?.zones ?? [],
+      nextZoneId: file.zones?.nextZoneId ?? 1,
+      zoneGroups: file.zones?.groups ?? [],
+      nextZoneGroupId: file.zones?.nextGroupId ?? 1,
+      zoneColorOverrides: Object.fromEntries(Object.entries(file.zones?.colorOverrides ?? {}).map(([id, color]) => [Number(id), color])),
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveCellInspection } from "../pixi/cellInspectionResolver";
 import { resolveCells } from "../pixi/fieldEditUtils";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 
 function firstFieldCell(): [number, number] {
@@ -12,7 +12,7 @@ function firstFieldCell(): [number, number] {
 }
 
 describe("resolveCellInspection: zones card", () => {
-  afterEach(() => useMazeStore.setState({ openCard: "basic_config", ...zonesTransientUi }));
+  afterEach(() => useMazeStore.setState({ openCard: "basic_config", ...zonesInitialState }));
 
   it("lists the zones of an in-field cell and stays bare for a cell outside the field", () => {
     const [x, y] = firstFieldCell();

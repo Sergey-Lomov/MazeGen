@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import { activeFieldCellKeys, cellsInActiveField, editFieldOf, fieldToolsActive, smoothingOf, zoneEditActive, zonePointsOnFloor, zoneToolReaches } from "../pixi/fieldEditTarget";
 import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { Zone } from "../wasm/mazeService";
@@ -12,7 +12,7 @@ const FAR = 900;
 function setup(zones: Zone[], overrides: Partial<ReturnType<typeof useMazeStore.getState>> = {}) {
   const base = useMazeStore.getState().floorFields.floor_0 ?? useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId];
   useMazeStore.setState({
-    ...zonesTransientUi,
+    ...zonesInitialState,
     openCard: "zones",
     floors,
     activeFloorId: "floor_0",
@@ -27,7 +27,7 @@ function setup(zones: Zone[], overrides: Partial<ReturnType<typeof useMazeStore.
 const zone = (cells: Zone["cells"]): Zone => ({ id: 1, name: "", kind: "manual", cells });
 
 describe("zone editing target", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi, openCard: "zones" }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones" }));
 
   it("is active only on the zones card with an existing zone", () => {
     setup([zone([])]);
@@ -91,7 +91,7 @@ describe("zone editing target", () => {
 
 describe("zone editor lifecycle", () => {
   const s = () => useMazeStore.getState();
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState }));
 
   it("opens a newly added zone as a draft without touching the zones list", () => {
     s().addManualZone();
@@ -263,7 +263,7 @@ describe("zone intersections", () => {
 
 describe("zone smoothing", () => {
   it("is off by default and separate from the field's switch", () => {
-    useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", smoothPrimitives: true });
+    useMazeStore.setState({ ...zonesInitialState, openCard: "zones", smoothPrimitives: true });
     useMazeStore.getState().addManualZone();
     const state = useMazeStore.getState();
     expect(state.zoneSmoothing).toBe(false);
@@ -275,7 +275,7 @@ describe("zone smoothing", () => {
 describe("zone hover reach and visibility", () => {
   it("lets Add reach field cells only and Remove the zone's own cells", () => {
     const zone: Zone = { id: 1, name: "", kind: "manual", cells: [[0, 0, 0]] };
-    useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones: [zone], zoneEditDraft: zone });
+    useMazeStore.setState({ ...zonesInitialState, openCard: "zones", zones: [zone], zoneEditDraft: zone });
     const state = useMazeStore.getState();
     const inField = [...activeFieldCellKeys(state)].map(decodePoint)[0];
     expect(zoneToolReaches(state, "add", inField[0], inField[1])).toBe(true);

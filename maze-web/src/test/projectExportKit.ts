@@ -115,6 +115,11 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     activeFloorId: "floor_1",
     floorTopology: {},
     floorCreases: {},
+    zones: [],
+    nextZoneId: 1,
+    zoneGroups: [],
+    nextZoneGroupId: 1,
+    zoneColorOverrides: {},
     showColorWarnings: true,
     linkIconVisibility: "linked",
   };

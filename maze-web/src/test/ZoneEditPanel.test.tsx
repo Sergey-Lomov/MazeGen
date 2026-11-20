@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { ZoneEditPanel } from "../components/features/ZoneEditPanel";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
 
@@ -13,14 +13,14 @@ const zones: Zone[] = [
 ];
 
 function setup(editId: number) {
-  useMazeStore.setState({ ...zonesTransientUi, openCard: "zones", zones, nextZoneId: 4, zoneEditDraft: zones.find((z) => z.id === editId) ?? null, activeFloorId: useMazeStore.getState().floors[0].id });
+  useMazeStore.setState({ ...zonesInitialState, openCard: "zones", zones, nextZoneId: 4, zoneEditDraft: zones.find((z) => z.id === editId) ?? null, activeFloorId: useMazeStore.getState().floors[0].id });
   const done: string[] = [];
   render(<ZoneEditPanel onDone={() => done.push("done")} onCancel={() => done.push("cancel")} />);
   return done;
 }
 
 describe("ZoneEditPanel", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState }));
 
   it("shows the size and lists the zones it intersects with as bubbles", () => {
     setup(1);
@@ -73,7 +73,7 @@ describe("ZoneEditPanel", () => {
 
 describe("zone editor groups", () => {
   beforeEach(() => useMazeStore.setState({
-    ...zonesTransientUi, openCard: "zones", activeFloorId: useMazeStore.getState().floors[0].id, zones, nextZoneId: 4, zoneEditDraft: zones[1], zoneEditDraftGroupIds: [1],
+    ...zonesInitialState, openCard: "zones", activeFloorId: useMazeStore.getState().floors[0].id, zones, nextZoneId: 4, zoneEditDraft: zones[1], zoneEditDraftGroupIds: [1],
     zoneGroups: [{ id: 1, name: "Has", zoneIds: [2] }, { id: 2, name: "Free", zoneIds: [] }], nextZoneGroupId: 3,
   }));
 

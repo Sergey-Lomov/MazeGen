@@ -8,12 +8,18 @@ import { isFieldOpError } from "../../pixi/fieldOps";
 import { encodePoint } from "../../pixi/tessellationProjection";
 import { overridesWithDraft, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
 
-/** Zones are not saved in the project file yet, so loading a project resets them with the toggles. */
-export const zonesTransientUi = {
+/** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
+ *  the values of a new project and of a file without zones. */
+export const zonesProjectState = {
   zones: [],
   nextZoneId: 1,
   zoneGroups: [],
   nextZoneGroupId: 1,
+  zoneColorOverrides: {},
+} satisfies Partial<ZonesState>;
+
+/** Resting values of the zones UI state: modes, panels, drafts, hover and toggles. Loading a project resets them. */
+export const zonesTransientUi = {
   zoneGroupsPanelOpen: false,
   zoneGroupEditId: null,
   zoneGroupEditDraft: null,
@@ -31,9 +37,11 @@ export const zonesTransientUi = {
   zoneEditDraftGroupIds: [],
   zoneEditDraftNewGroups: [],
   showOtherZones: true,
-  zoneColorOverrides: {},
   zoneSmoothing: false,
 } satisfies Partial<ZonesState>;
+
+/** Every zones key at its resting value: the slice's initial state, and what tests reset the zones state to. */
+export const zonesInitialState = { ...zonesProjectState, ...zonesTransientUi } satisfies Partial<ZonesState>;
 
 /** The zone with the edited zone's cells replaced, or `{}` when nothing changed. Cells of other
  *  floors are kept as they are; the cells of the active floor are rebuilt by `edit` from a set. */
@@ -124,7 +132,7 @@ function committingZoneEdit(s: MazeState): Partial<MazeState> {
 }
 
 export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & ZonesActions> = (set, get) => ({
-  ...zonesTransientUi,
+  ...zonesInitialState,
 
   // Closing the panel is a cancel of an unconfirmed group edit.
   setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null, hoveredZoneIds: [] })),
