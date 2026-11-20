@@ -486,9 +486,7 @@ fn sweep_rules((checks, strategy, nested): &Combo) -> Vec<Value> {
             "reduce_scc_count"
             | "weighted_region_merge"
             | "priority_region_merge"
-            | "size_threshold_region_merge" => {
-                "merge_target"
-            }
+            | "size_threshold_region_merge" => "merge_target",
             _ => "fix_target",
         };
         main = with_nested(main, nested, slot);

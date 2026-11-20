@@ -60,6 +60,13 @@ beforeEach(() => {
 });
 
 describe("QualityFeature quality preset load (GitHub issue #751)", () => {
+  it("uses discoverable icon controls for quality preset actions", () => {
+    render(<QualityFeature />);
+
+    expect(screen.getByRole("button", { name: m["quality.preset.save"]() }).querySelector("svg.lucide-save")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m["quality.preset.load"]() }).querySelector("svg.lucide-folder-open")).toBeInTheDocument();
+  });
+
   it("offers a timestamped immutable-extension file name before saving rules", () => {
     render(<QualityFeature />);
     fireEvent.click(screen.getByRole("button", { name: m["quality.preset.save"]() }));

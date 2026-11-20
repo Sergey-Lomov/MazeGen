@@ -739,7 +739,10 @@ fn blocked_preferred_floor_falls_back_to_the_other_floor() {
             &issue,
             &mut maze,
             &mut rng,
-            &params_with(crate::repair::strategies::region_merge_core::MODE_LARGEST, PriorityLevel::Forbidden),
+            &params_with(
+                crate::repair::strategies::region_merge_core::MODE_LARGEST,
+                PriorityLevel::Forbidden,
+            ),
             &preset_state,
             &[],
         );

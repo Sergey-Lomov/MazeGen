@@ -135,23 +135,24 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ExpandReg
         let scc = maze.analysis.scc(&maze.graph);
         let mut pending = PendingEdges::default();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
-            let region = scc.components.get(region_idx)?;
-            find_merge_candidate(
-                region,
-                region_idx,
-                &scc,
-                maze,
-                preset_state,
-                mode,
-                connection_mode,
-                prefer_partial,
-                needy,
-                excluded,
-                rng,
-                &mut pending,
-            )
-        });
+        let any_fixed =
+            region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
+                let region = scc.components.get(region_idx)?;
+                find_merge_candidate(
+                    region,
+                    region_idx,
+                    &scc,
+                    maze,
+                    preset_state,
+                    mode,
+                    connection_mode,
+                    prefer_partial,
+                    needy,
+                    excluded,
+                    rng,
+                    &mut pending,
+                )
+            });
 
         if any_fixed {
             (RepairResult::Fixed { score: None }, pending.commands)

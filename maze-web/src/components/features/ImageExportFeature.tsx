@@ -1,9 +1,11 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
 import { Button } from "../Button";
-import { ui } from "../../styles/theme";
-import { Stack, Inline } from "../Layout";
+import { LoadIconButton } from "../LoadIconButton";
+import { SaveIconButton } from "../SaveIconButton";
+import { ui, inset, spacing } from "../../styles/theme";
+import { Stack } from "../Layout";
 import { bringSidePanelToFront, SidePanel } from "../SidePanel";
 import { ExportTopologyPanel } from "./ExportTopologyPanel";
 import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
@@ -134,16 +136,13 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
         </Stack>
       ))}
 
-      <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
-
-      <Inline gap="itemGap" align="stretch">
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => setPendingDownload({ kind: "style", defaultBaseName: timestampedBaseName("maze-style"), extension: VISUAL_PRESET_FILE_EXTENSION })}>
-          {m["image_export.visual_preset.save"]()}
-        </Button>
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
-          {m["image_export.visual_preset.load"]()}
-        </Button>
-      </Inline>
+      <div style={styles.presetActions}>
+        <SaveIconButton
+          title={m["image_export.visual_preset.save"]()}
+          onClick={() => setPendingDownload({ kind: "style", defaultBaseName: timestampedBaseName("maze-style"), extension: VISUAL_PRESET_FILE_EXTENSION })}
+        />
+        <LoadIconButton title={m["image_export.visual_preset.load"]()} onClick={() => presetInputRef.current?.click()} />
+      </div>
       <input
         ref={presetInputRef}
         type="file"
@@ -188,3 +187,13 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
     </Stack>
   );
 }
+
+const styles: Record<string, CSSProperties> = {
+  presetActions: {
+    position: "absolute",
+    top: inset.panelInsetY,
+    right: inset.panelInsetX,
+    display: "flex",
+    gap: spacing.itemGap,
+  },
+};

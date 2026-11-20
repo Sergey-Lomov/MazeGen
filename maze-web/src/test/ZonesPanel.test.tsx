@@ -4,7 +4,7 @@ import { ZonesPanel } from "../components/features/ZonesPanel";
 import { FloorBadgeRow } from "../components/FloorBadgeRow";
 import { cssColor } from "../components/EntityColorSwatch";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import { bubbleColors } from "../components/Bubble";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
@@ -22,12 +22,12 @@ const zones: Zone[] = [
 ];
 
 function setup(overrides: Partial<ReturnType<typeof useMazeStore.getState>> = {}) {
-  useMazeStore.setState({ ...zonesTransientUi, floors, activeFloorId: "floor_0", zones, nextZoneId: 4, ...overrides });
+  useMazeStore.setState({ ...zonesInitialState, floors, activeFloorId: "floor_0", zones, nextZoneId: 4, ...overrides });
   return render(<ZonesPanel onClose={() => {}} />);
 }
 
 describe("ZonesPanel", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState }));
 
   it("shows the zone count of each section in its switch segment", () => {
     setup();
@@ -50,13 +50,15 @@ describe("ZonesPanel", () => {
     expect(screen.queryByText(m["zones.add"]())).toBeNull();
     fireEvent.click(screen.getByText(m["zones.mode_manual"]({ count: 2 })));
     fireEvent.click(screen.getByText(m["zones.add"]()));
-    expect(useMazeStore.getState().zones.at(-1)).toMatchObject({ id: 4, kind: "manual", cells: [] });
+    // The new zone is a draft until Done: the list is unchanged.
+    expect(useMazeStore.getState().zones).toHaveLength(3);
+    expect(useMazeStore.getState().zoneEditDraft).toMatchObject({ id: 4, kind: "manual", cells: [] });
   });
 
   it("shows the cell count and the floors a zone occupies", () => {
     setup();
     const cell = screen.getByTestId("zone-cell");
-    expect(within(cell).getByText(m["zones.cell_count_plural"]({ count: 3 }))).toBeInTheDocument();
+    expect(within(cell).getByText(m["zones.cells_info"]({ count: 3 }))).toBeInTheDocument();
     expect(within(cell).getAllByRole("button").map((b) => b.textContent)).toEqual(expect.arrayContaining(["L1", "L2", "L3"]));
   });
 

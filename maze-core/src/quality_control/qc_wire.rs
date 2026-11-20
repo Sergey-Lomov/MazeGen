@@ -182,7 +182,7 @@ impl EncodeEventPayload for QcEvent {
                 write_repair_limit_kind(out, __field0);
             }
             QcEvent::StrategyFailed { strategy_id } => {
-                write_str(out, *strategy_id);
+                write_str(out, strategy_id);
             }
             QcEvent::DirectedEdgeProposed { from, to } => {
                 write_node_id(out, *from);

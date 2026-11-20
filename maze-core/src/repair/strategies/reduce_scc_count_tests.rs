@@ -504,15 +504,24 @@ mod merge_tally_tests {
             &[
                 MutationCommand::AddBidirectionalEdge { a: n[0], b: n[1] },
                 // one-way round trip of the same pair, and the reversed duplicate
-                MutationCommand::AddDirectedEdge { from: n[1], to: n[0] },
+                MutationCommand::AddDirectedEdge {
+                    from: n[1],
+                    to: n[0],
+                },
             ],
             &scc,
         );
         assert_eq!(tally.total(), 1);
         // a later batch re-bridging the same pair adds nothing
-        tally.record(&[MutationCommand::AddBidirectionalEdge { a: n[1], b: n[0] }], &scc);
+        tally.record(
+            &[MutationCommand::AddBidirectionalEdge { a: n[1], b: n[0] }],
+            &scc,
+        );
         assert_eq!(tally.total(), 1);
-        tally.record(&[MutationCommand::AddBidirectionalEdge { a: n[2], b: n[3] }], &scc);
+        tally.record(
+            &[MutationCommand::AddBidirectionalEdge { a: n[2], b: n[3] }],
+            &scc,
+        );
         assert_eq!(tally.total(), 2);
     }
 
@@ -520,7 +529,13 @@ mod merge_tally_tests {
     fn same_component_edge_is_not_a_merge() {
         let (n, scc) = nodes_and_scc();
         let mut tally = MergeTally::default();
-        tally.record(&[MutationCommand::AddDirectedEdge { from: n[0], to: n[0] }], &scc);
+        tally.record(
+            &[MutationCommand::AddDirectedEdge {
+                from: n[0],
+                to: n[0],
+            }],
+            &scc,
+        );
         assert_eq!(tally.total(), 0);
     }
 
@@ -528,7 +543,13 @@ mod merge_tally_tests {
     fn commands_without_endpoints_count_one_each() {
         let (n, scc) = nodes_and_scc();
         let mut tally = MergeTally::default();
-        tally.record(&[MutationCommand::SetStart(n[0]), MutationCommand::SetFinish(n[1])], &scc);
+        tally.record(
+            &[
+                MutationCommand::SetStart(n[0]),
+                MutationCommand::SetFinish(n[1]),
+            ],
+            &scc,
+        );
         assert_eq!(tally.total(), 2);
     }
 }

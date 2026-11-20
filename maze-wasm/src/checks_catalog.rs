@@ -1,8 +1,8 @@
 use crate::check_descriptor::{
     CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, TessellationRequirement,
-    comparison_param, cross_element_include_param, cycle_kind_param, floor_scope_param, forbid_cell_type_param,
-    geometric_floor_mode_param, region_class_filter_param, teleport_direction_param,
-    teleport_floor_kind_param, vertical_passage_count_incoming_param,
+    comparison_param, cross_element_include_param, cycle_kind_param, floor_scope_param,
+    forbid_cell_type_param, geometric_floor_mode_param, region_class_filter_param,
+    teleport_direction_param, teleport_floor_kind_param, vertical_passage_count_incoming_param,
     vertical_passage_same_type_only_param, vertical_passage_type_param,
 };
 
@@ -28,9 +28,8 @@ use maze_core::quality_control::{
     ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOPS_SKIP_DEFAULT,
     ELEVATOR_STOPS_SPAN_DEFAULT, EXCESSIVE_ELEVATOR_STOP_GAP, EXCESSIVE_SCC_COUNT,
     EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, INVALID_CROSS_ELEMENT, INVALID_CROSS_ELEMENT_GROUP,
-    INVALID_DEAD_END_GROUP,
-    INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
-    INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
+    INVALID_DEAD_END_GROUP, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP_GROUP,
+    INVALID_LOOP, INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
     INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
     INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
     INVALID_VERTICAL_PASSAGE_GROUP, IssueKind, LOOP_DISTANCE_FROM_FINISH_DEFAULT,

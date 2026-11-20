@@ -210,7 +210,7 @@ mod tests {
     fn has_teleport(maze: &Maze<SquareTessellation>) -> bool {
         maze.graph
             .edges()
-            .any(|e| matches!(e.kind, crate::graph::EdgeKind::Teleport { .. }))
+            .any(|e| matches!(e.kind, crate::graph::EdgeKind::Teleport))
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn pick_by_size_matches_inclusive_ranges_and_falls_back_to_last() {
-        let configs = vec![
+        let configs = [
             nested_with(Box::new(ExpandRegionPassageStrategy), Some("3")),
             nested_with(Box::new(ExpandRegionPassageStrategy), Some("10")),
             nested_with(Box::new(TeleportRegionMergeStrategy), Some("1")),

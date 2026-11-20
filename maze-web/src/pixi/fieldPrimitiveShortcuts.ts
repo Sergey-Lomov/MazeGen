@@ -13,6 +13,10 @@ const ORDERED_PRIMITIVES: readonly FieldPrimitive[] = [
   "mirror",
 ];
 
+/** Opens the zone editor's combine panel (GitHub issue #1032); `KeyC` with no modifier, so it never meets copy. */
+export const ZONE_COMBINE_SHORTCUT = "C";
+export const ZONE_COMBINE_CODE = "KeyC";
+
 export function fieldPrimitiveShortcut(primitive: FieldPrimitive): string {
   if (primitive === "magic_wand") return "A";
   if (primitive === "mirror") return "M";

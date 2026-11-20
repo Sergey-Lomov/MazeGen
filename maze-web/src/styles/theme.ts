@@ -230,6 +230,9 @@ export const dialogSpacing = {
 // Semantic dialog widths
 export const dialogSize = {
   approve: { minWidth: 260, maxWidth: 360 },
+  // Compact fixed-width dialog whose height follows its content (no `height`): a short form or prompt,
+  // e.g. one field with confirm/cancel buttons (zone group name, GitHub issue #1035).
+  compact: { minWidth: 260, maxWidth: 320, width: 320 },
   // Same shrink-to-fit/no-fixed-`width` shape as `approve` (grows with its content, capped at
   // `maxWidth`) but a taller ceiling — for a list dialog whose rows can carry several coordinate
   // bubbles (`PostEditEntityDeleteDialog`, GitHub issue #550 seventh follow-up) and would otherwise

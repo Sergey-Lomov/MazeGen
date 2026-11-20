@@ -36,13 +36,17 @@ export function inputHintReason(reason: InputNormalizationReason): FieldHintReas
         message: () => reason.shape === "torus" ? m["input_hint.rounded_to_torus"]() : m["input_hint.rounded_to_cylinder"](),
       };
     case "clamped_min":
-      return reason.max === undefined
-        ? { key: reason.kind, message: () => m["input_hint.clamped_min_only"]({ min: reason.min }) }
-        : { key: reason.kind, message: () => m["input_hint.clamped_min"]({ min: reason.min, max: reason.max }) };
+      const max = reason.max;
+      if (max === undefined) {
+        return { key: reason.kind, message: () => m["input_hint.clamped_min_only"]({ min: reason.min }) };
+      }
+      return { key: reason.kind, message: () => m["input_hint.clamped_min"]({ min: reason.min, max }) };
     case "clamped_max":
-      return reason.min === undefined
-        ? { key: reason.kind, message: () => m["input_hint.clamped_max_only"]({ max: reason.max }) }
-        : { key: reason.kind, message: () => m["input_hint.clamped_max"]({ min: reason.min, max: reason.max }) };
+      const min = reason.min;
+      if (min === undefined) {
+        return { key: reason.kind, message: () => m["input_hint.clamped_max_only"]({ max: reason.max }) };
+      }
+      return { key: reason.kind, message: () => m["input_hint.clamped_max"]({ min, max: reason.max }) };
     case "restored":
       return { key: reason.kind, message: () => m["input_hint.restored"]() };
     case "text_truncated":

@@ -214,8 +214,18 @@ mod tests {
     #[test]
     fn from_zones_keeps_ids_and_mints_above_them() {
         let mut set = ZoneSet::from_zones([
-            (ZoneId::new(7), "x".to_string(), ZoneKind::Auto, cells(&[(0, 1)])),
-            (ZoneId::new(2), "y".to_string(), ZoneKind::Manual, cells(&[(1, 1)])),
+            (
+                ZoneId::new(7),
+                "x".to_string(),
+                ZoneKind::Auto,
+                cells(&[(0, 1)]),
+            ),
+            (
+                ZoneId::new(2),
+                "y".to_string(),
+                ZoneKind::Manual,
+                cells(&[(1, 1)]),
+            ),
         ])
         .unwrap();
         assert_eq!(set.get(ZoneId::new(2)).unwrap().name, "y");
@@ -234,7 +244,11 @@ mod tests {
     #[test]
     fn duplicate_cells_collapse_and_cells_are_sorted() {
         let mut set = ZoneSet::new();
-        let id = set.add("a", ZoneKind::Manual, cells(&[(1, 5), (0, 9), (1, 5), (0, 3)]));
+        let id = set.add(
+            "a",
+            ZoneKind::Manual,
+            cells(&[(1, 5), (0, 9), (1, 5), (0, 3)]),
+        );
         let got: Vec<_> = set.get(id).unwrap().cells().collect();
         assert_eq!(got, cells(&[(0, 3), (0, 9), (1, 5)]));
     }

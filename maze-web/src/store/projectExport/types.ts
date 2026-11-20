@@ -1,6 +1,8 @@
 import type { FieldShape, PresetFieldShape, TessellationKind } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
 import type { Crease } from "../creases";
+import type { Zone } from "../../wasm/mazeService";
+import type { ZoneGroup } from "../zonesTypes";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
@@ -189,6 +191,16 @@ export interface ProjectFileQuality {
   repairTimeBudgetSecs: number | null;
 }
 
+/** Persisted zones state (`Specs/zones.md`). The counters keep ids of deleted zones and groups from being reused. */
+export interface ProjectFileZones {
+  zones: Zone[];
+  nextZoneId: number;
+  groups: ZoneGroup[];
+  nextGroupId: number;
+  /** Explicit zone colours (0xRRGGBB) by zone id. */
+  colorOverrides: Record<string, number>;
+}
+
 export interface ProjectFile {
   version: number;
   /** Maze-wide kind/orientation confirmation only (Specs/field-editor.md) — per-floor field shape
@@ -205,6 +217,9 @@ export interface ProjectFile {
   /** One entry per floor id that has crease lines (GitHub issue #898): free segments in world units. Optional on
    * disk: absent in files saved before this issue, meaning no creases anywhere. */
   floorCreases?: Record<string, Crease[]>;
+  /** Zones and zone groups (GitHub issue #1048). Optional on disk: absent in files saved before this issue,
+   * and when the project has neither, meaning no zones and no groups. */
+  zones?: ProjectFileZones;
   generation: {
     seed: number;
     randomSeed: boolean;

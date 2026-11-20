@@ -788,7 +788,10 @@ fn cell_type_key_of_names_the_type_of_cell_type_of() {
 fn assert_samples_match_cell_types<T: Tessellation>(tessellation: &T) {
     let samples = tessellation.sample_cells();
     if tessellation.cells_vary_in_size() {
-        assert!(samples.is_empty(), "a varying tessellation has no sample cells");
+        assert!(
+            samples.is_empty(),
+            "a varying tessellation has no sample cells"
+        );
         return;
     }
     for (index, cell_type) in tessellation.cell_types().iter().enumerate() {

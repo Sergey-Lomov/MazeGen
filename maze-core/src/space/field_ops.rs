@@ -12,6 +12,8 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+type FocusedTile<CellId> = Vec<(CellId, Point)>;
+
 /// An operation a tessellation may offer on cell sets. `Tessellation::field_operations` lists the
 /// supported ones so the UI can hide unavailable tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -553,7 +555,7 @@ fn focused_cells<T: Tessellation + ?Sized>(
         Point::new(min.x + column as f64 * tile, min.y + row as f64 * tile)
     };
 
-    let mut visited: HashMap<(usize, usize), Vec<(T::CellId, Point)>> = HashMap::new();
+    let mut visited: HashMap<(usize, usize), FocusedTile<T::CellId>> = HashMap::new();
     for end in [
         directions[0],
         directions[1],
@@ -582,7 +584,7 @@ fn focused_cells<T: Tessellation + ?Sized>(
             if best.is_finite() && tile_furthest < best - margin {
                 break;
             }
-            if !visited.contains_key(&(column, row)) {
+            if let std::collections::hash_map::Entry::Vacant(entry) = visited.entry((column, row)) {
                 let low = tile_min(column, row);
                 let high = Point::new((low.x + tile).min(max.x), (low.y + tile).min(max.y));
                 let candidates = tessellation
@@ -595,7 +597,7 @@ fn focused_cells<T: Tessellation + ?Sized>(
                     .filter(|&cell| accepts(cell))
                     .map(|cell| (cell, tessellation.center(cell)))
                     .collect();
-                visited.insert((column, row), accepted);
+                entry.insert(accepted);
             }
             for &(_, center) in &visited[&(column, row)] {
                 best = best.max(along(center));

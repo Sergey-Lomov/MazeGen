@@ -27,6 +27,7 @@ import {
   validatePresetTeleportEntry, validatePresetVerticalPassageEntry, validatePresetElevatorEntry,
   validateNodeLockKind, validateSplitPoints,
 } from "./validateSections";
+import { validateZones } from "./validateZones";
 import { validateImageExport } from "./validateImageExport";
 import type { BackgroundImageLayerMode } from "../tessellationTypes";
 
@@ -284,12 +285,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     if (creases.length > 0) floorCreases[floor.id] = creases;
   }
 
+  // zones (GitHub issue #1048) — optional; a file saved before this issue has none.
+  const zones = migrated.zones != null ? validateZones(migrated.zones, "zones") : null;
+
   return {
     version: CURRENT_VERSION,
     tessellation: { kind, params, hexOrientation, triOrientation },
     floorFields,
     floorTopology,
     ...(Object.keys(floorCreases).length > 0 ? { floorCreases } : {}),
+    ...(zones ? { zones } : {}),
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
     quality,
     presets: {

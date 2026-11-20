@@ -2,7 +2,6 @@
 
 - vertex_based.rs:59 fn with 8 args (clippy too_many_arguments): needs param struct, wide call-site churn
 - issue_kind_ids.rs:53 `from_str` name clash with FromStr: rename touches public API/wasm/codegen
-- multi_shape.rs:419 test uses `1..=0` deliberately; denied by clippy (reversed_empty_ranges) so `cargo clippy --all-targets` fails; left as intentional
 - glued_audit.rs:566 complex tuple type (clippy type_complexity): test helper, low value
 - QC check pairs (max_teleport_count/density, max_loop_*, min_*_ratio/count, elevator/vertical proximity) share ~15-57 similar lines each (filter detail blocks, group building); parallel-by-design per-check files, extraction touches many checks and detail ids; left
 - repair strategies pairs (priority/weighted_dead_end, one_way_to_passage/wall, expand_region_passage vs vertical_passage_region_merge) similar structure; extraction risks changing RNG consumption order; left
