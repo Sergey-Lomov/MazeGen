@@ -67,8 +67,11 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
     ? parseRuleSplitPatterns(slot.params.split_patterns)
     : undefined;
 
+  // An unavailable strategy shows as switched off and cannot be switched on; only replacing it is left.
+  const inactive = slot.disabled || !!slot.strategyUnavailable;
+
   return (
-    <div style={{ ...styles.ruleStrategyPanel, ...(slot.disabled ? styles.strategyDisabled : {}) }}>
+    <div style={{ ...styles.ruleStrategyPanel, ...(inactive ? styles.strategyDisabled : {}) }}>
       <div
         style={{
           ...styles.ruleStrategyHeader,
@@ -90,10 +93,10 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
         </span>
         {strategy?.experimental && <WarningIcon />}
         {strategy && (
-          <Tooltip content={slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
+          <Tooltip content={slot.strategyUnavailable ? undefined : slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
             style={styles.toggleWrap}
           >
-            <Switch checked={!slot.disabled} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
+            <Switch checked={!inactive} disabled={slot.strategyUnavailable} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
           </div></Tooltip>
         )}
         <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
@@ -104,6 +107,7 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             params={strategy.params}
             values={displayValues}
             onChange={onChange}
+            disabled={slot.strategyUnavailable}
             disabledIds={passageOverrides?.disabledIds}
             addSplitPatternsOverride={addSplitPatternsOverride}
             onSelectParam={(paramId) => { flushRef.current(); onSelect({ type: "param", owner: { kind: "strategy", ruleId: slot.ruleId }, paramId }); }}

@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
-import { MAX_NESTED_STRATEGY_DEPTH, type NestedStrategyState } from "../../store/storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY, hasNoActiveChecks, strategyUnavailable, visibleProblems, type NestedStrategyState, type QcProblem } from "../../store/storeTypes";
+import { emptyLimitsCheckIds } from "../../store/qcDerivedProblems";
+import { resolveProblemText, resolveNoChecksProblemText, resolveLimitsEmptyProblemText } from "./qualityI18n/problems";
 import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 import { useLocale } from "../../i18n/useLocale";
 
@@ -52,6 +54,9 @@ export interface CheckVM {
   params: ParamDescriptor[];
   /** Per-check toggle — see `CheckInstance.disabled`'s doc comment in storeTypes.ts. */
   disabled: boolean;
+  /** The tessellation rules this check out (`cannot_apply` problem, GitHub issue #1044): the row is
+   * inert and only deletable. Independent of `disabled`, which the user can flip. */
+  unavailable?: boolean;
 }
 
 export interface StrategySlotVM {
@@ -82,6 +87,19 @@ export interface StrategySlotVM {
   params: Record<string, string>;
   /** Mirrors `QcRuleState.collapsed` — see GitHub issue #320. */
   collapsed: boolean;
+  /** The tessellation rules out this rule's strategy (`cannot_apply`, GitHub issue #1044): the
+   * strategy panel is inert and only replaceable. */
+  strategyUnavailable?: boolean;
+  /** Resolved `QcRuleState.problems` (GitHub issue #1044); absent for a healthy rule. */
+  problems?: QcProblemVM[];
+}
+
+/** One problem of a rule, ready to render. A problem of a member check names that check. The
+ * category stays internal and never reaches the UI. */
+export interface QcProblemVM {
+  text: string;
+  /** Label of the member check the problem belongs to; absent for a strategy-side problem. */
+  checkLabel?: string;
 }
 
 /** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
@@ -122,16 +140,36 @@ function localizeParams(params: ParamDescriptor[], contextId?: string): ParamDes
   }));
 }
 
+/** A problem on a rule-level param (a pattern list shared by several checks and the strategy) is one
+ * problem of the rule, not one per consumer, so those collapse into a single unlabeled entry. */
+export function buildProblems(problems: QcProblem[], producedBy: CheckVM[], ruleParamIds: ReadonlySet<string>): QcProblemVM[] {
+  const seen = new Set<string>();
+  const result: QcProblemVM[] = [];
+  for (const p of problems) {
+    const shared = p.paramId !== undefined && ruleParamIds.has(p.paramId);
+    const key = shared ? `${p.code}|${p.paramId}` : `${p.code}|${p.scope}|${p.localId ?? ""}|${p.paramId ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      text: resolveProblemText(p.code, p.scope),
+      checkLabel: !shared && p.scope === "check" ? producedBy.find((c) => c.localId === p.localId)?.label : undefined,
+    });
+  }
+  return result;
+}
+
 export function useQualityViewModel(): QualityViewModel {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
   const storeStages = useMazeStore((s) => s.stages);
+  const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
   const { locale } = useLocale();
 
   return useMemo(() => {
     const descriptorById = new Map(availableChecks.map((c) => [c.id, c]));
     const strategyById = new Map(availableStrategies.map((s) => [s.id, s]));
+    const ruleParamIds = new Set(availableRuleParams.map((p) => p.id));
 
     function buildStrategyVM(d: StrategyDescriptor): StrategyVM {
       return {
@@ -175,7 +213,7 @@ export function useQualityViewModel(): QualityViewModel {
     function buildSlot(r: (typeof rules)[number]): StrategySlotVM {
       const s = r.strategyId ? strategyById.get(r.strategyId) : undefined;
       const producedBy: CheckVM[] = r.checks
-        .map((check) => {
+        .map((check): CheckVM | undefined => {
           const descriptor = descriptorById.get(check.typeId);
           if (!descriptor) return undefined;
           return {
@@ -188,9 +226,14 @@ export function useQualityViewModel(): QualityViewModel {
             description: resolveCheckDescription(descriptor.id, descriptor.description, check.params),
             params: localizeParams(descriptor.params),
             disabled: check.disabled,
+            unavailable: (r.problems ?? []).some((p) => p.scope === "check" && p.localId === check.localId && QC_PROBLEM_CATEGORY[p.code] === "cannot_apply"),
           };
         })
         .filter((c): c is CheckVM => c !== undefined);
+      const shown = visibleProblems(r);
+      const noChecks = hasNoActiveChecks(r);
+      const emptyLimits = emptyLimitsCheckIds(r, availableChecks)
+        .map((localId) => ({ text: resolveLimitsEmptyProblemText(), checkLabel: producedBy.find((c) => c.localId === localId)?.label }));
       return {
         ruleId: r.id,
         // `null` = no custom name — resolve live so a locale switch re-translates it, same as
@@ -205,6 +248,12 @@ export function useQualityViewModel(): QualityViewModel {
         nestedStrategies: s ? buildNested(r.nestedStrategies) : [],
         params: r.params,
         collapsed: r.collapsed,
+        ...(strategyUnavailable(r) ? { strategyUnavailable: true } : {}),
+        ...(shown.length > 0 || noChecks || emptyLimits.length > 0 ? { problems: [
+          ...(noChecks ? [{ text: resolveNoChecksProblemText() }] : []),
+          ...emptyLimits,
+          ...buildProblems(shown, producedBy, ruleParamIds),
+        ] } : {}),
       };
     }
 
@@ -232,5 +281,5 @@ export function useQualityViewModel(): QualityViewModel {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale` isn't read directly, but
     // every `resolve*` call above reads the current paraglide locale internally; including it
     // here forces recompute on language switch (see GitHub issue #556).
-  }, [availableChecks, availableStrategies, rules, storeStages, locale]);
+  }, [availableChecks, availableStrategies, availableRuleParams, rules, storeStages, locale]);
 }

@@ -4,7 +4,8 @@ import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditCommand, ResolvedRotateNode, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdgeState } from "../postEditTypes";
-import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY } from "../storeTypes";
+import type { QcProblem } from "../storeTypes";
 import type {
   ProjectFilePostEdit,
   ProjectFileQcRule,
@@ -530,7 +531,25 @@ export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   // `collapsed` defaults to `false` for files saved before rule collapsing existed (GitHub issue
   // #320) — same recovery pattern `ruleDisabled` above uses.
   const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
-  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed };
+  // Absent for files saved before problems existed (GitHub issue #1044).
+  const problems = obj.problems != null
+    ? assertArray(obj.problems, `${path}.problems`).map((p, i) => validateQcProblem(p, `${path}.problems[${i}]`))
+    : [];
+  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed, ...(problems.length > 0 ? { problems } : {}) };
+}
+
+function validateQcProblem(v: unknown, path: string): QcProblem {
+  const obj = assertObject(v, path);
+  const code = assertString(obj.code, `${path}.code`);
+  if (!(code in QC_PROBLEM_CATEGORY)) throw new Error(`Invalid problem code at ${path}.code: ${code}`);
+  const scope = assertString(obj.scope, `${path}.scope`);
+  if (scope !== "check" && scope !== "strategy" && scope !== "nested") throw new Error(`Invalid problem scope at ${path}.scope: ${scope}`);
+  return {
+    code: code as QcProblem["code"],
+    scope,
+    ...(obj.localId !== undefined ? { localId: assertNumber(obj.localId, `${path}.localId`) } : {}),
+    ...(obj.paramId !== undefined ? { paramId: assertString(obj.paramId, `${path}.paramId`) } : {}),
+  };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id

@@ -5,7 +5,7 @@ import { debugStaleOf } from "../storeHelpers";
 import { NESTED_STRATEGY_MAX_SIZE_PARAM_ID, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 import {
   newStage, nextStageIndex, resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
-  newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName,
+  newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName, withoutProblems, resolvedByEdit,
 } from "./generationSliceHelpers";
 
 type RulesSliceKeys =
@@ -70,14 +70,17 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // card stays as a place to add a new check back into (see RulesColumn's add-check row).
   removeCheck: (ruleId, localId) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, checks: g.checks.filter((c) => c.localId !== localId) }
+      ? withoutProblems({ ...g, checks: g.checks.filter((c) => c.localId !== localId) }, (p) => p.scope === "check" && p.localId === localId)
       : g),
     debugStale: debugStaleOf(state),
   })),
 
   setCheckParam: (ruleId, localId, paramId, value) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, checks: g.checks.map((c) => c.localId === localId ? { ...c, params: { ...c.params, [paramId]: value } } : c) }
+      ? withoutProblems(
+        { ...g, checks: g.checks.map((c) => c.localId === localId ? { ...c, params: { ...c.params, [paramId]: value } } : c) },
+        resolvedByEdit("check", paramId, localId),
+      )
       : g),
     debugStale: debugStaleOf(state),
   })),
@@ -93,12 +96,19 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
     const sourceRule = state.rules.find((g) => g.id === ruleId);
     const moved = sourceRule?.checks.find((c) => c.localId === localId);
     if (!moved) return {};
-    const rules = state.rules
-      .map((g) => g.id === ruleId ? { ...g, checks: g.checks.filter((c) => c.localId !== localId) } : g)
-      .filter((g) => g.checks.length > 0);
     const descriptor = state.availableChecks.find((c) => c.id === moved.typeId);
+    // Rule-level params stay behind, so a problem flagged on one does not travel with the check.
+    const movedProblems = (sourceRule?.problems ?? []).filter((p) => p.scope === "check" && p.localId === localId
+      && (p.paramId === undefined || descriptor?.params.some((d) => d.id === p.paramId)));
+    const rules = state.rules
+      .map((g) => g.id === ruleId
+        ? withoutProblems({ ...g, checks: g.checks.filter((c) => c.localId !== localId) }, (p) => p.scope === "check" && p.localId === localId)
+        : g)
+      .filter((g) => g.checks.length > 0);
     const newSingleton = newRule(descriptor ? resolveCheckKind(descriptor) : "", [{ ...moved, localId: 0 }], null, false, state.availableStrategies);
-    rules.push(newSingleton);
+    rules.push(movedProblems.length > 0
+      ? { ...newSingleton, problems: movedProblems.map((p) => ({ ...p, localId: 0 })) }
+      : newSingleton);
     // Source rule left empty by this move is not dropped (see `QcRuleState`'s doc comment) —
     // its own stage membership is untouched. The new singleton rule goes into the last stage,
     // same placement `addCheck`/`createRule` use for a freshly created rule.
@@ -113,13 +123,16 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // `buildDefaultNestedStrategies`) rather than left empty.
   setStrategy: (ruleId, strategyId, initialStrategyParams) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, strategyId, strategyParams: initialStrategyParams ?? defaultParamsFor({ params: state.availableStrategies.find((s) => s.id === strategyId)?.params ?? [] }), nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
+      ? withoutProblems(
+        { ...g, strategyId, strategyParams: initialStrategyParams ?? defaultParamsFor({ params: state.availableStrategies.find((s) => s.id === strategyId)?.params ?? [] }), nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) },
+        (p) => p.scope !== "check",
+      )
       : g),
     debugStale: debugStaleOf(state),
   })),
 
   clearStrategy: (ruleId) => set((state) => ({
-    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId: null, disabled: false, nestedStrategies: [] } : g),
+    rules: state.rules.map((g) => g.id === ruleId ? withoutProblems({ ...g, strategyId: null, disabled: false, nestedStrategies: [] }, (p) => p.scope !== "check") : g),
     debugStale: debugStaleOf(state),
   })),
 
@@ -146,14 +159,17 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       return [{ slotId: target.slotId, strategyId, params, nested }];
     };
     return {
-      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, transform) } : g),
+      rules: state.rules.map((g) => g.id === ruleId ? withoutProblems({ ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, transform) }, (p) => p.scope === "nested") : g),
       debugStale: debugStaleOf(state),
     };
   }),
 
   setNestedStrategyParam: (ruleId, path, paramId, value) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, (target) => [{ ...target, params: { ...target.params, [paramId]: value } }]) }
+      ? withoutProblems(
+        { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, (target) => [{ ...target, params: { ...target.params, [paramId]: value } }]) },
+        resolvedByEdit("nested", paramId),
+      )
       : g),
     debugStale: debugStaleOf(state),
   })),
@@ -191,7 +207,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // "unset" rather than shrinking a multi-entry slot's list.
   removeNestedStrategy: (ruleId, path) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, () => []) }
+      ? withoutProblems({ ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, () => []) }, (p) => p.scope === "nested")
       : g),
     debugStale: debugStaleOf(state),
   })),

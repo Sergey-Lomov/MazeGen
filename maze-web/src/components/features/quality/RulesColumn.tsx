@@ -28,6 +28,7 @@ import { Button } from "../../Button";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
+import { WarningBubble } from "../../WarningBubble";
 import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
@@ -144,7 +145,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
     const strategySelected = (selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === slot.ruleId;
     const isRenaming = renamingRuleId === slot.ruleId;
     return (
-    <div style={{ ...styles.ruleCard, ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
+    <div style={{ ...styles.ruleCard, ...(slot.problems ? styles.ruleCardProblem : {}), ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
       <div style={styles.ruleCardTitle}>
         {ruleHandle}
         <CollapseButton
@@ -184,6 +185,17 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           <DeleteIconButton title={m["quality.remove_rule"]()} onClick={() => setRemoveConfirmRuleId(slot.ruleId)} />
         </div>
       </div>
+      {slot.problems && (
+        <div style={styles.ruleProblems}>
+          {slot.problems.map((problem, i) => (
+            <WarningBubble
+              key={i}
+              message={problem.checkLabel ? `${problem.checkLabel}: ${problem.text}` : problem.text}
+              severity="warning"
+            />
+          ))}
+        </div>
+      )}
       {!slot.collapsed && (
       <>
       <RuleParamsSection slot={slot} selection={selection} onSelectParam={onSelect} />

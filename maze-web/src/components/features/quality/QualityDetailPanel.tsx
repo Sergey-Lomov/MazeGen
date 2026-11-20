@@ -66,6 +66,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         storeValues={storeValues}
         onCommit={(paramId, value) => setCheckParam(check.ruleId, check.localId, paramId, value)}
         flushRef={flushRef}
+        disabledIds={check.unavailable ? new Set(check.params.map((p) => p.id)) : undefined}
       />
     );
   }
@@ -98,7 +99,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         flushRef={flushRef}
         contextId={strategy.id}
         valueOverrides={passageOverrides?.values}
-        disabledIds={passageOverrides?.disabledIds}
+        disabledIds={slot.strategyUnavailable ? new Set(strategy.params.map((p) => p.id)) : passageOverrides?.disabledIds}
       >
         {strategy.nestedSlots.length > 0 && (
           // Same visual gap as between two params in `ParamFields` (`gap: 16` when descriptions

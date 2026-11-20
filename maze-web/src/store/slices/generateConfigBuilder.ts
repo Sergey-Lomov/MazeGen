@@ -9,7 +9,7 @@ import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
 import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
 import { buildMultiFloorPostEditDraft, buildPostEditBaseline } from "./postEditBaselineBuilders";
-import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, ruleHasSendableChecks, sendableChecks, strategyUnavailable } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
@@ -101,7 +101,7 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
 // (GitHub issue #532, so post-edit's route score is computed from the same real weights generation
 // uses, never defaults — see `AnalyticsRuleGroupConfig.strategy` on the wasm side).
 export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): StrategyConfig | null {
-  if (!g.strategyId || g.disabled) return null;
+  if (!g.strategyId || g.disabled || strategyUnavailable(g)) return null;
   const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
   const paramOverrides = g.strategyParams;
   const params: Record<string, string> = {};
@@ -121,12 +121,12 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
   // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
   // determinism doesn't depend on Map/object iteration order at this layer. A `disabled` check
   // (see `CheckInstance.disabled`'s doc comment) is omitted entirely, as if never selected.
-  const checks = g.checks.filter((c) => !c.disabled).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
+  const checks = sendableChecks(g).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
   // Rule-level parameters (e.g. `protect_route`, GitHub issue #253) — only descriptor-known ids
   // relevant to this rule's own composition are forwarded, same relevance rule `RuleParamsSection`
   // uses for display (`relevantRuleParams`), same "only descriptor-known ids" spirit
   // `nestedToConfig`/the strategy branch above use.
-  const activeCheckTypeIds = g.checks.filter((c) => !c.disabled).map((c) => c.typeId);
+  const activeCheckTypeIds = sendableChecks(g).map((c) => c.typeId);
   const ruleParams: Record<string, string> = {};
   for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, g.disabled ? null : g.strategyId)) {
     if (g.params[p.id] !== undefined) ruleParams[p.id] = g.params[p.id];
@@ -208,7 +208,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
         // the same way a `ruleDisabled` rule is: core's `build_qc_and_repair` rejects an empty
         // `checks` array outright ("rule <id> has no checks"), so it must never cross the wasm
         // boundary with one.
-        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && g.checks.some((c) => !c.disabled))
+        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && ruleHasSendableChecks(g))
         .map((g) => ruleToConfig(state, g)),
     }));
   const activeTessellation = activeFloorTessellationOf(state);
