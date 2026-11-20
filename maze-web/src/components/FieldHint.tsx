@@ -16,6 +16,9 @@ import { Tooltip } from "./Tooltip";
 export interface FieldHintReason {
   key: string;
   message: () => string;
+  /** `"error"` renders the hint and field outline in the error color instead of the info one
+   *  (a rejected value the user has to fix, not a correction the field made). Default `"info"`. */
+  tone?: "info" | "error";
 }
 
 export interface FieldHintController {
@@ -54,7 +57,7 @@ interface HintState {
 /** Field-anchored hint (GitHub issue #768, epic #766 rule 4): one hint per field, shown when input
  *  is rejected or corrected. Closed by the next accepted change (`dismiss`), its close button, the
  *  notice-toast display duration (`noticeDisplayDuration`) of active display (hovering the hint
- *  pauses it), or unmount of the owner. Announced once politely through the shared `Announcer`; the
+ *  pauses it; an `"error"` tone hint has no timeout), or unmount of the owner. Announced once politely through the shared `Announcer`; the
  *  hint itself has no live role. */
 export function useFieldHint(placement: Placement = "bottom-start"): FieldHintController {
   const id = useId();
@@ -89,7 +92,7 @@ export function useFieldHint(placement: Placement = "bottom-start"): FieldHintCo
     anchorRef: setAnchor,
     labelRef: setLabel,
     describedBy: hint ? id : undefined,
-    fieldStyle: hint ? FIELD_OUTLINE_STYLE : undefined,
+    fieldStyle: state && hint ? fieldOutlineStyle(state.reason.tone) : undefined,
     show,
     dismiss,
     hint,
@@ -120,33 +123,35 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
   useEffect(() => {
     remaining.current = state.duration;
   }, [state.reason.key, state.restart, state.duration]);
+  // An error stays until the field is fixed (or the close button): no timeout, no countdown.
+  const persistent = state.reason.tone === "error";
   useEffect(() => {
-    if (paused) return;
+    if (paused || persistent) return;
     const startedAt = Date.now();
     const timer = setTimeout(onClose, remaining.current);
     return () => {
       clearTimeout(timer);
       remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt));
     };
-  }, [paused, state.reason.key, state.restart, state.duration, onClose]);
+  }, [paused, persistent, state.reason.key, state.restart, state.duration, onClose]);
 
   return createPortal(
     <div
       ref={refs.setFloating}
       id={id}
       data-testid="field-hint"
-      style={{ ...floatingStyles, ...styles.caption }}
+      style={{ ...floatingStyles, ...styles.caption, ...captionToneStyle(state.reason.tone) }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
       <span style={styles.message}>
         {state.reason.message()}
-        <span
+        {!persistent && <span
           key={`${state.reason.key}:${state.restart}`}
           data-testid="field-hint-countdown"
           aria-hidden="true"
           style={{ ...styles.countdown, animationDuration: `${state.duration}ms`, animationPlayState: paused ? "paused" : "running" }}
-        />
+        />}
       </span>
       <Tooltip content={m["notifications.close"]()}><button
         type="button"
@@ -183,8 +188,17 @@ function spanReference(label: HTMLElement, field: HTMLElement): VirtualElement {
   };
 }
 
+const toneColor = (tone: FieldHintReason["tone"]): string => (tone === "error" ? ui.text.error : ui.text.info);
+
 /** Field outline while its hint is shown — ties the caption to its field. */
-const FIELD_OUTLINE_STYLE: React.CSSProperties = { outline: `1px solid ${ui.text.info}`, outlineOffset: 1 };
+function fieldOutlineStyle(tone: FieldHintReason["tone"]): React.CSSProperties {
+  return { outline: `1px solid ${toneColor(tone)}`, outlineOffset: 1 };
+}
+
+function captionToneStyle(tone: FieldHintReason["tone"]): React.CSSProperties {
+  const color = toneColor(tone);
+  return { border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, color };
+}
 
 /** Distance between the field and its caption, px — tighter than tooltips, so the caption reads as
  *  part of the field. */

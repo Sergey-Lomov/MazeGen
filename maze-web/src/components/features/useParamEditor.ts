@@ -89,6 +89,7 @@ function getDefaultValue(p: ParamDescriptor): string {
   // Empty pattern list -- "all"/"unconstrained" default (GitHub issue #247), same JSON encoding
   // `parse_split_patterns_param` round-trips.
   if (k.type === "pattern_list") return "[]";
+  if (k.type === "node_shape_limits") return "{}";
   // Unconstrained mode, max_split_nodes=2, no patterns -- mirrors SplitGenerationConfig::default(),
   // same JSON encoding `parse_split_config_param` round-trips.
   if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });

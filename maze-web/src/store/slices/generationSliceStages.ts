@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
+import { QC_PROBLEM_CATEGORY } from "../storeTypes";
 import type { MazeStore, GenerationActions } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
-import { newStage, nextStageIndex } from "./generationSliceHelpers";
+import { newStage, nextStageIndex, withoutProblems, resolvedByEdit } from "./generationSliceHelpers";
 
 type StagesSliceKeys =
   | "addStage" | "renameStage" | "removeStage" | "moveStage" | "reorderStage" | "toggleStageDisabled" | "toggleStageCollapsed"
@@ -67,12 +68,14 @@ export const createGenerationStagesSlice: StateCreator<MazeStore, [], [], Pick<G
   })),
 
   setStrategyParam: (ruleId, paramId, value) => set((state) => ({
-    rules: state.rules.map((r) => r.id === ruleId ? { ...r, strategyParams: { ...r.strategyParams, [paramId]: value } } : r),
+    rules: state.rules.map((r) => r.id === ruleId ? withoutProblems({ ...r, strategyParams: { ...r.strategyParams, [paramId]: value } }, resolvedByEdit("strategy", paramId)) : r),
     debugStale: debugStaleOf(state),
   })),
 
   setRuleParam: (ruleId, paramId, value) => set((state) => ({
-    rules: state.rules.map((r) => r.id === ruleId ? { ...r, params: { ...r.params, [paramId]: value } } : r),
+    rules: state.rules.map((r) => r.id === ruleId
+      ? withoutProblems({ ...r, params: { ...r.params, [paramId]: value } }, (p) => p.paramId === paramId && QC_PROBLEM_CATEGORY[p.code] === "needs_reconfiguration")
+      : r),
     debugStale: debugStaleOf(state),
   })),
 });

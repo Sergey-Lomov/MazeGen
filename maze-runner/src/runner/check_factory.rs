@@ -1,4 +1,6 @@
-use crate::config::{CheckInstanceConfig, parse_split_patterns_param};
+use crate::config::{
+    CheckInstanceConfig, parse_node_shape_limits_param, parse_split_patterns_param,
+};
 use maze_core::{
     RegionClass,
     quality_control::{
@@ -81,7 +83,8 @@ use maze_core::{
         MissingElevatorHeightIssue, MissingElevatorStopCountIssue, MissingElevatorsIssue,
         MissingEndpointsCheck, MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue,
         MissingRegionsIssue, MissingSplitTilesIssue, MissingTeleportsIssue,
-        MissingVerticalPassagesIssue, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        MissingVerticalPassagesIssue, NodeShapeLimitsCheck,
+        ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
@@ -117,7 +120,7 @@ use maze_core::{
         VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
         VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         VerticalPassageGroupGeometricProximityCheck, VerticalPassageGroupGraphProximityCheck,
-        VerticalPassageType,
+        VerticalPassageType, ViolatedNodeShapeLimitsIssue,
     },
     space::Tessellation,
 };
@@ -1263,6 +1266,23 @@ pub(crate) fn build_dead_end_group_check<T: Tessellation>(
                 instance_id,
                 max_dead_end_density,
                 floor_scope,
+            }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_violated_node_shape_limits_check<T: Tessellation>(
+    instance: &CheckInstanceConfig,
+    instance_id: String,
+    _rule_params: &RuleParams,
+) -> Option<Box<dyn maze_core::quality_control::Check<T, ViolatedNodeShapeLimitsIssue>>> {
+    match instance.type_id.as_str() {
+        "node_shape_limits" => {
+            let limits = parse_node_shape_limits_param(instance.params.get("limits"));
+            Some(Box::new(NodeShapeLimitsCheck {
+                instance_id,
+                limits,
             }))
         }
         _ => None,

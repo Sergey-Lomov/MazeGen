@@ -27,7 +27,8 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
   // The hover belongs to the panel: it must not outlive it.
   useEffect(() => () => setHover(null), [setHover]);
 
-  const colors = zoneColors(zones);
+  const overrides = useMazeStore((s) => s.zoneColorOverrides);
+  const colors = zoneColors(zones, overrides);
   const shown = zones.flatMap((zone, index) => (zone.kind === mode ? [{ zone, color: cssColor(colors[index]) }] : []));
 
   return (
@@ -62,6 +63,7 @@ function ZoneCell({ zone, color }: { zone: Zone; color: string }) {
   const toggleVisibility = useMazeStore((s) => s.toggleZoneVisibility);
   const setHover = useMazeStore((s) => s.setHoveredZone);
   const removeZone = useMazeStore((s) => s.removeZone);
+  const setEditing = useMazeStore((s) => s.setZoneEditId);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const name = zoneDisplayName(zone);
   const manual = zone.kind === "manual";
@@ -85,8 +87,7 @@ function ZoneCell({ zone, color }: { zone: Zone; color: string }) {
               {hidden ? <EyeOff size={16} /> : <Eye size={16} />}
             </ListCellAction>
             {manual && (
-              // Zone editing is tracked separately: the button is in place, but has nothing to open yet.
-              <EditIconButton title={m["zones.edit"]()} disabled onClick={() => {}} />
+              <EditIconButton title={m["zones.edit"]()} onClick={() => setEditing(zone.id)} />
             )}
             {manual && (
               <ListCellAction action="delete" title={m["zones.delete"]()} danger onAction={() => setConfirmingRemove(true)} />

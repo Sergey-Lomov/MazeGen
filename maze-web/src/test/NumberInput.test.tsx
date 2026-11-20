@@ -267,3 +267,17 @@ describe("NumberInput", () => {
     expect(input.value).toBe("23");
   });
 });
+
+describe("NumberInput allowEmpty", () => {
+  it("commits an emptied field as an empty string and keeps it empty on blur", () => {
+    const onChange = vi.fn();
+    render(<NumberInput value="5" onChange={onChange} allowEmpty integer min={0} />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith("");
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenLastCalledWith("");
+    expect(input.value).toBe("");
+  });
+});

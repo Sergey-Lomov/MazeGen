@@ -37,7 +37,7 @@ export interface RegionHighlightData {
   insetMode?: "inset" | "outset";
   /** Multiple independently colored regions rendered in one pass. Used by Analytics' region
    *  overlays so each SCC keeps its own color while sharing the merged-contour implementation. */
-  groups?: { regionGroups: number[][]; color: number; fillAlpha?: number; insetMode?: "inset" | "outset" }[];
+  groups?: { regionGroups: number[][]; color: number; fillAlpha?: number; insetMode?: "inset" | "outset"; borderColor?: number }[];
   boundaryEdges?: [number, number][];
   boundaryWidth?: number;
   boundaryFillAlpha?: number;
@@ -84,7 +84,7 @@ export class RegionHighlightRenderer {
         || b.perimeterSegments.length - a.perimeterSegments.length
         || a.component - b.component);
       for (const part of parts) {
-        this.renderSpatialPart(part, cfg, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth, skipPerimeter, width, alpha);
+        this.renderSpatialPart(part, cfg, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth, skipPerimeter, width, alpha, style.borderColor);
       }
     }
     const cellsInset = insetMode === "outset" ? -Math.abs(inset) : inset;
@@ -123,9 +123,10 @@ export class RegionHighlightRenderer {
     skipPerimeter: boolean,
     width: number,
     alpha: number,
+    borderColor?: number,
   ): void {
     if (contours.length > 0) {
-      renderRegionContours(this.g, contours, color, fillAlpha, inset, cornerStyle, borderWidth);
+      renderRegionContours(this.g, contours, color, fillAlpha, inset, cornerStyle, borderWidth, undefined, borderColor);
     } else for (const [x, y] of cells) {
       drawCellHighlightAt(this.g, x, y, cfg, color, fillAlpha, inset, cornerStyle, borderWidth);
     }

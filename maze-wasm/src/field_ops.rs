@@ -98,6 +98,30 @@ pub fn tessellation_cell_type_sizes(tessellation: JsValue) -> Result<JsValue, Js
     }
 }
 
+/// Per cell type (`{ cell_type, example_cell, shapes }`), the `NodeShape::key()` of every node
+/// shape the tessellation can produce (GitHub issue #1008) — the vocabulary of the
+/// `node_shape_limits` check's editor. Independent of any field. The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_node_shapes(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match maze_runner::runner::node_shapes::tessellation_node_shapes(&tessellation) {
+        Ok(shapes) => Ok(serde_wasm_bindgen::to_value(&shapes).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// `{ irregular, max_cell_sides }` of a tessellation — what a descriptor's `requires` is matched
+/// against to decide whether a check is available (GitHub issue #1008). Independent of any field.
+/// The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_traits(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match maze_runner::runner::tessellation_traits::tessellation_traits(&tessellation) {
+        Ok(traits) => Ok(serde_wasm_bindgen::to_value(&traits).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
 /// Cells moved by a world vector that must be a translation symmetry of the tessellation.
 #[wasm_bindgen]
 pub fn field_translate_cells(request: JsValue) -> Result<JsValue, JsValue> {

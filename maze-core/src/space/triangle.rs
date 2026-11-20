@@ -67,6 +67,11 @@ impl Tessellation for TriTessellation {
     type CellId = TriPoint;
     type Face = TriFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        vec![TriPoint { col: 0, row: 0 }, TriPoint { col: 1, row: 0 }]
+    }
+
     /// The one type is named by the cell's polygon, like the types of the mixed tilings.
     fn cell_types(&self) -> &[super::CellType] {
         &CELL_TYPES

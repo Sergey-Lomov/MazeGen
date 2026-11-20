@@ -3,7 +3,9 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { isEntityVisible, useVisibilityContext } from "./ParamFields";
-import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
+import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel, resolveUnavailableReason } from "./qualityI18n";
+import { type UnavailableReason } from "./checkAvailability";
+import { useCheckAvailability } from "./useCheckAvailability";
 import { radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import { notAllowedCursor } from "../../styles/cursors";
 import * as m from "~/paraglide/messages";
@@ -25,7 +27,7 @@ interface Props {
  * after all of these. */
 const ISSUE_KIND_ORDER = [
   "invalid_cross_element_group", "invalid_cross_element",
-  "invalid_dead_end_group",
+  "invalid_dead_end_group", "violated_node_shape_limits",
   "missing_endpoints", "unreachable_finish",
   "missing_one_ways", "invalid_one_way", "invalid_one_way_group",
   "missing_teleports", "invalid_teleport", "invalid_teleport_group",
@@ -53,13 +55,30 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
     const ib = ISSUE_KIND_ORDER.indexOf(b);
     return (ia === -1 ? ISSUE_KIND_ORDER.length : ia) - (ib === -1 ? ISSUE_KIND_ORDER.length : ib);
   });
-  const [selectedKind, setSelectedKind] = useState<string>(kinds[0] ?? "");
+  // A kind is out of reach when every check offering it is unavailable on the current tessellation:
+  // it stays listed, disabled, with the reason of its first check as the tooltip.
+  const unavailableOf = useCheckAvailability();
+  const reasonOfKind = (kind: string): UnavailableReason | null => {
+    let reason: UnavailableReason | null = null;
+    for (const check of availableChecks.filter((c) => c.issue_kinds[0] === kind)) {
+      const checkReason = unavailableOf(check);
+      if (!checkReason) return null;
+      reason ??= checkReason;
+    }
+    return reason;
+  };
+  const [selectedKind, setSelectedKind] = useState<string>(kinds.find((k) => !reasonOfKind(k)) ?? "");
 
-  const items = kinds.map((kind) => ({
-    id: kind,
-    label: resolveIssueShortLabel(kind),
-    section: resolveIssueSection(kind),
-  }));
+  const items = kinds.map((kind) => {
+    const reason = reasonOfKind(kind);
+    return {
+      id: kind,
+      label: resolveIssueShortLabel(kind),
+      section: resolveIssueSection(kind),
+      disabled: reason !== null,
+      disabledReason: reason ? resolveUnavailableReason(reason) : undefined,
+    };
+  });
 
   const rightPanel = selectedKind ? (
     <>

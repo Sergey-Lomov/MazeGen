@@ -24,6 +24,7 @@ import { readJsonFile } from "./jsonFile";
 import { notify } from "../notifications/notificationStore";
 import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNotifications";
 import { useMazeStore } from "../store/mazeStore";
+import { problematicRuleCount } from "../store/qcDerivedProblems";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
@@ -185,6 +186,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const splitPatterns = useMazeStore((s) => s.splitPatterns);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
+  const problemRuleCount = useMazeStore((s) => problematicRuleCount(s.rules, s.stages, s.availableChecks));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);
@@ -340,9 +342,12 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
   // at all is the more fundamental gap, so its message takes priority when both are true.
   const repairUnbounded = repairMaxIterations == null && repairTimeBudgetSecs == null;
-  const qualityStatus: FeatureStatus = activeCheckCount === 0 || repairUnbounded ? "warning" : "set";
+  // Problematic rules are left out of generation, so they rank right after having no checks at all.
+  const qualityStatus: FeatureStatus = activeCheckCount === 0 || problemRuleCount > 0 || repairUnbounded ? "warning" : "set";
   const qualityComment = activeCheckCount === 0
     ? m["status.no_checks"]()
+    : problemRuleCount > 0
+    ? m["status.quality_problems"]({ count: problemRuleCount })
     : repairUnbounded
     ? m["status.repair_loop_unbounded"]()
     : m["status.quality_configured"]();

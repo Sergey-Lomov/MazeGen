@@ -5,7 +5,7 @@ import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageE
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation, QcProblem } from "../storeTypes";
 import type { ParamLink } from "../parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
@@ -164,6 +164,8 @@ export interface ProjectFileQcRule {
   params: Record<string, string>;
   /** Mirrors `QcRuleState.collapsed` — UI-only rule card collapse state (GitHub issue #320). */
   collapsed: boolean;
+  /** Mirrors `QcRuleState.problems` — absent means none (GitHub issue #1044). */
+  problems?: QcProblem[];
 }
 
 /** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc

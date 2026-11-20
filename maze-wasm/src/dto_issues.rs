@@ -229,6 +229,25 @@ pub enum IssuePayloadDto {
     IndeterminateDistance {
         pairs: Vec<IssueUndecidedPairPayloadDto>,
     },
+    /// Every violated node-shape limit (GitHub issue #1008), flat — not keyed by source check.
+    ViolatedNodeShapeLimits {
+        violations: Vec<IssueShapeLimitViolationPayloadDto>,
+    },
+}
+
+/// One violated node-shape limit — mirrors `maze_core`'s `IssueShapeLimitViolationPayload`.
+/// `cell_type` is the shape template key (`regular:4`); `shape` and `counterparts` are `NodeShape::key()` strings (`dead_end`, `straight`, `turn_<deg>`,
+/// `junction_<sides>_<ranks>`); `counterparts` is ordered closest first.
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueShapeLimitViolationPayload")]
+pub struct IssueShapeLimitViolationPayloadDto {
+    pub cell_type: String,
+    pub shape: String,
+    #[dto(ts_type = "\"excess\" | \"deficit\"")]
+    pub kind: String,
+    pub amount: u32,
+    pub nodes: Vec<u32>,
+    pub counterparts: Vec<String>,
 }
 
 /// One pair a geometric check could not decide — mirrors `maze_core`'s

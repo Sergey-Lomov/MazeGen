@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
+import type { QcProblem } from "../store/storeTypes";
 import { baseStoreState, mockGenerateMazeResult, resetGenerationMocks, makeRule } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -741,5 +742,105 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
     expect(call[1].stages.flatMap((s) => s.rules)).toEqual([]);
+  });
+});
+
+describe("rule problems (GitHub issue #1044)", () => {
+  const flaggedRule = (extra: Partial<ReturnType<typeof makeRule>> = {}) => makeRule({
+    id: "g1", kind: "k1",
+    checks: [
+      { localId: 0, typeId: "check_a", params: { patterns: "[]" }, disabled: false },
+      { localId: 1, typeId: "check_b", params: {}, disabled: false },
+    ],
+    nextLocalCheckId: 2,
+    problems: [{ code: "patterns_emptied", scope: "check", localId: 0, paramId: "patterns" }],
+    ...extra,
+  });
+  const stage = { id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false };
+
+  it("sends only the healthy checks of a rule with a problematic check", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ rules: [flaggedRule()], stages: [stage] });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].stages.flatMap((s) => s.rules).map((r) => r.checks.map((c) => c.local_id))).toEqual([["1"]]);
+  });
+
+  it("omits a rule with a strategy-side problem entirely", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      rules: [flaggedRule({ problems: [{ code: "patterns_dropped", scope: "strategy", paramId: "split_config" }] })],
+      stages: [stage],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([]);
+  });
+
+  it("editing the flagged param resolves a needs_reconfiguration problem", () => {
+    useMazeStore.setState({ rules: [flaggedRule()] });
+    useMazeStore.getState().setCheckParam("g1", 0, "other", "1");
+    expect(useMazeStore.getState().rules[0].problems).toHaveLength(1);
+    useMazeStore.getState().setCheckParam("g1", 0, "patterns", "[1]");
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
+  it("never resolves a cannot_apply problem by editing", () => {
+    const problems = [{ code: "irregular_tessellation" as const, scope: "check" as const, localId: 0 }];
+    useMazeStore.setState({ rules: [flaggedRule({ problems })] });
+    useMazeStore.getState().setCheckParam("g1", 0, "patterns", "[1]");
+    expect(useMazeStore.getState().rules[0].problems).toEqual(problems);
+  });
+
+  it("removing the problematic check removes its problem", () => {
+    useMazeStore.setState({ rules: [flaggedRule()] });
+    useMazeStore.getState().removeCheck("g1", 0);
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
+  it("editing a rule-level param resolves the problems flagged on it in every scope", () => {
+    useMazeStore.setState({
+      rules: [flaggedRule({ problems: [
+        { code: "patterns_dropped", scope: "check", localId: 0, paramId: "split_patterns" },
+        { code: "patterns_dropped", scope: "strategy", paramId: "split_patterns" },
+      ] })],
+    });
+    useMazeStore.getState().setRuleParam("g1", "split_patterns", "[]");
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
+  it("changing the strategy resolves strategy-side problems and keeps check problems", () => {
+    useMazeStore.setState({
+      rules: [flaggedRule({ problems: [
+        { code: "patterns_dropped", scope: "check", localId: 0, paramId: "patterns" },
+        { code: "patterns_dropped", scope: "strategy", paramId: "split_config" },
+      ] })],
+    });
+    useMazeStore.getState().clearStrategy("g1");
+    expect(useMazeStore.getState().rules[0].problems).toEqual([{ code: "patterns_dropped", scope: "check", localId: 0, paramId: "patterns" }]);
+  });
+});
+
+describe("unavailable strategy (GitHub issue #1044)", () => {
+  const unavailable: QcProblem[] = [{ code: "irregular_tessellation", scope: "strategy" }];
+  const stage = { id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false };
+  const withProblems = (problems: QcProblem[]) => makeRule({
+    id: "g1", strategyId: "scored_endpoints", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, problems,
+  });
+
+  it("sends the rule with its checks but without the strategy", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ rules: [withProblems(unavailable)], stages: [stage] });
+    useMazeStore.getState().generate();
+    const rules = vi.mocked(generateMaze).mock.calls[0][1].stages.flatMap((s) => s.rules);
+    expect(rules.map((r) => [r.checks.length, r.strategy])).toEqual([[1, null]]);
+  });
+
+  it("is cleared by replacing the strategy, but not by editing its params", () => {
+    useMazeStore.setState({ rules: [withProblems(unavailable)] });
+    useMazeStore.getState().setStrategyParam("g1", "path_weight", "3");
+    expect(useMazeStore.getState().rules[0].problems).toEqual(unavailable);
+    useMazeStore.getState().clearStrategy("g1");
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
   });
 });

@@ -1,5 +1,7 @@
 import * as m from "~/paraglide/messages";
 import { resolveParamOptionLabel, resolveCheckDescription } from "./features/qualityI18n";
+import { nodeShapeCellTypeLabel, nodeShapeLabel, splitTypedShape } from "./features/nodeShapeLimits";
+import { nodeShapeSiblingsOf } from "./features/nodeShapeSiblings";
 import { resolveCellTypeLabel } from "./features/qualityI18n/cellTypes";
 import type { IssueDto } from "../wasm/types";
 
@@ -111,6 +113,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_elevator_stop: () => ({ label: m["issue.invalid_elevator_stop.label"](), description: m["issue.invalid_elevator_stop.description"](), severity: "warning" }),
   invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
   invalid_dead_end_group: () => ({ label: m["issue.invalid_dead_end_group.label"](), description: m["issue.invalid_dead_end_group.description"](), severity: "warning" }),
+  violated_node_shape_limits: () => ({ label: m["issue.violated_node_shape_limits.label"](), description: m["issue.violated_node_shape_limits.description"](), severity: "warning" }),
   missing_elevators: () => ({ label: m["issue.missing_elevators.label"](), description: m["issue.missing_elevators.description"](), severity: "warning" }),
   area_missing_elevator_stops: () => ({ label: m["issue.area_missing_elevator_stops.label"](), description: m["issue.area_missing_elevator_stops.description"](), severity: "warning" }),
   missing_elevator_stop_count: () => ({ label: m["issue.missing_elevator_stop_count.label"](), description: m["issue.missing_elevator_stop_count.description"](), severity: "warning" }),
@@ -225,6 +228,9 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
       region_classes: classes.map((c) => resolveParamOptionLabel("region_class", c)).join(", "),
     });
   },
+  node_shape_limits: (d) => d.shapes !== undefined
+    ? m["issue.violated_node_shape_limits.shapes_label"]({ shapes: typedShapeLabels(d.shapes.split(",")).join(", ") })
+    : undefined,
   teleport_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_waypoint_distance_label"]({ distance: d.distance }) : undefined,
   teleport_geometric_length: (d) => d.length !== undefined ? m["issue.invalid_teleport.teleport_geometric_length_label"]({ length: d.length }) : undefined,
   teleport_graph_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_graph_distance_label"]({ distance: d.distance }) : undefined,
@@ -316,6 +322,35 @@ export function resolveIssueSourceLabel(kind: string, typeId: string, details: R
   return override ?? resolveIssue(kind).label;
 }
 
+/// Labels of `cell_type/shape_key` detail entries; the cell type is named only when the entries span
+/// several, since a single-type tessellation has nothing to tell apart.
+function typedShapeLabels(entries: string[]): string[] {
+  const typed = entries.map(splitTypedShape);
+  const several = new Set(typed.map((t) => t.cellType)).size > 1;
+  return typed.map(({ cellType, shape }) => {
+    const label = nodeShapeLabel(shape, nodeShapeSiblingsOf(cellType));
+    return several ? `${nodeShapeCellTypeLabel(cellType)} ${label}` : label;
+  });
+}
+
+/// `node_shape_limits`' description: the generic text, then one bullet per violated shape from the
+/// `violations` detail (`cell_type/shape:excess|deficit:count:limit`, `;`-separated).
+function nodeShapeViolationsDescription(d: Record<string, string>): string {
+  const generic = resolveIssue("violated_node_shape_limits").description;
+  if (!d.violations) return generic;
+  // The cell type itself holds a colon (`regular:4`), so the trailing fields are taken from the end.
+  const entries = d.violations.split(";").map((entry) => {
+    const fields = entry.split(":");
+    return [fields.slice(0, -3).join(":"), ...fields.slice(-3)];
+  });
+  const labels = typedShapeLabels(entries.map(([typedShape]) => typedShape));
+  const items = entries.map(([, kind, count, limit], i) => {
+    const args = { shape: labels[i], count, limit };
+    return `• ${kind === "excess" ? m["issue.violated_node_shape_limits.excess_item"](args) : m["issue.violated_node_shape_limits.deficit_item"](args)}`;
+  });
+  return [generic, ...items].join("\n");
+}
+
 /// Per-source-check description override — same rationale as `DETAIL_LABELS`, for the longer
 /// explanatory text shown in the bubble's modal. Most checks are fine sharing their kind's generic
 /// description (`resolveIssue(kind).description`); only a check whose behavior meaningfully
@@ -332,6 +367,7 @@ const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => s
   // `missing_endpoints` entry uses `warning_label`/`warning_description` instead of `label`/
   // `description`.
   missing_endpoints: () => resolveIssue("missing_endpoints").description,
+  node_shape_limits: (d) => nodeShapeViolationsDescription(d),
   teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
   teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
   teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),

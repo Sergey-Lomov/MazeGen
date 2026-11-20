@@ -113,6 +113,98 @@ export interface QcRuleState {
   /** UI-only collapse state for the rule card (GitHub issue #320) — hides checks, strategy panel,
    * and rule-level params when true. Purely cosmetic, has no effect on generation. */
   collapsed: boolean;
+  /** Problems flagged on this rule (GitHub issue #1044); absent means none. A rule with at least one
+   * problem is problematic: highlighted in the UI and left out of the config sent to core
+   * (`buildGenerateConfig`). Set by `qcForTessellation`, cleared by the user's edit of the owning
+   * param (`needs_reconfiguration`) or by removing the owner (`cannot_apply`). */
+  problems?: QcProblem[];
+}
+
+/** `needs_reconfiguration` — the user can fix it by editing the rule's settings;
+ *  `cannot_apply` — the rule can no longer work, the only option is to delete it. */
+export type QcProblemCategory = "needs_reconfiguration" | "cannot_apply";
+
+export type QcProblemCode =
+  | "patterns_dropped"
+  | "patterns_emptied"
+  | "limits_reset"
+  | "irregular_tessellation"
+  | "cell_sides_exceed";
+
+export const QC_PROBLEM_CATEGORY: Record<QcProblemCode, QcProblemCategory> = {
+  patterns_dropped: "needs_reconfiguration",
+  patterns_emptied: "needs_reconfiguration",
+  limits_reset: "needs_reconfiguration",
+  irregular_tessellation: "cannot_apply",
+  cell_sides_exceed: "cannot_apply",
+};
+
+/** One flagged problem. `scope` says which part of the rule owns it: a member check (`localId`),
+ *  the top-level strategy, or a nested strategy. `paramId` is the param whose edit resolves a
+ *  `needs_reconfiguration` problem; a `cannot_apply` problem has none. */
+export interface QcProblem {
+  code: QcProblemCode;
+  scope: "check" | "strategy" | "nested";
+  localId?: number;
+  paramId?: string;
+}
+
+/** A strategy- or nested-scope problem the user can still fix invalidates the whole rule: its
+ *  strategy cannot be sent half-configured. A `cannot_apply` strategy is handled separately — see
+ *  `strategyUnavailable`. */
+export function ruleHasOwnProblem(rule: { problems?: QcProblem[]; disabled?: boolean }): boolean {
+  if (rule.disabled) return false;
+  return (rule.problems ?? []).some((p) => p.scope !== "check" && QC_PROBLEM_CATEGORY[p.code] === "needs_reconfiguration");
+}
+
+/** The tessellation rules out the rule's strategy (`cannot_apply`, GitHub issue #1044): the strategy is
+ *  inert — shown disabled, not sent — while the rule's checks keep running. Replacing or clearing it
+ *  clears the problem. */
+export function strategyUnavailable(rule: { problems?: QcProblem[] }): boolean {
+  return (rule.problems ?? []).some((p) => p.scope === "strategy" && QC_PROBLEM_CATEGORY[p.code] === "cannot_apply");
+}
+
+export function checkHasProblem(rule: { problems?: QcProblem[] }, localId: number): boolean {
+  return (rule.problems ?? []).some((p) => p.scope === "check" && p.localId === localId);
+}
+
+/** Checks of `rule` that reach core: enabled and free of problems (GitHub issue #1044). */
+export function sendableChecks<C extends { localId: number; disabled: boolean }>(rule: { problems?: QcProblem[]; checks: readonly C[] }): C[] {
+  return rule.checks.filter((c) => !c.disabled && !checkHasProblem(rule, c.localId));
+}
+
+/** Whether core receives anything from `rule` (ignoring `ruleDisabled`/stage toggles, which callers own). */
+export function ruleHasSendableChecks(rule: { problems?: QcProblem[]; checks: readonly { localId: number; disabled: boolean }[] }): boolean {
+  return !ruleHasOwnProblem(rule) && sendableChecks(rule).length > 0;
+}
+
+export type ProblemRule = {
+  problems?: QcProblem[];
+  checks: readonly { localId: number; disabled: boolean }[];
+  disabled?: boolean;
+  ruleDisabled?: boolean;
+};
+
+/** Problems the UI shows. A problem whose owner is disabled goes away: a disabled check's own
+ *  problems, and the strategy- and nested-scope problems while the strategy is disabled (`disabled`).
+ *  `ruleDisabled` hides nothing. */
+export function visibleProblems(rule: ProblemRule): QcProblem[] {
+  return (rule.problems ?? []).filter((p) => p.scope === "check"
+    ? !rule.checks.some((c) => c.localId === p.localId && c.disabled)
+    : !rule.disabled);
+}
+
+/** The rule has no checks, or every check is disabled, so it does nothing. Derived, not stored: it
+ *  clears itself when a check is added or enabled. */
+export function hasNoActiveChecks(rule: { checks: readonly { disabled: boolean }[] }): boolean {
+  return rule.checks.every((c) => c.disabled);
+}
+
+/** Whether the rule counts as problematic (card status): it has a visible problem or no active
+ *  checks, and is not `ruleDisabled` (its warnings stay shown, but it is not counted). */
+export function isRuleProblematic(rule: ProblemRule): boolean {
+  if (rule.ruleDisabled) return false;
+  return hasNoActiveChecks(rule) || visibleProblems(rule).length > 0;
 }
 
 /** A named, ordered group of rule ids — see `Specs/repair.md`'s "Stages" section and GitHub

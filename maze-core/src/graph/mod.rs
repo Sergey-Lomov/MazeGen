@@ -5,6 +5,7 @@ pub(crate) mod distance_map;
 pub(crate) mod gf2_basis;
 pub mod graph_analytics;
 pub mod nav;
+pub mod node_shape;
 pub(crate) mod pathfinding;
 pub mod region_class;
 pub mod route_protection;

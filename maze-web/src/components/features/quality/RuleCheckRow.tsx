@@ -44,8 +44,10 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
     onCommit: (paramId, value) => setCheckParam(check.ruleId, check.localId, paramId, value),
   });
 
+  // An unavailable check shows as switched off and cannot be switched on; only removal is left.
+  const inactive = check.disabled || check.unavailable;
   return (
-    <div style={check.disabled ? styles.ruleCheckRowDisabled : undefined}>
+    <div style={inactive ? styles.ruleCheckRowDisabled : undefined}>
       <div
         style={{
           ...styles.ruleCheckRow,
@@ -60,11 +62,11 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
         onMouseLeave={() => onHoverChange(false)}
       >
         <span style={styles.cardLabel}>{check.cardLabel}</span>
-        <Tooltip content={check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}><div
+        <Tooltip content={check.unavailable ? undefined : check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}><div
           style={styles.toggleWrap}
           onClick={(e) => e.stopPropagation()}
         >
-          <Switch checked={!check.disabled} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
+          <Switch checked={!inactive} disabled={check.unavailable} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
         </div></Tooltip>
         <DeleteIconButton
           title={m["quality.remove"]()}
@@ -81,7 +83,7 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
             params={check.params}
             values={values}
             onChange={onChange}
-            disabled={check.disabled}
+            disabled={inactive}
             onSelectParam={(paramId) => { flushRef.current(); onSelectParam({ type: "param", owner: { kind: "check", checkId: check.id }, paramId }); }}
             selectedParamId={selection?.type === "param" && selection.owner.kind === "check" && selection.owner.checkId === check.id ? selection.paramId : null}
           />

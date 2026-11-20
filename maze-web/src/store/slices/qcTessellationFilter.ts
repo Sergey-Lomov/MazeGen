@@ -1,7 +1,10 @@
-import type { MazeState, QcRuleState, CheckInstance, NestedStrategyState } from "../storeTypes";
+import type { MazeState, QcRuleState, CheckInstance, NestedStrategyState, QcProblem, QcProblemCode } from "../storeTypes";
+import { QC_PROBLEM_CATEGORY } from "../storeTypes";
 import type { ParamDescriptor, ParamKind } from "../../wasm/types";
 import type { TessellationConfig } from "../../fieldConfig";
 import { cellTypeKeysOf, shapeKeysOf } from "../../pixi/shapeTemplates";
+import { activeLimitCount, parseNodeShapeLimits } from "../../components/features/nodeShapeLimits";
+import { checkUnavailableReason } from "../../components/features/checkAvailability";
 
 type QcState = Pick<MazeState, "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams">;
 export type QcTessellationResult = Pick<MazeState, "rules">;
@@ -63,14 +66,20 @@ function filterEmptied(filtered: FilteredPatterns | null): boolean {
   return filtered !== null && filtered.before > 0 && filtered.kept.length === 0;
 }
 
-/** Filters one owner's own param map. Returns the same object when nothing changed, `null` when
- *  the owner itself must go (a non-empty `pattern_list` filter lost every pattern). */
+/** Called for every param whose value the tessellation change altered in a way the user should
+ *  review (GitHub issue #1044). */
+type ReportProblem = (code: QcProblemCode, paramId: string) => void;
+
+/** Filters one owner's own param map, reporting each change the user must review. Returns the same
+ *  object when nothing changed. An emptied `pattern_list` filter is kept (as `[]`) and reported:
+ *  the owner stays in the rule, flagged. */
 function filterParams(
   params: Record<string, string>,
   descriptors: readonly ParamDescriptor[],
   shapes: readonly string[],
   cellTypes: () => readonly string[],
-): Record<string, string> | null {
+  report: ReportProblem,
+): Record<string, string> {
   let next = params;
   for (const p of descriptors) {
     const raw = params[p.id];
@@ -78,10 +87,19 @@ function filterParams(
     let value: string | undefined = raw;
     if (p.kind.type === "pattern_list") {
       const filtered = filterPatternList(raw, shapes);
-      if (filterEmptied(filtered)) return null;
       value = filtered?.raw ?? raw;
+      if (filtered && filtered.kept.length < filtered.before) {
+        report(filterEmptied(filtered) ? "patterns_emptied" : "patterns_dropped", p.id);
+      }
     } else if (p.kind.type === "split_generation_config") {
       value = filterSplitConfig(raw, shapes);
+      if (value !== raw) report("patterns_dropped", p.id);
+    } else if (p.kind.type === "node_shape_limits") {
+      // Limits are keyed by the tessellation's cell types and shapes; none carry over.
+      if (activeLimitCount(parseNodeShapeLimits(raw)) > 0) {
+        value = "{}";
+        report("limits_reset", p.id);
+      }
     } else if (p.visibility?.type === "cell_type") {
       value = filterCellTypeParam(raw, p.visibility.key, cellTypes());
     }
@@ -98,12 +116,13 @@ function filterNested(
   state: QcState,
   shapes: readonly string[],
   cellTypes: () => readonly string[],
+  report: ReportProblem,
 ): NestedStrategyState[] {
   let changed = false;
   const next = nested.map((n) => {
     const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
-    const params = filterParams(n.params, descriptor?.params ?? [], shapes, cellTypes) ?? n.params;
-    const children = filterNested(n.nested, state, shapes, cellTypes);
+    const params = filterParams(n.params, descriptor?.params ?? [], shapes, cellTypes, report);
+    const children = filterNested(n.nested, state, shapes, cellTypes, report);
     if (params === n.params && children === n.nested) return n;
     changed = true;
     return { ...n, params, nested: children };
@@ -144,12 +163,27 @@ function reindexWeights(
   return next;
 }
 
-/** Quality control's own reaction to a tessellation kind change (GitHub issue #758). A split pattern
- *  belongs to a shape template, so every pattern list stored in QC config (check params, rule-level
- *  params, nested and top-level strategy params) keeps only the patterns whose template
- *  `tessellation` (the config being switched to) provides. A check whose non-empty pattern filter
- *  (its own, or the rule-level one it consumes) loses every pattern is removed instead of being
- *  left with an empty list, since an empty filter means "any split tile". Strategy weights indexed against a rule-level pattern list are re-indexed to match.
+const problemKey = (p: QcProblem) => `${p.code}|${p.scope}|${p.localId ?? ""}|${p.paramId ?? ""}`;
+
+function sameProblems(a: readonly QcProblem[], b: readonly QcProblem[]): boolean {
+  if (a.length !== b.length) return false;
+  const keys = new Set(a.map(problemKey));
+  return b.every((p) => keys.has(problemKey(p)));
+}
+
+/** Quality control's own reaction to a tessellation change (GitHub issues #758, #1008, #1044). A split
+ *  pattern belongs to a shape template, so every pattern list stored in QC config (check params,
+ *  rule-level params, nested and top-level strategy params) keeps only the patterns whose template
+ *  `tessellation` (the config being switched to) provides. Strategy weights indexed against a
+ *  rule-level pattern list are re-indexed to match. Node-shape limits are keyed by the
+ *  tessellation's cell types, so they reset to none.
+ *
+ *  Nothing is deleted: whatever the change altered is flagged as a `QcProblem` on the rule instead.
+ *  Dropped patterns, an emptied pattern filter (an empty list means "any split tile", so it must not
+ *  be used silently) and reset limits are `needs_reconfiguration`; a check the new tessellation makes
+ *  unavailable (`CheckDescriptor.requires`, e.g. node-shape limits on irregular cells) is
+ *  `cannot_apply`. Availability problems are re-evaluated on every call, so they clear once a later
+ *  tessellation supports the check again.
  *  Returns the input `rules` reference unchanged when nothing is affected, so
  *  callers can detect data loss by identity. */
 export function qcForTessellation(state: QcState, tessellation: TessellationConfig): QcTessellationResult {
@@ -164,43 +198,79 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
     const strategyDescriptor = rule.strategyId
       ? state.availableStrategies.find((s) => s.id === rule.strategyId)
       : undefined;
-    strategyParams = filterParams(strategyParams, strategyDescriptor?.params ?? [], shapes, cellTypes) ?? strategyParams;
-    const ruleFilteredCheckIds = new Set<string>();
+    const found: QcProblem[] = [];
+    // A check the tessellation rules out cannot work, so reconfiguring it is pointless: it carries
+    // its availability problem only, no param problems.
+    const unavailable = new Map<number, QcProblemCode>();
+    for (const check of rule.checks) {
+      const descriptor = state.availableChecks.find((c) => c.id === check.typeId);
+      const reason = descriptor ? checkUnavailableReason(descriptor, tessellation) : null;
+      if (reason) unavailable.set(check.localId, reason.type);
+    }
+    // Same rule as for checks: a strategy the tessellation rules out carries its availability problem only.
+    const strategyReason = strategyDescriptor ? checkUnavailableReason(strategyDescriptor, tessellation) : null;
+    const reportStrategy: ReportProblem = (code, paramId) => found.push({ code, scope: "strategy", paramId });
+    const reportNested: ReportProblem = (code, paramId) => found.push({ code, scope: "nested", paramId });
+    if (strategyReason) found.push({ code: strategyReason.type, scope: "strategy" });
+    else strategyParams = filterParams(strategyParams, strategyDescriptor?.params ?? [], shapes, cellTypes, reportStrategy);
     for (const p of state.availableRuleParams) {
       if (p.kind.type !== "pattern_list") continue;
       const filtered = filterPatternList(rule.params[p.id], shapes);
       if (!filtered || filtered.kept.length === filtered.before) continue;
       if (ruleParams === rule.params) ruleParams = { ...rule.params };
       ruleParams[p.id] = filtered.raw;
-      if (filterEmptied(filtered)) p.applies_to.forEach((id) => ruleFilteredCheckIds.add(id));
-      if (rule.strategyId && p.applies_to.includes(rule.strategyId)) {
+      const code: QcProblemCode = filterEmptied(filtered) ? "patterns_emptied" : "patterns_dropped";
+      for (const check of rule.checks) {
+        if (p.applies_to.includes(check.typeId) && !unavailable.has(check.localId)) found.push({ code, scope: "check", localId: check.localId, paramId: p.id });
+      }
+      if (rule.strategyId && !strategyReason && p.applies_to.includes(rule.strategyId)) {
         if (strategyDescriptor) {
           strategyParams = reindexWeights(strategyParams, strategyDescriptor.params, filtered.kept);
         }
+        found.push({ code, scope: "strategy", paramId: p.id });
       }
     }
 
     let checksChanged = false;
     const checks: CheckInstance[] = [];
     for (const check of rule.checks) {
-      if (ruleFilteredCheckIds.has(check.typeId)) {
-        checksChanged = true;
-        continue;
-      }
       const descriptor = state.availableChecks.find((c) => c.id === check.typeId);
-      const params = filterParams(check.params, descriptor?.params ?? [], shapes, cellTypes);
-      if (params === null) {
-        checksChanged = true;
+      const unavailableCode = unavailable.get(check.localId);
+      if (unavailableCode) {
+        // Kept as configured: it cannot run, so its params are not worth migrating.
+        found.push({ code: unavailableCode, scope: "check", localId: check.localId });
+        checks.push(check);
         continue;
       }
+      const report: ReportProblem = (code, paramId) => found.push({ code, scope: "check", localId: check.localId, paramId });
+      const params = filterParams(check.params, descriptor?.params ?? [], shapes, cellTypes, report);
       if (params !== check.params) checksChanged = true;
       checks.push(params === check.params ? check : { ...check, params });
     }
 
-    const nestedStrategies = filterNested(rule.nestedStrategies, state, shapes, cellTypes);
-    if (ruleParams === rule.params && strategyParams === rule.strategyParams && !checksChanged && nestedStrategies === rule.nestedStrategies) return rule;
+    // Nested strategies belong to the inert strategy, so they are left alone too.
+    const nestedStrategies = strategyReason ? rule.nestedStrategies : filterNested(rule.nestedStrategies, state, shapes, cellTypes, reportNested);
+
+    const before = rule.problems ?? [];
+    const merged = before.filter((p) => QC_PROBLEM_CATEGORY[p.code] !== "cannot_apply"
+      && !(p.scope === "check" && p.localId !== undefined && unavailable.has(p.localId))
+      && !(p.scope !== "check" && strategyReason));
+    for (const p of found) {
+      if (!merged.some((q) => problemKey(q) === problemKey(p))) merged.push(p);
+    }
+    const problemsChanged = !sameProblems(before, merged);
+
+    if (ruleParams === rule.params && strategyParams === rule.strategyParams && !checksChanged && nestedStrategies === rule.nestedStrategies && !problemsChanged) return rule;
     rulesChanged = true;
-    return { ...rule, params: ruleParams, strategyParams, checks: checksChanged ? checks : rule.checks, nestedStrategies };
+    const { problems: _before, ...rest } = rule;
+    return {
+      ...rest,
+      params: ruleParams,
+      strategyParams,
+      checks: checksChanged ? checks : rule.checks,
+      nestedStrategies,
+      ...(merged.length > 0 ? { problems: problemsChanged ? merged : before } : {}),
+    };
   });
 
   return { rules: rulesChanged ? rules : state.rules };

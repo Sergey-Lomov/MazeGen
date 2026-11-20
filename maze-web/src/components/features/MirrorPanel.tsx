@@ -1,6 +1,8 @@
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { mirrorStatus } from "../../pixi/mirror";
+import { zoneEditActive } from "../../pixi/fieldEditTarget";
+import type { FieldOperation } from "../../store/mazeStore";
 import { fieldOpErrorMessage } from "../../pixi/fieldOpErrorMessage";
 import { Button } from "../Button";
 import { SidePanel } from "../SidePanel";
@@ -26,6 +28,10 @@ export function MirrorPanel() {
   const resetMirrorAxis = useMazeStore((s) => s.resetMirrorAxis);
   const applyMirror = useMazeStore((s) => s.applyMirror);
   const fieldOpError = useMazeStore((s) => s.fieldOpError);
+  // Add / remove is picked here only for a zone; the field editor picks it in its own Modes section.
+  const zoneEditing = useMazeStore((s) => zoneEditActive(s));
+  const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
+  const setFieldOperation = useMazeStore((s) => s.setFieldOperation);
 
   const status = mirrorStatus({
     axisPoints: mirrorAxisPoints,
@@ -51,6 +57,23 @@ export function MirrorPanel() {
   return (
     <SidePanel title={m["field.mirror.tool"]()} stackKey="mirror" onClose={closePanel}>
       <Stack gap="groupGap" style={styles.body}>
+        {zoneEditing && (
+          <Stack gap="itemGap">
+            <div style={styles.sectionLabel}>{m["field.modes"]()}</div>
+            <Inline gap="itemGap" style={styles.nestedContent}>
+              {(["add", "remove"] as FieldOperation[]).map((operation) => (
+                <Button
+                  key={operation}
+                  variant={fieldOperation === operation ? "toggle-selected" : "toggle"}
+                  layoutStyle={{ flex: 1 }}
+                  onClick={() => setFieldOperation(operation)}
+                >
+                  {m[operation === "add" ? "field.mode.add" : "field.mode.remove"]()}
+                </Button>
+              ))}
+            </Inline>
+          </Stack>
+        )}
         <Stack gap="itemGap">
           <div style={styles.sectionLabel}>{m["field.mirror.snap"]()}</div>
           <Inline gap="itemGap" style={styles.nestedContent}>

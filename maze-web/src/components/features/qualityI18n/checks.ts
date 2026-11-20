@@ -166,6 +166,10 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     label: m["check.max_dead_end_count.label"] as MessageFn,
     description: m["check.max_dead_end_count.description"] as MessageFn,
   },
+  node_shape_limits: {
+    label: m["check.node_shape_limits.label"] as MessageFn,
+    description: m["check.node_shape_limits.description"] as MessageFn,
+  },
   max_dead_end_density: {
     label: m["check.max_dead_end_density.label"] as MessageFn,
     description: m["check.max_dead_end_density.description"] as MessageFn,

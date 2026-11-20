@@ -9,6 +9,7 @@ import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
+  getTessellationTraits: vi.fn((config: { kind: string }) => ({ irregular: config.kind === "voronoi", maxCellSides: config.kind === "truncated_trihexagonal" ? 12 : 6 })),
   getTessellationCellTypes: vi.fn(() => ({ keys: ["square", "octagon"] })) }));
 
 const HEX = tessellationConfigOf("hex");
@@ -54,13 +55,26 @@ describe("qcForTessellation", () => {
     expect(JSON.parse(result.rules[0].checks[0].params.patterns)).toEqual([hex]);
   });
 
-  it("removes a check whose non-empty pattern filter loses every pattern", () => {
+  it("keeps a check whose non-empty pattern filter loses every pattern and flags it", () => {
     const state = qcState([rule("r", { checks: [
       { localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square]) }, disabled: false },
       { localId: 1, typeId: "split_pattern_shape", params: { patterns: "[]" }, disabled: false },
     ] })]);
     const result = qcForTessellation(state, HEX);
-    expect(result.rules[0].checks.map((c) => c.localId)).toEqual([1]);
+    expect(result.rules[0].checks.map((c) => c.localId)).toEqual([0, 1]);
+    expect(result.rules[0].checks[0].params.patterns).toBe("[]");
+    expect(result.rules[0].problems).toEqual([{ code: "patterns_emptied", scope: "check", localId: 0, paramId: "patterns" }]);
+  });
+
+  it("flags a partial pattern drop as needing reconfiguration", () => {
+    const state = qcState([rule("r", { checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square, hex]) }, disabled: false }] })]);
+    expect(qcForTessellation(state, HEX).rules[0].problems).toEqual([{ code: "patterns_dropped", scope: "check", localId: 0, paramId: "patterns" }]);
+  });
+
+  it("is idempotent: a second pass over flagged rules returns the same references", () => {
+    const state = qcState([rule("r", { checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square]) }, disabled: false }] })]);
+    const once = qcForTessellation(state, HEX);
+    expect(qcForTessellation({ ...state, rules: once.rules }, HEX).rules).toBe(once.rules);
   });
 
   it("filters rule-level patterns and re-indexes the rule strategy's weights", () => {
@@ -88,7 +102,7 @@ describe("qcForTessellation", () => {
     expect(result.rules.map((r) => r.strategyParams.split_config)).toEqual(["[2,3]", "[5,6]"]);
   });
 
-  it("drops rule-filtered checks and resets weights when every rule-level pattern is lost", () => {
+  it("flags rule-filtered checks and resets weights when every rule-level pattern is lost", () => {
     const state = qcState(
       [rule("r", {
         strategyId: "add_split",
@@ -98,7 +112,11 @@ describe("qcForTessellation", () => {
     );
     const result = qcForTessellation(state, HEX);
     expect(result.rules[0].params.split_patterns).toBe("[]");
-    expect(result.rules[0].checks).toEqual([]);
+    expect(result.rules[0].checks).toHaveLength(1);
+    expect(result.rules[0].problems).toEqual(expect.arrayContaining([
+      { code: "patterns_emptied", scope: "check", localId: 0, paramId: "split_patterns" },
+      { code: "patterns_emptied", scope: "strategy", paramId: "split_patterns" },
+    ]));
     expect(result.rules[0].strategyParams.split_config).toBe("2");
   });
 
@@ -110,6 +128,112 @@ describe("qcForTessellation", () => {
     const result = qcForTessellation(state, HEX);
     expect(JSON.parse(result.rules[0].strategyParams.split_config).patterns).toEqual([hex]);
     expect(JSON.parse(result.rules[0].nestedStrategies[0].params.split_config).patterns).toEqual([hex]);
+    expect(result.rules[0].problems).toEqual(expect.arrayContaining([
+      { code: "patterns_dropped", scope: "strategy", paramId: "split_config" },
+      { code: "patterns_dropped", scope: "nested", paramId: "split_config" },
+    ]));
+  });
+});
+
+describe("qcForTessellation node shape limits", () => {
+  const limitsCheck: CheckDescriptor = {
+    id: "node_shape_limits", label: "", description: "", issue_kinds: ["violated_node_shape_limits"],
+    params: [{ id: "limits", label: "", kind: { type: "node_shape_limits" } }],
+  };
+  const state = (limits: string) => ({
+    ...qcState([rule("r", { checks: [{ localId: 0, typeId: "node_shape_limits", params: { limits }, disabled: false }] })]),
+    availableChecks: [limitsCheck],
+  });
+
+  it("resets configured limits to none", () => {
+    const result = qcForTessellation(state('{"regular:4":{"turn_90":{"min":1,"max":null}}}'), HEX);
+    expect(result.rules[0].checks[0].params.limits).toBe("{}");
+    expect(result.rules[0].problems).toEqual([{ code: "limits_reset", scope: "check", localId: 0, paramId: "limits" }]);
+  });
+
+  it("keeps the same references when no limit is configured", () => {
+    const empty = state("{}");
+    expect(qcForTessellation(empty, HEX).rules).toBe(empty.rules);
+  });
+});
+
+describe("qcForTessellation check availability", () => {
+  const restricted: CheckDescriptor = {
+    id: "node_shape_limits", label: "", description: "", issue_kinds: ["violated_node_shape_limits"], params: [],
+    requires: [{ type: "regular_cells" }, { type: "max_cell_sides", max: 8 }],
+  };
+  const free = checks[1];
+  const state = () => ({
+    ...qcState([rule("r", { checks: [
+      { localId: 0, typeId: "node_shape_limits", params: {}, disabled: false },
+      { localId: 1, typeId: free.id, params: {}, disabled: false },
+    ] })]),
+    availableChecks: [restricted, free],
+  });
+
+  it("keeps the check on a tessellation that meets its requirements", () => {
+    const kept = state();
+    expect(qcForTessellation(kept, HEX).rules).toBe(kept.rules);
+  });
+
+  it("keeps the check an irregular tessellation rules out and flags it as not applicable", () => {
+    const result = qcForTessellation(state(), { kind: "voronoi", params: {} });
+    expect(result.rules[0].checks.map((c) => c.typeId)).toEqual(["node_shape_limits", free.id]);
+    expect(result.rules[0].problems).toEqual([{ code: "irregular_tessellation", scope: "check", localId: 0 }]);
+  });
+
+  it("flags the check when a cell has too many sides", () => {
+    const result = qcForTessellation(state(), tessellationConfigOf("truncated_trihexagonal"));
+    expect(result.rules[0].problems).toEqual([{ code: "cell_sides_exceed", scope: "check", localId: 0 }]);
+  });
+
+  it("gives an unavailable check its availability problem only, even when a rule-level pattern list lost patterns", () => {
+    const patternCheck: CheckDescriptor = { ...restricted, id: "split_count", issue_kinds: ["missing_split_tiles"], requires: [{ type: "regular_cells" }] };
+    const base = qcState([rule("r", {
+      params: { split_patterns: JSON.stringify([square, hex]) },
+      checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }, { localId: 1, typeId: "split_count", params: {}, disabled: false }],
+    })]);
+    const hexState = { ...base, availableChecks: [{ ...patternCheck, requires: [] }] };
+    const flagged = qcForTessellation(hexState, HEX);
+    expect(flagged.rules[0].problems).toHaveLength(2);
+    const voronoi = qcForTessellation({ ...base, rules: flagged.rules, availableChecks: [patternCheck] }, { kind: "voronoi", params: {} });
+    expect(voronoi.rules[0].problems).toEqual([
+      { code: "irregular_tessellation", scope: "check", localId: 0 },
+      { code: "irregular_tessellation", scope: "check", localId: 1 },
+    ]);
+  });
+
+  it("flags a rule's strategy the tessellation rules out and keeps its params untouched", () => {
+    const strategy: StrategyDescriptor = { ...strategies[0], requires: [{ type: "regular_cells" }] };
+    const base = {
+      ...qcState([rule("r", { strategyId: "add_split", strategyParams: { split_config: "[0.5]" }, params: { split_patterns: JSON.stringify([square, hex]) } })]),
+      availableStrategies: [strategy],
+    };
+    const result = qcForTessellation(base, { kind: "voronoi", params: {} });
+    expect(result.rules[0].problems).toEqual([{ code: "irregular_tessellation", scope: "strategy" }]);
+    expect(result.rules[0].strategyParams.split_config).toBe("[0.5]");
+    expect(qcForTessellation({ ...base, rules: result.rules }, { kind: "voronoi", params: {} }).rules).toBe(result.rules);
+  });
+
+  it("leaves nested strategies of an unavailable strategy untouched and unflagged", () => {
+    const strategy: StrategyDescriptor = { ...strategies[1], requires: [{ type: "regular_cells" }] };
+    const config = JSON.stringify({ pattern_mode: true, max_split_nodes: 2, patterns: [square, hex] });
+    const base = {
+      ...qcState([rule("r", {
+        strategyId: "missing_loops_split",
+        nestedStrategies: [{ slotId: "s", strategyId: "missing_loops_split", params: { split_config: config }, nested: [] }],
+      })]),
+      availableStrategies: [strategy],
+    };
+    const result = qcForTessellation(base, { kind: "voronoi", params: {} });
+    expect(result.rules[0].problems).toEqual([{ code: "irregular_tessellation", scope: "strategy" }]);
+    expect(result.rules[0].nestedStrategies).toBe(base.rules[0].nestedStrategies);
+  });
+
+  it("clears the availability problem once a later tessellation supports the check again", () => {
+    const flagged = qcForTessellation(state(), { kind: "voronoi", params: {} });
+    const back = qcForTessellation({ ...state(), rules: flagged.rules }, HEX);
+    expect(back.rules[0].problems).toBeUndefined();
   });
 });
 

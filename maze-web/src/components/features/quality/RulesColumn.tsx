@@ -28,10 +28,12 @@ import { Button } from "../../Button";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
+import { WarningBubble } from "../../WarningBubble";
 import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isEntityVisible, useVisibilityContext } from "../ParamFields";
+import { useCheckAvailability } from "../useCheckAvailability";
 
 // Height of the bottom "new stage" drop zone strip (the top one is `EDGE_ZONE_PX` high, see `useQualityDnd`).
 const BOTTOM_ZONE_PX = 36;
@@ -106,6 +108,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const visibility = useVisibilityContext();
+  const unavailableOf = useCheckAvailability();
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
@@ -142,7 +145,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
     const strategySelected = (selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === slot.ruleId;
     const isRenaming = renamingRuleId === slot.ruleId;
     return (
-    <div style={{ ...styles.ruleCard, ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
+    <div style={{ ...styles.ruleCard, ...(slot.problems ? styles.ruleCardProblem : {}), ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
       <div style={styles.ruleCardTitle}>
         {ruleHandle}
         <CollapseButton
@@ -182,6 +185,17 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           <DeleteIconButton title={m["quality.remove_rule"]()} onClick={() => setRemoveConfirmRuleId(slot.ruleId)} />
         </div>
       </div>
+      {slot.problems && (
+        <div style={styles.ruleProblems}>
+          {slot.problems.map((problem, i) => (
+            <WarningBubble
+              key={i}
+              message={problem.checkLabel ? `${problem.checkLabel}: ${problem.text}` : problem.text}
+              severity="warning"
+            />
+          ))}
+        </div>
+      )}
       {!slot.collapsed && (
       <>
       <RuleParamsSection slot={slot} selection={selection} onSelectParam={onSelect} />
@@ -269,6 +283,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         label: resolveCheckLabel(c.id, c.label),
         description: resolveCheckDescription(c.id, c.description),
         params: c.params,
+        unavailable: unavailableOf(c),
       }));
   }
 

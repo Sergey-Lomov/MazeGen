@@ -46,7 +46,21 @@ export interface CheckDescriptor {
   params: ParamDescriptor[];
   /** `undefined` means always offered — see `EntityVisibility`. */
   visibility?: EntityVisibility;
+  /** What the tessellation must be like for the check to be offered — see `TessellationRequirement`.
+   *  `undefined` means always available. */
+  requires?: TessellationRequirement[];
 }
+
+/** Availability tag (GitHub issue #1008), next to `EntityVisibility` with a different effect: a
+ *  check whose requirement fails stays in the selection dialogs, disabled, with a tooltip naming
+ *  the reason, instead of being hidden; a rule already built on it is dropped when a tessellation
+ *  change makes it unavailable (`qcForTessellation`). Matched against `TessellationTraits` by
+ *  `unavailableReason`; the first failing requirement is the reason shown. */
+export type TessellationRequirement =
+  /** Not available on a tessellation whose cells vary in size (`TessellationTraits.irregular`). */
+  | { type: "regular_cells" }
+  /** Not available when a cell has more than `max` sides (`TessellationTraits.maxCellSides`). */
+  | { type: "max_cell_sides"; max: number };
 
 export type ParamKind =
   | { type: "float"; default: number; min: number; max: number }
@@ -76,7 +90,12 @@ export type ParamKind =
    *  or a locked pattern-list editor for `pattern_weights` (value round-trips as a JSON `number[]`,
    *  indexed against `split_patterns`) when non-empty — see `maze-runner`'s
    *  `parse_add_split_config_param` and `RuleStrategyPanel`'s own switch. */
-  | { type: "add_split_config"; max_split_nodes_default: number };
+  | { type: "add_split_config"; max_split_nodes_default: number }
+  /** Per-shape node-count limits of `node_shape_limits` (GitHub issue #1008) — value round-trips as
+   *  a JSON object keyed by cell type (`regular:4`), then by `NodeShape::key()`, with `{min, max}`
+   *  entries (`null` = unbounded; see
+   *  `maze-runner`'s `parse_node_shape_limits_param`). Rendered by `NodeShapeLimitsEditor`. */
+  | { type: "node_shape_limits" };
 
 /** Conditional-visibility tag (GitHub issue #349) — shared by `ParamDescriptor`, `CheckDescriptor`
  *  and `StrategyDescriptor`. On a param, the UI hides that param's whole row (label + control)
@@ -149,6 +168,11 @@ export interface StrategyDescriptor {
   nested_suppressed_params?: string[];
   /** `undefined` means always offered — see `EntityVisibility`. */
   visibility?: EntityVisibility;
+  /** What the tessellation must be like for the strategy to work, same tags and meaning as
+   * `CheckDescriptor.requires` (GitHub issue #1044). A rule holding a strategy the tessellation
+   * rules out keeps it flagged `cannot_apply`: inert, replaceable. Not emitted by wasm yet —
+   * `undefined` means always available. */
+  requires?: TessellationRequirement[];
 }
 
 export interface StrategyConfig {

@@ -9,6 +9,11 @@ import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
 import { SplitPatternListEditor } from "../dialogs/SplitPatternListEditor";
+import { NodeShapeLimitsDialog } from "../dialogs/NodeShapeLimitsDialog";
+import { activeLimitCount, parseNodeShapeLimits } from "./nodeShapeLimits";
+import type { CellTypeShapes } from "../../wasm/mazeService";
+import { nodeShapesOf } from "./nodeShapeVocabulary";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
 import { useMazeStore } from "../../store/mazeStore";
 import { cellTypeKeysOf } from "../../pixi/shapeTemplates";
@@ -147,6 +152,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
   const [openSplitConfigParam, setOpenSplitConfigParam] = useState<string | null>(null);
+  const [openShapeLimitsParam, setOpenShapeLimitsParam] = useState<string | null>(null);
+  const tessellation = useMazeStore((s) => activeFloorTessellationOf(s).tessellation);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -253,6 +260,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
         const fieldId = `${instanceId}-${p.id}`;
         const labelTargetId = p.kind.type === "interval" ? `${fieldId}-min` : fieldId;
         const hasLabelTarget = p.kind.type !== "pattern_list"
+          && p.kind.type !== "node_shape_limits"
           && p.kind.type !== "split_generation_config"
           && !(p.kind.type === "add_split_config" && Boolean(addSplitPatternsOverride?.length));
         return (
@@ -435,6 +443,16 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   {m["quality.pattern_list_edit"]()} ({getPatterns(p).length})
                 </Button>
               )}
+              {p.kind.type === "node_shape_limits" && (
+                <Button
+                  variant="secondary"
+                  layoutStyle={styles.paramButton}
+                  disabled={isDisabled(p)}
+                  onClick={(e) => { e.stopPropagation(); setOpenShapeLimitsParam(p.id); }}
+                >
+                  {m["quality.node_shape_limits_edit"]()} ({activeLimitCount(parseNodeShapeLimits(get(p)))})
+                </Button>
+              )}
               {p.kind.type === "split_generation_config" && (
                 <Button
                   variant="secondary"
@@ -511,6 +529,25 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               onChange={(next) => onChange(p.id, JSON.stringify(next))}
             />
           </Modal>
+        );
+      })()}
+      {openShapeLimitsParam !== null && (() => {
+        const p = params.find((param) => param.id === openShapeLimitsParam);
+        if (!p || p.kind.type !== "node_shape_limits") return null;
+        let cellTypes: CellTypeShapes[] = [];
+        try {
+          cellTypes = nodeShapesOf(tessellation);
+        } catch (error) {
+          console.error("Node shapes unavailable", error);
+        }
+        return (
+          <NodeShapeLimitsDialog
+            title={p.label}
+            value={get(p)}
+            cellTypes={cellTypes}
+            onConfirm={(next) => { onChange(p.id, next); setOpenShapeLimitsParam(null); }}
+            onClose={() => setOpenShapeLimitsParam(null)}
+          />
         );
       })()}
       {openSplitConfigParam !== null && (() => {
@@ -650,6 +687,7 @@ export function defaultParamValue(p: ParamDescriptor): string {
   if (k.type === "bool") return k.default ? "true" : "false";
   if (k.type === "interval") return `${k.default_min},${k.default_max}`;
   if (k.type === "pattern_list") return "[]";
+  if (k.type === "node_shape_limits") return "{}";
   if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
   if (k.type === "add_split_config") return String(k.max_split_nodes_default);
   return String(k.default);

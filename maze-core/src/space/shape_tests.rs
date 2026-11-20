@@ -782,3 +782,53 @@ fn cell_type_key_of_names_the_type_of_cell_type_of() {
         Some(SquareOctagonTessellation.cell_type_of(cell))
     );
 }
+
+/// A tessellation hands out sample cells exactly when its cells are congruent per type: every
+/// type then has a valid sample of its own, and a tessellation that varies in size has none.
+fn assert_samples_match_cell_types<T: Tessellation>(tessellation: &T) {
+    let samples = tessellation.sample_cells();
+    if tessellation.cells_vary_in_size() {
+        assert!(
+            samples.is_empty(),
+            "a varying tessellation has no sample cells"
+        );
+        return;
+    }
+    for (index, cell_type) in tessellation.cell_types().iter().enumerate() {
+        let id = crate::space::CellTypeId::new(index);
+        let sample = tessellation
+            .sample_cell(id)
+            .unwrap_or_else(|| panic!("no sample cell of type {}", cell_type.key()));
+        assert!(tessellation.is_valid_cell(sample));
+        assert_eq!(tessellation.cell_type_of(sample), id);
+    }
+    assert!(samples.iter().all(|&cell| tessellation.is_valid_cell(cell)));
+}
+
+#[test]
+fn sample_cells_cover_every_cell_type_of_every_tessellation() {
+    assert_samples_match_cell_types(&SquareTessellation);
+    assert_samples_match_cell_types(&HexTessellation);
+    assert_samples_match_cell_types(&TriTessellation);
+    assert_samples_match_cell_types(&CairoTessellation);
+    assert_samples_match_cell_types(&SquareOctagonTessellation);
+    assert_samples_match_cell_types(&BrickTessellation);
+    assert_samples_match_cell_types(&TrihexagonalTessellation);
+    assert_samples_match_cell_types(&SnubHexagonalTessellation);
+    assert_samples_match_cell_types(&RhombitrihexagonalTessellation);
+    assert_samples_match_cell_types(&TruncatedHexagonalTessellation);
+    assert_samples_match_cell_types(&TruncatedTrihexagonalTessellation);
+    assert_samples_match_cell_types(&SnubSquareTessellation);
+    assert_samples_match_cell_types(&ElongatedTriangularTessellation);
+    assert_samples_match_cell_types(&CurvedQuadrilateralTessellation);
+    for (tessellation, _) in radial_cases() {
+        assert_samples_match_cell_types(&tessellation);
+    }
+    let voronoi = crate::space::VoronoiTessellation::new(crate::space::VoronoiParams {
+        jitter: 0.15,
+        seed: 3,
+        max_cells: 100,
+    })
+    .unwrap();
+    assert_samples_match_cell_types(&voronoi);
+}

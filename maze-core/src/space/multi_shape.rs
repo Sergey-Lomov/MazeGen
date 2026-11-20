@@ -54,6 +54,14 @@ pub struct AnchoredPoint<K> {
     pub kind: K,
 }
 
+/// One sample cell per kind of an anchor-lattice tiling: every kind anchored at the origin.
+pub(super) fn anchor_samples<K: CellKind>() -> Vec<AnchoredPoint<K>> {
+    K::all()
+        .iter()
+        .map(|&kind| AnchoredPoint::new(0, 0, kind))
+        .collect()
+}
+
 impl<K: CellKind> AnchoredPoint<K> {
     pub const fn new(q: i32, r: i32, kind: K) -> Self {
         Self { q, r, kind }

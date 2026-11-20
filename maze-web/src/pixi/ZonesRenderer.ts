@@ -9,14 +9,22 @@ import { filterZonesToField } from "./fieldValidity";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import type { Zone } from "../wasm/mazeService";
 import type { FieldConfig } from "../fieldConfig";
-import { buildZoneHoverRegion, buildZoneRegions } from "./selectors/zoneSelectors";
+import { buildZoneHoverRegion, buildZoneRegions, hidesOtherZones } from "./selectors/zoneSelectors";
 import { COMPONENT_MASK_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
+import { brightColor } from "../store/colorMath";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
 const activeFloorIndex = (state: MazeState) => Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+
+/** Border widths of the zone regions, and the gap kept between the borders of two regions meeting at a cell side.
+ *  The stroke is centred on the contour, so a region is inset by half the gap plus half its border width. */
+const ZONE_BORDER_WIDTH = 2;
+const HOVER_BORDER_WIDTH = 3;
+const ZONE_REGION_GAP = 2;
+const regionInset = (borderWidth: number) => ZONE_REGION_GAP / 2 + borderWidth / 2;
 
 /** Fill of the hovered zone: fully opaque, so it reads over the other zones. */
 const HOVER_FILL_ALPHA = 1;
@@ -26,15 +34,15 @@ const HOVER_FILL_ALPHA = 1;
 export class ZonesRenderer extends BaseFieldRenderer {
   private readonly root: Container;
   private readonly gridContainer: Container;
+  private readonly fieldGridContainer: Container;
   private readonly floorContainer: Container;
-  private readonly undecidedWallsContainer: Container;
   private readonly wallsContainer: Container;
   private readonly zonesContainer: Container;
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly fieldGrid: GridRenderer;
   private readonly floor: CellFillRenderer;
-  private readonly undecidedWalls: WallRenderer;
   private readonly walls: WallRenderer;
   private readonly zones: RegionHighlightRenderer;
   private readonly hoverZone: RegionHighlightRenderer;
@@ -44,22 +52,23 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.root = container;
 
     this.gridContainer = new Container();
+    this.fieldGridContainer = new Container();
     this.floorContainer = new Container();
-    this.undecidedWallsContainer = new Container();
     this.wallsContainer = new Container();
     this.zonesContainer = new Container();
     this.hoverContainer = new Container();
 
-    this.root.addChild(this.gridContainer);
+    // The grid is drawn over the floor fill, so it runs through the field as thin lines, as it does outside.
     this.root.addChild(this.floorContainer);
-    this.root.addChild(this.undecidedWallsContainer);
+    this.root.addChild(this.gridContainer);
+    this.root.addChild(this.fieldGridContainer);
     this.root.addChild(this.wallsContainer);
     this.root.addChild(this.zonesContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "zones");
+    this.fieldGrid = new GridRenderer(this.fieldGridContainer, "zones field");
     this.floor = new CellFillRenderer(this.floorContainer);
-    this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
     this.zones = new RegionHighlightRenderer(this.zonesContainer);
     this.hoverZone = new RegionHighlightRenderer(this.hoverContainer);
@@ -99,10 +108,14 @@ export class ZonesRenderer extends BaseFieldRenderer {
       state.zones !== prev.zones ||
       state.showAutoZones !== prev.showAutoZones ||
       state.showManualZones !== prev.showManualZones ||
-      state.hiddenZoneIds !== prev.hiddenZoneIds
+      state.hiddenZoneIds !== prev.hiddenZoneIds ||
+      state.zoneColorOverrides !== prev.zoneColorOverrides ||
+      state.showOtherZones !== prev.showOtherZones ||
+      // Entering or leaving the editor hides or restores the other zones while "show other zones" is off.
+      (hidesOtherZones(state) !== hidesOtherZones(prev))
     ) {
       this.redrawAll(state);
-    } else if (state.hoveredZoneId !== prev.hoveredZoneId) {
+    } else if (state.hoveredZoneId !== prev.hoveredZoneId || state.zoneEditId !== prev.zoneEditId) {
       // A list hover moves often: only its own layer is redrawn.
       this.redrawHover(state);
     }
@@ -112,25 +125,30 @@ export class ZonesRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.grid.render({ viewport: this.viewport }, cfg);
+    // The grid inside the field is more visible than the one around it.
+    this.fieldGrid.render({ viewport: this.viewport, color: canvas.wall.undecided }, cfg, this.cachedCells);
     this.floor.render({ cells: this.cachedCells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    // No connections: the faint inner walls are the cell grid, the solid ones the outer walls.
-    const { undecided, preset: outerWalls } = buildPresetWallGroups(this.cachedCells, new Map(), cfg);
-    this.undecidedWalls.render({ edges: undecided }, cfg);
+    // No connections: the preset walls are the field's outer walls; the inner cell grid is the grid layer.
+    const { preset: outerWalls } = buildPresetWallGroups(this.cachedCells, new Map(), cfg);
     this.walls.render({ edges: outerWalls }, cfg);
 
     const fieldZones = filterZonesToField(state.zones, resolveFieldAtOf(state));
-    const { nodes, groups } = buildZoneRegions(fieldZones, activeFloorIndex(state), state.showAutoZones, state.showManualZones, state.hiddenZoneIds);
+    // While a zone is edited, "show other zones" off leaves only that zone (drawn by the hover layer).
+    const { nodes, groups } = hidesOtherZones(state)
+      ? { nodes: [], groups: [] }
+      : buildZoneRegions(fieldZones, activeFloorIndex(state), state.showAutoZones, state.showManualZones, state.hiddenZoneIds, state.zoneColorOverrides);
     this.zones.render({
       nodes,
       regionGroups: [],
-      groups: groups.map((group) => ({ ...group, fillAlpha: COMPONENT_MASK_ALPHA })),
+      groups: groups.map((group) => ({ ...group, fillAlpha: COMPONENT_MASK_ALPHA, borderColor: brightColor(group.color) })),
       color: 0,
       width: 0,
       alpha: 0,
       cfg,
       skipPerimeter: true,
-      borderWidth: 2,
+      borderWidth: ZONE_BORDER_WIDTH,
+      inset: regionInset(ZONE_BORDER_WIDTH),
     });
     this.drawHover(state, fieldZones, cfg);
   }
@@ -142,25 +160,28 @@ export class ZonesRenderer extends BaseFieldRenderer {
 
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
-    const hover = state.hoveredZoneId === null ? null : buildZoneHoverRegion(fieldZones, state.hoveredZoneId, activeFloorIndex(state));
+    // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
+    const shownId = state.hoveredZoneId ?? state.zoneEditId;
+    const hover = shownId === null ? null : buildZoneHoverRegion(fieldZones, shownId, activeFloorIndex(state), state.zoneColorOverrides);
     this.hoverZone.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],
-      groups: (hover?.groups ?? []).map((group) => ({ ...group, fillAlpha: HOVER_FILL_ALPHA })),
+      groups: (hover?.groups ?? []).map((group) => ({ ...group, fillAlpha: HOVER_FILL_ALPHA, borderColor: brightColor(group.color) })),
       color: 0,
       width: 0,
       alpha: 0,
       cfg,
       skipPerimeter: true,
-      borderWidth: 3,
+      borderWidth: HOVER_BORDER_WIDTH,
+      inset: regionInset(HOVER_BORDER_WIDTH),
     });
   }
 
   protected clearAll(): void {
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 });
-    this.undecidedWalls.render({ edges: [] });
     this.walls.render({ edges: [] });
     if (this.cfg) {
+      this.fieldGrid.render({ viewport: this.viewport }, this.cfg, []);
       this.zones.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg: this.cfg });
       this.hoverZone.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg: this.cfg });
     }
@@ -168,16 +189,16 @@ export class ZonesRenderer extends BaseFieldRenderer {
 
   protected destroyChildren(): void {
     this.grid.destroy();
+    this.fieldGrid.destroy();
     this.floor.destroy();
-    this.undecidedWalls.destroy();
     this.walls.destroy();
     this.zones.destroy();
     this.hoverZone.destroy();
-    this.undecidedWallsContainer.destroy();
     this.wallsContainer.destroy();
     this.zonesContainer.destroy();
     this.hoverContainer.destroy();
     this.floorContainer.destroy();
+    this.fieldGridContainer.destroy();
     this.gridContainer.destroy();
   }
 }

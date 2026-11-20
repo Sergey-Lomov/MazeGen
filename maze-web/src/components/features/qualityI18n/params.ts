@@ -312,6 +312,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max_dead_end_count.label"] as MessageFn,
     description: m["param.max_dead_end_count.description"] as MessageFn,
   },
+  limits: {
+    label: m["param.limits.label"] as MessageFn,
+    description: m["param.limits.description"] as MessageFn,
+  },
   max_dead_end_density: {
     label: m["param.max_dead_end_density.label"] as MessageFn,
     description: m["param.max_dead_end_density.description"] as MessageFn,

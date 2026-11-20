@@ -38,6 +38,17 @@ describe("useQualityViewModel", () => {
     expect(checks.find((c) => c.localId === 1)?.disabled).toBe(true);
   });
 
+  it("reports a rule without checks as a problem and a rule with checks as healthy (GitHub issue #1044)", () => {
+    const { result, rerender } = renderHook(() => useQualityViewModel());
+    expect(result.current.strategySlots[0].problems).toBeUndefined();
+    act(() => {
+      useMazeStore.getState().removeCheck("g1", 0);
+      useMazeStore.getState().removeCheck("g1", 1);
+    });
+    rerender();
+    expect(result.current.strategySlots[0].problems).toHaveLength(1);
+  });
+
   it("reflects a live toggleCheckDisabled call in the next render's CheckVM.disabled", () => {
     const { result, rerender } = renderHook(() => useQualityViewModel());
     expect(result.current.checks.find((c) => c.localId === 0)?.disabled).toBe(false);

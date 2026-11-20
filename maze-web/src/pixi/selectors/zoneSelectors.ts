@@ -1,7 +1,7 @@
 import type { NodeDto } from "../../wasm/types";
 import type { Zone, ZoneKind } from "../../wasm/mazeService";
-import { distributeHueGroups } from "../../store/colorMath";
-import { AUTO_HUE_BASE_COLOR } from "../renderConstants";
+import { glueColor } from "../renderers/SeamArrowRenderer";
+import * as m from "~/paraglide/messages";
 
 export interface ZoneRegions {
   /** One synthetic node per distinct cell of a drawn zone on the floor, so the zone is a region. */
@@ -13,8 +13,15 @@ export interface ZoneRegions {
 /** Colour of every zone, by position in the full zone list: the glues' scheme (`glueColor`), the
  *  hue spread evenly round the wheel from `AUTO_HUE_BASE_COLOR`. Everything that marks a zone on the
  *  canvas or beside it takes its colour from here, so the zone reads the same everywhere. */
-export function zoneColors(zones: Zone[]): number[] {
-  return distributeHueGroups(AUTO_HUE_BASE_COLOR, zones.length);
+export function zoneColors(zones: Zone[], overrides: Readonly<Record<number, number>> = {}): number[] {
+  // The palette is fixed (`AUTO_COLOR_COUNT` colours), so a zone's colour depends on its position only: adding
+  // a zone or giving another one its own colour never moves the rest.
+  return zones.map((zone, index) => overrides[zone.id] ?? glueColor(index));
+}
+
+/** Whether the zones other than the edited one are left undrawn: a zone is being edited and "show other zones" is off. */
+export function hidesOtherZones(state: { zoneEditId: number | null; showOtherZones: boolean }): boolean {
+  return state.zoneEditId !== null && !state.showOtherZones;
 }
 
 export function isZoneKindShown(kind: ZoneKind, showAuto: boolean, showManual: boolean): boolean {
@@ -23,8 +30,8 @@ export function isZoneKindShown(kind: ZoneKind, showAuto: boolean, showManual: b
 
 /** Regions of the zones `include` accepts, restricted to one floor (an index in `floors`). Colours
  *  are taken from the whole zone list, so no filter ever recolours a zone. */
-function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean): ZoneRegions {
-  const palette = zoneColors(zones);
+function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean, colorOverrides: Readonly<Record<number, number>>): ZoneRegions {
+  const palette = zoneColors(zones, colorOverrides);
   const nodes: NodeDto[] = [];
   const groups: ZoneRegions["groups"] = [];
   zones.forEach((zone, index) => {
@@ -50,16 +57,17 @@ export function buildZoneRegions(
   showAuto: boolean,
   showManual: boolean,
   hiddenZoneIds: readonly number[] = [],
+  colorOverrides: Readonly<Record<number, number>> = {},
 ): ZoneRegions {
   const hidden = new Set(hiddenZoneIds);
-  return collectZoneRegions(zones, floorIndex, (zone) => isZoneKindShown(zone.kind, showAuto, showManual) && !hidden.has(zone.id));
+  return collectZoneRegions(zones, floorIndex, (zone) => isZoneKindShown(zone.kind, showAuto, showManual) && !hidden.has(zone.id), colorOverrides);
 }
 
 /** Region of one zone on one floor, drawn regardless of the kind filters and the zone's visibility
  *  (the list hover). Coloured as `buildZoneRegions` colours it; `null` when the zone is not in the
  *  list or has no cell on the floor. */
-export function buildZoneHoverRegion(zones: Zone[], zoneId: number, floorIndex: number): ZoneRegions | null {
-  const regions = collectZoneRegions(zones, floorIndex, (zone) => zone.id === zoneId);
+export function buildZoneHoverRegion(zones: Zone[], zoneId: number, floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}): ZoneRegions | null {
+  const regions = collectZoneRegions(zones, floorIndex, (zone) => zone.id === zoneId, colorOverrides);
   return regions.groups.length === 0 ? null : regions;
 }
 
@@ -68,9 +76,24 @@ export function zoneFloors(zone: Zone): number[] {
   return [...new Set(zone.cells.map(([floor]) => floor))].sort((a, b) => a - b);
 }
 
-/** Display name of a zone: its name, or `#id` while unnamed. */
+/** Display name of a zone: its name, or "Zone #id" while unnamed. */
 export function zoneDisplayName(zone: Zone): string {
-  return zone.name === "" ? `#${zone.id}` : zone.name;
+  return zone.name === "" ? m["zones.default_name"]({ id: zone.id }) : zone.name;
+}
+
+/** The other zones that share a cell with `zone` on the floor. */
+export function zoneIntersections(zones: Zone[], zone: Zone): { zone: Zone; floor: number }[] {
+  const own = new Set<string>();
+  for (const [floor, x, y] of zone.cells) own.add(`${floor},${x},${y}`);
+  if (own.size === 0) return [];
+  const result: { zone: Zone; floor: number }[] = [];
+  for (const other of zones) {
+    if (other.id === zone.id) continue;
+    const shared = new Set<number>();
+    for (const [floor, x, y] of other.cells) if (own.has(`${floor},${x},${y}`)) shared.add(floor);
+    for (const floor of [...shared].sort((a, b) => a - b)) result.push({ zone: other, floor });
+  }
+  return result;
 }
 
 export function countZonesOfKind(zones: Zone[], kind: ZoneKind): number {

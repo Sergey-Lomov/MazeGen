@@ -133,6 +133,14 @@ impl Tessellation for SquareOctagonTessellation {
     type CellId = SquareOctagonPoint;
     type Face = SquareOctagonFace;
 
+    /// The cells of the pattern around the origin, one per cell kind.
+    fn sample_cells(&self) -> Vec<Self::CellId> {
+        vec![
+            SquareOctagonPoint { x: 0, y: 0 },
+            SquareOctagonPoint { x: 1, y: 1 },
+        ]
+    }
+
     fn is_valid_cell(&self, cell: SquareOctagonPoint) -> bool {
         cell.is_octagon() || cell.is_square()
     }

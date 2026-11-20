@@ -1427,6 +1427,10 @@ Under `FloorScope::WholeMaze` (`max_split_count`'s default), both fire `InvalidS
 
 `MaxDeadEndCountCheck` reports `count - max_dead_end_count`. `MaxDeadEndDensityCheck` measures dead ends per 100 field cells; when it exceeds the configured maximum, its excess is the number of nodes above `floor(max_dead_end_density * field_cells / 100)`, ensuring the warning cannot disappear through rounding. Both use `FloorScope`: whole-maze produces one group, while per-floor emits one independent group for each over-budget floor. Count defaults to `WholeMaze`; density defaults to `PerFloor`.
 
+### NodeShapeLimitsCheck
+
+`node_shape_limits` emits `ViolatedNodeShapeLimitsIssue` when the number of nodes of a shape (dead end, straight, turn by angle, junction by degree) falls outside its configured `min..max` range (GitHub issue #1008). Full description - shape vocabulary per tessellation, the limits structure, the violation payload and counterpart ordering - is in `node-shape-limits.md`. The only param, `limits`, is a `NodeShapeLimits` value carried as a JSON object keyed by cell type (shape template key, e.g. `regular:4`), then by `NodeShape::key()`, with `{"min": u32|null, "max": u32|null}` entries (limits are per cell type and reset when the tessellation changes) (`ParamKindDto::NodeShapeLimits`; parsed by `maze-runner`'s `parse_node_shape_limits_param`, which drops unknown keys and inverted ranges). The web UI offers the shapes the tessellation can produce, from the `tessellation_node_shapes` wasm export (`maze-runner`'s `runner::node_shapes`, a sample field around the tessellation origin). The issue has no repair strategy yet. Its payload is the flat `IssuePayload::ViolatedNodeShapeLimits { violations }` (wire tag `18`); hovering the bubble highlights every node of every violated shape as singleton region cells.
+
 ### SplitGroupGeometricProximityCheck / SplitGroupGraphProximityCheck
 
 ```rust
@@ -2177,7 +2181,7 @@ On the binary QC event tape (`event_encode.rs`/`qcCustom.ts`, see `event_log.md`
 variants are hand-written wire tags on both sides (`write_issue_payload` writes; `readIssuePayload`
 reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`, `InvalidCrossElementGroup`
 is tag `14`, `InvalidDeadEnd` is tag `15`, `IndeterminateDistance` is tag `16`,
-`InvalidCrossElement` is tag `17`. `codegen`'s
+`InvalidCrossElement` is tag `17`, `ViolatedNodeShapeLimits` is tag `18`. `codegen`'s
 `issue_payload_check` module (`codegen/src/issue_payload_check.rs`) text-scans both functions' tag
 literals and fails `--check`/plain runs on any mismatch, since a tag added to one side and
 forgotten on the other only surfaces as a runtime "unknown tag" crash otherwise.
@@ -2194,6 +2198,10 @@ struct CheckDescriptor {
     issue_kinds: Vec<&'static str>,
     params: Vec<ParamDescriptor>,
     visibility: Option<EntityVisibility>,
+    // Empty = always available. Tessellation conditions under which the check is offered
+    // (GitHub issue #1008): a failing check stays listed but disabled, with a tooltip naming the
+    // reason. A pure UI hint; see `quality-feature.md`'s "Check availability" section.
+    requires: Vec<TessellationRequirement>,
 }
 ```
 
@@ -2355,6 +2363,7 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `max_split_density` | `invalid_split_tile_group` | `max_split_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `max_dead_end_count` | `invalid_dead_end_group` | `max_dead_end_count: Integer(default=20, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
 | `max_dead_end_density` | `invalid_dead_end_group` | `max_dead_end_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `node_shape_limits` | `violated_node_shape_limits` | `limits: NodeShapeLimits(default={})` | no |
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 | `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |

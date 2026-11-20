@@ -7,6 +7,8 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeMirrorPreview } from "../../pixi/mirror";
+import { activeFieldCellKeys, editFieldOf, zoneEditActive } from "../../pixi/fieldEditTarget";
+import { withEditedZoneCells } from "./zonesSlice";
 import { tessellationFingerprint } from "../topologyWire";
 import { topologyCopiedTo, withPresetCreases, withPresetTopology } from "../presetTopology";
 import { creasesCopiedTo } from "../creases";
@@ -19,6 +21,45 @@ import {
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
   return Object.keys(patch).length === 0 ? {} : { ...patch, ...buildResetDownstreamState() };
+}
+
+/** The mirror tool in the zone editor (GitHub issue #1031): the same preview, applied to the zone's cells
+ *  of the active floor. Zones are not part of generation, so no confirmation or invalidation is needed. */
+function applyZoneMirror(state: MazeState): Partial<MazeState> {
+  const field = editFieldOf(state);
+  const axis = state.mirrorAxisPoints;
+  if (axis.length !== 2 || (axis[0].x === axis[1].x && axis[0].y === axis[1].y)) return {};
+  if (state.mirrorScope === "polygon" && (state.mirrorPolygon.length < 3 || !state.mirrorPolygonFinished)) return {};
+  const preview = computeMirrorPreview(
+    field.fieldPoints,
+    field.fieldConfig,
+    { scope: state.mirrorScope, sourceSide: state.mirrorSourceSide, axis: [axis[0], axis[1]], polygon: state.mirrorPolygon },
+    encodePoint,
+    decodePoint,
+  );
+  if (preview.error) return { fieldOpError: preview.error };
+  const fieldCells = activeFieldCellKeys(state);
+  const patch = withEditedZoneCells(state, (onFloor) => {
+    let changed = false;
+    for (const [x, y] of preview.mirroredCells) {
+      const key = encodePoint(x, y);
+      if (field.fieldOperation === "add" && fieldCells.has(key) && !onFloor.has(key)) {
+        onFloor.set(key, [x, y]);
+        changed = true;
+      } else if (field.fieldOperation === "remove" && onFloor.delete(key)) {
+        changed = true;
+      }
+    }
+    return changed;
+  });
+  return {
+    ...patch,
+    floorFields: { ...state.floorFields, [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldPrimitive: "point" } },
+    mirrorAxisPoints: [],
+    mirrorPolygon: [],
+    mirrorPolygonFinished: false,
+    fieldOpError: null,
+  };
 }
 
 function cloneFloorField(field: FloorFieldConfig): FloorFieldConfig {
@@ -301,7 +342,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     };
   }),
 
-  applyMirror: () => set((state) => guardFieldEdit(state, { kind: "applyMirror" }, () => {
+  applyMirror: () => set((state) => zoneEditActive(state) ? applyZoneMirror(state) : guardFieldEdit(state, { kind: "applyMirror" }, () => {
     const field = activeFloorField(state);
     const axis = state.mirrorAxisPoints;
     if (field.fieldEditMode !== "custom" || axis.length !== 2

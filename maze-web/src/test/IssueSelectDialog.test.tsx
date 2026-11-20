@@ -3,6 +3,11 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { IssueSelectDialog } from "../components/features/IssueSelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/mazeService")>()),
+  getTessellationTraits: vi.fn((config: { kind: string }) => ({ irregular: config.kind === "voronoi", maxCellSides: 4 })),
+}));
+
 const availableChecks = [
   { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
   { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [] },
@@ -36,6 +41,28 @@ describe("IssueSelectDialog", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  describe("tessellation-restricted kinds", () => {
+    const withRestrictedKind = [
+      ...availableChecks,
+      { id: "node_shape_limits", label: "Node shape limits", description: "", issue_kinds: ["violated_node_shape_limits"], params: [], requires: [{ type: "regular_cells" as const }] },
+    ];
+
+    it("lists the kind enabled on a regular tessellation", () => {
+      useMazeStore.setState({ availableChecks: withRestrictedKind, tessellationKind: "square", tessellationParams: {} });
+      render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
+      const [row] = screen.getAllByRole("option").filter((o) => /limit/i.test(o.textContent ?? ""));
+      expect(row).not.toHaveAttribute("aria-disabled");
+    });
+
+    it("keeps the kind listed but disabled on an irregular tessellation", () => {
+      useMazeStore.setState({ availableChecks: withRestrictedKind, tessellationKind: "voronoi", tessellationParams: {} });
+      render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
+      const [row] = screen.getAllByRole("option").filter((o) => /limit/i.test(o.textContent ?? ""));
+      expect(row).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByText(/irregular cells/i)).toBeInTheDocument();
+    });
   });
 
   describe("multi-floor-only kinds", () => {

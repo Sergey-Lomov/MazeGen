@@ -229,6 +229,18 @@ export function distributeOklchHues(base: number, count: number): number[] {
   });
 }
 
+/** Lightness (OKLCH L, 0-100) and share of the gamut's chroma of `brightColor`. */
+const BRIGHT_LIGHTNESS = 80;
+const BRIGHT_CHROMA_SHARE = 0.85;
+
+/** A bright, vivid color of the same hue as `color`, however dark `color` is: for a border that must stand out
+ *  against its own fill. */
+export function brightColor(color: number): number {
+  const { l, h } = colorToOklch(color);
+  const bright = Math.max(l, BRIGHT_LIGHTNESS);
+  return oklchToColor({ l: bright, c: oklchMaxChroma(bright, h) * BRIGHT_CHROMA_SHARE, h });
+}
+
 /** Most colors one lightness group of `distributeHueGroups` holds. */
 export const HUE_GROUP_MAX_SIZE = 8;
 /** Lightness distance (OKLCH L, 0-100) between neighbouring groups of `distributeHueGroups`. */
@@ -242,19 +254,27 @@ export const HUE_GROUP_LIGHTNESS_STEP = 20;
 export function distributeHueGroups(base: number, count: number, lightnessOffset = 0): number[] {
   if (count <= 0) return [];
   const groups = Math.ceil(count / HUE_GROUP_MAX_SIZE);
-  const { l, c, h } = colorToOklch(base);
   const colors: number[] = [];
   for (let g = 0; g < groups; g++) {
     const size = Math.floor(count / groups) + (g < count % groups ? 1 : 0);
-    const groupL = Math.max(0, Math.min(100, l + lightnessOffset + (g - (groups - 1) / 2) * HUE_GROUP_LIGHTNESS_STEP));
-    // Neighbouring groups are also half a hue step apart (centred on `base`'s hue), so no two colors share a hue.
-    const hueShift = ((g - (groups - 1) / 2) * 360) / size / 2;
-    for (let i = 0; i < size; i++) {
-      const hue = h + hueShift + (360 * i) / size;
-      colors.push(oklchToColor({ l: groupL, c: Math.min(c, oklchMaxChroma(groupL, hue)), h: hue }));
-    }
+    colors.push(...hueGroupColors(base, size, g - (groups - 1) / 2, lightnessOffset));
   }
   return colors;
+}
+
+/** One group of `distributeHueGroups`: `size` colors with the hue spread evenly from `base`, the group `position`
+ *  steps off the base (0 is the base itself, negative darker, positive lighter): its lightness shifted by
+ *  `position` times `HUE_GROUP_LIGHTNESS_STEP` and its hues by `position` times half a hue step (360 / `size`),
+ *  so no two groups share a color. `distributeHueGroups` centres the positions on `base`; a caller that
+ *  must keep earlier groups as they are when it adds one picks the positions itself. */
+export function hueGroupColors(base: number, size: number, position: number, lightnessOffset = 0): number[] {
+  const { l, c, h } = colorToOklch(base);
+  const groupL = Math.max(0, Math.min(100, l + lightnessOffset + position * HUE_GROUP_LIGHTNESS_STEP));
+  const hueShift = (position * 360) / size / 2;
+  return Array.from({ length: size }, (_, i) => {
+    const hue = h + hueShift + (360 * i) / size;
+    return oklchToColor({ l: groupL, c: Math.min(c, oklchMaxChroma(groupL, hue)), h: hue });
+  });
 }
 
 /** Pack an OKLCH triple into a 24-bit RGB number, gamut-clamped to sRGB. `l` clamps to 0-100, `c`

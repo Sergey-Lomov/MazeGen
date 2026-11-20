@@ -25,7 +25,8 @@ use super::check_factory::{
     build_missing_vertical_passages_check, build_one_way_group_proximity_check,
     build_region_needs_expansion_check, build_region_needs_shrink_check, build_split_group_check,
     build_split_node_connection_group_check, build_split_node_group_check,
-    build_teleport_group_proximity_check, build_unreachable_finish_check, composite_check_id,
+    build_teleport_group_proximity_check, build_unreachable_finish_check,
+    build_violated_node_shape_limits_check, composite_check_id,
 };
 use super::rule_params::resolve_rule_params;
 use super::strategy_factory::{build_nested, build_strategy_erased, downcast_strategy};
@@ -42,6 +43,7 @@ use maze_core::{
         MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue,
         MissingSplitTilesIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
         RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, Rule, RuleTrait, UnreachableFinishIssue,
+        ViolatedNodeShapeLimitsIssue,
     },
     space::Tessellation,
 };
@@ -193,6 +195,7 @@ qc_kind_registry! {
     InvalidCrossElementGroup => InvalidCrossElementGroupIssue, build_cross_element_group_check, ["cross_element_geometric_proximity", "cross_element_graph_proximity"];
     InvalidCrossElement => InvalidCrossElementIssue, build_cross_element_cell_type_check, ["cross_element_cell_type"];
     InvalidDeadEndGroup => InvalidDeadEndGroupIssue, build_dead_end_group_check, ["max_dead_end_count", "max_dead_end_density"];
+    ViolatedNodeShapeLimits => ViolatedNodeShapeLimitsIssue, build_violated_node_shape_limits_check, ["node_shape_limits"];
 }
 
 #[cfg(test)]
@@ -214,6 +217,10 @@ mod tests {
         assert_eq!(
             check_kind_for_type("min_loop_density"),
             KindTag::MissingLoops
+        );
+        assert_eq!(
+            check_kind_for_type("node_shape_limits"),
+            KindTag::ViolatedNodeShapeLimits
         );
         assert_eq!(
             check_kind_for_type("max_elevator_density"),

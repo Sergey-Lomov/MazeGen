@@ -54,6 +54,7 @@ pub mod min_teleport_ratio;
 pub mod min_vertical_passage_count;
 pub mod min_vertical_passage_ratio;
 pub mod missing_endpoints;
+pub mod node_shape_limits;
 pub mod one_way_core;
 pub mod one_way_group_geometric_proximity;
 pub mod one_way_group_graph_proximity;
@@ -229,6 +230,7 @@ pub use min_vertical_passage_ratio::{
     MinVerticalPassageRatioCheck,
 };
 pub use missing_endpoints::MissingEndpointsCheck;
+pub use node_shape_limits::NodeShapeLimitsCheck;
 pub use one_way_core::{one_way_edge_ids, one_way_edges_with_endpoints};
 pub use one_way_group_geometric_proximity::{
     ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,

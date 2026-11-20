@@ -294,6 +294,7 @@ Status (GitHub issues #822, #824): core API, config resolution and UI query are 
   its `ShapeDescriptor`, and cells of different types may share a shape. Types never affect
   topology or geometry.
 - **`cells_vary_in_size()`** says the cells of one type differ in size or shape (Voronoi, radial: `true`; default `false`). It is the one source of that fact: `field_cell_sizes` reports such types `regular: false`, and `tessellation_cell_types` returns it as `cells_vary_in_size`, so a consumer knows before measuring any cell.
+- **`sample_cells()`** (required, no default) hands out the tessellation's own sample cells: at least one valid cell of every cell type, and for an anchor-lattice multi-shape tiling one per cell kind (every kind anchored at the origin). Consumers read a type's geometry from them (`sample_cell(type)` is the first of that type), never by searching a region: `tessellation_traits` takes `max_cell_sides` from their face counts, and `tessellation_node_shapes` draws each type on its sample. A tessellation whose cells vary in size (`cells_vary_in_size()`: Voronoi, radial) has **no** samples, since no cell stands for its type there; a test pins "empty exactly when varying" and "a valid sample of every type otherwise".
 - **Default.** A tessellation that does not override the methods has the single type `cell`, so
   consumers need no special case for uniform tilings. The uniform tilings of one regular polygon
   name their single type by it: `square`, `hexagon`, `triangle` (the same keys the mixed tilings use

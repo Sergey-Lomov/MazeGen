@@ -253,6 +253,20 @@ pub trait Tessellation: Send + Sync + 'static {
         self.cell_types()[self.cell_type_of(cell).index()].key()
     }
 
+    /// Sample cells of this tessellation: at least one valid cell of every cell type (and for a
+    /// multi-shape tiling one per cell kind), the representatives a consumer reads a type's
+    /// geometry from (side count, example tile). Empty exactly when `cells_vary_in_size`: the
+    /// cells of one type differ there, so no cell stands for its type.
+    fn sample_cells(&self) -> Vec<Self::CellId>;
+
+    /// A sample cell of `cell_type` (the first of `sample_cells` of that type); `None` for the
+    /// cells of a tessellation that varies in size.
+    fn sample_cell(&self, cell_type: CellTypeId) -> Option<Self::CellId> {
+        self.sample_cells()
+            .into_iter()
+            .find(|&cell| self.cell_type_of(cell) == cell_type)
+    }
+
     /// Area of `cell`. Defaults to the signed area of its boundary path; a tessellation with a
     /// known constant area overrides it (tests check the override against the boundary).
     fn area(&self, cell: Self::CellId) -> f64 {
@@ -697,18 +711,83 @@ impl<T: Tessellation> Field<T> {
     /// `from`'s and `to`'s cells and asks `Tessellation::is_straight`. `false` when any node is
     /// unknown or either cell is not a tessellation neighbor of `via`'s cell.
     pub fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool {
-        let Some(&fp) = self.node_to_cell.get(&from) else {
-            return false;
-        };
-        let Some(&vp) = self.node_to_cell.get(&via) else {
-            return false;
-        };
-        let Some(&tp) = self.node_to_cell.get(&to) else {
-            return false;
-        };
+        match self.pass_faces(from, via, to) {
+            Some((vp, in_face, out_face)) => self.tessellation.is_straight(vp, in_face, out_face),
+            None => false,
+        }
+    }
+
+    /// The interior angle, in degrees (`0..=180`), of the pass `from -> via -> to`: the angle at
+    /// `via`'s cell center between the contact points of the two faces (`Specs/node-shape-limits.md`).
+    /// A straight pass is `180`. `None` under the same conditions `is_straight` answers `false`
+    /// because a node is unknown or not a tessellation neighbor.
+    pub fn pass_angle_degrees(&self, from: NodeId, via: NodeId, to: NodeId) -> Option<f64> {
+        let (vp, in_face, out_face) = self.pass_faces(from, via, to)?;
         let tessellation = &*self.tessellation;
+        let center = tessellation.center(vp);
+        let a = tessellation.contact_point(vp, in_face) - center;
+        let b = tessellation.contact_point(vp, out_face) - center;
+        let (la, lb) = (a.length(), b.length());
+        if la == 0.0 || lb == 0.0 {
+            return None;
+        }
+        let cos = (a.dot(b) / (la * lb)).clamp(-1.0, 1.0);
+        Some(cos.acos().to_degrees())
+    }
+
+    /// The angular rank of every face of `cell` (indexed like `faces_of`): faces ordered by the
+    /// direction of their contact point around the cell center, counterclockwise from the +x axis.
+    /// The cyclic order is what a junction layout is made of (`Specs/node-shape-limits.md`).
+    pub fn face_ranks(&self, cell: T::CellId) -> Vec<usize> {
+        let tessellation = &*self.tessellation;
+        let center = tessellation.center(cell);
+        let faces = tessellation.faces_of(cell);
+        let angle = |i: usize| {
+            let direction = tessellation.contact_point(cell, faces[i]) - center;
+            direction.y.atan2(direction.x)
+        };
+        let mut order: Vec<usize> = (0..faces.len()).collect();
+        order.sort_by(|&a, &b| angle(a).total_cmp(&angle(b)));
+        let mut ranks = vec![0; faces.len()];
+        for (rank, &face) in order.iter().enumerate() {
+            ranks[face] = rank;
+        }
+        ranks
+    }
+
+    /// The number of faces of `via`'s cell and the sorted angular ranks (`face_ranks`) of the faces
+    /// toward `neighbors`. `None` when `via` or a neighbor is unknown, a neighbor's cell is not a
+    /// tessellation neighbor of `via`'s cell, or two neighbors share one face (a split cell).
+    pub fn neighbor_face_ranks(
+        &self,
+        via: NodeId,
+        neighbors: &[NodeId],
+    ) -> Option<(usize, Vec<usize>)> {
+        let vp = *self.node_to_cell.get(&via)?;
+        let ranks = self.face_ranks(vp);
+        let mut toward = Vec::with_capacity(neighbors.len());
+        for neighbor in neighbors {
+            let cell = *self.node_to_cell.get(neighbor)?;
+            toward.push(ranks[self.face_index_toward(vp, cell)?]);
+        }
+        toward.sort_unstable();
+        toward.dedup();
+        (toward.len() == neighbors.len()).then_some((ranks.len(), toward))
+    }
+
+    /// Resolves the faces of `via`'s cell toward `from`'s and `to`'s cells. `None` when any node is
+    /// unknown or either cell is not a tessellation neighbor of `via`'s cell.
+    fn pass_faces(
+        &self,
+        from: NodeId,
+        via: NodeId,
+        to: NodeId,
+    ) -> Option<(T::CellId, T::Face, T::Face)> {
+        let fp = *self.node_to_cell.get(&from)?;
+        let vp = *self.node_to_cell.get(&via)?;
+        let tp = *self.node_to_cell.get(&to)?;
         let (mut in_face, mut out_face) = (None, None);
-        for &face in tessellation.faces_of(vp) {
+        for &face in self.tessellation.faces_of(vp) {
             let Some(crossing) = self.neighbor_via(vp, face) else {
                 continue;
             };
@@ -719,10 +798,7 @@ impl<T: Tessellation> Field<T> {
                 out_face = Some(face);
             }
         }
-        match (in_face, out_face) {
-            (Some(in_face), Some(out_face)) => tessellation.is_straight(vp, in_face, out_face),
-            _ => false,
-        }
+        Some((vp, in_face?, out_face?))
     }
 
     /// Deterministic order: sorted by `NodeId`, not raw `HashMap` iteration order (which

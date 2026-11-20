@@ -48,6 +48,7 @@ mod region_needs_expansion;
 mod region_needs_shrink;
 mod repair_limit_reached;
 mod unreachable_finish;
+mod violated_node_shape_limits;
 
 pub use area_missing_elevator_stops::AreaMissingElevatorStopsIssue;
 pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
@@ -98,6 +99,9 @@ pub use region_needs_expansion::RegionNeedsExpansionIssue;
 pub use region_needs_shrink::RegionNeedsShrinkIssue;
 pub use repair_limit_reached::{RepairLimitKind, RepairLimitReachedIssue};
 pub use unreachable_finish::UnreachableFinishIssue;
+pub use violated_node_shape_limits::{
+    LimitViolationKind, ShapeLimitViolation, ViolatedNodeShapeLimitsIssue,
+};
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
