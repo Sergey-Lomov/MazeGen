@@ -22,6 +22,26 @@
       "Skill(artifact-design)",
       "Skill(artifact-design:*)"
     ],
+    "deny": [
+      "Read(./target/**)",
+      "Read(./node_modules/**)",
+      "Read(./maze-web/node_modules/**)",
+      "Read(./maze-web/dist/**)",
+      "Read(./maze-web/tsconfig.tsbuildinfo)",
+      "Read(./maze-web/generated/**)",
+      "Read(./maze-web/src/wasm/pkg/**)",
+      "Read(./maze-web/src/wasm/maze_wasm.js)",
+      "Read(./maze-web/src/wasm/maze_wasm_bg.wasm)",
+      "Read(./maze-wasm/pkg/**)",
+      "Read(./maze-web/coverage/**)",
+      "Read(./**/*.profraw)",
+      "Read(./**/*.log)",
+      "Read(./maze-web/*.png)",
+      "Read(./quality-logs/**)",
+      "Read(./.decomposition-notes/**)",
+      "Read(./maze-web/public/fonts/**)",
+      "Read(./maze-web/public/licenses/**)"
+    ],
     "additionalDirectories": [
       "d:\\Development\\MazeGen\\.claude"
     ]
