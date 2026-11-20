@@ -1,12 +1,10 @@
 import React, { Fragment, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
-import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, requiresExactCells, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
+import type { TessellationKind } from "../../store/mazeStore";
+import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
-import { ToolIconButton, ToolTooltip } from "../ToolIconButton";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { hasGeneration } from "../../store/storeHelpers";
@@ -17,50 +15,31 @@ import { Stack, Inline } from "../Layout";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { SettingsIconButton } from "../SettingsIconButton";
-import { Modal } from "../Modal";
 import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
-import { canvas } from "../../pixi/colorTokens";
-import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
 import type { InputNormalizationReason } from "../inputNormalization";
 import { snapRectToClose } from "../../pixi/rectGluing";
 import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronFaceCount, polyhedronNetCount, presetParams } from "../../pixi/fieldOps";
-import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
 import { TopologyPanel } from "./TopologyPanel";
 import { FloorsPanel } from "./FloorsPanel";
 import { bringSidePanelToFront } from "../SidePanel";
-import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
-import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
+import { FieldToolsSection, SmoothingToggleRow } from "./FieldToolsSection";
 import * as m from "~/paraglide/messages";
 
 type ConfirmPending = "switchToDefault" | "clearField" | null;
-
-const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
-  add: ["+"],
-  remove: ["−"],
-  select: ["0"],
-};
-
-const CLIPBOARD_MODIFIER = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const selectedShape = useMazeStore((s) => s.floorFields[s.activeFloorId].selectedShape);
   const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
-  const reflectAvailable = fieldOperationAvailable(fieldConfig.tessellation, "reflect");
   const translateAvailable = fieldOperationAvailable(fieldConfig.tessellation, "translate");
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
-  const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
-  const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
   const setSelectedShape = useMazeStore((s) => s.setSelectedShape);
   const setFieldConfig = useMazeStore((s) => s.setFieldConfig);
   const setFieldConfigsForFloors = useMazeStore((s) => s.setFieldConfigsForFloors);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
-  const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
-  const setFieldOperation = useMazeStore((s) => s.setFieldOperation);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const centerFieldPoints = useMazeStore((s) => s.centerFieldPoints);
@@ -73,20 +52,14 @@ export function FieldSetupFeature() {
   const setShowPrimitiveFrame = useMazeStore((s) => s.setShowPrimitiveFrame);
   const showPaperLayout = useMazeStore((s) => s.showPaperLayout);
   const setShowPaperLayout = useMazeStore((s) => s.setShowPaperLayout);
-  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
-  const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
-  const smoothInverted = useMazeStore((s) => s.smoothInverted);
   const topologyPanelOpen = useMazeStore((s) => s.topologyPanelOpen);
   const setTopologyPanelOpen = useMazeStore((s) => s.setTopologyPanelOpen);
   const floorCount = useMazeStore((s) => s.floors.length);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
-  const fieldHasSelection = useMazeStore((s) => s.fieldHasSelection);
-  const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
   const [floorsPanelOpen, setFloorsPanelOpen] = useState(false);
   const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
-  const [smoothingInfoOpen, setSmoothingInfoOpen] = useState(false);
   const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
 
   const isCustom = fieldEditMode === "custom";
@@ -140,52 +113,6 @@ export function FieldSetupFeature() {
           ))}
         </select>
       </label>
-    );
-  }
-
-  function renderClipboardTool(tool: "copy" | "paste", block: FieldClipboardBlock | null) {
-    const description = block === "tessellation" ? m["field.clipboard.tessellation_disabled"]()
-      : block === "no_selection" ? m["field.copy.empty_selection"]()
-      : block === "empty_clipboard" ? m["field.paste.empty_clipboard"]()
-      : undefined;
-    return (
-      <ToolIconButton
-        selected={false}
-        disabled={fieldEditLocked || block !== null}
-        title={tool === "copy" ? m["field.copy.tool"]() : m["field.paste.tool"]()}
-        shortcut={[CLIPBOARD_MODIFIER, tool === "copy" ? "C" : "V"]}
-        description={description}
-        preservesFieldSelection
-        onClick={tool === "copy" ? copyFieldSelection : pasteFieldClipboard}
-      >
-        {tool === "copy" ? <Copy {...toolIconProps()} /> : <ClipboardPaste {...toolIconProps()} />}
-      </ToolIconButton>
-    );
-  }
-
-  function renderSmoothingToggle() {
-    const exactCells = requiresExactCells(fieldConfig.shape);
-    const row = (
-      <ToggleRow
-        label={m["field.smooth_primitives"]()}
-        checked={smoothPrimitives !== smoothInverted && !exactCells}
-        onChange={setSmoothPrimitives}
-        disabled={fieldEditLocked || exactCells}
-        disabledHint={exactCells ? m["field.smoothing_unavailable"]() : undefined}
-        info={() => setSmoothingInfoOpen(true)}
-      />
-    );
-    // The hold hotkey only exists while drawing in the custom field editor.
-    if (!isCustom) return row;
-    return (
-      <ToolTooltip
-        block
-        title={m["field.smooth_primitives"]()}
-        description={m["field.smooth_hold_hint"]()}
-        descriptionShortcut={["S"]}
-      >
-        {row}
-      </ToolTooltip>
     );
   }
 
@@ -275,7 +202,7 @@ export function FieldSetupFeature() {
         <>
           {renderShapeSelect()}
           {renderParams()}
-          {renderSmoothingToggle()}
+          <SmoothingToggleRow customEditor={isCustom} />
           <Button
             variant="secondary"
             disabled={fieldEditLocked}
@@ -288,54 +215,12 @@ export function FieldSetupFeature() {
       )}
       {isCustom && (
         <>
-          <div style={styles.sectionLabel}>{m["field.modes"]()}</div>
-          <Inline gap="itemGap" style={styles.nestedContent}>
-            {(["add", "remove", "select"] as FieldOperation[]).map((operation) => (
-              <ToolIconButton
-                key={operation}
-                selected={fieldOperation === operation}
-                disabled={fieldEditLocked}
-                title={m[`field.mode.${operation}` as "field.mode.add" | "field.mode.remove" | "field.mode.select"]()}
-                shortcut={OPERATION_SHORTCUTS[operation]}
-                onClick={() => setFieldOperation(operation)}
-              >
-                {operationIcon(operation)}
-              </ToolIconButton>
-            ))}
-          </Inline>
-          <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
-          <Inline gap="itemGap" style={{ ...styles.nestedContent, flexWrap: "wrap" }}>
-          {primitivesForField().map((tool) => {
-            const shortcut = fieldPrimitiveShortcut(tool.primitive);
-            return <ToolIconButton
-              key={tool.key}
-              selected={fieldPrimitive === tool.primitive}
-              disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked, reflectAvailable)}
-              title={tool.label}
-              shortcut={shortcut ? [shortcut] : undefined}
-              description={tool.primitive === "mirror" && !reflectAvailable
-                ? m["field.mirror.tessellation_disabled"]()
-                : tool.primitive === "mirror" && fieldOperation === "select"
-                ? m["field.mirror.select_disabled"]()
-                : tool.primitive === "polygon"
-                ? m["field.polygon.shift_tooltip"]()
-                : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
-              descriptionShortcut={tool.primitive === "polygon" ? ["shift"] : undefined}
-              onClick={() => {
-                setFieldPrimitive(tool.primitive);
-              }}
-            >
-              {primitiveIcon(tool.primitive)}
-            </ToolIconButton>;
-          })}
-          {renderClipboardTool("copy", fieldClipboardBlock("copy", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
-          {renderClipboardTool("paste", fieldClipboardBlock("paste", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
-          </Inline>
+          <FieldToolsSection />
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
             <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} disabled={fieldEditLocked} />
           </div>
-          {renderSmoothingToggle()}
+          <SmoothingToggleRow customEditor={isCustom} />
           <div style={styles.originRow}>
             <ToggleRow
               label={m["field.paper_layout.title"]()}
@@ -431,176 +316,8 @@ export function FieldSetupFeature() {
           onClose={() => setPaperLayoutDialogOpen(false)}
         />
       )}
-      {smoothingInfoOpen && (
-        <Modal
-          title={m["field.smoothing_info_title"]()}
-          onClose={() => setSmoothingInfoOpen(false)}
-        >
-          <div style={styles.infoText}>{m["field.smoothing_info_description"]()}</div>
-          {/* The hold hotkey only exists while drawing in the custom field editor. */}
-          {isCustom && <div style={{ ...styles.infoText, marginTop: 8 }}>{m["field.smoothing_info_hotkey"]()}</div>}
-        </Modal>
-      )}
     </Stack>
   );
-}
-
-interface PrimitiveToolOption {
-  key: string;
-  primitive: FieldPrimitive;
-  label: string;
-}
-
-function primitivesForField(): PrimitiveToolOption[] {
-  const primitives: PrimitiveToolOption[] = [
-    { key: "point", primitive: "point", label: m["field.shape.point"]() },
-    { key: "rectangle", primitive: "rectangle", label: m["field.shape.rectangle"]() },
-    { key: "circle", primitive: "circle", label: m["field.shape.circle"]() },
-    { key: "triangle", primitive: "triangle", label: m["field.shape.right_triangle"]() },
-    { key: "equilateral_triangle", primitive: "equilateral_triangle", label: m["field.shape.equilateral_triangle"]() },
-    { key: "hexagon", primitive: "hexagon", label: m["field.shape.hexagon"]() },
-    { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
-    { key: "polygon", primitive: "polygon", label: m["field.polygon.tool"]() },
-    { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
-    { key: "mirror", primitive: "mirror", label: m["field.mirror.tool"]() },
-  ];
-  return primitives;
-}
-
-function toolIconProps() {
-  const iconSize = TILE_SIZE * 0.8;
-  const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
-  return {
-    size: iconSize,
-    color: colorToHex(canvas.wall.default),
-    strokeWidth: wallStyle.width * 24 / iconSize,
-    strokeLinecap: wallStyle.cap,
-    strokeLinejoin: wallStyle.join,
-  } as const;
-}
-
-function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
-  const iconProps = toolIconProps();
-  const iconSize = iconProps.size;
-  const wallColor = iconProps.color;
-  const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
-  switch (primitive) {
-    case "point":
-      return (
-        <svg width={iconSize} height={iconSize} viewBox={`0 0 ${iconSize} ${iconSize}`} aria-hidden="true">
-          <circle cx={iconSize / 2} cy={iconSize / 2} r={iconSize * 0.18} fill={wallColor} />
-        </svg>
-      );
-    case "mirror": return <FlipHorizontal {...iconProps} />;
-    case "magic_wand": {
-      const cellSize = 5;
-      const cellGap = 1;
-      const shapeWidth = 3 * cellSize + 2 * cellGap;
-      const shapeHeight = 2 * cellSize + cellGap;
-      const gridOriginX = (24 - shapeWidth) / 2;
-      const gridOriginY = (24 - shapeHeight) / 2;
-      const cellRadius = cellSize * 0.2;
-      const filledCells = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 2]];
-      return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <g fill={wallColor}>
-            {filledCells.map(([row, col]) => (
-              <rect
-                key={row + "-" + col}
-                x={gridOriginX + col * (cellSize + cellGap)}
-                y={gridOriginY + row * (cellSize + cellGap)}
-                width={cellSize}
-                height={cellSize}
-                rx={cellRadius}
-                ry={cellRadius}
-              />
-            ))}
-          </g>
-        </svg>
-      );
-    }
-    case "rectangle": return <Square {...iconProps} />;
-    case "circle": return <Circle {...iconProps} />;
-    case "triangle":
-      return (
-        <svg width={iconSize} height={iconSize} viewBox={`0 0 ${iconSize} ${iconSize}`} fill="none" aria-hidden="true">
-          <path
-            d={`M${iconSize * 0.2} ${iconSize * 0.8}V${iconSize * 0.2}L${iconSize * 0.8} ${iconSize * 0.8}Z`}
-            stroke={wallColor}
-            strokeWidth={wallStyle.width}
-            strokeLinecap={wallStyle.cap}
-            strokeLinejoin={wallStyle.join}
-          />
-        </svg>
-      );
-    case "equilateral_triangle": return <Triangle {...iconProps} />;
-    case "hexagon": return <Hexagon {...iconProps} />;
-    case "parallelogram":
-      return (
-        <svg width={iconSize} height={iconSize} viewBox={`0 0 ${iconSize} ${iconSize}`} fill="none" aria-hidden="true">
-          <path
-            d={`M${iconSize * 0.28} ${iconSize * 0.14}h${iconSize * 0.56}l-${iconSize * 0.12} ${iconSize * 0.72}H${iconSize * 0.16}z`}
-            stroke={wallColor}
-            strokeWidth={wallStyle.width}
-            strokeLinecap={wallStyle.cap}
-            strokeLinejoin={wallStyle.join}
-          />
-        </svg>
-      );
-    case "polygon":
-      return (
-        <svg width={iconSize} height={iconSize} viewBox={`0 0 ${iconSize} ${iconSize}`} fill="none" aria-hidden="true">
-          <path
-            d={`M${iconSize * 0.18} ${iconSize * 0.72}L${iconSize * 0.3} ${iconSize * 0.2}L${iconSize * 0.78} ${iconSize * 0.14}L${iconSize * 0.86} ${iconSize * 0.68}L${iconSize * 0.52} ${iconSize * 0.86}Z`}
-            stroke={wallColor}
-            strokeWidth={wallStyle.width}
-            strokeLinecap={wallStyle.cap}
-            strokeLinejoin={wallStyle.join}
-          />
-        </svg>
-      );
-  }
-}
-
-function operationIcon(operation: FieldOperation): React.ReactNode {
-  const color = operation === "add"
-    ? colorToHex(canvas.fieldEditor.previewAdd)
-    : operation === "remove"
-      ? colorToHex(canvas.fieldEditor.previewRemove)
-      : colorToHex(canvas.fieldEditor.previewSelect);
-  if (operation === "select") {
-    const size = TILE_SIZE * 0.8;
-    // Use the same 24x24 coordinate system as FlipHorizontal. This keeps the physical
-    // stroke width identical after the SVG is scaled to the button size.
-    const frameOffset = 3;
-    const side = 18;
-    // Keep the 1:2:1 line ratio while making both gaps exactly one quarter of a side.
-    const segments = [
-      [0, side / 8],
-      [side * 3 / 8, side * 5 / 8],
-      [side * 7 / 8, side],
-    ] as const;
-    const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
-    const dashPath = [
-      ...segments.map(([start, end]) => `M${frameOffset + start} ${frameOffset}h${end - start}`),
-      ...segments.map(([start, end]) => `M${frameOffset + side} ${frameOffset + start}v${end - start}`),
-      ...segments.map(([start, end]) => `M${frameOffset + side - end} ${frameOffset + side}h${end - start}`),
-      ...segments.map(([start, end]) => `M${frameOffset} ${frameOffset + side - end}v${end - start}`),
-    ].join(" ");
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d={dashPath}
-          stroke={color}
-          strokeWidth={wallStyle.width * 24 / size}
-          strokeLinecap={wallStyle.cap}
-          strokeLinejoin={wallStyle.join}
-        />
-      </svg>
-    );
-  }
-  const Icon = operation === "add" ? Plus : Minus;
-  return <Icon size={TILE_SIZE * 0.7} color={color} strokeWidth={2.5} />;
 }
 
 function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string {

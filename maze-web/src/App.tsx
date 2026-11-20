@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
+import { zoneEditActive } from "./pixi/fieldEditTarget";
 import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { MirrorPanel } from "./components/features/MirrorPanel";
@@ -48,8 +49,8 @@ export function App() {
   const floorCount = useMazeStore((s) => s.floors.length);
   const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
   const field = useMazeStore((s) => s.floorFields[s.activeFloorId]);
-  const showMirrorPanel = openCard === "field_setup"
-    && field.fieldEditMode === "custom"
+  const zoneEditing = useMazeStore((s) => zoneEditActive(s));
+  const showMirrorPanel = ((openCard === "field_setup" && field.fieldEditMode === "custom") || zoneEditing)
     && field.fieldPrimitive === "mirror";
 
   useEffect(() => {

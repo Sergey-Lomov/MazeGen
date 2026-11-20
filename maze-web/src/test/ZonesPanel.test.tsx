@@ -41,7 +41,7 @@ describe("ZonesPanel", () => {
     expect(screen.queryByText("Beta")).toBeNull();
     fireEvent.click(screen.getByText(m["zones.mode_manual"]({ count: 2 })));
     expect(screen.getByText("Beta")).toBeInTheDocument();
-    expect(screen.getByText("#3")).toBeInTheDocument();
+    expect(screen.getByText(m["zones.default_name"]({ id: 3 }))).toBeInTheDocument();
     expect(screen.queryByText("Alpha")).toBeNull();
   });
 

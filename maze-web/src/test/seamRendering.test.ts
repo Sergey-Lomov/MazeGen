@@ -676,10 +676,10 @@ describe("seam arrows", () => {
   });
 
   it("colours every glue differently by hue", () => {
-    const colors = [0, 1, 2, 3].map((i) => glueColor(i, 4, false));
+    const colors = [0, 1, 2, 3].map((i) => glueColor(i));
     expect(new Set(colors).size).toBe(4);
-    expect(glueColor(0, 1, false)).toBe(glueColor(0, 1, false));
-    expect(glueColor(1, 4, true)).not.toBe(glueColor(1, 4, false));
+    expect(glueColor(0)).toBe(glueColor(0));
+    expect(glueColor(1, true)).not.toBe(glueColor(1));
   });
 
   it("keeps the arrows of separate glues from crossing each other", () => {

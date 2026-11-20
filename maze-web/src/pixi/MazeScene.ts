@@ -5,6 +5,7 @@ import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { SeamHoverTracker } from "./SeamHoverTracker";
 import { FieldEditController } from "./FieldEditController";
+import { cellsInActiveField, fieldToolsActive, zoneEditActive } from "./fieldEditTarget";
 import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { ZonesRenderer } from "./ZonesRenderer";
@@ -153,10 +154,12 @@ export class MazeScene {
     // this layer fixed while moving the canvas inside it (see syncLayersToViewport).
     this.imageExportFrameContainer = new Container();
 
+    // The zones sit below the field editor's hover and tool previews, so the zone editor's
+    // highlights and shapes read over the zones.
     this.syncedLayers = [
+      this.zonesContainer,
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
-      this.zonesContainer,
       this.presetConnectionsContainer,
       this.postEditContainer,
       this.tessellationContainer,
@@ -292,11 +295,17 @@ export class MazeScene {
         },
         onPrimitiveCommit: (cells, _btn) => {
           const store = useMazeStore.getState();
+          if (zoneEditActive(store)) {
+            if (_btn === 2) store.removeZoneCells(cells);
+            else if (_btn === 0) store.addZoneCells(cellsInActiveField(store, cells));
+            return;
+          }
           if (_btn === 2) store.removeFieldPoints(cells);
           else if (_btn === 0) store.addFieldPoints(cells);
         },
         onSelectionMove: (cells, vector) => {
           const beforeState = useMazeStore.getState();
+          if (zoneEditActive(beforeState)) return beforeState.moveZoneCells(cells, vector);
           const before = beforeState.floorFields[beforeState.activeFloorId].fieldPoints;
           beforeState.moveFieldPoints(cells, vector);
           const afterState = useMazeStore.getState();
@@ -334,7 +343,7 @@ export class MazeScene {
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }
-    if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") return this.fieldEditController;
+    if (fieldToolsActive(st)) return this.fieldEditController;
     if (st.openCard === "preset_connections") return this.presetConnectionsController;
     if (st.openCard === "post_edit") return this.postEditController;
     return null;

@@ -25,9 +25,12 @@ import type { FieldOpError } from "../wasm/mazeService";
 import { warmCartesianCache } from "./cartesianCache";
 import { cellBounds } from "./tessellationGeometry";
 import { controlLineWidth } from "./controlLineWidth";
+import { editFieldOf, fieldToolsActive, zoneEditActive, zoneToolReaches } from "./fieldEditTarget";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
+/** Same dim level as the shape preview's smoothed-out cells (`PrimitivePreviewOverlay`). */
+const MIRROR_DIM_ALPHA = 0.22;
 const MIRROR_POLYGON_COLOR = 0xffffff;
 const MIRROR_POLYGON_ALPHA = 0.9;
 const MIRROR_POLYGON_WIDTH = 1.25;
@@ -55,6 +58,8 @@ export class FieldEditorOverlay {
   private readonly creases: CreaseRenderer;
   private readonly floor: CellFillRenderer;
   private readonly mirrorCells: CellFillRenderer;
+  /** Mirrored cells the zone editor's tool cannot change, drawn dimmer than the ones it will. */
+  private readonly mirrorDimCells: CellFillRenderer;
   private readonly mirrorGraphics: Graphics;
   private readonly origin: OriginRenderer;
   private readonly hover: CellFillRenderer;
@@ -102,6 +107,7 @@ export class FieldEditorOverlay {
     this.fieldBoundary = new WallRenderer(this.fieldBoundaryContainer);
     this.origin = new OriginRenderer(this.originContainer);
     this.hover = new CellFillRenderer(this.hoverContainer);
+    this.mirrorDimCells = new CellFillRenderer(this.mirrorContainer);
     // Keep the editor-only boundary above every underlay layer, including "above everything".
     this.root.addChild(this.fieldBoundaryContainer);
     // The glue editor's highlights lie right above the boundary walls they mark.
@@ -116,8 +122,10 @@ export class FieldEditorOverlay {
       const prevField = prev.floorFields[prev.activeFloorId];
       const isOpen = state.openCard === "field_setup";
       const wasOpen = prev.openCard === "field_setup";
-      if (isOpen !== wasOpen) {
-        this.root.visible = isOpen;
+      const zoneEdit = zoneEditActive(state);
+      if (zoneEdit || zoneEditActive(prev)) this.onZoneEditChange(state, prev);
+      if (this.root.visible !== (isOpen || zoneEdit)) {
+        this.root.visible = isOpen || zoneEdit;
       }
 
       if (isOpen && !wasOpen) {
@@ -204,6 +212,41 @@ export class FieldEditorOverlay {
     });
   }
 
+  /** The zone editor shows only the tools' own aids (hover, mirror, a pending move): the field,
+   *  grid and zones are drawn by `ZonesRenderer`, so every other layer of this overlay stays hidden. */
+  private onZoneEditChange(state: ReturnType<typeof useMazeStore.getState>, prev: ReturnType<typeof useMazeStore.getState>): void {
+    const zoneEdit = zoneEditActive(state);
+    const wasZoneEdit = zoneEditActive(prev);
+    if (zoneEdit !== wasZoneEdit) {
+      for (const layer of [
+        this.gridContainer, this.backgroundImageContainer, this.paperLayoutContainer, this.fieldBoundaryContainer,
+        this.topologyContainer, this.originContainer, this.seamArrowContainer,
+      ]) layer.visible = !zoneEdit;
+      this.selectionMoveHidden = new Set();
+      this.selectionMoveTemporary = new Set();
+      this.updateHover(null, state.floorFields[state.activeFloorId].fieldConfig);
+      this.redrawFloor(state);
+      this.redrawMirror(state);
+      return;
+    }
+    const field = editFieldOf(state);
+    const prevField = editFieldOf(prev);
+    if (field.fieldPoints !== prevField.fieldPoints
+      || field.fieldOperation !== prevField.fieldOperation
+      || field.fieldPrimitive !== prevField.fieldPrimitive
+      || field.fieldConfig !== prevField.fieldConfig
+      || state.activeFloorId !== prev.activeFloorId
+      || state.mirrorSnapMode !== prev.mirrorSnapMode
+      || state.mirrorScope !== prev.mirrorScope
+      || state.mirrorAxisPoints !== prev.mirrorAxisPoints
+      || state.mirrorSourceSide !== prev.mirrorSourceSide
+      || state.mirrorPolygon !== prev.mirrorPolygon
+      || state.mirrorPolygonFinished !== prev.mirrorPolygonFinished) {
+      if (field.fieldPrimitive !== prevField.fieldPrimitive) this.updateHover(null, field.fieldConfig);
+      this.redrawMirror(state);
+    }
+  }
+
   updateHover(
     cellOrCells: [number, number] | [number, number][] | null,
     cfg: FieldConfig,
@@ -221,7 +264,9 @@ export class FieldEditorOverlay {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     this.lastMirrorDraw = null;
-    if (this.root.visible) {
+    if (this.root.visible && zoneEditActive(useMazeStore.getState())) {
+      this.redrawMirror(useMazeStore.getState());
+    } else if (this.root.visible) {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
       this.grid.render({ viewport: this.viewport }, field.fieldConfig);
@@ -282,6 +327,8 @@ export class FieldEditorOverlay {
   }
 
   private visibleFieldCells(state: ReturnType<typeof useMazeStore.getState>): [number, number][] {
+    // The zone editor draws the zone itself (`ZonesRenderer`); this layer only shows a pending move.
+    if (zoneEditActive(state)) return [...this.selectionMoveTemporary].map(decodePoint);
     const field = state.floorFields[state.activeFloorId];
     const preview = state.backgroundAutoFillPreview;
     const fieldPoints = preview ?? field.fieldPoints;
@@ -310,7 +357,9 @@ export class FieldEditorOverlay {
     this.selectionMoveHidden = hidden;
     this.selectionMoveTemporary = temporary;
     const state = useMazeStore.getState();
-    if (state.openCard === "field_setup") {
+    if (zoneEditActive(state)) {
+      this.redrawFloor(state);
+    } else if (state.openCard === "field_setup") {
       this.redrawFloor(state);
       this.redrawFieldBoundary(state);
     }
@@ -366,9 +415,8 @@ export class FieldEditorOverlay {
     polygonOverride?: MirrorPoint[],
   ): void {
     this.pendingMirror = null;
-    const field = state.floorFields[state.activeFloorId];
-    const visible = state.openCard === "field_setup"
-      && field.fieldEditMode === "custom"
+    const field = editFieldOf(state);
+    const visible = fieldToolsActive(state)
       && field.fieldPrimitive === "mirror";
     this.mirrorContainer.visible = visible;
     const axisPoints = axisOverride ?? state.mirrorAxisPoints;
@@ -376,7 +424,7 @@ export class FieldEditorOverlay {
     const color = field.fieldOperation === "remove"
       ? canvas.fieldEditor.previewRemove
       : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
-    const objects = [color, visible, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.mirrorScope, state.mirrorSourceSide, state.mirrorPolygonFinished];
+    const objects = [color, visible, state.activeFloorId, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.mirrorScope, state.mirrorSourceSide, state.mirrorPolygonFinished];
     const shape = JSON.stringify([axisPoints, polygon, polygonOverride !== undefined]);
     const last = this.lastMirrorDraw;
     if (last && last.shape === shape && last.objects.every((value, index) => value === objects[index])) return;
@@ -384,6 +432,7 @@ export class FieldEditorOverlay {
     this.mirrorGraphics.clear();
     if (!visible) {
       this.mirrorCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
+      this.mirrorDimCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
       this.reportFieldOpError(null);
       return;
     }
@@ -403,7 +452,14 @@ export class FieldEditorOverlay {
         decodePoint,
       );
       this.reportFieldOpError(preview.error);
-      this.mirrorCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.fieldConfig);
+      // In the zone editor the preview shows every symmetric cell, but only the cells the tool reaches
+      // change: the others are drawn dim, like the cells smoothing leaves out.
+      const zoneEdit = zoneEditActive(state);
+      const operation = field.fieldOperation === "remove" ? "remove" : "add";
+      const reached = zoneEdit ? preview.mirroredCells.filter(([x, y]) => zoneToolReaches(state, operation, x, y)) : preview.mirroredCells;
+      const dimmed = zoneEdit ? preview.mirroredCells.filter(([x, y]) => !zoneToolReaches(state, operation, x, y)) : [];
+      this.mirrorDimCells.render({ cells: dimmed, color, alpha: MIRROR_DIM_ALPHA }, field.fieldConfig);
+      this.mirrorCells.render({ cells: reached, color, alpha: 0.45 }, field.fieldConfig);
       const dx = axis[1].x - axis[0].x;
       const dy = axis[1].y - axis[0].y;
       const length = Math.hypot(dx, dy);
@@ -436,6 +492,7 @@ export class FieldEditorOverlay {
       }
     } else {
       this.mirrorCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
+      this.mirrorDimCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
       this.reportFieldOpError(null);
       if (axisPoints.length === 1) {
         this.mirrorGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
@@ -485,6 +542,7 @@ export class FieldEditorOverlay {
     this.creases.destroy();
     this.floor.destroy();
     this.mirrorCells.destroy();
+    this.mirrorDimCells.destroy();
     this.mirrorGraphics.destroy();
     this.origin.destroy();
     this.hover.destroy();

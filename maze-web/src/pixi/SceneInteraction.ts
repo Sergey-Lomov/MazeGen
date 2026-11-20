@@ -1,6 +1,7 @@
 import type { Application } from "pixi.js";
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { editFieldOf, fieldToolsActive, zoneEditActive } from "./fieldEditTarget";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive, PanState } from "./sceneTypes";
@@ -97,7 +98,7 @@ export class SceneInteraction {
     this.deps.getController(st)?.clearHover?.();
     this.deps.onHoverChanged(null);
     setCanvasCursor(this.deps.app.canvas, "");
-    if (st.openCard === "field_setup") {
+    if (st.openCard === "field_setup" || zoneEditActive(st)) {
       this.deps.fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
     }
   };
@@ -157,7 +158,7 @@ export class SceneInteraction {
       }
       if (controller) {
         controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey, e.detail);
-        if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
+        if (fieldToolsActive(st)) {
           fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
         }
         return;
@@ -188,10 +189,10 @@ export class SceneInteraction {
         return;
       }
       setCanvasCursor(app.canvas, "");
-      if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
+      if (fieldToolsActive(st)) {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
-        const field = st.floorFields[st.activeFloorId];
+        const field = editFieldOf(st);
         if (st.creaseDraft !== null) {
           // Drawing a crease: the controller tracks its end; no cell hover.
           fieldEditorOverlay.updateHover(null, field.fieldConfig);
@@ -230,9 +231,8 @@ export class SceneInteraction {
     stage.on("pointertap", (e) => {
       if (e.detail < 2) return;
       const st = useMazeStore.getState();
-      const field = st.floorFields[st.activeFloorId];
-      if (!(st.openCard === "field_setup"
-        && field.fieldEditMode === "custom"
+      const field = editFieldOf(st);
+      if (!(fieldToolsActive(st)
         && (field.fieldPrimitive === "polygon"
           || (field.fieldPrimitive === "mirror" && st.mirrorAxisPoints.length === 2 && st.mirrorScope === "polygon")))) return;
       getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
@@ -259,9 +259,7 @@ export class SceneInteraction {
       if (released?.closest?.("[data-preserves-field-selection]")) return;
       const controller = getController(st);
       const fieldEditController = getFieldEditController();
-      const field = st.floorFields[st.activeFloorId];
-      if (st.openCard === "field_setup"
-        && field.fieldEditMode === "custom"
+      if (fieldToolsActive(st)
         && fieldEditController.hasSelectionPreview()) {
         // Releasing the mouse outside the canvas is a confirmation boundary for a
         // persistent selection, not a cancellation of its pending move.
@@ -272,7 +270,7 @@ export class SceneInteraction {
       controller?.clearHover?.();
       onHoverChanged(null);
       setCanvasCursor(app.canvas, "");
-      if (st.openCard === "field_setup") {
+      if (st.openCard === "field_setup" || zoneEditActive(st)) {
         fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
       }
       this.defaultPan.end();

@@ -1,5 +1,6 @@
 import { notifyAutoFillPreviewActive, notifyClipboardUnavailable, notifyNothingCopied, notifyNothingSelected, notifySmoothingAffected, notifySmoothingEmptyResult } from "../notifications/fieldSetupNotifications";
 import { useMazeStore } from "../store/mazeStore";
+import { activeFieldCellKeys, cellsInActiveField, editFieldOf, fieldToolsActive, smoothingOf, zoneEditActive, zoneToolReaches } from "./fieldEditTarget";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
 import { TILE_SIZE } from "./constants";
@@ -135,10 +136,10 @@ export class FieldEditController {
     // listener would otherwise do globally via `window`, regardless of focus.
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     if (state.backgroundAutoFillPreview !== null) return;
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === "KeyC" || e.code === "KeyV")
-      && state.openCard === "field_setup" && field.fieldEditMode === "custom") {
+      && fieldToolsActive(state)) {
       e.preventDefault();
       blurActiveElement();
       if (!fieldClipboardSupported(field.fieldConfig.tessellation)) notifyClipboardUnavailable();
@@ -146,7 +147,7 @@ export class FieldEditController {
       else this.paste();
       return;
     }
-    if (state.openCard === "field_setup" && field.fieldEditMode === "custom" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (fieldToolsActive(state) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const operation = e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd"
         ? "add"
         : e.key === "-" || e.code === "Minus" || e.code === "NumpadSubtract"
@@ -205,7 +206,7 @@ export class FieldEditController {
     }
     if (e.code === "Backspace" || e.code === "Delete") {
       const state = useMazeStore.getState();
-      const field = state.floorFields[state.activeFloorId];
+      const field = editFieldOf(state);
       if (field.fieldOperation === "select" && this.selectionPreviewVisible) {
         e.preventDefault();
         this.deleteSelection();
@@ -214,7 +215,7 @@ export class FieldEditController {
     }
     if (e.code === "Enter") {
       const state = useMazeStore.getState();
-      const field = state.floorFields[state.activeFloorId];
+      const field = editFieldOf(state);
       if (field.fieldOperation === "select" && this.selectionPreviewVisible) {
         e.preventDefault();
         this.commitSelectionMove();
@@ -270,7 +271,10 @@ export class FieldEditController {
     this.unsubscribeStore = useMazeStore.subscribe((state, prev) => {
       // This deliberately watches only the persistent switch. Holding S changes smoothInverted,
       // so it must not make the one-time explanation eligible again.
-      if (state.smoothPrimitives !== prev.smoothPrimitives && !state.smoothPrimitives) {
+      if (
+        (state.smoothPrimitives !== prev.smoothPrimitives && !state.smoothPrimitives)
+        || (state.zoneSmoothing !== prev.zoneSmoothing && !state.zoneSmoothing)
+      ) {
         this.smoothingAffectedToastShown = false;
       }
     });
@@ -287,7 +291,7 @@ export class FieldEditController {
   onPointerDown(canvasX: number, canvasY: number, button: number, _shiftKey?: boolean, clickCount = 1): void {
     this.lastPointerCanvas = { x: canvasX, y: canvasY };
     const s = useMazeStore.getState();
-    const field = s.floorFields[s.activeFloorId];
+    const field = editFieldOf(s);
     if (s.openCard === "field_setup" && s.creaseDraft !== null && button === 0 && !this.spaceHeld) {
       s.placeCreasePoint(this.creasePointAt(canvasX, canvasY, _shiftKey === true));
       return;
@@ -296,7 +300,7 @@ export class FieldEditController {
       this.beginTopologyDrag(canvasX, canvasY);
       return;
     }
-    if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
+    if (!(fieldToolsActive(s))) return;
 
     if (s.backgroundAutoFillPreview !== null) {
       if (this.spaceHeld || button === 1) {
@@ -440,7 +444,7 @@ export class FieldEditController {
       this.lastPreviewCells = [];
       // show initial shape at radius=1 immediately on mousedown
       const gs = useMazeStore.getState();
-      const cfg = gs.floorFields[gs.activeFloorId].fieldConfig;
+      const cfg = editFieldOf(gs).fieldConfig;
       const kind = cfg.tessellation.kind;
       const initialCells = primitiveCells(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
       this.lastPreviewCells = this.normalizedOperationCells(initialCells);
@@ -468,8 +472,8 @@ export class FieldEditController {
       return;
     }
     const s = useMazeStore.getState();
-    const field = s.floorFields[s.activeFloorId];
-    if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
+    const field = editFieldOf(s);
+    if (!(fieldToolsActive(s))) return;
 
     if (s.backgroundAutoFillPreview !== null) {
       if (this.gestureActive && (this.spaceHeld || this.gestureButton === 1)) {
@@ -504,7 +508,7 @@ export class FieldEditController {
         const moved = Math.hypot(canvasX - this.mirrorAxisDragStartCanvas.x, canvasY - this.mirrorAxisDragStartCanvas.y) >= 3;
         if (moved) {
           const state = useMazeStore.getState();
-          const field = state.floorFields[state.activeFloorId];
+          const field = editFieldOf(state);
           const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
           const axis = [...state.mirrorAxisPoints];
           axis[this.mirrorDraggedAxisIndex] = point;
@@ -517,7 +521,7 @@ export class FieldEditController {
         const moved = Math.hypot(canvasX - this.mirrorDragStartCanvas.x, canvasY - this.mirrorDragStartCanvas.y) >= 3;
         if (moved) {
           const state = useMazeStore.getState();
-          const field = state.floorFields[state.activeFloorId];
+          const field = editFieldOf(state);
           const polygon = [...state.mirrorPolygon];
           const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
           polygon[this.mirrorDraggedPolygonIndex] = point;
@@ -594,7 +598,7 @@ export class FieldEditController {
         && currentWorld.y === this.lastEndWorld?.y) return;
 
       const ms = useMazeStore.getState();
-      const cfg = ms.floorFields[ms.activeFloorId].fieldConfig;
+      const cfg = editFieldOf(ms).fieldConfig;
       const kind = cfg.tessellation.kind;
       const nextCells = primitiveCells(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
       this.lastPreviewCells = this.normalizedOperationCells(nextCells);
@@ -611,7 +615,7 @@ export class FieldEditController {
     if (button !== 0) return;
     const state = useMazeStore.getState();
     if (state.backgroundAutoFillPreview !== null) return;
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     if (field.fieldPrimitive === "mirror") {
       if (state.mirrorScope === "polygon" && state.mirrorPolygon.length >= 3 && state.mirrorAxisPoints.length === 2) {
         state.finishMirrorPolygon();
@@ -620,8 +624,7 @@ export class FieldEditController {
       this.updateMirrorCursor(canvasX, canvasY);
       return;
     }
-    if (!(state.openCard === "field_setup"
-      && field.fieldEditMode === "custom"
+    if (!(fieldToolsActive(state)
       && field.fieldPrimitive === "polygon"
       && this.polygonPoints.length >= 3)) return;
 
@@ -755,12 +758,12 @@ export class FieldEditController {
       // The polygon remains active between clicks until it is closed or confirmed with Enter.
     } else if (this.selectionAdditiveGestureActive) {
       const state = useMazeStore.getState();
-      const field = state.floorFields[state.activeFloorId];
+      const field = editFieldOf(state);
       this.selectionAdditiveGestureActive = false;
       this.showSelection(this.operationCells(this.lastPreviewCells), field.fieldConfig.tessellation.kind, field.fieldConfig);
-    } else if (this.activePrimitive === "point" && useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldOperation === "select") {
+    } else if (this.activePrimitive === "point" && editFieldOf(useMazeStore.getState()).fieldOperation === "select") {
       const state = useMazeStore.getState();
-      const field = state.floorFields[state.activeFloorId];
+      const field = editFieldOf(state);
       this.showSelection(this.operationCells(this.lastPreviewCells), field.fieldConfig.tessellation.kind, field.fieldConfig);
     } else if (this.activePrimitive === "mirror") {
       this.mirrorDraggedAxisIndex = null;
@@ -772,7 +775,7 @@ export class FieldEditController {
       this.primitiveCallbacks.onMirrorPreviewUpdate?.(useMazeStore.getState().mirrorAxisPoints, useMazeStore.getState().mirrorPolygon);
     } else if (this.activeShapePrimitive !== null && this.primitiveStartGrid !== null) {
       const state = useMazeStore.getState();
-      const field = state.floorFields[state.activeFloorId];
+      const field = editFieldOf(state);
       if (field.fieldOperation === "select") {
         this.showSelection(this.lastPreviewCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
       } else {
@@ -799,13 +802,19 @@ export class FieldEditController {
     if (useMazeStore.getState().backgroundAutoFillPreview !== null) return null;
     const grid = this.toGrid(canvasX, canvasY);
     if (!grid) return null;
+    const state = useMazeStore.getState();
+    if (zoneEditActive(state)) {
+      // `gestureButton` keeps the last gesture's button (2 after a right click): a hover outside a gesture is the primary one.
+      const operation = this.effectiveOperation(this.gestureActive ? this.gestureButton : 0);
+      if (!zoneToolReaches(state, operation, grid.x, grid.y)) return null;
+    }
     return [grid.x, grid.y];
   }
 
   getMagicWandPreview(canvasX: number, canvasY: number): [number, number][] {
     const state = useMazeStore.getState();
     if (state.backgroundAutoFillPreview !== null) return [];
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     if (field.fieldPrimitive !== "magic_wand") return [];
     const grid = this.toGrid(canvasX, canvasY);
     if (!grid) return [];
@@ -827,7 +836,7 @@ export class FieldEditController {
     if (!result.ok) return null;
     const viewport = this.getViewport();
     const point: [number, number] = [(canvasX - viewport.x) / viewport.scale.x, (canvasY - viewport.y) / viewport.scale.y];
-    const cfg = state.floorFields[state.activeFloorId].fieldConfig;
+    const cfg = editFieldOf(state).fieldConfig;
     const contours = result.info.contours;
     // While dragging, the run stays on its contour and any pointer position resolves to its nearest face.
     const maxDistance = contour === undefined ? TOPOLOGY_PICK_RADIUS_PX / viewport.scale.x : Infinity;
@@ -841,7 +850,7 @@ export class FieldEditController {
     const state = useMazeStore.getState();
     const viewport = this.getViewport();
     const point: [number, number] = [(canvasX - viewport.x) / viewport.scale.x, (canvasY - viewport.y) / viewport.scale.y];
-    return creasePointAt(point, state.floorFields[state.activeFloorId].fieldConfig, CREASE_SNAP_RADIUS_PX / viewport.scale.x, free);
+    return creasePointAt(point, editFieldOf(state).fieldConfig, CREASE_SNAP_RADIUS_PX / viewport.scale.x, free);
   }
 
   /** Tracks the boundary face under the pointer while a run is being edited (highlighted as an edge). */
@@ -892,7 +901,7 @@ export class FieldEditController {
 
   private updatePolygonPreview(): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const cfg = field.fieldConfig;
     const kind = cfg.tessellation.kind;
     const previewPoints = this.polygonCursorPoint
@@ -919,7 +928,7 @@ export class FieldEditController {
 
   private polygonCells(points: PolygonPoint[]): [number, number][] {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     return this.normalizedOperationCells(cellsInsidePolygon(points, field.fieldConfig));
   }
 
@@ -933,9 +942,8 @@ export class FieldEditController {
 
   private commitPolygon(): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
-    if (!(state.openCard === "field_setup"
-      && field.fieldEditMode === "custom"
+    const field = editFieldOf(state);
+    if (!(fieldToolsActive(state)
       && field.fieldPrimitive === "polygon"
       && this.polygonPoints.length >= 3)) return;
     this.finishOutlineCommit(this.polygonCells(this.polygonPoints));
@@ -947,7 +955,7 @@ export class FieldEditController {
    * selection, Add/Remove commits them. */
   private finishOutlineCommit(committedCells: [number, number][]): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     if (field.fieldOperation === "select") {
       this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
       return;
@@ -1009,7 +1017,7 @@ export class FieldEditController {
 
   private activeFieldConfig(): FieldConfig {
     const state = useMazeStore.getState();
-    return state.floorFields[state.activeFloorId].fieldConfig;
+    return editFieldOf(state).fieldConfig;
   }
 
   private addParallelogramPoint(point: PolygonPoint): void {
@@ -1040,7 +1048,7 @@ export class FieldEditController {
   }
 
   private updateParallelogramPreview(): void {
-    const field = useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId];
+    const field = editFieldOf(useMazeStore.getState());
     const cfg = field.fieldConfig;
     const points = this.parallelogramPoints(this.parallelogramCursor);
     if (!points) return;
@@ -1064,9 +1072,8 @@ export class FieldEditController {
 
   private commitParallelogram(): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
-    if (!(state.openCard === "field_setup"
-      && field.fieldEditMode === "custom"
+    const field = editFieldOf(state);
+    if (!(fieldToolsActive(state)
       && field.fieldPrimitive === "parallelogram"
       && this.parallelogramAnchors.length === 2)) return;
     const points = this.parallelogramPoints(this.parallelogramCursor);
@@ -1096,7 +1103,7 @@ export class FieldEditController {
   private handleMirrorPointerDown(canvasX: number, canvasY: number, button: number): void {
     if (button !== 0) return;
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
     const axisPoints = state.mirrorAxisPoints;
     if (axisPoints.length < 2) {
@@ -1139,7 +1146,7 @@ export class FieldEditController {
 
   private updateMirrorCursor(canvasX: number, canvasY: number): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const axisPoints = state.mirrorAxisPoints;
     if (axisPoints.length === 1) {
       const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
@@ -1214,7 +1221,7 @@ export class FieldEditController {
   }
 
   private effectiveOperation(button: number): "add" | "remove" | "select" {
-    const operation = useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldOperation;
+    const operation = editFieldOf(useMazeStore.getState()).fieldOperation;
     if (operation === "select" || button !== 2) return operation;
     return operation === "add" ? "remove" : "add";
   }
@@ -1222,6 +1229,12 @@ export class FieldEditController {
   private applyEdit(x: number, y: number, button: number): void {
     const store = useMazeStore.getState();
     const operation = this.effectiveOperation(button);
+    if (zoneEditActive(store)) {
+      // A zone holds field cells only.
+      if (operation === "add") store.addZoneCells(cellsInActiveField(store, [[x, y]]));
+      else if (operation === "remove") store.removeZoneCells([[x, y]]);
+      return;
+    }
     if (operation === "add") {
       store.addFieldPoint(x, y);
     } else if (operation === "remove") {
@@ -1231,7 +1244,7 @@ export class FieldEditController {
 
   private applyMagicWand(x: number, y: number, button: number): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const operation = this.effectiveOperation(button);
     const cells = this.magicWandCellsAt(x, y, operation);
     if (!cells || cells.length === 0) return;
@@ -1248,7 +1261,7 @@ export class FieldEditController {
     operation: "add" | "remove" | "select",
   ): [number, number][] | null {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const startKey = encodePoint(x, y);
 
     // Select and Remove operate on occupied cells. Add operates on an empty component;
@@ -1256,6 +1269,13 @@ export class FieldEditController {
     if ((operation === "select" || operation === "remove") && !field.fieldPoints.has(startKey)) return null;
     if (operation === "add" && field.fieldPoints.has(startKey)) return null;
 
+    if (zoneEditActive(state) && operation === "add") {
+      // The empty area a zone can grow into is bounded by the field: the field cells outside the zone.
+      const free = new Set(activeFieldCellKeys(state));
+      for (const key of field.fieldPoints) free.delete(key);
+      if (!free.has(startKey)) return null;
+      return connectedMagicWandCells([x, y], field.fieldConfig, free);
+    }
     return connectedMagicWandCells([x, y], field.fieldConfig, field.fieldPoints);
   }
 
@@ -1266,7 +1286,7 @@ export class FieldEditController {
 
   private operationCells(cells: [number, number][]): [number, number][] {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     if (field.fieldOperation !== "select") return cells;
     return cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
   }
@@ -1276,16 +1296,20 @@ export class FieldEditController {
    * only the cells on the field, so smoothing matches the outline the user sees. */
   private normalizedOperationCells(cells: [number, number][]): [number, number][] {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const adding = this.effectiveOperation(this.gestureButton) === "add";
-    const smooth = state.smoothPrimitives !== state.smoothInverted;
+    const smooth = smoothingOf(state) !== state.smoothInverted;
     const normalized = normalizeCells(
       cells,
       field.fieldConfig,
       smooth,
       adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
     );
-    const result = adding ? normalized : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+    // A zone grows only over the field's cells.
+    const zoneEdit = zoneEditActive(state);
+    const inZoneField = zoneEdit ? cellsInActiveField(state, normalized) : normalized;
+    const shapeCells = zoneEdit ? cellsInActiveField(state, cells) : cells;
+    const result = adding ? inZoneField : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
     if (!smooth) {
       this.clearSmoothingPreview();
       return result;
@@ -1293,13 +1317,13 @@ export class FieldEditController {
     const accepted = new Set(result.map(([x, y]) => encodePoint(x, y)));
     // Remove/Select previews are already clipped to occupied cells. Do not paint the rest of the
     // shape as a smoothing exclusion merely because there is nothing there to remove/select.
-    const previewCells = adding ? cells : cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+    const previewCells = adding ? shapeCells : cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
     this.lastSmoothedOutCells = previewCells.filter(([x, y]) => !accepted.has(encodePoint(x, y)));
     if (!adding) {
       this.lastSmoothingFeedback = null;
       return result;
     }
-    const rawNew = uniqueCells(cells).filter(([x, y]) => !field.fieldPoints.has(encodePoint(x, y)));
+    const rawNew = uniqueCells(shapeCells).filter(([x, y]) => !field.fieldPoints.has(encodePoint(x, y)));
     const acceptedNew = uniqueCells(result).filter(([x, y]) => !field.fieldPoints.has(encodePoint(x, y)));
     this.lastSmoothingFeedback = rawNew.length > acceptedNew.length
       ? acceptedNew.length === 0 ? "empty" : "partial"
@@ -1324,7 +1348,7 @@ export class FieldEditController {
 
   private primitivePreviewGeometry(primitive: ShapePrimitive, context: PrimitiveContext): ReturnType<typeof primitiveWorldGeometry> {
     const geometry = primitiveWorldGeometry(primitive, context);
-    if (useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldOperation !== "select") return geometry;
+    if (editFieldOf(useMazeStore.getState()).fieldOperation !== "select") return geometry;
     if (geometry.kind === "ellipse") return { ...geometry, dashed: true };
     if (geometry.kind === "polygon") return { ...geometry, dashedAll: true };
     return geometry;
@@ -1378,7 +1402,7 @@ export class FieldEditController {
 
   private updatePointSelectionPreview(): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const cfg = field.fieldConfig;
     const kind = cfg.tessellation.kind;
     this.reportSize({ selection: measureCells(this.lastPreviewCells) });
@@ -1401,7 +1425,7 @@ export class FieldEditController {
     if (!this.selectionDragStartCenter) return;
     const grid = this.toGrid(canvasX, canvasY);
     if (!grid) return;
-    const cfg = useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldConfig;
+    const cfg = editFieldOf(useMazeStore.getState()).fieldConfig;
     const center = getCartesian(grid.x, grid.y, cfg);
     const vector: [number, number] = [
       this.selectionDragBaseVector[0] + center[0] - this.selectionDragStartCenter[0],
@@ -1422,7 +1446,7 @@ export class FieldEditController {
 
   private updateSelectionPreview(): void {
     const state = useMazeStore.getState();
-    const field = state.floorFields[state.activeFloorId];
+    const field = editFieldOf(state);
     const cfg = field.fieldConfig;
     const kind = cfg.tessellation.kind;
     const hasPendingMove = this.selectionDragActive
@@ -1483,7 +1507,7 @@ export class FieldEditController {
     this.clearSelectionPreview();
     this.gestureActive = false;
     const state = useMazeStore.getState();
-    this.activePrimitive = state.floorFields[state.activeFloorId].fieldPrimitive;
+    this.activePrimitive = editFieldOf(state).fieldPrimitive;
   }
 
   commitPendingSelectionMove(): boolean {
@@ -1512,11 +1536,11 @@ export class FieldEditController {
     }
     if (this.selectionPreviewVisible && !this.commitSelectionMove()) return;
     this.abortUnfinishedProcesses();
-    const toolBeforePaste = state.floorFields[state.activeFloorId].fieldPrimitive;
+    const toolBeforePaste = editFieldOf(state).fieldPrimitive;
     useMazeStore.getState().setFieldOperation("select");
     if (toolBeforePaste !== "mirror") useMazeStore.getState().setFieldPrimitive(toolBeforePaste);
     const after = useMazeStore.getState();
-    const field = after.floorFields[after.activeFloorId];
+    const field = editFieldOf(after);
     const cfg = field.fieldConfig;
     const placement = this.pastePlacement(clipboard, cfg);
     this.showSelection(placement.cells, cfg.tessellation.kind, cfg);
@@ -1528,9 +1552,8 @@ export class FieldEditController {
   }
 
   private clipboardAvailable(state: ReturnType<typeof useMazeStore.getState>): boolean {
-    const field = state.floorFields[state.activeFloorId];
-    return state.openCard === "field_setup"
-      && field.fieldEditMode === "custom"
+    const field = editFieldOf(state);
+    return fieldToolsActive(state)
       && state.backgroundAutoFillPreview === null
       && fieldClipboardSupported(field.fieldConfig.tessellation);
   }

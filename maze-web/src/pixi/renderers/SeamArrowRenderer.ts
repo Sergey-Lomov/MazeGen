@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { canvas } from "../colorTokens";
-import { distributeHueGroups } from "../../store/colorMath";
+import { hueGroupColors } from "../../store/colorMath";
 import { AUTO_HUE_BASE_COLOR, GLUE_HOVER_LIGHTNESS } from "../renderConstants";
 import type { SeamArrow, SeamPair } from "../selectors/seamArrows";
 
@@ -53,21 +53,32 @@ const REFRESH_CW: Point[][] = (() => {
   return [...half(false), ...half(true)];
 })();
 
-/// The colour of glue `index` of `count`: `AUTO_HUE_BASE_COLOR` with its hue spread evenly round the wheel in lightness
-/// groups (`distributeHueGroups`), so every glue has its own colour. A hovered glue is lighter.
-export function glueColor(index: number, count: number, hovered: boolean): number {
-  const total = Math.max(count, 1);
-  return glueColors(total, hovered)[Math.min(index, total - 1)];
+/// How many colours one round of the automatic palette of glues and zones holds. The round is spread over all of them at
+/// once, whatever number of glues (zones) exists, so adding one never changes the colours of the others.
+export const AUTO_COLOR_COUNT = 8;
+
+/// Position of round `round` off the base colour in the group scheme of `hueGroupColors`: 0, +1, -1, +2, -2, ... The
+/// first round is the base itself and later ones are not centred on it, so adding a round never changes an earlier one.
+function roundPosition(round: number): number {
+  return Math.ceil(round / 2) * (round % 2 === 1 ? 1 : -1);
 }
 
-/// The colours of `count` glues, cached per `hovered` (a redraw asks for the same two distributions once per arrow).
-const cachedGlueColors: [{ count: number; colors: number[] } | null, { count: number; colors: number[] } | null] = [null, null];
-function glueColors(count: number, hovered: boolean): number[] {
-  const slot = hovered ? 1 : 0;
-  if (cachedGlueColors[slot]?.count !== count) {
-    cachedGlueColors[slot] = { count, colors: distributeHueGroups(AUTO_HUE_BASE_COLOR, count, hovered ? GLUE_HOVER_LIGHTNESS : 0) };
+/// The colour of glue `index`: `AUTO_HUE_BASE_COLOR` with its hue spread evenly round the wheel over `AUTO_COLOR_COUNT`
+/// colours (`hueGroupColors`); each further round of `AUTO_COLOR_COUNT` is a group shifted in lightness and hue. A hovered glue is lighter.
+export function glueColor(index: number, hovered = false): number {
+  return autoPalette(Math.floor(index / AUTO_COLOR_COUNT), hovered)[index % AUTO_COLOR_COUNT];
+}
+
+/// The rounds' palettes, cached (a redraw asks for the same distribution once per arrow).
+const cachedPalettes = new Map<string, number[]>();
+function autoPalette(round: number, hovered: boolean): number[] {
+  const key = `${round}:${hovered}`;
+  let palette = cachedPalettes.get(key);
+  if (!palette) {
+    palette = hueGroupColors(AUTO_HUE_BASE_COLOR, AUTO_COLOR_COUNT, roundPosition(round), hovered ? GLUE_HOVER_LIGHTNESS : 0);
+    cachedPalettes.set(key, palette);
   }
-  return cachedGlueColors[slot]!.colors;
+  return palette;
 }
 
 /// The body with its two ends moved inward just far enough for the square end of the stroke to stay behind the base of the
@@ -103,7 +114,7 @@ export function tuckEnds(path: Point[], headA: Point[], headB: Point[], width: n
 /// Draws one arrow: a single opaque polyline with a head at each end, a contour along each run of faces and, on a
 /// twisted seam, a refresh icon (two circular arrows) in the middle. A hovered arrow is lighter, with the same widths.
 /// With `pair`, the body, heads and icon are those of that glued pair alone, so they lead from the hovered face to its partner.
-export function drawSeamArrow(g: Graphics, arrow: SeamArrow, hovered = false, color = glueColor(0, 1, hovered), pair: SeamPair | null = null): void {
+export function drawSeamArrow(g: Graphics, arrow: SeamArrow, hovered = false, color = glueColor(0, hovered), pair: SeamPair | null = null): void {
   const shown = pair ?? arrow;
   const lines: [Point[], number, "butt" | "round"][] = [
     ...(pair ? [pair.path] : arrow.bodies).map((line): [Point[], number, "butt" | "round"] => [tuckEnds(line, shown.headA, shown.headB, arrow.width), arrow.width, "butt"]),
@@ -147,13 +158,12 @@ export class SeamArrowRenderer {
     const g = this.g;
     if (g.destroyed) return;
     g.clear();
-    const count = arrows.length;
-    arrows.forEach((arrow, i) => { if (i !== focus?.arrow) drawSeamArrow(g, arrow, false, glueColor(i, count, false)); });
+    arrows.forEach((arrow, i) => { if (i !== focus?.arrow) drawSeamArrow(g, arrow, false, glueColor(i)); });
     // The focused arrow is drawn last so it stays on top where arrows cross.
     if (focus && arrows[focus.arrow]) {
       const arrow = arrows[focus.arrow];
       const pair = focus.pair === null ? null : arrow.pairs[focus.pair] ?? null;
-      drawSeamArrow(g, arrow, true, glueColor(focus.arrow, count, true), pair);
+      drawSeamArrow(g, arrow, true, glueColor(focus.arrow, true), pair);
     }
   }
 
