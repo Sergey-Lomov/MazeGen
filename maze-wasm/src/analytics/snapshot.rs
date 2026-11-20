@@ -172,8 +172,12 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                                 cell_type: i.cell_type,
                                 shape: i.shape,
                                 kind: match i.kind {
-                                    maze_core::quality_control::LimitViolationKind::Excess => "excess",
-                                    maze_core::quality_control::LimitViolationKind::Deficit => "deficit",
+                                    maze_core::quality_control::LimitViolationKind::Excess => {
+                                        "excess"
+                                    }
+                                    maze_core::quality_control::LimitViolationKind::Deficit => {
+                                        "deficit"
+                                    }
                                 }
                                 .to_string(),
                                 amount: i.amount,

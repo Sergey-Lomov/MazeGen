@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { Button } from "../Button";
-import { Inline } from "../Layout";
+import { LoadIconButton } from "../LoadIconButton";
+import { SaveIconButton } from "../SaveIconButton";
 import { AlertModal } from "../AlertModal";
 import { FileNameModal, timestampedBaseName } from "../FileNameModal";
 import { readJsonFile } from "../jsonFile";
@@ -11,7 +11,7 @@ import {
   downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError, QUALITY_PRESET_FILE_EXTENSION,
   type ProjectFileQuality,
 } from "../../store/projectExport";
-import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
+import { typography, muted, disabled, spacing, inset } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
 import { useFieldHint } from "../FieldHint";
@@ -171,15 +171,10 @@ export function QualityFeature() {
           {timeBudgetField.hint}
         </div>
       </div>
-      <div style={styles.divider} />
-      <Inline gap="itemGap">
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => setSaveDialogOpen(true)}>
-          {m["quality.preset.save"]()}
-        </Button>
-        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
-          {m["quality.preset.load"]()}
-        </Button>
-      </Inline>
+      <div style={styles.presetActions}>
+        <SaveIconButton title={m["quality.preset.save"]()} onClick={() => setSaveDialogOpen(true)} />
+        <LoadIconButton title={m["quality.preset.load"]()} onClick={() => presetInputRef.current?.click()} />
+      </div>
       <input
         ref={presetInputRef}
         type="file"
@@ -213,6 +208,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.itemGap,
     paddingBottom: spacing.itemGap,
   },
+  presetActions: {
+    position: "absolute",
+    top: inset.panelInsetY,
+    right: inset.panelInsetX,
+    display: "flex",
+    gap: spacing.itemGap,
+  },
   empty: {
     ...disabled(typography.body),
   },
@@ -233,9 +235,6 @@ const styles: Record<string, React.CSSProperties> = {
   limitLabel: {
     ...muted(typography.body),
     flex: 1,
-  },
-  divider: {
-    borderTop: `1px solid ${ui.border.default}`,
   },
   limitInput: {
     ...sharedStyles.inputSm,

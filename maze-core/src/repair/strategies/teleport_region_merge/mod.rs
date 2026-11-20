@@ -179,25 +179,26 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
         let scc = maze.analysis.scc(&maze.graph);
         let mut pending = PendingTeleports::default();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
-            let region = scc.components.get(region_idx)?;
-            find_merge_candidate(
-                region,
-                region_idx,
-                &scc,
-                maze,
-                preset_state,
-                mode,
-                direction_mode,
-                prefer_partial,
-                min_distance,
-                allow_cross_floor,
-                needy,
-                excluded,
-                rng,
-                &mut pending,
-            )
-        });
+        let any_fixed =
+            region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
+                let region = scc.components.get(region_idx)?;
+                find_merge_candidate(
+                    region,
+                    region_idx,
+                    &scc,
+                    maze,
+                    preset_state,
+                    mode,
+                    direction_mode,
+                    prefer_partial,
+                    min_distance,
+                    allow_cross_floor,
+                    needy,
+                    excluded,
+                    rng,
+                    &mut pending,
+                )
+            });
 
         if any_fixed {
             (RepairResult::Fixed { score: None }, pending.commands)

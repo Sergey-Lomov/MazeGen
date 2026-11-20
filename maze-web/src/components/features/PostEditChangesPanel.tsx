@@ -11,7 +11,7 @@ import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditLifelines";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
-import { typography, muted, spacing, ui, radius } from "../../styles/theme";
+import { typography, muted, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import { ToolTooltip } from "../ToolIconButton";

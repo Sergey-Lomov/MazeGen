@@ -1,7 +1,7 @@
 use crate::graph::EdgeKind;
-use crate::quality_control::issue_kinds::LimitViolationKind;
 use crate::ids::NodeId;
 use crate::quality_control::issue::IssueKind;
+use crate::quality_control::issue_kinds::LimitViolationKind;
 use crate::quality_control::issue_kinds::RepairLimitKind;
 use crate::quality_control::issue_payload::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,

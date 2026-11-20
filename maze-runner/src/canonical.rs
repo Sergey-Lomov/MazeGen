@@ -21,9 +21,8 @@ use maze_core::{
     graph::{EdgeKind, Graph},
     ids::NodeId,
     quality_control::{
-        LimitViolationKind, Issue, IssueEdgeGroupPayload, IssuePayload, IssueRegionPayload,
-        IssueSplitTilePayload,
-        resolve_issue_payload,
+        Issue, IssueEdgeGroupPayload, IssuePayload, IssueRegionPayload, IssueSplitTilePayload,
+        LimitViolationKind, resolve_issue_payload,
     },
     space::{MultiLevelField, Tessellation},
 };

@@ -335,11 +335,18 @@ mod deadline_tests {
         let meta = MazeMeta::empty();
         let analysis = MazeAnalysis::default();
         {
-            let _deadline =
-                crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
-            assert!(analysis.graph_analytics(&graph, &meta).cycle_analysis_overflowed);
+            let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+            assert!(
+                analysis
+                    .graph_analytics(&graph, &meta)
+                    .cycle_analysis_overflowed
+            );
         }
         // Same graph version, deadline gone: a poisoned cache would still say "overflowed".
-        assert!(!analysis.graph_analytics(&graph, &meta).cycle_analysis_overflowed);
+        assert!(
+            !analysis
+                .graph_analytics(&graph, &meta)
+                .cycle_analysis_overflowed
+        );
     }
 }

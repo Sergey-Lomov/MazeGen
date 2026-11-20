@@ -5,8 +5,9 @@ mod types;
 
 pub use types::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
-    IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueShapeLimitViolationPayload, IssueSplitTilePayload, IssueUndecidedPairPayload,
+    IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload,
+    IssueShapeLimitViolationPayload, IssueSplitGroupPayload, IssueSplitTilePayload,
+    IssueUndecidedPairPayload,
 };
 
 use super::distance_diagnostics::IndeterminateReason;
@@ -21,8 +22,8 @@ use super::issue_kinds::{
     InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
     InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
     MissingElevatorsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingSplitTilesIssue,
-    MissingTeleportsIssue, MissingVerticalPassagesIssue,
-    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, ViolatedNodeShapeLimitsIssue,
+    MissingTeleportsIssue, MissingVerticalPassagesIssue, RegionNeedsExpansionIssue,
+    RegionNeedsShrinkIssue, ViolatedNodeShapeLimitsIssue,
 };
 use super::issue_kinds::{InvalidCrossElementGroupIssue, InvalidCrossElementIssue};
 use crate::generation::PresetState;
@@ -33,8 +34,7 @@ use resolvers::{
     excessive_scc_count_preset_locked, region_preset_locked_for_expansion,
     region_preset_locked_for_shrink, resolve_area_deficit_map, resolve_cross_element_group_payload,
     resolve_cross_element_payload, resolve_cycle_payload, resolve_dead_end_group_map,
-    resolve_edge_group_map,
-    resolve_elevator_group_map, resolve_elevator_stop_group_map,
+    resolve_edge_group_map, resolve_elevator_group_map, resolve_elevator_stop_group_map,
     resolve_excessive_elevator_stop_gap_payload, resolve_invalid_elevator_payload,
     resolve_invalid_elevator_stop_payload, resolve_invalid_split_node_group_payload,
     resolve_invalid_split_node_payload, resolve_invalid_split_route_payload,
@@ -333,9 +333,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         return payload;
     }
 
-    if let Some(ViolatedNodeShapeLimitsIssue { violations, .. }) =
-        issue.as_any().downcast_ref::<ViolatedNodeShapeLimitsIssue>()
-        && !violations.is_empty()
+    if let Some(ViolatedNodeShapeLimitsIssue { violations, .. }) = issue
+        .as_any()
+        .downcast_ref::<ViolatedNodeShapeLimitsIssue>(
+    ) && !violations.is_empty()
     {
         return IssuePayload::ViolatedNodeShapeLimits {
             violations: violations

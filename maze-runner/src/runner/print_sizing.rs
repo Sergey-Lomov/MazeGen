@@ -545,7 +545,9 @@ impl<T: Tessellation> Sizer<'_, T> {
 fn around_size(size: u32) -> impl Iterator<Item = u32> {
     (0..=SNAP_RANGE).filter_map(move |distance| {
         let candidate = size.checked_sub(distance)?;
-        (candidate >= 1 && candidate <= MAX_RECT_DIMENSION).then_some(candidate)
+        (1..=MAX_RECT_DIMENSION)
+            .contains(&candidate)
+            .then_some(candidate)
     })
 }
 

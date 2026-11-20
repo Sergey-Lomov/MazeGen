@@ -31,6 +31,7 @@ export const generationTransientUi = {
   hoveredDebugRef: null,
   debugSearchQuery: "",
   debugFocusNodeIndex: null,
+  projectLoadInProgress: false,
 } satisfies Partial<GenerationState>;
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (...a) => {
@@ -91,7 +92,6 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   vertexSettingsPanelOpen: false,
   generationStatus: "idle" as const,
   generationProgress: null,
-  projectLoadInProgress: false,
   openCard: "basic_config" as const,
   debugMode: false,
   debugAutoPlayDelay: 200,

@@ -130,8 +130,8 @@ ids stay unique and an id of a deleted zone is still not reused.
 GitHub issue #750. A standalone file with only the visual configuration, so a tuned style can be
 reused in another project without copying generation settings or maze content. Code:
 `maze-web/src/store/projectExport/visualPreset.ts` (save/parse) and the `loadVisualPreset` action
-(`imageExportSlice.ts`); UI: "Save style" / "Load style" buttons in the Image Export card
-(`ImageExportFeature.tsx`).
+(`imageExportSlice.ts`); UI: save/load icon buttons in the expanded Image Export card's top-right
+corner (`ImageExportFeature.tsx`).
 
 - Content: JSON `VisualPresetFile` (`types.ts`) — `kind: "maze-visual-preset"`,
   `version: VISUAL_PRESET_VERSION`, and `imageExport`: the project file's `imageExport` section
@@ -162,8 +162,8 @@ reused in another project without copying generation settings or maze content. C
 GitHub issue #751. A standalone file with only the quality control settings, so a tuned rule set
 can be reused in another project or shared without copying the whole project. Code:
 `maze-web/src/store/projectExport/qualityPreset.ts` (save/parse/unknown-id filter) and the
-`loadQualityPreset` action (`generationSlice.ts`); UI: "Save rules" / "Load rules" buttons in the
-Quality card (`QualityFeature.tsx`).
+`loadQualityPreset` action (`generationSlice.ts`); UI: save/load icon buttons in the expanded
+Quality card's top-right corner (`QualityFeature.tsx`).
 
 - Content: JSON `QualityPresetFile` (`types.ts`) — `kind: "maze-quality-preset"`,
   `version: QUALITY_PRESET_VERSION`, and `quality`: exactly the project file's `quality` section

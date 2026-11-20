@@ -77,12 +77,7 @@ pub fn zones_of_cells(config: JsValue) -> Result<JsValue, JsValue> {
 }
 
 fn zones_normalize_for(cfg: &ZonesConfig) -> Result<Vec<ZoneDto>, String> {
-    build_tessellation(
-        &cfg.tessellation,
-        Normalize {
-            zones: &cfg.zones,
-        },
-    )?
+    build_tessellation(&cfg.tessellation, Normalize { zones: &cfg.zones })?
 }
 
 fn zones_of_cells_for(cfg: &ZonesOfCellsConfig) -> Result<Vec<Vec<u32>>, String> {
@@ -123,7 +118,12 @@ fn build_set<T: Tessellation>(
         .map(|zone| {
             let cells = decode_cells(tessellation, codec, &zone.cells)
                 .map_err(|e| format!("zone {}: {e}", zone.id))?;
-            Ok((ZoneId::new(zone.id), zone.name.clone(), zone.kind.into(), cells))
+            Ok((
+                ZoneId::new(zone.id),
+                zone.name.clone(),
+                zone.kind.into(),
+                cells,
+            ))
         })
         .collect::<Result<Vec<_>, String>>()?;
     ZoneSet::from_zones(entries)
@@ -171,7 +171,13 @@ impl TessellationVisitor for OfCells<'_> {
         let index = ZoneIndex::build(&set);
         Ok(queries
             .into_iter()
-            .map(|q| index.zones_of(q.floor, q.cell).iter().map(|id| id.raw()).collect())
+            .map(|q| {
+                index
+                    .zones_of(q.floor, q.cell)
+                    .iter()
+                    .map(|id| id.raw())
+                    .collect()
+            })
             .collect())
     }
 }
@@ -201,7 +207,11 @@ mod tests {
     fn normalize_dedups_cells_and_keeps_ids() {
         let cfg = ZonesConfig {
             tessellation: square(),
-            zones: vec![zone(5, ZoneKindDto::Manual, vec![[0, 1, 1], [0, 0, 0], [0, 1, 1]])],
+            zones: vec![zone(
+                5,
+                ZoneKindDto::Manual,
+                vec![[0, 1, 1], [0, 0, 0], [0, 1, 1]],
+            )],
         };
         let out = zones_normalize_for(&cfg).unwrap();
         assert_eq!(out.len(), 1);
@@ -218,7 +228,10 @@ mod tests {
                 zone(1, ZoneKindDto::Manual, vec![]),
             ],
         };
-        assert_eq!(zones_normalize_for(&cfg), Err("duplicate zone id 1".to_string()));
+        assert_eq!(
+            zones_normalize_for(&cfg),
+            Err("duplicate zone id 1".to_string())
+        );
     }
 
     #[test]

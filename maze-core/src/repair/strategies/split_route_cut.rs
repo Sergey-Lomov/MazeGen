@@ -10,8 +10,8 @@ use crate::repair::strategies::group_select::{
 };
 use crate::repair::strategy::{NestedSlot, NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
+use rand::RngCore;
 use rand::seq::SliceRandom;
-use rand::{Rng, RngCore};
 use std::collections::HashSet;
 
 pub const PARAM_EDGE_SCOPE: &str = "edge_scope";
