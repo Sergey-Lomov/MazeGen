@@ -49,8 +49,9 @@ one, expressed through the general check availability mechanic (`Specs/quality-f
 "Check availability"): the `node_shape_limits` descriptor declares
 `requires: [RegularCells, MaxCellSides { max: 8 }]` (`maze-wasm/src/checks_catalog.rs`). In the
 selection dialogs the rule stays listed, disabled, with a tooltip naming the failing requirement (two
-different texts: irregular cells / cells above 8 sides); a rule already holding the check loses it
-when a tessellation change makes it unavailable.
+different texts: irregular cells / cells above 8 sides); a rule already holding the check keeps it, flagged
+`cannot_apply` (delete-only problem), when a tessellation change makes it unavailable
+(`quality-feature.md`, "Rule problems").
 
 `TurnAngle` is the angle at the cell's center between the contact points of the two passage faces
 (`TessellationGeometry::contact_point`, `Tessellation::center`), rounded to whole degrees. The
@@ -202,7 +203,7 @@ occurrence order and drops duplicates). Different checks flagging different shap
   shared application and the next render builds a fresh one. A shape key is parsed in one place (`pixi/nodeShapeKey`,
   `parseNodeShapeKey`), shared by the labels and the icon tiles. The rule is named "Shape limits"
   (ru "Лимиты форм"). The limits are tessellation-sensitive: `qcForTessellation` resets the `limits` param
-  to none when the tessellation changes. Irregular tessellations need their own handling later. The issue is listed under "General rules" in the add-rules dialog;
+  to none when the tessellation changes and flags the check `limits_reset` (`needs_reconfiguration`, cleared by editing the limits). Irregular tessellations need their own handling later. The issue is listed under "General rules" in the add-rules dialog;
   its bubble highlights the nodes of all violations.
   The check records two details for the bubble: `shapes` (comma-separated violated `cell_type/shape_key`, shown in the
   title) and `violations` (`;`-separated `cell_type/shape_key:excess|deficit:count:limit`, where `limit` is the crossed

@@ -8,6 +8,7 @@ import type {
   MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
 } from "../storeTypes";
+import { ruleHasSendableChecks, sendableChecks } from "../storeTypes";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
 import { replayPostEditCommands } from "../../pixi/postEditReplay";
@@ -452,9 +453,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // no effect on post-edit's `teleport_duplicates_connection` check — it silently kept resolving
     // to its default (`true`) every time.
     const ruleGroups = state.rules
-      .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id))
+      .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id) && ruleHasSendableChecks(g))
       .map((g) => {
-        const activeChecks = g.checks.filter((c) => !c.disabled);
+        const activeChecks = sendableChecks(g);
         const activeCheckTypeIds = activeChecks.map((c) => c.typeId);
         const params: Record<string, string> = {};
         for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, null)) {

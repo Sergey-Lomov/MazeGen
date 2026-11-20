@@ -7,6 +7,7 @@ The Quality feature manages active checks, their **rules** (the unit a fix strat
 | Condition | Status |
 |-----------|--------|
 | 0 active checks | `warning` (yellow) |
+| ≥1 active checks, ≥1 problematic rule (see "Rule problems") | `warning` (yellow), comment `status.quality_problems` |
 | ≥1 active checks | `set` (green) |
 
 Subtitle: `"N check(s) active"`.
@@ -638,10 +639,68 @@ type TessellationRequirement =
   `IssueSelectDialog` (a kind is disabled when every check offering it is unavailable; the tooltip
   is its first check's reason), `CheckSelectDialog`, `AddCheckToRuleDialog` (`CheckCandidateVM.unavailable`).
   The initial selection skips disabled items.
-- **Tessellation change:** `qcForTessellation` removes checks the new tessellation makes unavailable
-  (same data-loss path as pattern filters, so the confirmation dialog warns).
+- **Tessellation change:** `qcForTessellation` keeps a check the new tessellation makes unavailable and
+  flags it `cannot_apply` (see "Rule problems"); the confirmation dialog still warns.
 - First consumer: `node_shape_limits` (`Specs/node-shape-limits.md`, "Availability"). Which checks carry a
   requirement is an explicit id list pinned by `only_node_shape_limits_has_tessellation_requirements`.
+
+## Rule problems (GitHub issue #1044)
+
+`QcRuleState.problems?: QcProblem[]` (absent = none) flags what a tessellation change broke instead of silently
+deleting or altering it. A rule with at least one problem is **problematic**: its card is outlined yellow and lists
+every problem (explanation only, the category is internal; naming the member check when check-scoped); it stays
+problematic until the last problem is gone. A rule with no active checks — empty, or every check disabled — is also
+problematic (derived, never stored; `hasNoActiveChecks`): its card shows `quality.problem_no_checks`, and it clears
+itself when a check is added or enabled.
+
+```typescript
+type QcProblemCategory = "needs_reconfiguration" | "cannot_apply";
+type QcProblemCode = "patterns_dropped" | "patterns_emptied" | "limits_reset"   // needs_reconfiguration
+                   | "irregular_tessellation" | "cell_sides_exceed";            // cannot_apply
+interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: number; paramId?: string }
+```
+
+- `needs_reconfiguration` — the user fixes it by editing the rule; `cannot_apply` — the owner can no longer work, the
+  only way out is deleting it. The category is derived from the code (`QC_PROBLEM_CATEGORY`), not stored.
+- **Sources** (`qcForTessellation`, `store/slices/qcTessellationFilter.ts`): any pattern dropped from a pattern list
+  (check param, rule-level param, strategy/nested split config) is `patterns_dropped`; a non-empty list that lost every
+  pattern is kept as `[]` and flagged `patterns_emptied` (an empty list means "any split tile", so the owner must not run
+  until reviewed); configured node shape limits reset to none are `limits_reset`; a check failing its
+  `CheckDescriptor.requires` is `cannot_apply`. Rule-level pattern lists flag every check consuming them
+  (`applies_to`) and the rule's strategy when it does. Nothing is removed.
+- **Unavailable check carries only its availability problem.** A check flagged `cannot_apply` is not reconfigurable, so no
+  param problem is raised for it (rule-level pattern lists skip it) and param problems stored earlier are dropped when it
+  becomes unavailable. In the UI (`CheckVM.unavailable`) its row is inert: dimmed, switch shown off and disabled, params
+  and the detail panel's fields disabled; only removal is left. Other checks of the same rule stay fully usable, and the
+  rule is not disabled as a whole.
+- **Unavailable strategy** (`cannot_apply`, scope `strategy`, no `paramId`): `StrategyDescriptor.requires` (same tags as a check's;
+  the TS type only — wasm does not emit it yet, so no strategy is flagged today). The strategy panel is inert (dimmed, switch
+  off and disabled, params and the detail panel's fields disabled) but its edit button stays: replacing or clearing the strategy
+  clears the problem. The rule is not omitted from the config; it is sent with `strategy: null` and its checks keep running
+  (`strategyUnavailable`), unlike a `needs_reconfiguration` strategy problem, which omits the whole rule. Its nested
+  strategies are left untouched and unflagged by `qcForTessellation` (they belong to the inert strategy).
+- **Idempotence:** a pass over an already flagged rule returns the same references. Availability problems are
+  recomputed on each pass, so they clear when a later tessellation supports the check again.
+- **Resolving:** editing the owning param clears the `needs_reconfiguration` problems flagged on it — `setCheckParam`,
+  `setStrategyParam`, `setNestedStrategyParam`, `setRuleParam` (all scopes with that `paramId`). Replacing or clearing the
+  strategy clears strategy- and nested-scope problems; replacing/removing a nested strategy clears nested-scope ones;
+  removing a check clears its problems; `removeCheckFromRule` carries the check's own-param problems to the new rule.
+  `cannot_apply` is cleared only by removal (or by a tessellation that supports the check).
+- **Config to core** (`buildGenerateConfig`): a check with a problem is not sent; a rule with a strategy- or
+  nested-scope problem, or left with no healthy check, is omitted entirely (like `ruleDisabled`). The same predicate
+  (`sendableChecks` / `ruleHasSendableChecks` in `qcRuleTypes.ts`) drives the post-edit analytics config and the score
+  info modal, so they see the same rules and checks as generation.
+- **Empty node-shape limits** (derived like the no-checks warning, never stored): an enabled `node_shape_limits` check with no
+  limits set never reports anything, so the rule card shows a warning labeled with the check and the rule counts as
+  problematic (`emptyLimitsCheckIds`, `qcDerivedProblems.ts`). Not shown for a check that already carries a problem — a
+  reset by a tessellation change (`limits_reset`) or "cannot apply" — so one cause gives one warning.
+- **Disabled owners** (`visibleProblems`, `isRuleProblematic`, `ruleHasOwnProblem` in `qcRuleTypes.ts`): a problem whose owner
+  is disabled goes away — a disabled check's own problems, and strategy- and nested-scope problems while the strategy is
+  disabled (`disabled`). A rule left with no problems is healthy. `ruleDisabled` hides nothing: its warnings stay shown,
+  but the rule is not counted in the card status. Rules of a disabled stage are not counted either (`problematicRuleCount`).
+- Persisted in project files and quality presets as `problems` (omitted when empty; files without it load as none).
+- UI: `QcProblemVM` (`StrategySlotVM.problems`), texts in `qualityI18n/problems.ts`, `RulesColumn` renders one warning
+  `WarningBubble` per problem under the rule title.
 
 ## Store: rule-related state and actions
 

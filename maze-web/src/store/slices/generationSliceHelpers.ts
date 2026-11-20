@@ -1,6 +1,6 @@
 import type { CheckDescriptor, StrategyDescriptor } from "../../wasm/types";
-import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
-import type { QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY, entriesForSlot } from "../storeTypes";
+import type { QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment, QcProblem } from "../storeTypes";
 import type { ProjectFileQcRule } from "../projectExport/types";
 import { withExplicitBoundsInSlots } from "../sizeThresholdIntervals";
 import * as m from "~/paraglide/messages";
@@ -111,6 +111,21 @@ export function rulesFromFile(rules: ProjectFileQcRule[], availableStrategies: S
     nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
   }));
 }
+
+/** `rule` without the problems `drop` selects (GitHub issue #1044); the same reference when none match. */
+export function withoutProblems(rule: QcRuleState, drop: (problem: QcProblem) => boolean): QcRuleState {
+  const problems = rule.problems;
+  if (!problems?.some(drop)) return rule;
+  const { problems: _dropped, ...rest } = rule;
+  const left = problems.filter((p) => !drop(p));
+  return left.length > 0 ? { ...rest, problems: left } : rest;
+}
+
+/** A user edit of `paramId` resolves the `needs_reconfiguration` problems flagged on it. */
+export const resolvedByEdit = (scope: QcProblem["scope"], paramId: string, localId?: number) =>
+  (p: QcProblem): boolean =>
+    p.scope === scope && p.paramId === paramId && p.localId === localId
+    && QC_PROBLEM_CATEGORY[p.code] === "needs_reconfiguration";
 
 // `name: null` means no custom name; the view model resolves the issue kind's current-locale
 // label. `renameRule` stores a string only when the user enters a custom name. `id` is a UUID,

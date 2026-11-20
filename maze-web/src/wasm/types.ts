@@ -168,6 +168,11 @@ export interface StrategyDescriptor {
   nested_suppressed_params?: string[];
   /** `undefined` means always offered — see `EntityVisibility`. */
   visibility?: EntityVisibility;
+  /** What the tessellation must be like for the strategy to work, same tags and meaning as
+   * `CheckDescriptor.requires` (GitHub issue #1044). A rule holding a strategy the tessellation
+   * rules out keeps it flagged `cannot_apply`: inert, replaceable. Not emitted by wasm yet —
+   * `undefined` means always available. */
+  requires?: TessellationRequirement[];
 }
 
 export interface StrategyConfig {

@@ -1,6 +1,7 @@
 import React from "react";
 import { ui, radius, typography, muted, disabled, spacing, inset, indent } from "../../../styles/theme";
 import { buttonStyle, sharedStyles } from "../../../styles/shared";
+import { notificationPalette } from "../../EmbeddedNotification";
 
 export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   root: {
@@ -174,6 +175,17 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: spacing.itemGap,
     padding: "7px 6px 7px 10px",
+    borderBottom: `1px solid ${ui.border.default}`,
+  },
+  ruleCardProblem: {
+    // Full shorthand: React drops a lone `borderColor` on re-render and the border falls back to the text color.
+    border: `1px solid ${notificationPalette("warning").text}`,
+  },
+  ruleProblems: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "6px 10px",
     borderBottom: `1px solid ${ui.border.default}`,
   },
   ruleCardDisabled: {

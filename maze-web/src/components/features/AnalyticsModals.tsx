@@ -1,6 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
+import { ruleHasSendableChecks } from "../../store/storeTypes";
 import { Modal } from "../Modal";
 import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
@@ -125,7 +126,7 @@ export function ScoreInfoModal({ onClose }: { onClose: () => void }) {
     .find((rule) => rule !== undefined
       && !rule.ruleDisabled
       && !rule.disabled
-      && rule.checks.some((check) => !check.disabled)
+      && ruleHasSendableChecks(rule)
       && rule.strategyId === SCORED_ENDPOINTS_STRATEGY_ID);
   const values = descriptor ? buildValues(descriptor.params, scoreRule?.strategyParams ?? {}) : {};
   return (

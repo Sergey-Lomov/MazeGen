@@ -3185,5 +3185,15 @@
   "node_shape.junction": "Junction ({degree} ways)",
   "node_shape.junction_faces": "Junction {faces}",
   "project.load_progress_title": "Loading project",
-  "project.load_progress_analytics": "Building analytics"
+  "project.load_progress_analytics": "Building analytics",
+  "quality.problem_patterns_dropped": "Some split patterns were dropped: their shapes are not in the new tessellation. Review the pattern list.",
+  "quality.problem_patterns_emptied": "Every split pattern was dropped, so the pattern list is empty. Choose the patterns again.",
+  "quality.problem_limits_reset": "The tessellation change reset the node shape limits. Set them again.",
+  "quality.problem_irregular_tessellation": "The tessellation has irregular cells, so this check cannot work. Delete it.",
+  "quality.problem_cell_sides_exceed": "The tessellation has cells with too many sides, so this check cannot work. Delete it.",
+  "quality.problem_irregular_tessellation_strategy": "The tessellation has irregular cells, so this strategy cannot work. Choose another one.",
+  "quality.problem_cell_sides_exceed_strategy": "The tessellation has cells with too many sides, so this strategy cannot work. Choose another one.",
+  "quality.problem_limits_empty": "No node shape limits are set, so the check never reports anything. Set limits or delete the check.",
+  "quality.problem_no_checks": "The rule has no active checks, so it does nothing. Add or enable a check, or delete the rule.",
+  "status.quality_problems": "Rules with problems: {count}"
 }
