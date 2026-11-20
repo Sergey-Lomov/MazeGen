@@ -124,48 +124,49 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
         // any other region that reaches into that merged blob resolves to the very same root.
         let mut planned_union = PlannedUnion::new(&scc);
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
-            let region = scc.components.get(region_idx)?;
-            let region_root = planned_union.find(region_idx);
-            let candidates =
-                discover_target_candidates(region, region_root, &scc, &mut planned_union, maze);
-            if candidates.is_empty() {
-                return None;
-            }
+        let any_fixed =
+            region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
+                let region = scc.components.get(region_idx)?;
+                let region_root = planned_union.find(region_idx);
+                let candidates =
+                    discover_target_candidates(region, region_root, &scc, &mut planned_union, maze);
+                if candidates.is_empty() {
+                    return None;
+                }
 
-            let mut keys: Vec<ComponentId> = candidates.keys().copied().collect();
-            keys.sort_unstable();
-            // Neighbors already tried and failed for this region (see `run_merge_loop`).
-            keys.retain(|k| !excluded.contains(k));
-            if keys.is_empty() {
-                return None;
-            }
-            let chosen = region_merge_core::pick_by_mode(&keys, &scc, mode, needy, rng)?;
-            let shared_points = &candidates[&chosen];
+                let mut keys: Vec<ComponentId> = candidates.keys().copied().collect();
+                keys.sort_unstable();
+                // Neighbors already tried and failed for this region (see `run_merge_loop`).
+                keys.retain(|k| !excluded.contains(k));
+                if keys.is_empty() {
+                    return None;
+                }
+                let chosen = region_merge_core::pick_by_mode(&keys, &scc, mode, needy, rng)?;
+                let shared_points = &candidates[&chosen];
 
-            let target_region = scc.components.get(chosen).map(Vec::as_slice).unwrap_or(&[]);
-            let before = commands.len();
-            let applied = try_merge_via_elevator(
-                maze,
-                region,
-                target_region,
-                shared_points,
-                use_existing,
-                preset_state,
-                rng,
-                &planned,
-                &mut commands,
-            );
-            for cmd in &commands[before..] {
-                if let MutationCommand::AddBidirectionalElevator { a, b } = *cmd {
-                    planned.push((a, b));
-                    if let (Some(ca), Some(cb)) = (scc.component_of(a), scc.component_of(b)) {
-                        planned_union.union(ca, cb);
+                let target_region = scc.components.get(chosen).map(Vec::as_slice).unwrap_or(&[]);
+                let before = commands.len();
+                let applied = try_merge_via_elevator(
+                    maze,
+                    region,
+                    target_region,
+                    shared_points,
+                    use_existing,
+                    preset_state,
+                    rng,
+                    &planned,
+                    &mut commands,
+                );
+                for cmd in &commands[before..] {
+                    if let MutationCommand::AddBidirectionalElevator { a, b } = *cmd {
+                        planned.push((a, b));
+                        if let (Some(ca), Some(cb)) = (scc.component_of(a), scc.component_of(b)) {
+                            planned_union.union(ca, cb);
+                        }
                     }
                 }
-            }
-            Some((chosen, applied))
-        });
+                Some((chosen, applied))
+            });
 
         if any_fixed {
             (RepairResult::Fixed { score: None }, commands)

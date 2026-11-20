@@ -321,8 +321,7 @@ mod repair_budget_tests {
     fn time_budget_is_exhausted_by_an_expired_qc_deadline_even_when_the_injected_clock_lags() {
         let limits = RepairLimits::new(None, Some(1000.0)).unwrap();
         let budget = RepairBudget::new(limits, &clock_at(0.0));
-        let _deadline =
-            crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+        let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
         assert_eq!(
             budget.exhausted(&clock_at(0.0)),
             Some(RepairLimitKind::TimeBudget)
@@ -333,8 +332,7 @@ mod repair_budget_tests {
     fn expired_qc_deadline_is_ignored_without_a_time_budget() {
         let limits = RepairLimits::new(Some(3), None).unwrap();
         let budget = RepairBudget::new(limits, &clock_at(0.0));
-        let _deadline =
-            crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+        let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
         assert_eq!(budget.exhausted(&clock_at(0.0)), None);
     }
 

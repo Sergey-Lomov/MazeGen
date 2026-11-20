@@ -381,7 +381,10 @@ fn a_blocked_top_pick_falls_back_to_the_next_candidate() {
             &issue,
             &mut maze,
             &mut rng,
-            &params_with(&[(PARAM_EDGE_SCOPE, EDGE_SCOPE_ANY), (PARAM_PRIORITY, priority)]),
+            &params_with(&[
+                (PARAM_EDGE_SCOPE, EDGE_SCOPE_ANY),
+                (PARAM_PRIORITY, priority),
+            ]),
             &PresetState::empty(),
             &[],
         );

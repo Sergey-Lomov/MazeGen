@@ -81,6 +81,7 @@ const ALLOWED_CONDITIONS: Record<string, string> = {
   "FloorLabelSection.tsx: position.mode === \"free\"": "picks the editor of the label-position union variant",
   "MarkerFieldRows.tsx: autoFitKind": "the caller opts into the auto-fit button",
   "MarkerFieldRows.tsx: linkTargets.sizeAdaptation !== undefined": "the caller opts into the size-adaptation row (the schema gates it by `hasAreaSpread`)",
+  "MarkerFieldRows.tsx: showCornerStyle": "the caller renders corner-style controls separately when they also govern renderer joins",
   "MarkerSettingsGroup.tsx: fields.textColor": "the caller opts into the text-colour row",
   "MarkerSettingsGroup.tsx: sectionId": "the caller opts into a collapsible section",
   "MarkerSettingsGroup.tsx: showMarkerToggle": "the caller opts into the show-marker row (start/finish only)",

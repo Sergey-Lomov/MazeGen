@@ -533,7 +533,7 @@ describe("mutatingQcEvents / applyQc", () => {
   });
 });
 
-describe("decodeQcEvent: IssuePayload::InvalidCrossElement (tag 15)", () => {
+describe("decodeQcEvent: IssuePayload::InvalidCrossElement (tag 17)", () => {
   it("decodes the check-keyed element entries", () => {
     const entry = concatBytes([
       strPayload("teleport"), u32le(0), u32le(2), u32le(7), u32le(9), new Uint8Array([0, 1, 0]),
@@ -541,7 +541,7 @@ describe("decodeQcEvent: IssuePayload::InvalidCrossElement (tag 15)", () => {
     const elements = concatBytes([u32le(1), strPayload("c1"), u32le(1), entry]);
     const payload = concatBytes([
       strPayload("c1"), new Uint8Array([1]), strPayload("invalid_cross_element"),
-      new Uint8Array([15]), elements, u32le(0),
+      new Uint8Array([17]), elements, u32le(0),
     ]);
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",

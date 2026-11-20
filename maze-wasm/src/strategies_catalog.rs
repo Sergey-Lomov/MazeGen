@@ -29,11 +29,12 @@ use maze_core::{
         RegionShrinkSplitStrategy, RemoveElevatorStopStrategy, RemoveElevatorStrategy,
         RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy, RemoveSplitStrategy,
         RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
-        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
+        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy,
+        SizeThresholdRegionMergeStrategy, SplitGroupSelectStrategy,
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
+        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -79,7 +80,9 @@ fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatch
         maze_core::repair::NestedDispatchKind::Unordered => NestedDispatchKindDto::Unordered,
         maze_core::repair::NestedDispatchKind::Weighted => NestedDispatchKindDto::Weighted,
         maze_core::repair::NestedDispatchKind::Priority => NestedDispatchKindDto::Priority,
-        maze_core::repair::NestedDispatchKind::SizeThreshold => NestedDispatchKindDto::SizeThreshold,
+        maze_core::repair::NestedDispatchKind::SizeThreshold => {
+            NestedDispatchKindDto::SizeThreshold
+        }
     }
 }
 

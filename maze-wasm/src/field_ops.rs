@@ -1,8 +1,8 @@
+use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
 use maze_runner::runner::field_ops::{
     self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
     PresetRequest, ReflectRequest, TranslateRequest,
 };
-use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
 use maze_runner::runner::print_sizing::{self, PrintSizingRequest};
 use wasm_bindgen::prelude::*;
 

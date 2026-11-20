@@ -21,8 +21,8 @@ use super::issue_kinds::{
     InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
     InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
     MissingElevatorsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingSplitTilesIssue,
-    MissingTeleportsIssue, MissingVerticalPassagesIssue,
-    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
+    MissingTeleportsIssue, MissingVerticalPassagesIssue, RegionNeedsExpansionIssue,
+    RegionNeedsShrinkIssue,
 };
 use super::issue_kinds::{InvalidCrossElementGroupIssue, InvalidCrossElementIssue};
 use crate::generation::PresetState;
@@ -33,8 +33,7 @@ use resolvers::{
     excessive_scc_count_preset_locked, region_preset_locked_for_expansion,
     region_preset_locked_for_shrink, resolve_area_deficit_map, resolve_cross_element_group_payload,
     resolve_cross_element_payload, resolve_cycle_payload, resolve_dead_end_group_map,
-    resolve_edge_group_map,
-    resolve_elevator_group_map, resolve_elevator_stop_group_map,
+    resolve_edge_group_map, resolve_elevator_group_map, resolve_elevator_stop_group_map,
     resolve_excessive_elevator_stop_gap_payload, resolve_invalid_elevator_payload,
     resolve_invalid_elevator_stop_payload, resolve_invalid_split_node_group_payload,
     resolve_invalid_split_node_payload, resolve_invalid_split_route_payload,

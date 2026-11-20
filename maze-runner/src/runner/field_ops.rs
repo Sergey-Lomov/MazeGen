@@ -332,7 +332,10 @@ pub(super) fn measure_extents_with<T: Tessellation>(
 ) -> Result<[[f64; 2]; 2], FieldOpWireError> {
     {
         let focused_cells = (focused
-            && matches!(key, "rect" | "parallelogram" | "circle" | "triangle" | "hexagon"))
+            && matches!(
+                key,
+                "rect" | "parallelogram" | "circle" | "triangle" | "hexagon"
+            ))
         .then(|| with_extent_focus(directions, || tessellation.build_preset(key, params)))
         .filter(|(_, exact)| *exact);
         let cells = match focused_cells {

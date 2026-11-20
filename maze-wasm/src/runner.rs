@@ -8,6 +8,7 @@ use maze_core::{
     ids::IdGenerator,
     space::{MultiLevelField, Tessellation},
 };
+use maze_runner::runner::tessellation_factory::CellCodec;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -145,8 +146,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     mut ids: IdGenerator,
     start: T::CellId,
     config: &GenerateConfig,
-    cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
-    cell_from_xy: impl Fn(i32, i32) -> T::CellId,
+    codec: CellCodec<T>,
     progress: &dyn Fn(u8),
 ) -> Result<GenerateResult, JsValue> {
     use maze_core::generation::pipeline::build_maze;
@@ -203,7 +203,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         &gen_config.preset_elevators,
         &gen_config.locked_nodes,
         &gen_config.split_points,
-        &cell_from_xy,
+        codec.from_xy,
         preset_setup_log.as_mut(),
         debug_node_ledger.as_mut(),
     )
@@ -226,7 +226,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     let level = field.single_level_id();
     let start_id = match config.preset_gen_source.as_ref() {
         Some(dto) => preset_state
-            .resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
+            .resolve_endpoint(&field, codec.from_xy, preset_endpoint_dto_to_core(dto))
             .map_err(|e| JsValue::from_str(&e))?,
         None => field
             .nodes_at(level, start)
@@ -275,7 +275,7 @@ pub fn run_generate<T: Tessellation + 'static>(
             .map(|dto| {
                 preset_state.resolve_endpoint(
                     &field,
-                    &cell_from_xy,
+                    codec.from_xy,
                     preset_endpoint_dto_to_core(dto),
                 )
             })
@@ -352,7 +352,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         Some(issues),
         &check_types,
         &repair_preset_state,
-        &cell_to_xy,
+        codec.to_xy,
         |_, _, pos| pos as u32,
         score_weights.as_ref(),
     )
@@ -376,7 +376,7 @@ pub fn run_generate<T: Tessellation + 'static>(
                 .all_node_points()
                 .filter_map(|(id, point)| {
                     let id32 = u32::try_from(id).ok()?;
-                    let (x, y) = cell_to_xy(point);
+                    let (x, y) = (codec.to_xy)(point);
                     let level = maze.field.level_index_of(id).unwrap_or(0) as u32;
                     Some(crate::dto::NodeDto {
                         id: id32,

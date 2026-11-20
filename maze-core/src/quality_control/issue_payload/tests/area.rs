@@ -93,9 +93,20 @@ fn missing_one_ways_and_split_tiles_resolve_every_short_floor_to_its_levels_orde
             "split_count",
         ),
     ] {
-        let payload = resolve_issue_payload(issue.as_ref(), &graph, &field, &scc, &PresetState::empty(), None);
+        let payload = resolve_issue_payload(
+            issue.as_ref(),
+            &graph,
+            &field,
+            &scc,
+            &PresetState::empty(),
+            None,
+        );
         let_payload!(AreaDeficit { areas } = payload);
-        let expected = if source_check == "min_one_way_count" { vec![Some(1)] } else { vec![Some(0), Some(1)] };
+        let expected = if source_check == "min_one_way_count" {
+            vec![Some(1)]
+        } else {
+            vec![Some(0), Some(1)]
+        };
         assert_eq!(areas[source_check], expected);
     }
 }

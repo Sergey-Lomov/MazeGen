@@ -94,14 +94,19 @@ mod tests {
     fn an_isolated_cell_is_removed_without_smoothing() {
         let t = SquareTessellation;
         let cells = vec![cell(0, 0), cell(1, 0), cell(5, 5)];
-        assert_eq!(normalize_cells(&t, &cells, false), vec![cell(0, 0), cell(1, 0)]);
+        assert_eq!(
+            normalize_cells(&t, &cells, false),
+            vec![cell(0, 0), cell(1, 0)]
+        );
     }
 
     #[test]
     fn smoothing_peels_a_terminal_cell_and_a_spike_cascade() {
         let t = SquareTessellation;
         // A 3x3 block with a two-cell tail: the tail goes cell by cell, the block stays.
-        let mut cells: Vec<Cell> = (0..3).flat_map(|x| (0..3).map(move |y| cell(x, y))).collect();
+        let mut cells: Vec<Cell> = (0..3)
+            .flat_map(|x| (0..3).map(move |y| cell(x, y)))
+            .collect();
         cells.extend([cell(3, 1), cell(4, 1)]);
         let smoothed = normalize_cells(&t, &cells, true);
         assert_eq!(smoothed.len(), 9);
@@ -125,7 +130,14 @@ mod tests {
 
     #[test]
     fn exact_cell_presets_are_named() {
-        for preset in ["box", "tetrahedron", "octahedron", "icosahedron", "cylinder", "torus"] {
+        for preset in [
+            "box",
+            "tetrahedron",
+            "octahedron",
+            "icosahedron",
+            "cylinder",
+            "torus",
+        ] {
             assert!(preset_requires_exact_cells(preset), "{preset}");
         }
         for preset in ["rect", "parallelogram", "circle", "triangle", "hexagon"] {

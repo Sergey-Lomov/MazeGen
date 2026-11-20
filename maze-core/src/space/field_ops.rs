@@ -12,6 +12,8 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+type FocusedTile<CellId> = Vec<(CellId, Point)>;
+
 /// An operation a tessellation may offer on cell sets. `Tessellation::field_operations` lists the
 /// supported ones so the UI can hide unavailable tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -433,7 +435,10 @@ thread_local! {
 pub(super) fn spoil_extent_focus() {
     EXTENT_FOCUS.with(|focus| {
         if let Some(active) = focus.get() {
-            focus.set(Some(ExtentFocus { exact: false, ..active }));
+            focus.set(Some(ExtentFocus {
+                exact: false,
+                ..active
+            }));
         }
     });
 }
@@ -550,7 +555,7 @@ fn focused_cells<T: Tessellation + ?Sized>(
         Point::new(min.x + column as f64 * tile, min.y + row as f64 * tile)
     };
 
-    let mut visited: HashMap<(usize, usize), Vec<(T::CellId, Point)>> = HashMap::new();
+    let mut visited: HashMap<(usize, usize), FocusedTile<T::CellId>> = HashMap::new();
     for end in [
         directions[0],
         directions[1],
@@ -579,18 +584,20 @@ fn focused_cells<T: Tessellation + ?Sized>(
             if best.is_finite() && tile_furthest < best - margin {
                 break;
             }
-            if !visited.contains_key(&(column, row)) {
+            if let std::collections::hash_map::Entry::Vacant(entry) = visited.entry((column, row)) {
                 let low = tile_min(column, row);
                 let high = Point::new((low.x + tile).min(max.x), (low.y + tile).min(max.y));
                 let candidates = tessellation
                     .candidate_cells(low, high, MAX_REGION_CANDIDATES)
-                    .ok_or_else(|| FieldOpError::InvalidPreset("preset is too large".to_string()))?;
+                    .ok_or_else(|| {
+                        FieldOpError::InvalidPreset("preset is too large".to_string())
+                    })?;
                 let accepted = candidates
                     .into_iter()
                     .filter(|&cell| accepts(cell))
                     .map(|cell| (cell, tessellation.center(cell)))
                     .collect();
-                visited.insert((column, row), accepted);
+                entry.insert(accepted);
             }
             for &(_, center) in &visited[&(column, row)] {
                 best = best.max(along(center));
@@ -711,21 +718,21 @@ pub(super) fn convex_cells<T: Tessellation + ?Sized>(
         high_vertex = Point::new(high_vertex.x.max(vertex.x), high_vertex.y.max(vertex.y));
     }
     let slack = Point::new(PRESET_EPS + GEOM_EPS, PRESET_EPS + GEOM_EPS) * 1e3;
-    low = Point::new(low.x.max(low_vertex.x - slack.x), low.y.max(low_vertex.y - slack.y));
-    high = Point::new(high.x.min(high_vertex.x + slack.x), high.y.min(high_vertex.y + slack.y));
-    cells_where(
-        tessellation,
-        low,
-        high,
-        inclusion,
-        |p| {
-            vertices
-                .iter()
-                .zip(vertices.iter().cycle().skip(1))
-                .all(|(&a, &b)| {
-                    let edge = b - a;
-                    edge.cross(p - a) >= -(PRESET_EPS + GEOM_EPS) * edge.length()
-                })
-        },
-    )
+    low = Point::new(
+        low.x.max(low_vertex.x - slack.x),
+        low.y.max(low_vertex.y - slack.y),
+    );
+    high = Point::new(
+        high.x.min(high_vertex.x + slack.x),
+        high.y.min(high_vertex.y + slack.y),
+    );
+    cells_where(tessellation, low, high, inclusion, |p| {
+        vertices
+            .iter()
+            .zip(vertices.iter().cycle().skip(1))
+            .all(|(&a, &b)| {
+                let edge = b - a;
+                edge.cross(p - a) >= -(PRESET_EPS + GEOM_EPS) * edge.length()
+            })
+    })
 }
