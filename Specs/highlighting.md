@@ -67,6 +67,17 @@ traced as two independent contours instead of one self-intersecting shape (GitHu
 #618). Contour tracing groups a region's cells into edge-adjacency connected components
 first and traces each component separately.
 
+At a diagonal-only touch inside one component, the boundary vertex has several exposed sides.
+Contour tracing follows the directed sides (region on the left) and takes the sharpest left turn,
+so the contour walks around each cell's own corner and touches itself there instead of crossing.
+The free space between the two cells stays outside the region, and the inset separates the two
+corners into an ordinary simple polygon (GitHub issue #1050). The trace ends only when it is back at
+its start vertex with no directed side left there, so the result is one loop whichever side it
+started from. The selection preview's frame gets sides that all wind the same way in a y-flipped
+frame; `withRegionOnLeft` turns them region-on-left (by the sign of their summed signed area)
+before tracing, so its frame pairs the diagonal touch the same way. Sides of unknown orientation
+are still walked in either direction.
+
 Implementation: `RegionHighlightRenderer` with multiple node ids in one region group.
 
 Used by:
