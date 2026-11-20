@@ -996,6 +996,8 @@ export class FieldEditController {
     const state = useMazeStore.getState();
     if (state.smoothInverted === inverted) return;
     state.setSmoothInverted(inverted);
+    // Outline tools (polygon, parallelogram) preview at the cursor without a drag gesture.
+    this.refreshCursorPreviews();
     const pointer = this.lastPointerCanvas;
     if (!pointer || !this.gestureActive || !this.activeShapePrimitive || !this.primitiveStartGrid) return;
     // The pointer-move dedupe would skip an unchanged position, so drop its memo first.
@@ -1006,7 +1008,9 @@ export class FieldEditController {
   /** Re-renders the cursor-following previews after a modifier key changed. */
   private refreshCursorPreviews(): void {
     if (!this.lastPointerCanvas) return;
-    if (this.polygonPoints.length > 0) this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+    // A dragged vertex has no cursor point; redraw the outline as it stands.
+    if (this.draggedPolygonIndex !== null) this.updatePolygonPreview();
+    else if (this.polygonPoints.length > 0) this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
     if (this.parallelogramAnchors.length > 0) this.updateParallelogramCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
   }
 
