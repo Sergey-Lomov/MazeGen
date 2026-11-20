@@ -7,6 +7,7 @@ import { Stack } from "../Layout";
 import { startNewZone } from "./zoneEditorActions";
 import { ZonesPanel } from "./ZonesPanel";
 import { ZoneEditPanel } from "./ZoneEditPanel";
+import { ZoneCombinePanel } from "./ZoneCombinePanel";
 import { ZoneGroupsPanel, ZoneGroupEditPanel } from "./ZoneGroupsPanel";
 import * as m from "~/paraglide/messages";
 
@@ -20,6 +21,7 @@ export function ZonesFeature() {
   const zoneEditing = useMazeStore((s) => s.zoneEditDraft !== null);
   const commitZoneEdit = useMazeStore((s) => s.commitZoneEdit);
   const cancelZoneEdit = useMazeStore((s) => s.cancelZoneEdit);
+  const combineOpen = useMazeStore((s) => s.zoneCombine !== null);
   const zoneGroupsPanelOpen = useMazeStore((s) => s.zoneGroupsPanelOpen);
   const setZoneGroupsPanelOpen = useMazeStore((s) => s.setZoneGroupsPanelOpen);
   const zoneGroupEditId = useMazeStore((s) => s.zoneGroupEditId);
@@ -69,6 +71,7 @@ export function ZonesFeature() {
       )}
       {zonesPanelOpen && <ZonesPanel onClose={() => setZonesPanelOpen(false)} />}
       {zonesPanelOpen && zoneEditing && <ZoneEditPanel onDone={commitZoneEdit} onCancel={cancelZoneEdit} />}
+      {zonesPanelOpen && zoneEditing && combineOpen && <ZoneCombinePanel />}
     </Stack>
   );
 }

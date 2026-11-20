@@ -7,7 +7,7 @@ import { zoneChipColors, zoneColors } from "../pixi/selectors/zoneSelectors";
 import { cssColor } from "../components/EntityColorSwatch";
 import { brightColor } from "../store/colorMath";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
 
@@ -22,7 +22,7 @@ function state() {
 }
 
 describe("zone groups store", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi, zones, nextZoneId: 4 }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, nextZoneId: 4 }));
 
   it("adds an empty group as a draft and opens it; the list gets it on Done", () => {
     state().addZoneGroup();
@@ -77,7 +77,7 @@ describe("zone groups store", () => {
 
 describe("ZoneGroupsPanel", () => {
   beforeEach(() => useMazeStore.setState({
-    ...zonesTransientUi,
+    ...zonesInitialState,
     zones,
     nextZoneId: 4,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }, { id: 2, name: "", zoneIds: [3] }],
@@ -125,7 +125,7 @@ describe("ZoneGroupsPanel cards: floors, zone bubbles and hover", () => {
   const floors = [{ id: "f0", title: "F1" }, { id: "f1", title: "F2" }, { id: "f2", title: "F3" }];
   beforeEach(() => {
     useMazeStore.setState({
-      ...zonesTransientUi, floors, activeFloorId: "f0", zones: multi, nextZoneId: 4,
+      ...zonesInitialState, floors, activeFloorId: "f0", zones: multi, nextZoneId: 4,
       zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }], nextZoneGroupId: 2,
     });
     render(<ZoneGroupsPanel onClose={() => {}} />);
@@ -160,7 +160,7 @@ describe("ZoneGroupsPanel cards: floors, zone bubbles and hover", () => {
 
 describe("zone group edit draft", () => {
   beforeEach(() => useMazeStore.setState({
-    ...zonesTransientUi,
+    ...zonesInitialState,
     zones,
     nextZoneId: 4,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1] }],
@@ -220,7 +220,7 @@ describe("ZoneGroupEditPanel", () => {
   const noop = () => {};
   function open(group: { id: number; name: string; zoneIds: number[] }, isNew = false, zs: Zone[] = zones) {
     useMazeStore.setState({
-      ...zonesTransientUi, zones: zs, nextZoneId: 4, zoneGroups: [group], nextZoneGroupId: 2,
+      ...zonesInitialState, zones: zs, nextZoneId: 4, zoneGroups: [group], nextZoneGroupId: 2,
       zoneGroupEditId: group.id, zoneGroupEditIsNew: isNew, zoneGroupEditDraft: group,
     });
     return render(<ZoneGroupEditPanel groupId={group.id} onDone={noop} onCancel={noop} />);
@@ -280,7 +280,7 @@ describe("zone group cards: counts, floor navigation", () => {
   ];
   const floors = [{ id: "f0", title: "F1" }, { id: "f1", title: "F2" }];
   beforeEach(() => useMazeStore.setState({
-    ...zonesTransientUi, floors, activeFloorId: "f0", zones: multi, nextZoneId: 3,
+    ...zonesInitialState, floors, activeFloorId: "f0", zones: multi, nextZoneId: 3,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }], nextZoneGroupId: 2,
   }));
 
@@ -304,7 +304,7 @@ describe("zone group cards: counts, floor navigation", () => {
 describe("zones list groups line", () => {
   it("lists the groups of a zone or the placeholder", () => {
     useMazeStore.setState({
-      ...zonesTransientUi, zones: [{ id: 1, name: "A", kind: "manual", cells: [] }, { id: 2, name: "B", kind: "manual", cells: [] }],
+      ...zonesInitialState, zones: [{ id: 1, name: "A", kind: "manual", cells: [] }, { id: 2, name: "B", kind: "manual", cells: [] }],
       zoneGroups: [{ id: 1, name: "G1", zoneIds: [1] }, { id: 2, name: "", zoneIds: [1] }], zonesListMode: "manual",
     });
     render(<ZonesPanel onClose={() => {}} />);
@@ -314,7 +314,7 @@ describe("zones list groups line", () => {
 });
 
 describe("zone group dialogs", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi, zones, nextZoneId: 4, zoneGroups: [], nextZoneGroupId: 1 }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, nextZoneId: 4, zoneGroups: [], nextZoneGroupId: 1 }));
 
   it("the picker shows a placeholder without groups, and New group hands over", () => {
     let handed = false;

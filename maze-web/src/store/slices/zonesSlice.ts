@@ -6,14 +6,21 @@ import { translateFieldCells } from "../../wasm/mazeService";
 import { activeFieldCellKeys, activeFloorIndexOf, editedZoneOf, zonePointsOnFloor } from "../../pixi/fieldEditTarget";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { encodePoint } from "../../pixi/tessellationProjection";
-import { overridesWithDraft, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
+import { overridesWithDraft, zoneFloors, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
+import { combineZoneCells } from "../../pixi/selectors/zoneCombine";
 
-/** Zones are not saved in the project file yet, so loading a project resets them with the toggles. */
-export const zonesTransientUi = {
+/** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
+ *  the values of a new project and of a file without zones. */
+export const zonesProjectState = {
   zones: [],
   nextZoneId: 1,
   zoneGroups: [],
   nextZoneGroupId: 1,
+  zoneColorOverrides: {},
+} satisfies Partial<ZonesState>;
+
+/** Resting values of the zones UI state: modes, panels, drafts, hover and toggles. Loading a project resets them. */
+export const zonesTransientUi = {
   zoneGroupsPanelOpen: false,
   zoneGroupEditId: null,
   zoneGroupEditDraft: null,
@@ -30,10 +37,13 @@ export const zonesTransientUi = {
   zoneEditIsNew: false,
   zoneEditDraftGroupIds: [],
   zoneEditDraftNewGroups: [],
+  zoneCombine: null,
   showOtherZones: true,
-  zoneColorOverrides: {},
   zoneSmoothing: false,
 } satisfies Partial<ZonesState>;
+
+/** Every zones key at its resting value: the slice's initial state, and what tests reset the zones state to. */
+export const zonesInitialState = { ...zonesProjectState, ...zonesTransientUi } satisfies Partial<ZonesState>;
 
 /** The zone with the edited zone's cells replaced, or `{}` when nothing changed. Cells of other
  *  floors are kept as they are; the cells of the active floor are rebuilt by `edit` from a set. */
@@ -52,7 +62,7 @@ export function withEditedZoneCells(state: MazeState, edit: (onFloor: Map<number
 }
 
 /** The patch that leaves the zone editor with no draft. */
-const noZoneEdit = { zoneEditDraft: null, zoneEditDraftColor: null, zoneEditIsNew: false, zoneEditDraftGroupIds: [], zoneEditDraftNewGroups: [] } satisfies Partial<MazeState>;
+const noZoneEdit = { zoneEditDraft: null, zoneEditDraftColor: null, zoneEditIsNew: false, zoneEditDraftGroupIds: [], zoneEditDraftNewGroups: [], zoneCombine: null } satisfies Partial<MazeState>;
 
 /** The patch that leaves the group editor with no draft. */
 const noGroupEdit = { zoneGroupEditId: null, zoneGroupEditDraft: null, zoneGroupEditIsNew: false } satisfies Partial<MazeState>;
@@ -69,6 +79,7 @@ function withoutZone(s: MazeState, id: number): Partial<MazeState> {
     hoveredZoneId: s.hoveredZoneId === id ? null : s.hoveredZoneId,
     hoveredZoneIds: s.hoveredZoneIds.includes(id) ? s.hoveredZoneIds.filter((z) => z !== id) : s.hoveredZoneIds,
     ...(s.zoneEditDraft?.id === id ? noZoneEdit : {}),
+    ...(s.zoneCombine?.otherId === id ? { zoneCombine: { ...s.zoneCombine, otherId: null } } : {}),
     zoneColorOverrides: withoutKey(s.zoneColorOverrides, id),
   };
 }
@@ -124,7 +135,7 @@ function committingZoneEdit(s: MazeState): Partial<MazeState> {
 }
 
 export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & ZonesActions> = (set, get) => ({
-  ...zonesTransientUi,
+  ...zonesInitialState,
 
   // Closing the panel is a cancel of an unconfirmed group edit.
   setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null, hoveredZoneIds: [] })),
@@ -187,21 +198,29 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   })),
   removeZone: (id) => set((s) => withoutZone(s, id)),
   // `null` is "Done": the draft is confirmed. Opening another zone drops the unconfirmed draft.
-  setZoneEditId: (id) => set((s) => {
-    if (id === null) return committingZoneEdit(s);
-    if (id === s.zoneEditDraft?.id) return { hoveredZoneId: null };
-    const zone = s.zones.find((z) => z.id === id);
-    if (!zone) return {};
-    return {
-      ...discardingZoneEdit(s),
-      zoneEditDraft: zone,
-      zoneEditDraftColor: s.zoneColorOverrides[id] ?? null,
-      zoneEditIsNew: false,
-      zoneEditDraftGroupIds: s.zoneGroups.filter((g) => g.zoneIds.includes(id)).map((g) => g.id),
-      zoneEditDraftNewGroups: [],
-      hoveredZoneId: null,
-    };
-  }),
+  setZoneEditId: (id) => {
+    let floorToShow: string | undefined;
+    set((s) => {
+      if (id === null) return committingZoneEdit(s);
+      if (id === s.zoneEditDraft?.id) return { hoveredZoneId: null };
+      const zone = s.zones.find((z) => z.id === id);
+      if (!zone) return {};
+      // Editing starts on the zone's lowest floor, unless the active floor already holds some of its cells.
+      const floors = zoneFloors(zone);
+      if (floors.length > 0 && !floors.includes(s.floors.findIndex((f) => f.id === s.activeFloorId))) floorToShow = s.floors[floors[0]]?.id;
+      return {
+        ...discardingZoneEdit(s),
+        zoneEditDraft: zone,
+        zoneEditDraftColor: s.zoneColorOverrides[id] ?? null,
+        zoneEditIsNew: false,
+        zoneEditDraftGroupIds: s.zoneGroups.filter((g) => g.zoneIds.includes(id)).map((g) => g.id),
+        zoneEditDraftNewGroups: [],
+        hoveredZoneId: null,
+      };
+    });
+    // Through the floors slice, so the floor switch resets the per-floor drafts as any other switch does.
+    if (floorToShow !== undefined) get().setActiveFloorId(floorToShow);
+  },
   commitZoneEdit: () => set((s) => committingZoneEdit(s)),
   addZoneEditGroup: (groupId) => set((s) => (
     !s.zoneEditDraft || s.zoneEditDraftGroupIds.includes(groupId) || !s.zoneGroups.some((g) => g.id === groupId)
@@ -211,6 +230,20 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   addZoneEditNewGroup: (name) => set((s) => (s.zoneEditDraft ? { zoneEditDraftNewGroups: [...s.zoneEditDraftNewGroups, name] } : {})),
   removeZoneEditNewGroup: (index) => set((s) => ({ zoneEditDraftNewGroups: s.zoneEditDraftNewGroups.filter((_, i) => i !== index) })),
   cancelZoneEdit: () => set((s) => discardingZoneEdit(s)),
+  toggleZoneCombine: () => set((s) => (!s.zoneEditDraft ? {} : { zoneCombine: s.zoneCombine ? null : { op: "union", otherId: null } })),
+  setZoneCombineOp: (op) => set((s) => (s.zoneCombine ? { zoneCombine: { ...s.zoneCombine, op } } : {})),
+  setZoneCombineOther: (id) => set((s) => {
+    if (!s.zoneCombine) return {};
+    const valid = id !== null && id !== s.zoneEditDraft?.id && s.zones.some((z) => z.id === id);
+    return { zoneCombine: { ...s.zoneCombine, otherId: valid ? id : null } };
+  }),
+  applyZoneCombine: () => set((s) => {
+    const other = s.zoneCombine && s.zones.find((z) => z.id === s.zoneCombine?.otherId);
+    if (!s.zoneCombine || !s.zoneEditDraft || !other) return {};
+    return { zoneEditDraft: { ...s.zoneEditDraft, cells: combineZoneCells(s.zoneEditDraft.cells, other.cells, s.zoneCombine.op) }, zoneCombine: null };
+  }),
+  cancelZoneCombine: () => set({ zoneCombine: null }),
+  clearZoneCells: () => set((s) => (s.zoneEditDraft && s.zoneEditDraft.cells.length > 0 ? { zoneEditDraft: { ...s.zoneEditDraft, cells: [] } } : {})),
   setShowOtherZones: (v) => set({ showOtherZones: v }),
   setZoneSmoothing: (v) => set({ zoneSmoothing: v }),
   // Name and colour belong to the editor: they change the draft only, `zones` takes them on "Done".

@@ -4,7 +4,7 @@ import { ZonesPanel } from "../components/features/ZonesPanel";
 import { FloorBadgeRow } from "../components/FloorBadgeRow";
 import { cssColor } from "../components/EntityColorSwatch";
 import { useMazeStore } from "../store/mazeStore";
-import { zonesTransientUi } from "../store/slices/zonesSlice";
+import { zonesInitialState } from "../store/slices/zonesSlice";
 import { bubbleColors } from "../components/Bubble";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
@@ -22,12 +22,12 @@ const zones: Zone[] = [
 ];
 
 function setup(overrides: Partial<ReturnType<typeof useMazeStore.getState>> = {}) {
-  useMazeStore.setState({ ...zonesTransientUi, floors, activeFloorId: "floor_0", zones, nextZoneId: 4, ...overrides });
+  useMazeStore.setState({ ...zonesInitialState, floors, activeFloorId: "floor_0", zones, nextZoneId: 4, ...overrides });
   return render(<ZonesPanel onClose={() => {}} />);
 }
 
 describe("ZonesPanel", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesTransientUi }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState }));
 
   it("shows the zone count of each section in its switch segment", () => {
     setup();

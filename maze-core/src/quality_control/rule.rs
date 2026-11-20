@@ -297,7 +297,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                 .as_mut()
                 .map(|log| log.enter(format!("strategy {}", rule_strategy.strategy.strategy_id())));
             if let Some(scope) = strategy_scope.as_mut() {
-                for cmd in &commands {
+                for cmd in commands.iter().flat_map(|cmd| cmd.leaves()) {
                     if let Some(event) = qc_event_proposed_for_command(cmd, maze) {
                         scope.emit(event);
                     }

@@ -14,6 +14,9 @@ import { COMPONENT_MASK_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { brightColor } from "../store/colorMath";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
+import { previewZoneCombine } from "./selectors/zoneCombine";
+import { FIELD_EDITOR_PREVIEW_COLORS } from "./colorTokens";
+import { hexToNumber } from "../styles/palette";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -29,6 +32,9 @@ const regionInset = (borderWidth: number) => ZONE_REGION_GAP / 2 + borderWidth /
 /** Fill of the hovered zone: fully opaque, so it reads over the other zones. */
 const HOVER_FILL_ALPHA = 1;
 
+/** Fill of the combine preview's added / removed cells: translucent, so the zone underneath stays readable. */
+const COMBINE_FILL_ALPHA = 0.6;
+
 /** Feature-renderer of the zones card: the active floor's field with the zones that pass the kind
  *  filters drawn over it as regions. */
 export class ZonesRenderer extends BaseFieldRenderer {
@@ -39,6 +45,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
   private readonly wallsContainer: Container;
   private readonly zonesContainer: Container;
   private readonly hoverContainer: Container;
+  private readonly combineContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly fieldGrid: GridRenderer;
@@ -46,6 +53,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
   private readonly walls: WallRenderer;
   private readonly zones: RegionHighlightRenderer;
   private readonly hoverZone: RegionHighlightRenderer;
+  private readonly combinePreview: RegionHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -57,6 +65,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.wallsContainer = new Container();
     this.zonesContainer = new Container();
     this.hoverContainer = new Container();
+    this.combineContainer = new Container();
 
     // The grid is drawn over the floor fill, so it runs through the field as thin lines, as it does outside.
     this.root.addChild(this.floorContainer);
@@ -65,6 +74,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.root.addChild(this.wallsContainer);
     this.root.addChild(this.zonesContainer);
     this.root.addChild(this.hoverContainer);
+    this.root.addChild(this.combineContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "zones");
     this.fieldGrid = new GridRenderer(this.fieldGridContainer, "zones field");
@@ -72,6 +82,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.walls = new WallRenderer(this.wallsContainer);
     this.zones = new RegionHighlightRenderer(this.zonesContainer);
     this.hoverZone = new RegionHighlightRenderer(this.hoverContainer);
+    this.combinePreview = new RegionHighlightRenderer(this.combineContainer);
 
     this.root.visible = false;
 
@@ -117,9 +128,10 @@ export class ZonesRenderer extends BaseFieldRenderer {
       (hidesOtherZones(state) !== hidesOtherZones(prev))
     ) {
       this.redrawAll(state);
-    } else if (state.hoveredZoneId !== prev.hoveredZoneId || state.hoveredZoneIds !== prev.hoveredZoneIds) {
-      // A list hover moves often: only its own layer is redrawn.
-      this.redrawHover(state);
+    } else {
+      // A list hover moves often, and the combine panel's choice changes on every click: only their own layers are redrawn.
+      if (state.hoveredZoneId !== prev.hoveredZoneId || state.hoveredZoneIds !== prev.hoveredZoneIds) this.redrawHover(state);
+      if (state.zoneCombine !== prev.zoneCombine && this.cfg && this.root.visible) this.drawCombinePreview(state, this.cfg);
     }
   }
 
@@ -154,6 +166,44 @@ export class ZonesRenderer extends BaseFieldRenderer {
       inset: regionInset(ZONE_BORDER_WIDTH),
     });
     this.drawHover(state, fieldZones, cfg);
+    this.drawCombinePreview(state, cfg);
+  }
+
+  /** The combine tool's preview (GitHub issue #1032): the active floor's cells the operation would add, and those it
+   *  would remove. Other floors are reported in the editor panel. */
+  private drawCombinePreview(state: MazeState, cfg: FieldConfig): void {
+    const draft = state.zoneEditDraft;
+    const other = state.zoneCombine && state.zones.find((z) => z.id === state.zoneCombine?.otherId);
+    // Cut to the field like the zones drawn beside it, so no cell outside it is marked.
+    const [fieldDraft, fieldOther] = draft && other ? filterZonesToField([draft, other], resolveFieldAtOf(state)) : [];
+    const preview = fieldDraft && fieldOther && state.zoneCombine ? previewZoneCombine(fieldDraft, fieldOther, state.zoneCombine.op) : null;
+    const floor = activeFloorIndex(state);
+    const nodes: { id: number; x: number; y: number; i: number }[] = [];
+    const groupOf = (cells: [number, number, number][], color: number) => {
+      const ids: number[] = [];
+      for (const [f, x, y] of cells) {
+        if (f !== floor) continue;
+        const id = nodes.length;
+        nodes.push({ id, x, y, i: id });
+        ids.push(id);
+      }
+      return { regionGroups: ids.length > 0 ? [ids] : [], color, fillAlpha: COMBINE_FILL_ALPHA, borderColor: color };
+    };
+    const groups = preview
+      ? [groupOf(preview.added, hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.add)), groupOf(preview.removed, hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.remove))].filter((g) => g.regionGroups.length > 0)
+      : [];
+    this.combinePreview.render({
+      nodes,
+      regionGroups: [],
+      groups,
+      color: 0,
+      width: 0,
+      alpha: 0,
+      cfg,
+      skipPerimeter: true,
+      borderWidth: HOVER_BORDER_WIDTH,
+      inset: regionInset(HOVER_BORDER_WIDTH),
+    });
   }
 
   private redrawHover(state: MazeState): void {
@@ -190,6 +240,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
       this.fieldGrid.render({ viewport: this.viewport }, this.cfg, []);
       this.zones.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg: this.cfg });
       this.hoverZone.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg: this.cfg });
+      this.combinePreview.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg: this.cfg });
     }
   }
 
@@ -200,6 +251,8 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.walls.destroy();
     this.zones.destroy();
     this.hoverZone.destroy();
+    this.combinePreview.destroy();
+    this.combineContainer.destroy();
     this.wallsContainer.destroy();
     this.zonesContainer.destroy();
     this.hoverContainer.destroy();

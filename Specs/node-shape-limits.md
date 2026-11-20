@@ -212,8 +212,21 @@ occurrence order and drops duplicates). Different checks flagging different shap
   tessellation's shapes, so `issueRegistry` and the store do not import each other; unregistered = full labels); the description lists one bullet per entry, e.g. "Dead end: count 7, above the allowed 5".
   The limits dialog (`NodeShapeLimitsDialog`) edits a draft: the confirm button applies it, closing cancels.
 
+## Repair strategy (`NodeShapeRebalanceStrategy`, GitHub issue #1025)
+
+Handles `VIOLATED_NODE_SHAPE_LIMITS`; id `node_shape_rebalance`, no parameters. The issue carries `limits` (every enforced limit, not only the violated ones; `NodeShapeLimits::tighten` merges two issues: larger min, smaller max), so one move is judged against all limits at once. Without limits the strategy fails.
+
+- **Score**: `sum of shortfalls` over all limits (excess above a max plus deficit below a min). A move is accepted only if it strictly lowers the score, so the strategy itself cannot oscillate; among equal scores fewer flips win.
+- **Move**: an all-or-nothing set of passage flips (open a wall between two adjacent nodes, or close a passage). Walls blocked by the preset state are never opened; preset edges are never closed.
+- **Connectivity invariant**: every strongly connected component of the maze before the move stays whole (merging is allowed), so a move never splits the maze. The check runs on the best candidates only, in score order; up to 128 improving candidates are kept (deduplicated: the same move found from either end counts once), because in a tree-like maze the best-scoring ones are often pure closings that all split it.
+- **Phase 1, local**: combinations of at most 2 passages incident to pivot nodes (excess: the violation's nodes; deficit: nodes of the counterpart shapes). **Phase 2, region**: flip combinations inside a connected region around a pivot, at growing sizes. Both are bounded by evaluation budgets and bail out on the cooperative deadline (`crate::deadline::expired()`, `Specs/repair.md`).
+- **One apply, several moves**: the first valid candidate is joined by further candidates that touch other nodes, lower the score again and keep connectivity together with it (at most 64 extra connectivity checks), so a large excess costs few repair iterations instead of one per node. The set is still strictly score-lowering, so it cannot oscillate.
+- **Unsatisfiable limits**: per cell type, the strategy fails at once when the mins need more nodes than the cell type has (shapes impossible for the cell type skipped), or when every shape its nodes can take is capped and the caps hold fewer nodes than it has.
+- A set of several flips is returned as one `MutationCommand::Atomic` (`Specs/repair.md`).
+- Not considered: other rules' limits (e.g. a new loop opened by a flip) — those rules fire on the next iteration and repair it with their own strategies.
+
 ## Open points (not in this version)
 
-- The repair strategy.
+- Generator integration: the generator does not yet respect the limits; only repair does.
 - Per-floor limits.
 - A field-aware vocabulary: the editor offers the shapes of the tessellation's sample field, not of the user's actual field.

@@ -172,7 +172,8 @@ pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, 
         | MutationCommand::SetStart(_)
         | MutationCommand::SetFinish(_)
         | MutationCommand::RemoveNode { .. }
-        | MutationCommand::ReplacePointNodes { .. } => None,
+        | MutationCommand::ReplacePointNodes { .. }
+        | MutationCommand::Atomic { .. } => None,
     }
 }
 

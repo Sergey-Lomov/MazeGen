@@ -20,7 +20,7 @@ import { connectedMagicWandCells } from "./magicWand";
 import { getCartesian } from "./cartesianCache";
 import { fieldOperationAvailable, isFieldOpError } from "./fieldOps";
 import { translateFieldCells, type WorldPoint } from "../wasm/mazeService";
-import { canActivateFieldPrimitive, fieldPrimitiveForShortcut } from "./fieldPrimitiveShortcuts";
+import { canActivateFieldPrimitive, fieldPrimitiveForShortcut, ZONE_COMBINE_CODE } from "./fieldPrimitiveShortcuts";
 import { blurActiveElement } from "./toolShortcuts";
 import { EMPTY_FIELD_SIZE_READOUT, measureCells, measureShape, mergeFieldSizeReadout, type FieldSizeReadout } from "./fieldSizeReadout";
 import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
@@ -159,6 +159,12 @@ export class FieldEditController {
         e.preventDefault();
         blurActiveElement();
         state.setFieldOperation(operation);
+        return;
+      }
+      if (e.code === ZONE_COMBINE_CODE && zoneEditActive(state)) {
+        e.preventDefault();
+        blurActiveElement();
+        state.toggleZoneCombine();
         return;
       }
       if (e.code === "KeyS") {

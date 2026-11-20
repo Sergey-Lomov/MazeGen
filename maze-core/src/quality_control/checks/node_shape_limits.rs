@@ -65,9 +65,13 @@ impl<T: Tessellation> Check<T, ViolatedNodeShapeLimitsIssue> for NodeShapeLimits
             .collect::<Vec<_>>()
             .join(";");
         issues.push(
-            ViolatedNodeShapeLimitsIssue::new_from_check(&self.instance_id, violations)
-                .with_detail(&self.instance_id, "shapes", shapes)
-                .with_detail(&self.instance_id, "violations", entries),
+            ViolatedNodeShapeLimitsIssue::new_from_check(
+                &self.instance_id,
+                violations,
+                self.limits.clone(),
+            )
+            .with_detail(&self.instance_id, "shapes", shapes)
+            .with_detail(&self.instance_id, "violations", entries),
         );
     }
 }

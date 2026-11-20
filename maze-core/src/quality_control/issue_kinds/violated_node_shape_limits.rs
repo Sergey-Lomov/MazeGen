@@ -1,4 +1,4 @@
-use crate::graph::node_shape::{NodeShape, TypedShape};
+use crate::graph::node_shape::{NodeShape, NodeShapeLimits, TypedShape};
 use crate::ids::NodeId;
 use crate::quality_control::issue::{
     IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, VIOLATED_NODE_SHAPE_LIMITS,
@@ -35,13 +35,22 @@ pub struct ShapeLimitViolation {
 pub struct ViolatedNodeShapeLimitsIssue {
     meta: IssueMeta,
     pub violations: Vec<ShapeLimitViolation>,
+    /// The limits the check enforces, all of them (not only the violated ones): a strategy moving
+    /// nodes between shapes must not break a limit that holds now. Empty when not supplied.
+    pub limits: NodeShapeLimits,
 }
 
 impl ViolatedNodeShapeLimitsIssue {
-    pub fn new_from_check(source_check: &str, violations: Vec<ShapeLimitViolation>) -> Self {
+    /// `limits` are every limit the check enforces — the repair judges a move against all of them.
+    pub fn new_from_check(
+        source_check: &str,
+        violations: Vec<ShapeLimitViolation>,
+        limits: NodeShapeLimits,
+    ) -> Self {
         Self {
             meta: IssueMeta::new_from_check(source_check),
             violations,
+            limits,
         }
     }
 
@@ -66,6 +75,7 @@ impl IssueMerge for ViolatedNodeShapeLimitsIssue {
     /// `nodes`, and the counterparts in first-occurrence order without duplicates. Others append.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
+        self.limits.tighten(&other.limits);
         for incoming in other.violations {
             let Some(existing) = self
                 .violations
@@ -120,6 +130,7 @@ mod tests {
                 vec![1, 3],
                 vec![NodeShape::Turn(90)],
             )],
+            NodeShapeLimits::new(),
         );
         let b = ViolatedNodeShapeLimitsIssue::new_from_check(
             "b",
@@ -130,6 +141,7 @@ mod tests {
                 vec![3, 2],
                 vec![NodeShape::Turn(90), NodeShape::DeadEnd],
             )],
+            NodeShapeLimits::new(),
         );
         a.merge(b);
         assert_eq!(
@@ -146,6 +158,27 @@ mod tests {
     }
 
     #[test]
+    fn merge_tightens_the_limits() {
+        use crate::graph::node_shape::CountRange;
+        let range = |min, max| CountRange::new(min, max).unwrap();
+        let mut a = ViolatedNodeShapeLimitsIssue::new_from_check(
+            "a",
+            vec![],
+            NodeShapeLimits::new().with("regular:4", NodeShape::DeadEnd, range(Some(1), Some(9))),
+        );
+        let b = ViolatedNodeShapeLimitsIssue::new_from_check(
+            "b",
+            vec![],
+            NodeShapeLimits::new().with("regular:4", NodeShape::DeadEnd, range(Some(3), Some(12))),
+        );
+        a.merge(b);
+        let merged = a
+            .limits
+            .get(&TypedShape::new("regular:4", NodeShape::DeadEnd));
+        assert_eq!((merged.min(), merged.max()), (Some(3), Some(9)));
+    }
+
+    #[test]
     fn merge_keeps_different_shapes_and_kinds_apart() {
         let mut a = ViolatedNodeShapeLimitsIssue::new_from_check(
             "a",
@@ -156,6 +189,7 @@ mod tests {
                 vec![1],
                 vec![],
             )],
+            NodeShapeLimits::new(),
         );
         let b = ViolatedNodeShapeLimitsIssue::new_from_check(
             "b",
@@ -175,6 +209,7 @@ mod tests {
                     vec![],
                 ),
             ],
+            NodeShapeLimits::new(),
         );
         a.merge(b);
         assert_eq!(a.violations.len(), 3);

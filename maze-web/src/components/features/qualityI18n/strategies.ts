@@ -181,6 +181,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.add_vertical_passage.label"] as MessageFn,
     description: m["strategy.add_vertical_passage.description"] as MessageFn,
   },
+  node_shape_rebalance: {
+    label: m["strategy.node_shape_rebalance.label"] as MessageFn,
+    description: m["strategy.node_shape_rebalance.description"] as MessageFn,
+  },
   remove_vertical_passage: {
     label: m["strategy.remove_vertical_passage.label"] as MessageFn,
     description: m["strategy.remove_vertical_passage.description"] as MessageFn,

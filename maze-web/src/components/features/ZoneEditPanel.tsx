@@ -4,6 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { editedZoneOf } from "../../pixi/fieldEditTarget";
 import { overridesWithDraft, zoneColors, zoneDisplayName, zoneChipColors, zoneFloors, zoneGroupDisplayName, zoneIntersections, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
 import { Button } from "../Button";
+import { ConfirmModal } from "../ConfirmModal";
 import { UnregisteredColorRow } from "../ColorRow";
 import { SidePanel } from "../SidePanel";
 import { FlatIconButton } from "../FlatIconButton";
@@ -44,7 +45,9 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
   const removeFromGroup = useMazeStore((s) => s.removeZoneEditGroup);
   const addNewGroup = useMazeStore((s) => s.addZoneEditNewGroup);
   const removeNewGroup = useMazeStore((s) => s.removeZoneEditNewGroup);
+  const clearCells = useMazeStore((s) => s.clearZoneCells);
   const [dialog, setDialog] = useState<"pick" | "name" | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   // The hover belongs to the panel: it must not outlive it.
   useEffect(() => () => setHover(null), [setHover]);
@@ -145,11 +148,21 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
           </Stack>
         )}
 
-        <Button variant="primary" layoutStyle={{ width: "100%", marginTop: spacing.itemGap }} onClick={onDone}>
+        <Button variant="destructive" layoutStyle={{ width: "100%", marginTop: spacing.itemGap }} disabled={count === 0} onClick={() => setConfirmingClear(true)}>
+          {m["zones.clear"]()}
+        </Button>
+        <Button variant="primary" layoutStyle={{ width: "100%" }} onClick={onDone}>
           {m["zones.edit_done"]()}
         </Button>
         <span style={styles.info}>{m[count === 1 ? "zones.size" : "zones.size_plural"]({ count })}</span>
       </Stack>
+      {confirmingClear && (
+        <ConfirmModal
+          message={m["zones.clear_confirm"]({ name: zoneDisplayName(zone) })}
+          onConfirm={() => { setConfirmingClear(false); clearCells(); }}
+          onCancel={() => setConfirmingClear(false)}
+        />
+      )}
       {dialog === "pick" && <ZoneGroupPickerDialog excludeIds={draftGroupIds} onPick={addToGroup} onClose={() => setDialog(null)} onNew={() => setDialog("name")} />}
       {dialog === "name" && <ZoneGroupNameDialog onConfirm={addNewGroup} onClose={() => setDialog(null)} />}
     </SidePanel>

@@ -133,6 +133,30 @@ pub enum MutationCommand {
         at: NodeId,
         nodes: Vec<Vec<SplitNodeEdge>>,
     },
+    /// An all-or-nothing group: either every command in `commands` applies, in order, or none of
+    /// them does and the maze stays untouched. For mutations that only make sense together (e.g.
+    /// moving a passage: remove one, add another), which independently revalidated commands cannot
+    /// express — one of them being declined would leave the maze half-changed.
+    ///
+    /// Revalidation runs on a working copy first (`Maze::draft`): the group is committed only when
+    /// every member holds there, so a stale member declines the whole group. Members are ordinary
+    /// commands (another `Atomic` included); an empty group is a no-op that counts as applied.
+    Atomic {
+        commands: Vec<MutationCommand>,
+    },
+}
+
+impl MutationCommand {
+    /// The commands this one stands for, groups flattened in order — a plain command is its own
+    /// single leaf. For consumers narrating or inspecting individual mutations.
+    pub fn leaves(&self) -> Vec<&MutationCommand> {
+        match self {
+            MutationCommand::Atomic { commands } => {
+                commands.iter().flat_map(MutationCommand::leaves).collect()
+            }
+            other => vec![other],
+        }
+    }
 }
 
 /// One edge a newly minted split node (`MutationCommand::ReplacePointNodes`) gets wired with —
@@ -186,6 +210,7 @@ pub enum SplitNodeEdgeDirection {
 pub fn removed_edge_ids(commands: &[MutationCommand]) -> Vec<EdgeId> {
     commands
         .iter()
+        .flat_map(MutationCommand::leaves)
         .filter_map(|cmd| match cmd {
             MutationCommand::RemoveEdge { id } => Some(*id),
             MutationCommand::RemoveEdgeWithReverse { id } => Some(*id),
@@ -210,6 +235,52 @@ mod tests {
             MutationCommand::RemoveEdgeWithReverse { id: 7 },
         ];
         assert_eq!(removed_edge_ids(&commands), vec![1, 2, 7]);
+    }
+
+    #[test]
+    fn leaves_flatten_nested_groups_in_order() {
+        let group = MutationCommand::Atomic {
+            commands: vec![
+                MutationCommand::RemoveEdge { id: 1 },
+                MutationCommand::Atomic {
+                    commands: vec![
+                        MutationCommand::SetStart(2),
+                        MutationCommand::RemoveEdgeWithReverse { id: 3 },
+                    ],
+                },
+            ],
+        };
+        assert_eq!(
+            group.leaves(),
+            vec![
+                &MutationCommand::RemoveEdge { id: 1 },
+                &MutationCommand::SetStart(2),
+                &MutationCommand::RemoveEdgeWithReverse { id: 3 },
+            ]
+        );
+        assert_eq!(
+            MutationCommand::SetFinish(4).leaves(),
+            vec![&MutationCommand::SetFinish(4)]
+        );
+        assert!(
+            MutationCommand::Atomic { commands: vec![] }
+                .leaves()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn removed_edge_ids_looks_inside_atomic_groups() {
+        let commands = vec![
+            MutationCommand::RemoveEdge { id: 1 },
+            MutationCommand::Atomic {
+                commands: vec![
+                    MutationCommand::AddBidirectionalEdge { a: 1, b: 2 },
+                    MutationCommand::RemoveEdgeWithReverse { id: 5 },
+                ],
+            },
+        ];
+        assert_eq!(removed_edge_ids(&commands), vec![1, 5]);
     }
 
     #[test]

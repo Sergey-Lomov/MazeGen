@@ -381,6 +381,23 @@ impl NodeShapeLimits {
     pub fn is_empty(&self) -> bool {
         self.0.values().all(|r| r.min.is_none() && r.max.is_none())
     }
+
+    /// Makes every limit at least as strict as in `other`: the larger `min`, the smaller `max`. A
+    /// shape both limit sets constrain keeps its current range when the tightened one would be
+    /// inverted (the sets contradict each other and no count satisfies both).
+    pub fn tighten(&mut self, other: &NodeShapeLimits) {
+        for (shape, theirs) in other.iter() {
+            let ours = self.get(shape);
+            let min = ours.min.max(theirs.min);
+            let max = match (ours.max, theirs.max) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            if let Some(range) = CountRange::new(min, max) {
+                self.0.insert(shape.clone(), range);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -646,5 +663,43 @@ mod tests {
             Some(CountRange::exact(2))
         );
         assert!(CountRange::new(None, Some(0)).is_some());
+    }
+
+    #[test]
+    fn tighten_keeps_the_stricter_bound_of_each_side() {
+        let range = |min, max| CountRange::new(min, max).unwrap();
+        let mut limits = NodeShapeLimits::new()
+            .with("c", NodeShape::DeadEnd, range(Some(2), Some(9)))
+            .with("c", NodeShape::Straight, range(None, Some(5)));
+        limits.tighten(
+            &NodeShapeLimits::new()
+                .with("c", NodeShape::DeadEnd, range(Some(4), Some(12)))
+                .with("c", NodeShape::Straight, range(Some(1), None))
+                .with("c", NodeShape::Turn(90), range(None, Some(3))),
+        );
+        let shape = |s| TypedShape::new("c", s);
+        assert_eq!(
+            limits.get(&shape(NodeShape::DeadEnd)),
+            range(Some(4), Some(9))
+        );
+        assert_eq!(
+            limits.get(&shape(NodeShape::Straight)),
+            range(Some(1), Some(5))
+        );
+        assert_eq!(
+            limits.get(&shape(NodeShape::Turn(90))),
+            range(None, Some(3))
+        );
+    }
+
+    #[test]
+    fn tighten_ignores_a_contradicting_range() {
+        let range = |min, max| CountRange::new(min, max).unwrap();
+        let mut limits = NodeShapeLimits::new().with("c", NodeShape::DeadEnd, range(None, Some(2)));
+        limits.tighten(&NodeShapeLimits::new().with("c", NodeShape::DeadEnd, range(Some(5), None)));
+        assert_eq!(
+            limits.get(&TypedShape::new("c", NodeShape::DeadEnd)),
+            range(None, Some(2))
+        );
     }
 }

@@ -33,6 +33,7 @@ pub mod missing_one_ways_from_wall;
 mod missing_one_ways_shared;
 pub mod missing_regions;
 pub mod missing_teleports;
+pub mod node_shape_rebalance;
 pub mod one_way_group_select;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
@@ -162,6 +163,7 @@ pub use missing_teleports::{
     PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH,
     PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK,
 };
+pub use node_shape_rebalance::NodeShapeRebalanceStrategy;
 pub use one_way_group_select::{
     OneWayGroupSelectStrategy, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET,
 };

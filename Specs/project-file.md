@@ -111,6 +111,20 @@ duplicate `id`, a non-numeric end and equal ends, naming the path; entries of un
 The store keeps it as `floorCreases` and clears it with the topology when the tessellation kind or
 params change.
 
+## Zones (`zones`)
+
+GitHub issue #1048. Optional section `zones?: ProjectFileZones` (`types.ts`): `zones` (id, name, kind, cells as
+`[floor, x, y]`), `nextZoneId`, `groups` (`ZoneGroup`: id, name, `zoneIds`), `nextGroupId` and `colorOverrides`
+(explicit colours by zone id). Written only when the project has a zone or a group; a file saved before this
+section loads with no zones and no groups, so `CURRENT_VERSION` is unchanged. Everything else of the zones
+state (toggles, hidden zones, panels, drafts, hover) is transient and reset on load.
+
+On load `validateZones` (`validateZones.ts`) checks the structure only and rejects, naming the path, a bad cell,
+kind or id and a duplicate zone or group id. Cells of floors or points no longer in the field are kept and dropped
+at use (`filterZonesToField`), so they never break loading. Group members naming no zone and colour overrides of
+unknown zones are dropped; empty groups and empty zones stay. A counter never loads at or below an existing id, so
+ids stay unique and an id of a deleted zone is still not reused.
+
 ## Visual preset (style file)
 
 GitHub issue #750. A standalone file with only the visual configuration, so a tuned style can be

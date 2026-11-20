@@ -27,6 +27,7 @@ const NOT_TRANSIENT: Record<string, readonly string[]> = {
     "vectorByWallsSectionsExpanded", "showColorWarnings", "linkIconVisibility", "vectorByWallsSettings",
     "floorLabelModeChosen", "vectorByCorridorsSectionsExpanded", "vectorByCorridorsSettings", "pngExportSettings",
     "floors", "nextFloorNumber", "activeFloorId", "floorTopology", "floorCreases", "edgeMarkerOrder",
+    "zones", "nextZoneId", "zoneGroups", "nextZoneGroupId", "zoneColorOverrides",
   ],
   "rebuilt by the regeneration and post-edit replay that loadProject runs": [
     "nodes", "edges", "start", "finish", "navNodes", "navEdges", "statistics", "issues", "error", "routeInfo",
@@ -43,6 +44,7 @@ const NOT_TRANSIENT: Record<string, readonly string[]> = {
     "showFullyPresetLockedIssues", "postEditAutoCompact", "debugAutoSwitchFloor", "debugFocusToken",
     "presetSectionsExpanded",
   ],
+  "raised by loadProject itself while it runs": ["projectLoadInProgress"],
   "owned by the canvas controller that sets it": ["fieldHasSelection"],
 };
 

@@ -2,27 +2,13 @@
 
 Guidance for Claude Code in this repository.
 
-## Project
+@AGENTS.md
 
-A **maze editor and generator** with a Rust core (`maze-core`). Workspace; more crates may be added.
-
-## Languages
-
-- Converse, plan, and respond in the user's language; general terms in the user's language, specific technologies in English (`Result`, `impl`, `trait`, etc.).
-- All repository artifacts (code, comments, docs, specs, commit messages, GitHub issues, pull requests, and their comments): English only.
+Claude Code specifics below. Shared rules (language, commits, specs, testing, debugging, i18n, export, ...) live in `AGENTS.md`.
 
 ## Commits
 
-IMPORTANT: overrides default commit behavior.
-
-- Never commit without an explicit user instruction.
-- Commit directly to the current branch — never create a new branch, even on `main` / the default branch.
-- No Co-Authored-By or any attribution lines.
-- Subject: short imperative, no period.
-
-## Collaboration
-
-- Ask clarifying questions if the task is ambiguous or underspecified before writing code.
+IMPORTANT: the commit rules in `AGENTS.md` override Claude Code's default commit behavior, including its attribution guidance.
 
 ## Communication style
 
@@ -32,65 +18,6 @@ During implementation: don't narrate reasoning, don't explain routine tool calls
 
 After a task, report only: what changed, tests/checks result, any important unresolved issue. No implementation walkthrough unless I ask.
 
-## No visual verification
-
-Never launch the dev server or drive a browser (Playwright etc.) to check UI changes — even when other guidance suggests it. Rely on unit tests and `tsc`/type checks. The user does visual checks themselves.
-
 ## Code exploration
 
 Use `code-index` MCP tools first: `search_code_advanced`, `get_symbol_body`, `find_files`, `get_file_summary`. Fall back to Grep/Glob/Explore only if code-index can't answer, reports `needs_deep_index`, or the task is outside its capabilities.
-
-## Debugging
-
-- Prefix temporary diagnostic logs with `// DIAG` on the same line; remove all before committing (find via `// DIAG`).
-- Use `diag_log!` (`maze-core/src/diag.rs`), never bare `println!` — `println!` is swallowed on `wasm32`; `diag_log!` prints to stdout natively and to the browser console when built for wasm:
-  ```rust
-  crate::diag_log!("value={x}"); // DIAG
-  ```
-
-## i18n (paraglide)
-
-Compile from `maze-web`: `npx paraglide-js compile --project ./project.inlang --outdir ./generated/paraglide --output-structure locale-modules`.
-
-**Always pass `--output-structure locale-modules`.** Without it the CLI defaults to `message-modules` (~1700+ files), making Vite dev-server start very slow. `locale-modules` produces ~10 files — sanity check: `find generated/paraglide -type f | wc -l` ≈ 10, not 1000+.
-
-`npm run dev`, `npm run build`, `npm test`, and `npm run test:watch` run `tools/ensure-deps.mjs` first (runs `npm install` when a declared package is missing from `node_modules` or differs from the version `package-lock.json` pins, e.g. after a pull brought a new dependency), then `tools/prepare-paraglide.mjs`. It fingerprints the translation files, `project.inlang/settings.json`, the package manifests, and the installed Paraglide package. When the fingerprint changes, it regenerates `generated/paraglide` with the command above and clears `node_modules/.vite`; otherwise it reuses the generated output. Both generated output and the preparation marker remain untracked.
-
-The inlang plugins are vendored in `maze-web/tools/inlang-plugins/` (self-contained bundles of the former CDN modules, referenced from `project.inlang/settings.json`, so compile needs no network; they are part of the fingerprint). Paraglide is compiled only by `prepare-paraglide`; `tools/paraglide-watch-plugin.mjs` recompiles on translation/settings edits while the dev server runs. `npm run measure:startup` (from `maze-web`) runs a real `npm run dev` and timestamps each output line until Vite is ready; `-- --cold` drops the app-level caches first. A reboot also empties the OS file cache, which only a run right after a reboot reproduces.
-
-## Export
-
-- Cut transfers (GitHub issue #859, `PngExporter.renderCutSheet`): unless a feature's spec says otherwise, everything drawn on the image takes part in them — it is drawn once per `CutPlan` offset, clipped to the cut region, like the content. A new export element that is drawn once over the whole frame must say so in `Specs/image-export.md`.
-
-## Specs
-
-`Specs/` — markdown descriptions of systems and data structures, authoritative source of intent. Check before implementing or modifying a feature.
-
-## Integration tests (`maze-runner`)
-
-`maze-runner` is a native-Rust crate (no wasm) that parses the same JSON config the browser sends and runs the full `build_maze` pipeline. Use it for all reproduction and regression tests.
-
-**Workflow:**
-1. Export config from the browser (debug toolbar → "Copy config JSON").
-2. Save to `maze-runner/tests/fixtures/<name>.json`.
-3. Copy `maze-runner/tests/repro.rs`'s template function, rename it, add assertions on `MazeRunResult`.
-
-**Browser-repro tests: never hardcode generation params** — seed, tessellation, checks, strategies, repair limits all come from the fixture JSON, so the test reproduces exactly what the browser ran. Regular unit tests with hand-crafted mazes may hardcode params.
-
-`MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`, `graph` (final post-repair `Graph` — inspect edge kinds/directionality).
-
-## Pre-commit test coverage
-
-`cargo test -p maze-core --lib` alone is not enough: integration tests in `maze-core/tests/*.rs` and the whole `maze-runner` crate are separate targets, and a change under `maze-core/src/` can break them while lib tests stay green. Before proposing a commit of any change under `maze-core/` or `maze-runner/`, run once, after all edits:
-
-- `cargo test -p maze-core --tests` (every test target, lib unit tests and integration tests);
-- `cargo test -p maze-runner`.
-
-Add `--no-fail-fast` so one failing target doesn't hide the rest. `maze-wasm` is wasm-only and does not build natively, so don't include it in `--workspace` runs. A web change also needs `npx vitest run` from `maze-web/` against a fresh wasm build. If a test fails, check `git stash` first to tell a regression from a pre-existing failure, and report which it is.
-
-## Testing debug event logs (`EventLog`/`DebugTape`)
-
-When instrumenting an algorithm with `EventLog` (see `Specs/event_log.md`), don't write one exact-sequence test per event variant — it breaks on every narration reword. Instead:
-
-- **One** exact-sequence test on the smallest deterministic input (forces every branch via input shape, not seed luck) — asserts the full ordered payload list for a single scope.
-- All other tests assert **invariants**, not exact payloads: mutating events match resulting graph state, tree nesting matches expected scope names, `is_mutating()` agrees with the mutating/trace split, `None` log doesn't change generation output. These survive narration rewording.

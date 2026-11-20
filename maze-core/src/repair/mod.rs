@@ -38,7 +38,7 @@ pub use strategies::{
     MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
     MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
     MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
-    NESTED_SUPPRESSED_ADD_PARAMS, ONE_WAY_GROUP_SELECT_PARAM_PRIORITY,
+    NESTED_SUPPRESSED_ADD_PARAMS, NodeShapeRebalanceStrategy, ONE_WAY_GROUP_SELECT_PARAM_PRIORITY,
     ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC, ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM,
     ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
     OneWayToWallStrategy, PARAM_ATTEMPTS_LIMIT,

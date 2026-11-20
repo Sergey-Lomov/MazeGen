@@ -545,6 +545,7 @@ mod build_strategy_tests {
         "remove_split",
         "split_group_select",
         "add_split",
+        "node_shape_rebalance",
     ];
 
     #[test]

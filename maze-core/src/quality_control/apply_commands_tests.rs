@@ -817,6 +817,238 @@ fn event_log_emits_declined_when_revalidation_rejects_a_command() {
     );
 }
 
+/// An atomic group applies every member, and counts as one applied command.
+#[test]
+fn atomic_group_applies_every_member() {
+    let (mut maze, nodes) = maze_n(3);
+    let outcome = apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::Atomic {
+            commands: vec![
+                MutationCommand::AddBidirectionalEdge {
+                    a: nodes[0],
+                    b: nodes[1],
+                },
+                MutationCommand::AddBidirectionalEdge {
+                    a: nodes[1],
+                    b: nodes[2],
+                },
+            ],
+        }],
+        None,
+        None,
+    );
+    assert_eq!(
+        outcome,
+        ApplyOutcome {
+            proposed: 1,
+            applied: 1
+        }
+    );
+    assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
+    assert!(maze.graph.edge_between(nodes[2], nodes[1]).is_some());
+}
+
+/// One member failing revalidation declines the whole group: the members before it must not stay
+/// applied, and the commands after the group still run.
+#[test]
+fn atomic_group_with_a_stale_member_changes_nothing() {
+    let (mut maze, nodes) = maze_n(3);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[1], nodes[2]));
+    let outcome = apply_commands(
+        &mut maze,
+        &preset_state,
+        vec![
+            MutationCommand::Atomic {
+                commands: vec![
+                    MutationCommand::AddBidirectionalEdge {
+                        a: nodes[0],
+                        b: nodes[1],
+                    },
+                    MutationCommand::AddBidirectionalEdge {
+                        a: nodes[1],
+                        b: nodes[2],
+                    },
+                ],
+            },
+            MutationCommand::AddDirectedEdge {
+                from: nodes[2],
+                to: nodes[0],
+            },
+        ],
+        None,
+        None,
+    );
+    assert_eq!(
+        outcome,
+        ApplyOutcome {
+            proposed: 2,
+            applied: 1
+        }
+    );
+    assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
+    assert!(maze.graph.edge_between(nodes[2], nodes[0]).is_some());
+}
+
+/// A group is narrated through its members: committed, they emit their own mutating events;
+/// declined, each emits its `*Declined` mirror and nothing mutating.
+#[test]
+fn atomic_group_is_narrated_through_its_members() {
+    let group = |nodes: &[crate::ids::NodeId]| MutationCommand::Atomic {
+        commands: vec![
+            MutationCommand::AddBidirectionalEdge {
+                a: nodes[0],
+                b: nodes[1],
+            },
+            MutationCommand::AddBidirectionalEdge {
+                a: nodes[1],
+                b: nodes[2],
+            },
+        ],
+    };
+
+    let (mut maze, nodes) = maze_n(3);
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![group(&nodes)],
+        Some(&mut scope),
+        None,
+    );
+    drop(scope);
+    let tape = log.finish();
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 2);
+    assert!(
+        events
+            .iter()
+            .all(|e| matches!(e, QcEvent::BidirectionalEdgeAdded { .. }))
+    );
+
+    let (mut maze, nodes) = maze_n(3);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[1], nodes[2]));
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    apply_commands(
+        &mut maze,
+        &preset_state,
+        vec![group(&nodes)],
+        Some(&mut scope),
+        None,
+    );
+    drop(scope);
+    let tape = log.finish();
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 2);
+    assert!(
+        events
+            .iter()
+            .all(|e| matches!(e, QcEvent::BidirectionalEdgeDeclined { .. }) && !e.is_mutating())
+    );
+}
+
+/// A declined group narrates members that address an edge by id with that edge's endpoints, as a
+/// lone declined command would — resolved from the maze the group never touched.
+#[test]
+fn a_declined_group_narrates_the_endpoints_of_its_edge_members() {
+    let (mut maze, nodes) = maze_n(3);
+    maze.graph
+        .add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let id = maze.graph.edge_between(nodes[0], nodes[1]).unwrap();
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[1], nodes[2]));
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    apply_commands(
+        &mut maze,
+        &preset_state,
+        vec![MutationCommand::Atomic {
+            commands: vec![
+                MutationCommand::RemoveEdgeWithReverse { id },
+                MutationCommand::AddBidirectionalEdge {
+                    a: nodes[1],
+                    b: nodes[2],
+                },
+            ],
+        }],
+        Some(&mut scope),
+        None,
+    );
+    drop(scope);
+    let tape = log.finish();
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert!(matches!(
+        events[..],
+        [
+            QcEvent::EdgeRemoveWithReverseDeclined { from, to, .. },
+            QcEvent::BidirectionalEdgeDeclined { .. },
+        ] if *from == nodes[0] && *to == nodes[1]
+    ));
+    assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
+}
+
+/// A nested group is all-or-nothing as a whole: an inner group that cannot apply declines the outer
+/// one too, even though the outer's other members could.
+#[test]
+fn a_nested_group_declines_with_its_outer_group() {
+    let (mut maze, nodes) = maze_n(3);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[1], nodes[2]));
+    let outcome = apply_commands(
+        &mut maze,
+        &preset_state,
+        vec![MutationCommand::Atomic {
+            commands: vec![
+                MutationCommand::AddBidirectionalEdge {
+                    a: nodes[0],
+                    b: nodes[1],
+                },
+                MutationCommand::Atomic {
+                    commands: vec![MutationCommand::AddBidirectionalEdge {
+                        a: nodes[1],
+                        b: nodes[2],
+                    }],
+                },
+            ],
+        }],
+        None,
+        None,
+    );
+    assert_eq!(
+        outcome,
+        ApplyOutcome {
+            proposed: 1,
+            applied: 0
+        }
+    );
+    assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
+}
+
+/// An empty group is a no-op that counts as applied.
+#[test]
+fn empty_atomic_group_is_a_no_op() {
+    let (mut maze, _) = maze_n(2);
+    let outcome = apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::Atomic { commands: vec![] }],
+        None,
+        None,
+    );
+    assert_eq!(
+        outcome,
+        ApplyOutcome {
+            proposed: 1,
+            applied: 1
+        }
+    );
+}
+
 /// GitHub issue #171 review finding: `qc_event_for_command` used to fabricate a `(0, 0)`
 /// self-loop via `unwrap_or_default()` whenever `RemoveEdge`/`RemoveTeleportWithReverse`'s
 /// `EdgeId` couldn't be resolved to `(from, to)` — indistinguishable from a genuine edge since

@@ -258,6 +258,8 @@ Each command is applied via the real `try_*` helper (the single source of truth 
 
 **Contract for partially-applied batches**: a strategy must treat any subset of its own commands landing (the rest silently dropped) as an acceptable outcome — it has no way to detect partial application after the fact (`apply_commands` runs after `apply()` already returned) and must not rely on all-or-nothing application across multiple commands. If two mutations must both apply or neither, they must be one `MutationCommand`, not two (see `AddBidirectionalEdge` above) — not something the strategy checks after the fact.
 
+**Atomic groups**: `MutationCommand::Atomic { commands }` is the all-or-nothing exception — a group of commands (nesting allowed) that applies fully or not at all. `apply_commands` rehearses the group on `Maze::draft()`; only if every member applies there is the group applied to the real maze (and counted as one applied command), otherwise nothing changes and the group counts as dropped. An empty group is a no-op counted as applied. `MutationCommand::leaves()` flattens groups recursively; `removed_edge_ids` and the proposed-narration loop look through it. Narration goes through the members (committed: their own events; declined: their `*Declined` events) — there is no group-level `QcEvent`. A strategy that needs several mutations to land together wraps them in one `Atomic` command (`NodeShapeRebalanceStrategy` does).
+
 `nested: &[NestedStrategyConfig<T>]` carries this rule's configured nested strategies (empty for every strategy without nested slots — the overwhelming majority, which simply ignore the parameter). See "Nested strategies" below.
 
 - `preset_state` carries the same `PresetState` built before generation (`blocked`, `locked_out`, `locked_in`, `preset_connected`, `preset_edges`, `preset_edge_ids`). Strategies that mutate edges must not remove a directed edge present in `preset_state.preset_edges` (pair-keyed: Passage/OneWay `Basic` connections the user placed explicitly) or one whose `EdgeId` is in `preset_state.preset_edge_ids` (per-edge, any kind: every planted preset edge including a preset `Teleport` / `VerticalPassage` / `Elevator` — GitHub issue #376 follow-up). The `try_remove_edge*` helpers enforce both. Strategies that don't touch edges (e.g. the endpoint strategies) ignore this parameter.
@@ -2173,6 +2175,10 @@ Time is measured via a small internal `now_ms()` helper, not `std::time::Instant
 6. Pushes a `RepairLimitReachedIssue` synthetic issue (`Box::new(...) as Box<dyn Issue>`) if `budget.limit_reached` is `Some`. Returns `(remaining, timing)`.
 
 Two rules producing the same concrete `Issue` type are fully independent through this — each owns its own checks and strategy, and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A `LimitReached` break, however, *does* stop every later stage — see above.
+
+### NodeShapeRebalanceStrategy
+
+Handles `VIOLATED_NODE_SHAPE_LIMITS` — see GitHub issue #1025 and `Specs/node-shape-limits.md` ("Repair strategy") for the algorithm. Each apply makes a strictly score-lowering, connectivity-preserving, preset-respecting set of moves (the best one found by local search, then region search, joined by further moves on other nodes) and returns `Fixed { score: None }` with one command (or one `Atomic` group of passage flips); `Failed` when the issue has no limits, the limits are unsatisfiable, the score is already 0, or no valid improving move exists. No configurable parameters.
 
 ### Stages and the repair budget
 

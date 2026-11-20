@@ -24,6 +24,7 @@ fn violated_node_shape_limits_resolves_to_a_flat_keyed_payload() {
             violation(NodeShape::Turn(90), LimitViolationKind::Excess),
             violation(NodeShape::DeadEnd, LimitViolationKind::Deficit),
         ],
+        Default::default(),
     );
 
     let_payload!(ViolatedNodeShapeLimits { violations } = resolve(&issue, &graph, &scc));
@@ -46,7 +47,7 @@ fn violated_node_shape_limits_resolves_to_a_flat_keyed_payload() {
 #[test]
 fn violated_node_shape_limits_without_violations_has_no_payload() {
     let (graph, scc) = empty_graph_and_scc();
-    let issue = ViolatedNodeShapeLimitsIssue::new_from_check("node_shape_limits", Vec::new());
+    let issue = ViolatedNodeShapeLimitsIssue::new_from_check("node_shape_limits", Vec::new(), Default::default());
     assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
 }
 

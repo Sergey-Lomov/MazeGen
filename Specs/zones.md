@@ -2,7 +2,7 @@
 
 A zone is a named set of cells with a stable id and a kind. Consumers (the zones feature renderer,
 the export renderer, QC rules) reference a zone by id and ask which zones a cell belongs to
-(GitHub issue #1029). UI, editing and persistence are out of scope and tracked separately.
+(GitHub issue #1029). UI and editing are out of scope and tracked separately; persistence is in `Specs/project-file.md`.
 
 ## Core model
 
@@ -44,8 +44,8 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
 
 - Status: `unavailable` until a field is set (same condition as Presets), otherwise always `set`
   (green), even with no zones. Subtitle: number of manual zones.
-- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). All three are
-  transient: zones are not persisted yet, so loading a project resets them.
+- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). The toggles are
+  transient; zones are saved with the project (`Specs/project-file.md`, "Zones").
 - Two toggles, "Show auto zones" and "Show manual zones".
 - `ZonesRenderer` (feature renderer, visible only while the card is open) draws the active floor's
   field with the cell grid (faint inner walls) and the outer walls, as the presets renderer does, and
@@ -78,7 +78,7 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
   the other zones, fully opaque (a hover change redraws only that layer), regardless of the kind
   toggles and the zone's visibility, only if it has cells on the active floor. The active floor never
   changes. The hover is cleared when the panel closes or unmounts, or the section switches.
-- All of the above state is transient, like the rest of the zones state.
+- Hidden zones, the mode and the hover are transient (reset on load); the zones themselves are saved.
 
 ## Zone editor (GitHub issue #1031)
 
@@ -101,7 +101,8 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   `zonesWithDraft` / `overridesWithDraft` give the canvas and the editor panel the zones as edited. Zones are not
   part of generation, so no edit asks for confirmation or invalidates results.
 - Edits act on the active floor's cells of the zone; cells on other floors are kept. Switching floors switches
-  the floor being edited.
+  the floor being edited. Opening an existing zone for editing (`setZoneEditId`) moves to its lowest floor, unless the
+  active floor already holds some of its cells (GitHub issue #1032).
 - A zone holds only cells of the active floor's field: Add, point, shapes, connected area, paste and mirror drop
   cells outside the field (`cellsInActiveField`), and a smoothing preview does not mark them as excluded. Connected
   area in Add mode fills the field cells outside the zone connected to the clicked cell. A move that would leave
@@ -120,7 +121,7 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   glues (`glueColor`): a zone takes the colour at its position in the list; every further round of 8 is a group
   of the glues' hue scheme (`hueGroupColors`, positions 0, +1, -1, +2, ...: lightness and hue shifted), so no two
   zones share a colour. Whatever the number of zones, adding a zone or colouring another one never moves the rest. Deleting the zone drops its override.
-  Overrides are transient like the zones.
+  Overrides are saved with the project like the zones.
 - "Show other zones" (`showOtherZones`, default on), under Smoothing, off hides every zone but the edited one while editing.
 - The mirror panel shows an Add / Remove toggle (the floor's `fieldOperation`) only while a zone is edited; the
   field editor keeps it in its Modes section.
@@ -146,16 +147,40 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
 - "Show other zones" off is applied again when a zone starts or stops being edited (`hidesOtherZones`).
 - The hover highlight follows the tool's reach (`zoneToolReaches`): Add highlights field cells only; Remove and
   Select the zone's own cells, even outside the field. A right-click gesture does not change a later hover.
+- Above "Done" a destructive "Clear" button (disabled while the zone has no cells) asks for confirmation, then removes every cell of the draft on every floor (`clearZoneCells`); the group links, name and colour stay. It is still a draft change: "Done" commits it, the close cross drops it.
 - The panel ends with a caption-styled info line "Size: N cells" (all the zone's cells, on every floor). The zones
   sharing a cell with it on any floor (`zoneIntersections`) are the Intersections section.
 - The mirror preview marks every symmetric cell, but the cells the tool cannot change (Add outside the field, Remove
   outside the zone) are drawn dim (`MIRROR_DIM_ALPHA`, as the cells smoothing leaves out of a shape).
 
+## Zone combination (GitHub issue #1032)
+
+A combine tool button (two overlapping circles, hotkey `C`, no modifier; `ZONE_COMBINE_SHORTCUT`) sits at the end of the Tools row of
+the zone editor only (`FieldToolsSection`, `FieldEditController`). It toggles `ZoneCombinePanel` (`zoneCombine { op, otherId }`,
+`null` while closed; transient; `toggleZoneCombine`, stack key `zone-combine`), a side panel over the zone editor, in plain
+sections (header, content indented by `indent.tree`), the confirm button right after them:
+
+- Mode: "Union", "Intersection", "Subtraction" (`ZoneCombineOp`, `setZoneCombineOp`; the chosen zone is kept).
+- Zone: the other zones (every zone but the draft; `ListCell`s). A click picks the zone (`setZoneCombineOther`): the
+  picked cell has the 3 px `current` bar on its left. Hovering a cell highlights that zone on the canvas. Deleting the
+  picked zone clears the choice. The list takes the height the other sections leave and scrolls only when it does not fit.
+- Result: with no zone chosen, a low-contrast "Choose a zone"; with one, a line per floor the operation changes:
+  `L{n}` badge and a colon (only on a multi-floor maze), then `+N` (add colour) or `-N` (remove colour), then the zone's
+  cell count on that floor after the operation in brackets with the word "cells". When nothing changes, a warning
+  bubble inside the section says the edited zone will not change; another says it will become empty.
+- "Apply" (disabled until a zone is chosen) writes the result to the draft (`applyZoneCombine`) and closes the panel, so
+  the result is committed or cancelled with the zone ("Done" / close cross). The close cross of the panel (`cancelZoneCombine`)
+  closes it without applying. Ending the editor drops it too.
+
+The result is computed on cells of every floor (`combineZoneCells`): union adds the other zone's cells, intersection keeps
+the shared ones, subtraction drops the other's. The other zone is taken as stored, the current one as its draft.
+Preview (`previewZoneCombine`): `ZonesRenderer` draws the active floor's cells that would be added and removed (both zones first
+cut to the field, like every zone it draws) on a layer over the hover layer, redrawn alone when only the panel's choice changes, so the per-floor report is where changes on other floors are visible.
+
 ## Zone groups (GitHub issue #1035)
 
-A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.ts`). State is transient like the
-zones: `zoneGroups`, `nextZoneGroupId` (only grows, an id is never reused), `zoneGroupsPanelOpen`, `zoneGroupEditId`,
-`zoneGroupEditDraft`, `zoneGroupEditIsNew`.
+A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.ts`). State: `zoneGroups` and `nextZoneGroupId` (only grows, an id is never reused) are saved with the project; `zoneGroupsPanelOpen`, `zoneGroupEditId`,
+`zoneGroupEditDraft`, `zoneGroupEditIsNew` are transient.
 
 - The zones card buttons are, in order, "Add zone", "Zones list", "Groups list". "Groups list" opens `ZoneGroupsPanel`
   (stack key `zone-groups`). A group cell shows the name (`Group #id` while unnamed, `#` in every language), the zone
