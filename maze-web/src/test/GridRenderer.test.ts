@@ -133,6 +133,29 @@ describe("viewport grid density", () => {
     renderer.destroy();
   });
 
+  it("uses one world-unit stroke at every zoom for viewport and field-cell grids", () => {
+    vi.useFakeTimers();
+    pixi.graphics.length = 0;
+    const viewportRenderer = new GridRenderer({ addChild: vi.fn() } as never);
+    const fieldRenderer = new GridRenderer({ addChild: vi.fn() } as never);
+    const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
+    const viewportGraphics = pixi.graphics[0] as unknown as { setStrokeStyle: ReturnType<typeof vi.fn> };
+    const fieldGraphics = pixi.graphics[1] as unknown as { setStrokeStyle: ReturnType<typeof vi.fn> };
+    const cells: [number, number][] = [[0, 0]];
+
+    viewportRenderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1 } }, cfg);
+    viewportRenderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 2 } }, cfg);
+    vi.advanceTimersByTime(VIEWPORT_GRID_REBUILD_DELAY_MS);
+    fieldRenderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1 } }, cfg, cells);
+    fieldRenderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 2 } }, cfg, cells);
+
+    expect(viewportGraphics.setStrokeStyle.mock.calls.map(([style]) => style.width)).toEqual([1, 1]);
+    expect(fieldGraphics.setStrokeStyle.mock.calls.map(([style]) => style.width)).toEqual([1, 1]);
+    viewportRenderer.destroy();
+    fieldRenderer.destroy();
+    vi.useRealTimers();
+  });
+
   it("renders a Cairo viewport without touching lattice coordinates that are not cells", () => {
     pixi.graphics.length = 0;
     const renderer = new GridRenderer({ addChild: vi.fn() } as never);

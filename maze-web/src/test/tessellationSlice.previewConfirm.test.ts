@@ -73,6 +73,19 @@ describe("mazeStore preview/confirm flow", () => {
     expect(useMazeStore.getState().splitPatterns).toEqual([tri]);
   });
 
+  it("setTessellationKind resets manual zones", () => {
+    useMazeStore.setState({
+      zones: [{ id: 4, name: "Old zone", kind: "manual", cells: [[0, 1, 2]] }],
+      nextZoneId: 5,
+    });
+
+    useMazeStore.getState().setTessellationKind("hex");
+
+    const s = useMazeStore.getState();
+    expect(s.zones).toEqual([]);
+    expect(s.nextZoneId).toBe(1);
+  });
+
   it("confirmTessellation lets quality control drop split patterns the new kind cannot hold", () => {
     const square = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1 };
     const hex = { shape: "regular:6", node_count: 1, faces: [[]], weight: 1 };
@@ -184,6 +197,29 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.start).toBeNull();
     expect(s.finish).toBeNull();
     expect(s.pngExportSettings.print.scaleAutoFit).toBe(false);
+  });
+
+  it("confirmTessellation with changed settings resets manual zones", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      previewKind: "hex",
+      zones: [{ id: 4, name: "Old zone", kind: "manual", cells: [[0, 1, 2]] }],
+      nextZoneId: 5,
+      zoneGroups: [{ id: 7, name: "Old group", zoneIds: [4] }],
+      nextZoneGroupId: 8,
+      zoneColorOverrides: { 4: 0x123456 },
+      zoneEditDraft: { id: 4, name: "Old zone", kind: "manual", cells: [[0, 1, 2]] },
+    });
+
+    useMazeStore.getState().confirmTessellation();
+
+    const s = useMazeStore.getState();
+    expect(s.zones).toEqual([]);
+    expect(s.nextZoneId).toBe(1);
+    expect(s.zoneGroups).toEqual([]);
+    expect(s.nextZoneGroupId).toBe(1);
+    expect(s.zoneColorOverrides).toEqual({});
+    expect(s.zoneEditDraft).toBeNull();
   });
 
   it("confirmTessellation with different kind clears all incompatible presets", () => {
