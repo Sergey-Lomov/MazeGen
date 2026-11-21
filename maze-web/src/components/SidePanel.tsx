@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ui, typography, spacing, inset } from "../styles/theme";
@@ -7,97 +7,11 @@ import { hasOpenModal } from "./Modal";
 import { CloseIconButton } from "./CloseIconButton";
 import { SIDE_PANEL_SLOT_ID } from "./sidePanelSlot";
 import { FlatIconButton } from "./FlatIconButton";
+import { popPanel, pushPanel, useIsTopPanel, useKeepsFlowWidth } from "./sidePanelStack";
 import type React from "react";
 import * as m from "~/paraglide/messages";
 
 const MIN_PANEL_WIDTH = 360;
-
-/** Module-level mount-order stack (GitHub issue #629) — every live `SidePanel` instance (in either
- *  mode) pushes its own id here on mount and pops it on unmount, regardless of which feature owns
- *  it. Several `SidePanel`s can be mounted at once (e.g. `DebugPanel` and `VertexBasedSettingsPanel`
- *  both live under `openCard === "generation"`, independently toggled) since nothing here stops a
- *  second feature from opening its own panel while another is already up — only the most recently
- *  mounted one is shown (absolutely positioned, filling the slot); the rest stay mounted but hidden
- *  so their own internal state (scroll position, drafts, ...) survives underneath. Unmounting the
- *  top one (closing it) drops it from the stack and the next-most-recent becomes visible again,
- *  without any feature needing to know about another's open/closed state. A plain module array +
- *  listener set rather than a React context: `SidePanel` instances mount across unrelated,
- *  non-nested component trees (portal target aside), so no single context provider could wrap
- *  all of them. */
-interface PanelStackEntry {
-  id: symbol;
-  /** Stable name used by a control to bring an already-mounted panel back to the front. */
-  stackKey?: string;
-  /** Mirrors this entry's own `overlay` prop — needed so a lower entry can tell whether it's fully
-   *  occluded (an in-flow entry stacked on top of it) or merely visually covered (an absolutely
-   *  positioned overlay on top of it, which takes no width of its own). */
-  overlay: boolean;
-}
-
-let panelStack: PanelStackEntry[] = [];
-const panelStackListeners = new Set<() => void>();
-
-function notifyPanelStackChange() {
-  for (const listener of panelStackListeners) listener();
-}
-
-function pushPanel(id: symbol, overlay: boolean, stackKey?: string) {
-  panelStack = [...panelStack, { id, overlay, stackKey }];
-  notifyPanelStackChange();
-}
-
-function popPanel(id: symbol) {
-  panelStack = panelStack.filter((p) => p.id !== id);
-  notifyPanelStackChange();
-}
-
-/** Moves the live panel identified by `stackKey` to the top of the shared stack. A control may
- * call this before opening its panel: when it is not mounted yet this is deliberately a no-op and
- * its normal mount will make it topmost. */
-export function bringSidePanelToFront(stackKey: string) {
-  let index = -1;
-  for (let i = panelStack.length - 1; i >= 0; i -= 1) {
-    if (panelStack[i].stackKey === stackKey) {
-      index = i;
-      break;
-    }
-  }
-  if (index < 0 || index === panelStack.length - 1) return;
-  const entry = panelStack[index];
-  panelStack = [...panelStack.slice(0, index), ...panelStack.slice(index + 1), entry];
-  notifyPanelStackChange();
-}
-
-function subscribePanelStack(listener: () => void) {
-  panelStackListeners.add(listener);
-  return () => { panelStackListeners.delete(listener); };
-}
-
-/** True while `id` is the topmost (most recently mounted, still-live) entry in `panelStack`. */
-function useIsTopPanel(id: symbol): boolean {
-  return useSyncExternalStore(
-    subscribePanelStack,
-    () => panelStack.length > 0 && panelStack[panelStack.length - 1].id === id,
-  );
-}
-
-/** True while every entry above `id` on the stack is an overlay (or there is none) — i.e. `id`
- *  should stay in normal flow (still contributing its box/width to the slot) even though it isn't
- *  the topmost entry. An overlay is `position: absolute` and contributes no width of its own
- *  (GitHub issue #629 follow-up): if the entry underneath it also left the flow (`display: none`,
- *  the in-flow-panel-stacked-on-in-flow-panel case), the slot has nothing left to size itself by
- *  and collapses to zero width, taking the overlay's `inset: 0` down with it. Only an in-flow entry
- *  stacked on top should pull a lower entry out of the flow. */
-function useKeepsFlowWidth(id: symbol): boolean {
-  return useSyncExternalStore(
-    subscribePanelStack,
-    () => {
-      const index = panelStack.findIndex((p) => p.id === id);
-      if (index === -1) return true;
-      return panelStack.slice(index + 1).every((p) => p.overlay);
-    },
-  );
-}
 
 /** DOM id of `App.tsx`'s slot beside the canvas column — every `SidePanel` portals here
  *  regardless of where in the component tree it's triggered from (GitHub issue #237), so it
@@ -159,8 +73,8 @@ function pointFromEvent(event: Event): { x: number; y: number } | null {
 
 interface Props {
   title: string;
-  /** Stable control-facing identifier. When its control is pressed again while this panel remains
-   * mounted beneath another panel, `bringSidePanelToFront` uses it to reveal this same instance. */
+  /** Stable panel name. Reopening this panel while it is still mounted beneath another one raises
+   * this same instance (see `sidePanelStack.ts`). */
   stackKey?: string;
   subtitle?: string;
   onClose: () => void;

@@ -1,15 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ZonesFeature } from "../components/features/ZonesFeature";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import * as m from "~/paraglide/messages";
 
-const raised = vi.hoisted(() => vi.fn());
-vi.mock("../components/SidePanel", async (importActual) => {
-  const actual = await importActual<typeof import("../components/SidePanel")>();
-  return { ...actual, bringSidePanelToFront: (key: string) => { raised(key); actual.bringSidePanelToFront(key); } };
-});
+const panel = (title: string) => document.querySelector<HTMLElement>(`[data-side-panel-title="${title}"]`)!;
 
 describe("ZonesFeature", () => {
   beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones" }));
@@ -27,13 +23,35 @@ describe("ZonesFeature", () => {
     expect(titles).toEqual([m["zones.list_title"](), m["zones.edit"]()]);
   });
 
-  it("Add zone of the list does what the card's does: it raises the editor of the zone being added", () => {
+  it("Add zone of the list raises the editor of the zone being added over the list", () => {
     render(<ZonesFeature />);
     fireEvent.click(screen.getAllByText(m["zones.add"]())[0]);
-    raised.mockClear();
+    fireEvent.click(screen.getByText(m["zones.open_list"]()));
+    expect(panel(m["zones.edit"]())).not.toBeVisible();
     fireEvent.click(screen.getAllByText(m["zones.add"]())[1]);
-    expect(raised.mock.calls.map(([key]) => key)).toEqual(["zones", "zone-edit"]);
+    expect(panel(m["zones.edit"]())).toBeVisible();
     expect(useMazeStore.getState().zoneEditDraft?.id).toBe(1);
+  });
+
+  it("opening the zones list again, then pressing a zone's edit button, shows the editor over the list", () => {
+    useMazeStore.setState({ zones: [{ id: 1, name: "A", kind: "manual", cells: [] }], nextZoneId: 2 });
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getAllByText(m["zones.add"]())[0]);
+    fireEvent.click(screen.getByText(m["zones.open_list"]()));
+    expect(panel(m["zones.edit"]())).not.toBeVisible();
+    act(() => useMazeStore.getState().setZoneEditId(1));
+    expect(panel(m["zones.edit"]())).toBeVisible();
+  });
+
+  it("opening the groups list again, then a group's edit, shows the group editor over the list", () => {
+    useMazeStore.setState({ zoneGroups: [{ id: 1, name: "G", zoneIds: [] }], nextZoneGroupId: 2 });
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getByText(m["zone_groups.open_list"]()));
+    fireEvent.click(screen.getByText(m["zone_groups.add"]()));
+    fireEvent.click(screen.getByText(m["zone_groups.open_list"]()));
+    expect(panel(m["zone_groups.edit"]())).not.toBeVisible();
+    act(() => useMazeStore.getState().setZoneGroupEditId(1));
+    expect(panel(m["zone_groups.edit"]())).toBeVisible();
   });
 
   it("leaving the zones card drops unconfirmed zone and group drafts", () => {
@@ -49,9 +67,10 @@ describe("ZonesFeature", () => {
     render(<ZonesFeature />);
     fireEvent.click(screen.getByText(m["zone_groups.open_list"]()));
     fireEvent.click(screen.getByText(m["zone_groups.add"]()));
-    raised.mockClear();
+    fireEvent.click(screen.getByText(m["zone_groups.open_list"]()));
+    expect(panel(m["zone_groups.edit"]())).not.toBeVisible();
     fireEvent.click(screen.getByText(m["zone_groups.add"]()));
-    expect(raised.mock.calls.map(([key]) => key)).toEqual(["zone-group-edit"]);
+    expect(panel(m["zone_groups.edit"]())).toBeVisible();
     expect(useMazeStore.getState().zoneGroupEditDraft?.id).toBe(1);
   });
 });

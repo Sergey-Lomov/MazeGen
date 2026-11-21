@@ -13,7 +13,6 @@ import { GlueTabSettingsSubsection } from "./GlueTabSettingsSubsection";
 import { EdgeMarkerSettingsSubsection } from "./EdgeMarkerSettingsSubsection";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
-import { bringSidePanelToFront } from "../SidePanel";
 import * as m from "~/paraglide/messages";
 
 /** The "Topology" section of a render mode's settings (GitHub issues #859, #924, #931): cut lines, glue tabs,
@@ -93,7 +92,6 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
               <Button
                 variant="secondary"
                 onClick={() => {
-                  bringSidePanelToFront("image-export-topology");
                   setExportTopologyOpen(true);
                 }}
               >

@@ -31,7 +31,6 @@ export const generationTransientUi = {
   hoveredDebugRef: null,
   debugSearchQuery: "",
   debugFocusNodeIndex: null,
-  projectLoadInProgress: false,
 } satisfies Partial<GenerationState>;
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (...a) => {
@@ -69,6 +68,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   showCoords: false,
   showMaze: true,
   ...generationTransientUi,
+  // Raised by `loadProject` itself while it runs, so not part of the transient registry.
+  projectLoadInProgress: false,
   issues: [],
   error: null,
   registryError: null,

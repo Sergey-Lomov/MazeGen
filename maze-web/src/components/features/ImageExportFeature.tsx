@@ -6,7 +6,7 @@ import { LoadIconButton } from "../LoadIconButton";
 import { SaveIconButton } from "../SaveIconButton";
 import { ui, inset, spacing } from "../../styles/theme";
 import { Stack } from "../Layout";
-import { bringSidePanelToFront, SidePanel } from "../SidePanel";
+import { SidePanel } from "../SidePanel";
 import { ExportTopologyPanel } from "./ExportTopologyPanel";
 import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
@@ -47,13 +47,11 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
   const [pendingDownload, setPendingDownload] = useState<{ kind: "png" | "style"; defaultBaseName: string; extension: string } | null>(null);
 
   function handleClick(mode: RenderModeId) {
-    bringSidePanelToFront("image-export-render-mode");
     if (mode !== activeRenderMode) setActiveRenderMode(mode);
     setOpenRenderModeSettings(mode);
   }
 
   function handleFormatGearClick(format: ExportFormatId) {
-    bringSidePanelToFront("image-export-format");
     setOpenExportFormatSettings(format);
   }
 

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { StrictMode, type MouseEvent } from "react";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { bringSidePanelToFront, SidePanel } from "../components/SidePanel";
+import { SidePanel } from "../components/SidePanel";
+import { raiseSidePanel } from "../components/sidePanelStack";
 import { ConfirmModal } from "../components/ConfirmModal";
 
 // GitHub issue #629: independently-toggled features (e.g. `DebugPanel` and
@@ -59,7 +60,7 @@ describe("SidePanel mount-order stack (GitHub issue #629)", () => {
     );
     expect(screen.getByText("Second")).toBeVisible();
 
-    act(() => bringSidePanelToFront("first"));
+    act(() => raiseSidePanel("first"));
 
     expect(screen.getByText("First")).toBeVisible();
     expect(screen.getByText("second content")).not.toBeVisible();

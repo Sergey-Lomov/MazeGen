@@ -27,8 +27,8 @@ import { PresetEntityPickDialog } from "../dialogs/PresetEntityPickDialog";
 import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSettingsDialog";
 import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
-import { bringSidePanelToFront } from "../SidePanel";
 import * as m from "~/paraglide/messages";
+import { useSidePanelOpen } from "../sidePanelStack";
 import { presetToolShortcut } from "../../pixi/toolShortcuts";
 
 function getEdgeTools(): [PresetConnectionTool, string, string?][] {
@@ -134,7 +134,7 @@ export function PresetConnectionsFeature() {
   const lockToolActive = isPresetLockTool(tool);
 
   const [confirmReset, setConfirmReset] = useState(false);
-  const [presetListOpen, setPresetListOpen] = useState(true);
+  const [presetListOpen, setPresetListOpen] = useSidePanelOpen("preset-list", true);
 
   // Nodes locked both in and out AND with no explicit passage preset are fully isolated. Scoped
   // to the active floor (GitHub issue #340 follow-up) — mixing keys across floors here previously
@@ -328,7 +328,6 @@ export function PresetConnectionsFeature() {
             variant={presetListOpen ? "toggle-selected" : "toggle"}
             layoutStyle={{ width: "100%" }}
             onClick={() => {
-              bringSidePanelToFront("preset-list");
               setPresetListOpen(true);
             }}
           >
