@@ -8,6 +8,7 @@ import { initLocale } from "./i18n/localeStore";
 import * as m from "~/paraglide/messages";
 import "./styles/global.css";
 import { setBootScreenStatus, showBootScreenError } from "./startup/bootScreen";
+import { wasmLoadErrorMessage } from "./startup/wasmLoadError";
 
 // React DevTools' render-diff logger (dev-only instrumentation) runs JSON.stringify on component
 // props to log what changed — throws on any BigInt-valued prop (e.g. DebugRefBubble's `target`,
@@ -38,7 +39,7 @@ async function bootstrap() {
       break;
     } catch (err) {
       console.error("Failed to load WASM:", err);
-      await showBootScreenError(m["loading.wasm_failed"](), m["loading.retry"]());
+      await showBootScreenError(wasmLoadErrorMessage(err), m["loading.retry"]());
     }
   }
 

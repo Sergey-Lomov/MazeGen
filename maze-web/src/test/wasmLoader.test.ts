@@ -19,7 +19,7 @@ describe("initWasm", () => {
       .mockResolvedValueOnce(undefined);
 
     const source = new Uint8Array();
-    await expect(initWasm(source)).rejects.toThrow("fetch failed");
+    await expect(initWasm(source)).rejects.toMatchObject({ failure: "initialization" });
     await expect(initWasm(source)).resolves.toBeUndefined();
     expect(wasmInit).toHaveBeenCalledTimes(2);
   });
@@ -62,9 +62,25 @@ describe("initWasm", () => {
     vi.stubGlobal("fetch", fetch);
     const compile = vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiled);
 
-    await expect(compileWasmModule()).rejects.toThrow("Failed to load WASM: 404 Not Found");
+    await expect(compileWasmModule()).rejects.toMatchObject({ failure: "binaryMissing" });
     await expect(compileWasmModule()).resolves.toBe(compiled);
     expect(fetch).toHaveBeenCalledTimes(2);
+    compile.mockRestore();
+  });
+
+  it("classifies unavailable, denied, and invalid engine binaries", async () => {
+    const { compileWasmModule } = await import("../wasm/wasmLoader");
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(null, { status: 403, statusText: "Forbidden" }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1])));
+    vi.stubGlobal("fetch", fetch);
+    const compile = vi.spyOn(WebAssembly, "compile").mockRejectedValueOnce(new WebAssembly.CompileError("bad binary"));
+
+    await expect(compileWasmModule()).rejects.toMatchObject({ failure: "network" });
+    await expect(compileWasmModule()).rejects.toMatchObject({ failure: "accessDenied" });
+    await expect(compileWasmModule()).rejects.toMatchObject({ failure: "invalidBinary" });
+
     compile.mockRestore();
   });
 

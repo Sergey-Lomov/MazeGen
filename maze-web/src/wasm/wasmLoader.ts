@@ -1,6 +1,19 @@
 type WasmModule = typeof import("./pkg/maze_wasm");
 export type WasmLoadProgress = (loaded: number, total: number | null) => void;
 
+/** A user-visible stage of loading the maze engine. The original error remains attached for logs. */
+export type WasmLoadFailure = "network" | "binaryMissing" | "accessDenied" | "invalidBinary" | "moduleLoad" | "initialization";
+
+export class WasmLoadError extends Error {
+  readonly cause: unknown;
+
+  constructor(readonly failure: WasmLoadFailure, message: string, cause?: unknown) {
+    super(message);
+    this.name = "WasmLoadError";
+    this.cause = cause;
+  }
+}
+
 let wasmModule: WasmModule | null = null;
 let initPromise: Promise<void> | null = null;
 
@@ -14,10 +27,34 @@ export function compileWasmModule(onProgress?: WasmLoadProgress): Promise<WebAss
   if (!compilePromise) {
     compilePromise = (async () => {
       const { response, progress } = await fetchWasm(onProgress);
-      const compiled = response.headers.get("Content-Type")?.startsWith("application/wasm")
-        ? await WebAssembly.compileStreaming(response)
-        : await WebAssembly.compile(await response.arrayBuffer());
-      await progress;
+      let compiled: WebAssembly.Module;
+      if (response.headers.get("Content-Type")?.startsWith("application/wasm")) {
+        try {
+          compiled = await WebAssembly.compileStreaming(response);
+        } catch (error) {
+          // A CompileError means the downloaded bytes are invalid; other streaming failures mean
+          // the response body was interrupted before the browser could compile it.
+          const failure = error instanceof WebAssembly.CompileError ? "invalidBinary" : "network";
+          throw new WasmLoadError(failure, "The WASM binary could not be compiled", error);
+        }
+      } else {
+        let bytes: ArrayBuffer;
+        try {
+          bytes = await response.arrayBuffer();
+        } catch (error) {
+          throw new WasmLoadError("network", "The WASM binary could not be downloaded", error);
+        }
+        try {
+          compiled = await WebAssembly.compile(bytes);
+        } catch (error) {
+          throw new WasmLoadError("invalidBinary", "The WASM binary could not be compiled", error);
+        }
+      }
+      try {
+        await progress;
+      } catch (error) {
+        throw new WasmLoadError("network", "The WASM download was interrupted", error);
+      }
       return compiled;
     })().catch((error: unknown) => {
       // A rejected attempt must not poison later retries.
@@ -32,10 +69,22 @@ export function compileWasmModule(onProgress?: WasmLoadProgress): Promise<WebAss
  *  `fetch` of `import.meta.url` under Node), a worker passes the module compiled by the main thread. */
 export function initWasm(source?: BufferSource | WebAssembly.Module, onProgress?: WasmLoadProgress): Promise<void> {
   if (!initPromise) {
-    initPromise = import("./pkg/maze_wasm").then(async (pkg) => {
-      await pkg.default({ module_or_path: source ?? await compileWasmModule(onProgress) });
+    initPromise = (async () => {
+      let pkg: WasmModule;
+      try {
+        pkg = await import("./pkg/maze_wasm");
+      } catch (error) {
+        throw new WasmLoadError("moduleLoad", "The WASM JavaScript module could not be loaded", error);
+      }
+
+      const moduleOrPath = source ?? await compileWasmModule(onProgress);
+      try {
+        await pkg.default({ module_or_path: moduleOrPath });
+      } catch (error) {
+        throw new WasmLoadError("initialization", "The WASM module could not be initialized", error);
+      }
       wasmModule = pkg;
-    }).catch((error: unknown) => {
+    })().catch((error: unknown) => {
       // A rejected promise must not poison later user-initiated retries. Concurrent callers
       // still share this attempt until it settles.
       initPromise = null;
@@ -46,8 +95,20 @@ export function initWasm(source?: BufferSource | WebAssembly.Module, onProgress?
 }
 
 async function fetchWasm(onProgress?: WasmLoadProgress): Promise<{ response: Response; progress: Promise<void> }> {
-  const response = await fetch(new URL("./pkg/maze_wasm_bg.wasm", import.meta.url));
-  if (!response.ok) throw new Error(`Failed to load WASM: ${response.status} ${response.statusText}`);
+  let response: Response;
+  try {
+    response = await fetch(new URL("./pkg/maze_wasm_bg.wasm", import.meta.url));
+  } catch (error) {
+    throw new WasmLoadError("network", "The WASM binary could not be fetched", error);
+  }
+  if (!response.ok) {
+    const failure = response.status === 404
+      ? "binaryMissing"
+      : response.status === 401 || response.status === 403
+        ? "accessDenied"
+        : "network";
+    throw new WasmLoadError(failure, `Failed to load WASM: ${response.status} ${response.statusText}`);
+  }
 
   const contentLength = Number(response.headers.get("Content-Length"));
   const total = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null;
