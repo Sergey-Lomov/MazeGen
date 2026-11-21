@@ -10,6 +10,7 @@ const settings: PrintExportSettings = {
   customHeightMm: 297,
   orientation: "portrait",
   marginHMm: 10,
+  sizeMode: "min_side",
   marginVMm: 12,
   scale: 1,
   scaleAutoFit: false,

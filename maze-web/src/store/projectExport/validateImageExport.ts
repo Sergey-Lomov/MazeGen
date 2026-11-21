@@ -4,6 +4,7 @@ import {
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
+import { PRINT_SIZE_MODES, type PrintSizeMode } from "../../pixi/geometry/tessellationUi";
 import { CSS_FONT_WEIGHTS, DEFAULT_LABEL_FONT, type LabelFont } from "../../pixi/renderers/fontChoice";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
@@ -803,6 +804,7 @@ export const KNOWN_CANVAS_MODES: PngCanvasMode[] = ["edge_to_edge", "margin_px",
 export const KNOWN_PRINT_DENSITIES: PrintDensity[] = ["screen_96", "draft_150", "print_300", "high_600"];
 export const KNOWN_PAPER_SIZES: PaperSize[] = ["a4", "a3", "a5", "a2", "a1", "a0", "letter", "legal", "tabloid", "custom"];
 export const KNOWN_ORIENTATIONS: PaperOrientation[] = ["portrait", "landscape"];
+export const KNOWN_PRINT_SIZE_MODES: readonly PrintSizeMode[] = PRINT_SIZE_MODES;
 export const KNOWN_ANCHORS: PrintAnchor[] = [
   "top_left", "top_center", "top_right",
   "center_left", "center", "center_right",
@@ -847,6 +849,7 @@ export function validatePrintExportSettings(v: unknown, path: string): PrintExpo
     orientation: optEnum(obj, "orientation", KNOWN_ORIENTATIONS, d.orientation),
     marginHMm: optNumber(obj, "marginHMm", d.marginHMm),
     marginVMm: optNumber(obj, "marginVMm", d.marginVMm),
+    sizeMode: optEnum(obj, "sizeMode", KNOWN_PRINT_SIZE_MODES, d.sizeMode),
     scale: optNumber(obj, "scale", d.scale),
     // Retained in the file format only for backward compatibility. Print auto-fit is now a
     // one-shot panel action, so old persistent-auto-fit projects load as manual scale settings.

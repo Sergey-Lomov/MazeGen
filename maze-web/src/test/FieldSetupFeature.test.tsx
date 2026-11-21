@@ -262,7 +262,7 @@ describe("FieldSetupFeature — floors panel field copy", () => {
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
 
-    expect(cellInput).toHaveStyle({ width: "56px", boxSizing: "border-box" });
+    expect(cellInput).toHaveStyle({ width: "70px", boxSizing: "border-box" });
   });
 
   it("shows no progress indicator when the calculation ends before the delay", async () => {
@@ -671,6 +671,10 @@ describe("FieldSetupFeature — floors panel field copy", () => {
           fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, sizeMode: "cell_size" },
+      },
     });
     render(<FieldSetupFeature />);
 
@@ -693,7 +697,7 @@ describe("FieldSetupFeature — floors panel field copy", () => {
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / (40 * Math.SQRT2));
   });
 
-  it("opens the paper layout dialog with a cell size derived from the print scale even when legacy auto-fit is on", () => {
+  it("opens the paper layout dialog with the print calculator's default minimum side, whatever the print scale", () => {
     useMazeStore.setState({
       showPaperLayout: true,
       floorFields: {
@@ -714,7 +718,49 @@ describe("FieldSetupFeature — floors panel field copy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
     const dialog = screen.getAllByText("Paper layout")[1].parentElement?.parentElement;
     const inputs = within(dialog!).getAllByRole("spinbutton") as HTMLInputElement[];
-    expect(inputs[4].value).toBe("11.97");
+    expect(inputs[4].value).toBe("8");
+  });
+
+  it("switches the paper layout size mode keeping the physical size, and stores the mode on confirm (GitHub issue #1054)", () => {
+    useMazeStore.setState({
+      showPaperLayout: true,
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0]),
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
+    const dialog = screen.getAllByText("Paper layout")[1].parentElement?.parentElement;
+    const modeSelect = dialog!.querySelector('select[name="Mode"]') as HTMLSelectElement;
+    fireEvent.change(modeSelect, { target: { value: "cell_size" } });
+    const input = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
+    expect(Number(input.value)).toBeCloseTo(8 * Math.SQRT2, 2);
+    fireEvent.click(within(dialog!).getByRole("button", { name: "Confirm" }));
+
+    const print = useMazeStore.getState().pngExportSettings.print;
+    expect(print.sizeMode).toBe("cell_size");
+    expect(print.scale).toBeCloseTo(mmToPx(Number(input.value), 300) / (40 * Math.SQRT2));
+  });
+
+  it("opens the print calculator in the size mode stored by the paper layout (GitHub issue #1054)", () => {
+    useMazeStore.setState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, sizeMode: "cell_size" },
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
+    expect((dialog!.querySelector('select[name="Mode"]') as HTMLSelectElement).value).toBe("cell_size");
+    expect(Number((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value)).toBeCloseTo(8 * Math.SQRT2, 2);
   });
 });
 

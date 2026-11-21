@@ -11,14 +11,15 @@ import { Switch } from "../Switch";
 import { SelectRow } from "../SelectRow";
 import { TESSELLATION_UI, type PrintSizeMode } from "../../pixi/geometry/tessellationUi";
 import { sharedStyles } from "../../styles/shared";
-import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { controlRowHeight, dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
+import { isPredefinedFieldConfig, minPrintEnteredSize, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { printSizingFailure, type PrintSizingAnswer, type PrintSizingFloor, type PrintSizingFloorAnswer, type PrintSizingRequest } from "../../pixi/printSizingJob";
 import { startPrintSizing } from "../../wasm/workerClients";
 import type { WorkerJob } from "../../wasm/workerPool";
-import { printEnteredFromMeasure, printMeasureFromEntered } from "../../pixi/imageExport/printFit";
+import { defaultPrintEnteredSize, printMeasureFromEntered, resolvePrintSizeMode, roundedEnteredFromMeasure } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { hasTooSmallSide, type PrintCellTypeSize } from "../../pixi/printCellSizes";
+import { SIZE_MODE_LABELS } from "./sizeModeLabels";
 import { CellSizesSection, SmallSideWarning, typeBreakdown } from "./CellSizesSection";
 import { useTessellationCellTypes } from "./useTessellationCellTypes";
 import { PLACEHOLDER, ValueSkeleton, VALUE_SLOT, withValueNode } from "./valueSlot";
@@ -40,22 +41,8 @@ interface Props {
   onClose: () => void;
 }
 
-/** What the size field takes in each mode: the label of the field, and the name in the mode select. */
-const SIZE_MODE_LABELS: Record<PrintSizeMode, { field: () => string; option: () => string }> = {
-  cell_size: { field: () => m["field.print_sizing.cell_size_diameter"](), option: () => m["field.print_sizing.input_mode_cell_size"]() },
-  min_side: { field: () => m["field.print_sizing.min_side"](), option: () => m["field.print_sizing.input_mode_min_side"]() },
-  average_size: { field: () => m["field.print_sizing.average_size"](), option: () => m["field.print_sizing.average_size"]() },
-  ring_thickness: { field: () => m["field.print_sizing.ring_thickness"](), option: () => m["field.print_sizing.ring_thickness"]() },
-};
-
 /** Pause in typing the cell size after which it is committed and calculated. */
 const CELL_SIZE_IDLE_MS = 1000;
-
-/** The minimum side length the dialog opens with (GitHub issue #1002). */
-const DEFAULT_MIN_SIDE_MM = 8;
-
-/** Smallest accepted physical side length for a regular printed cell (GitHub issue #1041). */
-const MIN_PRINT_SIDE_MM = 2;
 
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
@@ -68,8 +55,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const [customHeightText, setCustomHeightText] = useState(() => String(print.customHeightMm));
   const [orientation, setOrientation] = useState<PaperOrientation>(() => print.orientation);
   const sizeModes = TESSELLATION_UI[config.tessellation.kind].editor.sizeModes;
-  const [inputMode, setInputMode] = useState<PrintSizeMode>(() => sizeModes[0]);
-  const [cellSizeText, setCellSizeText] = useState(() => String(DEFAULT_MIN_SIDE_MM));
+  const [inputMode, setInputMode] = useState<PrintSizeMode>(() => resolvePrintSizeMode(config, print.sizeMode));
+  const [cellSizeText, setCellSizeText] = useState(() => String(defaultPrintEnteredSize(config, resolvePrintSizeMode(config, print.sizeMode))));
   const [marginHText, setMarginHText] = useState(() => String(print.marginHMm));
   const [marginVText, setMarginVText] = useState(() => String(print.marginVMm));
   const [applyToAllStandardFloors, setApplyToAllStandardFloors] = useState(() => hasMultipleFloors);
@@ -81,11 +68,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   useEffect(() => () => clearTimeout(cellSizeIdleTimer.current), []);
   // The calculation always works with the cell size (diameter); a minimum side length is converted.
   const toCellSizeMm = (value: number) => printMeasureFromEntered(config, inputMode, value);
-  // A regular cell is constrained by its smallest side, even when the input displays its diameter.
-  // Irregular cells do not offer the minimum-side mode, so retain the existing measure minimum.
-  const minEnteredMm = sizeModes.includes("min_side")
-    ? printEnteredFromMeasure(config, inputMode, printMeasureFromEntered(config, "min_side", MIN_PRINT_SIDE_MM))
-    : printEnteredFromMeasure(config, inputMode, MIN_PRINT_CELL_SIZE_MM);
+  const minEnteredMm = minPrintEnteredSize(config, inputMode);
   const cellSizeMm = toCellSizeMm(parseNumber(cellSizeText));
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);
@@ -167,7 +150,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     const measure = cellSizeMm;
     setInputMode(mode);
     if (Number.isFinite(measure) && measure > 0) {
-      setCellSizeText(String(round2(printEnteredFromMeasure(config, mode, measure))));
+      setCellSizeText(String(roundedEnteredFromMeasure(config, mode, measure)));
     }
   }
 
@@ -179,6 +162,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
       ? cellSizeMm
       : toCellSizeMm(parseNumber(commitCellSize(cellSizeDraft.current)));
     const latestInput: PrintFieldSizingInput = { ...input, cellSizeMm: latestCellSizeMm };
+    const appliedInput: PrintFieldSizingInput = { ...latestInput, sizeMode: inputMode };
     let latest = answer;
     if (!latest || !Object.is(latestCellSizeMm, cellSizeMm)) {
       // The typed size is not calculated yet: calculate it for this one confirmation.
@@ -201,7 +185,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
       configsByFloor[floor.id] = floor.result.config;
     }
     if (!configsByFloor[activeFloorId]) return;
-    onApply(latest.result.config, latestInput, applyToAllStandardFloors, configsByFloor);
+    onApply(latest.result.config, appliedInput, applyToAllStandardFloors, configsByFloor);
     onClose();
   }
 
@@ -348,10 +332,6 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   );
 }
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 function parseNumber(value: string): number {
   return value.trim() === "" ? Number.NaN : Number(value);
 }
@@ -495,7 +475,7 @@ const styles: Record<string, React.CSSProperties> = {
   // Running text does not set the dialog's width, it wraps to it.
   wrapText: { contain: "inline-size" },
   label: { flex: 1, ...typography.body },
-  input: { ...sharedStyles.input, width: 56, boxSizing: "border-box" },
+  input: { ...sharedStyles.input, width: 70, height: controlRowHeight, boxSizing: "border-box" },
   result: { padding: 0 },
   sectionLabel: typography.body,
   progressSlot: { height: 4 },

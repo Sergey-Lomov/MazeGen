@@ -2,13 +2,16 @@ import React, { useMemo, useRef, useState } from "react";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
-import { MIN_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
-import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
+import { minPrintEnteredSize, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
+import { defaultPrintEnteredSize, printMeasureFromEntered, resolvePrintSizeMode, roundedEnteredFromMeasure } from "../../pixi/imageExport/printFit";
+import { TESSELLATION_UI, type PrintSizeMode } from "../../pixi/geometry/tessellationUi";
+import { SelectRow } from "../SelectRow";
+import { SIZE_MODE_LABELS } from "./sizeModeLabels";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { sharedStyles } from "../../styles/shared";
-import { dialogSpacing, inset, radius, typography, ui } from "../../styles/theme";
+import { controlRowHeight, dialogSpacing, inset, radius, typography, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
@@ -22,12 +25,16 @@ interface Props {
 
 export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
-  const initialCellSizeMm = printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(print.paperSize);
   const [customWidth, setCustomWidth] = useState(String(print.customWidthMm));
   const [customHeight, setCustomHeight] = useState(String(print.customHeightMm));
   const [orientation, setOrientation] = useState<PaperOrientation>(print.orientation);
-  const [cellSize, setCellSize] = useState(String(round2(Math.max(MIN_PRINT_CELL_SIZE_MM, initialCellSizeMm))));
+  const sizeModes = TESSELLATION_UI[config.tessellation.kind].editor.sizeModes;
+  const [sizeMode, setSizeMode] = useState<PrintSizeMode>(() => resolvePrintSizeMode(config, print.sizeMode));
+  // Opens with the same default as the print calculator, not with the size of `print.scale`.
+  const [cellSize, setCellSize] = useState(() => String(defaultPrintEnteredSize(config, resolvePrintSizeMode(config, print.sizeMode))));
+  // The field takes the value of the chosen mode; the dialog applies the cell size (diameter).
+  const minEnteredMm = minPrintEnteredSize(config, sizeMode);
   const [marginH, setMarginH] = useState(String(print.marginHMm));
   const [marginV, setMarginV] = useState(String(print.marginVMm));
 
@@ -37,7 +44,7 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
   const values = {
     customWidthMm: parseNumber(customWidth),
     customHeightMm: parseNumber(customHeight),
-    cellSizeMm: parseNumber(cellSize),
+    cellSizeMm: printMeasureFromEntered(config, sizeMode, parseNumber(cellSize)),
     marginHMm: parseNumber(marginH),
     marginVMm: parseNumber(marginV),
   };
@@ -52,16 +59,27 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
    * last committed one, a value under the minimum is raised to it. */
   function commitCellSize(text: string): string {
     cellSizeDraft.current = null;
-    const committed = normalizeNumberCommit(text, cellSize, { min: MIN_PRINT_CELL_SIZE_MM }).value;
+    const committed = normalizeNumberCommit(text, cellSize, { min: minEnteredMm }).value;
     setCellSize(committed);
     return committed;
+  }
+
+  /** Switching the mode keeps the physical size: the field shows the same cells in the other measure. */
+  function handleSizeModeChange(mode: PrintSizeMode) {
+    if (mode === sizeMode) return;
+    cellSizeDraft.current = null;
+    const measure = values.cellSizeMm;
+    setSizeMode(mode);
+    if (Number.isFinite(measure) && measure > 0) setCellSize(String(roundedEnteredFromMeasure(config, mode, measure)));
   }
 
   function confirm() {
     if (!valid) return;
     // Confirming (Enter included) takes a value still being typed as if the field was left.
-    const cellSizeMm = cellSizeDraft.current === null ? values.cellSizeMm : parseNumber(commitCellSize(cellSizeDraft.current));
-    onApply({ paperSize, ...values, cellSizeMm, orientation });
+    const cellSizeMm = cellSizeDraft.current === null
+      ? values.cellSizeMm
+      : printMeasureFromEntered(config, sizeMode, parseNumber(commitCellSize(cellSizeDraft.current)));
+    onApply({ paperSize, ...values, cellSizeMm, orientation, sizeMode });
     onClose();
   }
 
@@ -85,15 +103,23 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
           marginLabel={m["field.print_sizing.margin"]()}
           inputNamePrefix="field-paper-layout"
         />
+        {sizeModes.length > 1 && (
+          <SelectRow<PrintSizeMode>
+            label={m["field.print_sizing.input_mode"]()}
+            value={sizeMode}
+            options={sizeModes.map((mode) => ({ value: mode, label: SIZE_MODE_LABELS[mode].option() }))}
+            onChange={handleSizeModeChange}
+          />
+        )}
         <Inline gap="itemGap" justify="space-between">
           <span style={styles.label}>
-            {m["field.print_sizing.cell_size_diameter"]()}
+            {SIZE_MODE_LABELS[sizeMode].field()}
           </span>
           <Inline gap="elementsGap">
             <NumberInput
               name="cell-size"
               value={cellSize}
-              min={MIN_PRINT_CELL_SIZE_MM}
+              min={minEnteredMm}
               style={styles.input}
               onChange={(text) => { cellSizeDraft.current = text; }}
               onBlurCommit={commitCellSize}
@@ -112,11 +138,10 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
 }
 
 function parseNumber(value: string): number { return value.trim() === "" ? Number.NaN : Number(value); }
-function round2(value: number): number { return Math.round(value * 100) / 100; }
 
 const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },
-  input: { ...sharedStyles.input, width: 72 },
+  input: { ...sharedStyles.input, width: 70, height: controlRowHeight, boxSizing: "border-box" },
   error: { ...typography.body, color: ui.text.error },
   footer: { display: "flex", justifyContent: "flex-end", gap: dialogSpacing.gap, paddingTop: 0 },
   footerButton: { ...typography.control, padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`, cursor: "default", borderRadius: radius.sm },

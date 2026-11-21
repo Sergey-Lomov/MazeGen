@@ -3,6 +3,7 @@ import type { MarkerLayoutMode } from "../pixi/selectors/mazeSelectors/markerLay
 import type { IndexLabelStyle } from "../pixi/renderers/indexLabel";
 import type { LabelFont } from "../pixi/renderers/fontChoice";
 import type { FieldConfig } from "../fieldConfig";
+import type { PrintSizeMode } from "../pixi/geometry/tessellationUi";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
 
@@ -50,6 +51,9 @@ export interface PrintExportSettings {
   orientation: PaperOrientation;
   marginHMm: number;
   marginVMm: number;
+  /** What the cell size field of the print calculator and the custom paper layout dialog takes.
+   * A tessellation that does not offer it uses its first size mode instead. */
+  sizeMode: PrintSizeMode;
   /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. */
   scale: number;
   /** Legacy persisted field retained for project compatibility. New projects always store false;
@@ -78,6 +82,8 @@ export interface PrintFieldSizingInput {
   /** The field is sized as the editor shows it with smoothing on, without the cells smoothing
    * removes (GitHub issue #957). */
   smooth?: boolean;
+  /** The mode the cell size was entered in, stored as `PrintExportSettings.sizeMode`; absent leaves it unchanged. */
+  sizeMode?: PrintSizeMode;
 }
 
 /** PNG export settings — two independent output-mode branches (`digital`/`print`), only one

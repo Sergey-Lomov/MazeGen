@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, MIN_PRINT_CELL_SIZE_MM, minPrintEnteredSize, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
 import { configAllCells, presetShapeExtents } from "../pixi/tessellationCells";
 import { availablePresetKeys } from "../pixi/fieldOps";
 import { cellBounds, displayTransform } from "../pixi/tessellationGeometry";
@@ -372,5 +372,18 @@ describe("smoothing of a preset field", () => {
     const [, [minY, maxY]] = editorExtents(config, true);
     const side = TESSELLATION_UI[config.tessellation.kind].cellSidePx;
     expect((maxY - minY) / side).toBeCloseTo(smoothed.fieldHeightMm / (10.1 * Math.sin(Math.PI / 12)), 6);
+  });
+});
+
+describe("minPrintEnteredSize (GitHub issue #1054)", () => {
+  it("limits a regular cell by a 2 mm side, whichever mode the field shows", () => {
+    const square = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+    expect(minPrintEnteredSize(square, "min_side")).toBeCloseTo(2);
+    expect(minPrintEnteredSize(square, "cell_size")).toBeCloseTo(2 * Math.SQRT2);
+  });
+
+  it("keeps the measure minimum for a tessellation without a minimum-side mode", () => {
+    expect(minPrintEnteredSize(fieldOf("radial", { shape: "circle", radius: 4 }), "ring_thickness")).toBeGreaterThan(0);
+    expect(minPrintEnteredSize(fieldOf("voronoi", { shape: "circle", radius: 4 }), "average_size")).toBeCloseTo(MIN_PRINT_CELL_SIZE_MM);
   });
 });
