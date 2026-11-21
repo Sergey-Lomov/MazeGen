@@ -4,6 +4,7 @@ import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "./projectLoadNotificati
 import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
 import { guardPresetEdits } from "./presetEditGuard";
+import { raisePanelsOnOpen } from "./sidePanelRaise";
 import { createTessellationSlice } from "./slices/tessellationSlice";
 import { createFloorFieldSlice } from "./slices/floorFieldSlice";
 import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
@@ -48,7 +49,7 @@ export type {
 
 export { decodePoint };
 
-export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
+export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guardPresetEdits({
   ...createTessellationSlice(...a),
   ...createFloorFieldSlice(...a),
   ...createPresetConnectionsSlice(...a),
@@ -409,7 +410,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       if (projectLoadRequestId === latestProjectLoadRequestId) set({ projectLoadInProgress: false });
     }
   },
-}, a[0], a[1]));
+}, a[0], a[1])));
 
 installTopologySync(useMazeStore);
 installFieldClipboardSync(useMazeStore);

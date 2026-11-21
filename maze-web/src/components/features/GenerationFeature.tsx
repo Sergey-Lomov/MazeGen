@@ -8,7 +8,6 @@ import { hasOpenModal } from "../Modal";
 import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
 import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
-import { bringSidePanelToFront } from "../SidePanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
@@ -183,7 +182,6 @@ export function GenerationFeature({ canGenerate }: Props) {
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
           {isVertexBased && (
             <SettingsIconButton title={m["generation.vertex_settings"]()} onClick={() => {
-              bringSidePanelToFront("vertex-based-settings");
               setVertexSettingsPanelOpen(true);
             }} />
           )}

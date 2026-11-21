@@ -13,7 +13,6 @@ import { cancelPendingPointerAction, pointerCellAtConfig, resetPointerHover } fr
 import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnectionsInteraction";
 import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, presetToolForShortcut } from "./toolShortcuts";
-import { bringSidePanelToFront } from "../components/SidePanel";
 import { isTypingTarget } from "./domUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
@@ -679,7 +678,6 @@ export class PresetConnectionsController extends BaseController {
       const cell = { x, y };
       const key = encodePoint(cell.x, cell.y);
       const point: [number, number] | null = this.renderer.getCachedCellSet().has(key) ? [cell.x, cell.y] : null;
-      if (point) bringSidePanelToFront("preset-split-nodes");
       useMazeStore.getState().setPresetFocusedPoint(point);
       return;
     }

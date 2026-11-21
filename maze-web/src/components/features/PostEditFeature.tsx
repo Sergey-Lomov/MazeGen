@@ -11,7 +11,6 @@ import { IssuesBlock } from "../IssuesBlock";
 import { Stack } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
 import { PostEditChangesPanel } from "./PostEditChangesPanel";
-import { bringSidePanelToFront } from "../SidePanel";
 import { AutoConfirmInfoModal, AutoCompactInfoModal } from "./PostEditModals";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
@@ -217,7 +216,6 @@ export function PostEditFeature() {
             variant={postEditChangesOpen ? "toggle-selected" : "toggle"}
             layoutStyle={{ width: "100%" }}
             onClick={() => {
-              bringSidePanelToFront("post-edit-changes");
               setPostEditChangesOpen(true);
             }}
           >

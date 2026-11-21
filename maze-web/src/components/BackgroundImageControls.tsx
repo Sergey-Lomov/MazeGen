@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { ToggleRow } from "./ToggleRow";
+import { useSidePanelOpen } from "./sidePanelStack";
 import { SettingsIconButton } from "./SettingsIconButton";
 import { BackgroundImageSettingsPanel } from "./BackgroundImageSettingsPanel";
-import { bringSidePanelToFront } from "./SidePanel";
 import type { PageLayoutInput } from "./dialogs/BackgroundImagePrintDialog";
 import * as m from "~/paraglide/messages";
 
@@ -21,7 +21,7 @@ export function BackgroundImageControls({
   onApplyPageLayout,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useSidePanelOpen("background-image-settings");
   const showBackgroundImage = useMazeStore((s) => s.showBackgroundImage);
   const backgroundImage = useMazeStore((s) => s.backgroundImage);
   const setShowBackgroundImage = useMazeStore((s) => s.setShowBackgroundImage);
@@ -56,7 +56,6 @@ export function BackgroundImageControls({
         checked={showBackgroundImage}
         onChange={(show) => show ? enable() : disable()}
         action={<SettingsIconButton title={m["background.configure"]()} onClick={() => {
-          bringSidePanelToFront("background-image-settings");
           setSettingsOpen(true);
         }} />}
       />

@@ -7,7 +7,8 @@ import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
-import { bringSidePanelToFront, SidePanel } from "../SidePanel";
+import { SidePanel } from "../SidePanel";
+import { useSidePanelOpen } from "../sidePanelStack";
 import { RegionClassLegendModal, ScoreInfoModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
 import { StatRow, formatMs, formatScore, GraphSection, CellsSection, SidesSection, SubsectionTitle, ElementsSection, VerticalSection, StatGroup } from "./AnalyticsSections";
 import { styles } from "./analyticsStyles";
@@ -151,7 +152,7 @@ export function AnalyticsFeature() {
   // the issue calls "unavailable otherwise" (independent of whether a route actually exists).
   const regionClassesUnavailable = Object.keys(statistics?.graph_stats.region_classes ?? {}).length === 0;
   const [timingReportOpen, setTimingReportOpen] = React.useState(false);
-  const [detailedReportOpen, setDetailedReportOpen] = React.useState(false);
+  const [detailedReportOpen, setDetailedReportOpen] = useSidePanelOpen("analytics-detailed-report");
   const [scoreInfoOpen, setScoreInfoOpen] = React.useState(false);
 
   const showGridOverlay = useMazeStore((s) => s.showGridOverlay);
@@ -273,7 +274,6 @@ export function AnalyticsFeature() {
               <StatRow label={m["analytics.graph_cycle_count"]()} count={statistics.graph_stats.cycle_count} />
               <StatRow label={m["analytics.graph_average_degree"]()} valueText={statistics.graph_stats.average_degree.toFixed(2)} />
               <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={() => {
-                bringSidePanelToFront("analytics-detailed-report");
                 setDetailedReportOpen(true);
               }}>
                 {m["analytics.detailed_report_button"]()}

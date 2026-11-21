@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ToggleRow } from "../ToggleRow";
 import { Button } from "../Button";
-import { bringSidePanelToFront } from "../SidePanel";
 import { Stack } from "../Layout";
 import { startNewZone } from "./zoneEditorActions";
 import { ZonesPanel } from "./ZonesPanel";
@@ -49,7 +48,6 @@ export function ZonesFeature() {
         variant="secondary"
         layoutStyle={{ width: "100%" }}
         onClick={() => {
-          bringSidePanelToFront("zones");
           setZonesPanelOpen(true);
         }}
       >
@@ -59,7 +57,6 @@ export function ZonesFeature() {
         variant="secondary"
         layoutStyle={{ width: "100%" }}
         onClick={() => {
-          bringSidePanelToFront("zone-groups");
           setZoneGroupsPanelOpen(true);
         }}
       >

@@ -24,7 +24,6 @@ import {
   notifyEditRefusal, SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE,
 } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, postEditToolForShortcut } from "./toolShortcuts";
-import { bringSidePanelToFront } from "../components/SidePanel";
 import { isTypingTarget } from "./domUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
@@ -663,7 +662,6 @@ export class PostEditController extends BaseController {
       const cell = { x, y };
       const key = `${cell.x},${cell.y}`;
       const point: [number, number] | null = nodeMap.has(key) ? [cell.x, cell.y] : null;
-      if (point) bringSidePanelToFront("post-edit-split-nodes");
       useMazeStore.getState().setPostEditFocusedPoint(point);
       return;
     }

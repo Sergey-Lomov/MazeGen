@@ -23,7 +23,7 @@ import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronF
 import { SizeParam } from "./SizeParam";
 import { TopologyPanel } from "./TopologyPanel";
 import { FloorsPanel } from "./FloorsPanel";
-import { bringSidePanelToFront } from "../SidePanel";
+import { useSidePanelOpen } from "../sidePanelStack";
 import { FieldToolsSection, SmoothingToggleRow } from "./FieldToolsSection";
 import * as m from "~/paraglide/messages";
 
@@ -58,7 +58,7 @@ export function FieldSetupFeature() {
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
-  const [floorsPanelOpen, setFloorsPanelOpen] = useState(false);
+  const [floorsPanelOpen, setFloorsPanelOpen] = useSidePanelOpen("floors");
   const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
   const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
 
@@ -243,7 +243,6 @@ export function FieldSetupFeature() {
             disabled={fieldEditLocked}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={() => {
-              bringSidePanelToFront("topology");
               setTopologyPanelOpen(true);
             }}
           >
@@ -264,7 +263,6 @@ export function FieldSetupFeature() {
         variant="secondary"
         layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
         onClick={() => {
-          bringSidePanelToFront("floors");
           setFloorsPanelOpen(true);
         }}
       >
