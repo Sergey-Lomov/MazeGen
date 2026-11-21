@@ -791,8 +791,8 @@ id searched across all rules.
 
 ### toggleRuleCollapsed(ruleId) / toggleStageCollapsed(stageId)
 
-See GitHub issue #320. Flip the rule/stage's own `collapsed` — purely a UI presentation toggle, no effect on `GenerateConfig` or any other generation-facing state, unlike every other toggle in this section. `RulesColumn` renders a `CollapseButton` (`maze-web/src/components/CollapseButton.tsx`, a shared chevron-only toggle) at the front of the stage toolbar and the rule card title row:
-- A collapsed stage hides its entire `stageCards` block (every member rule card) — only the header/toolbar row remains visible.
+See GitHub issue #320. Flip the rule/stage's own `collapsed` — purely a UI presentation toggle, no effect on `GenerateConfig` or any other generation-facing state, unlike every other toggle in this section. `RulesColumn` renders a `CollapseButton` (`maze-web/src/components/CollapseButton.tsx`, a shared chevron-only toggle) right after the drag handle in the stage header row and in the rule card title row:
+- A collapsed stage hides its entire `stageCards` block (every member rule card) — only the header row remains visible.
 - A collapsed rule hides its whole card body — checks list, `RuleParamsSection`, and `RuleStrategyPanel` — only the title row remains visible.
 
 Both default to `false` (expanded) for a freshly created rule/stage (`newRule`/`newStage` in `generationSliceHelpers.ts`) and for project files saved before this field existed (see "Project file persistence" below).
@@ -837,7 +837,7 @@ UI behavior while a **rule** is dragged:
 
 ### Stage toolbar: addStage() / renameStage(stageId, name) / removeStage(stageId) / moveStage(stageId, direction) / toggleStageDisabled(stageId)
 
-Each stage section in `RulesColumn` has its own toolbar (below the stage's name header, above its rule cards) with five controls: add-rule, move up, move down, rename, remove — plus a disabled-toggle switch alongside them.
+Each stage section in `RulesColumn` has a single header row: drag handle, collapse chevron, stage name (or rename input), then the stage toolbar right-aligned in the same row. The toolbar holds the disabled-toggle switch first, followed by five buttons: add-rule, move up, move down, rename, remove. Stage rule cards below the header are indented and marked by a vertical line on the left.
 
 - `addStage`: appends a new empty stage. Default name `"Stage N"` where N = the stage count at creation time + 1 — not renumbered later if stages are added/removed/reordered afterward (same pattern as a rule's default name); the very first stage ever created instead defaults to `"Waypoints"` (`quality.default_stage_name`).
 - `renameStage`: sets the stage's `name`.

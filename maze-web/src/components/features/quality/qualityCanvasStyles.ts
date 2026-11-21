@@ -88,7 +88,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: spacing.elementsGap,
-    padding: `${spacing.elementsGap}px ${spacing.elementsGap}px ${spacing.itemGap}px`,
+    flexShrink: 0,
   },
   stageToolbarBtn: {
     background: "none",
