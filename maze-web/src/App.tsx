@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
-import { zoneEditActive } from "./pixi/fieldEditTarget";
+import { zoneEditActive } from "./store/fieldEditTarget";
 import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { MirrorPanel } from "./components/features/MirrorPanel";
@@ -20,7 +20,7 @@ import { GenerationProgressOverlay } from "./components/GenerationProgressOverla
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
 import { ui } from "./styles/theme";
-import { canvas } from "./pixi/colorTokens";
+import { canvas } from "./domain/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
 import { setColorSampler } from "./pixi/colorSampleBridge";

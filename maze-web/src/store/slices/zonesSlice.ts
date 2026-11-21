@@ -3,11 +3,11 @@ import type { MazeStore, MazeState, ZonesState, ZonesActions } from "../storeTyp
 import type { ZoneCellWire } from "../../wasm/mazeService";
 import type { ZoneGroup } from "../zonesTypes";
 import { translateFieldCells } from "../../wasm/mazeService";
-import { activeFieldCellKeys, activeFloorIndexOf, editedZoneOf, zonePointsOnFloor } from "../../pixi/fieldEditTarget";
-import { isFieldOpError } from "../../pixi/fieldOps";
-import { encodePoint } from "../../pixi/tessellationProjection";
-import { overridesWithDraft, zoneFloors, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
-import { combineZoneCells } from "../../pixi/selectors/zoneCombine";
+import { activeFieldCellKeys, activeFloorIndexOf, editedZoneOf, zonePointsOnFloor } from "../fieldEditTarget";
+import { isFieldOpError } from "../../domain/fieldOps";
+import { encodePoint } from "../../domain/tessellationProjection";
+import { overridesWithDraft, zoneFloors, zonesWithDraft } from "../../domain/selectors/zoneSelectors";
+import { combineZoneCells } from "../../domain/selectors/zoneCombine";
 
 /** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
  *  the values of a new project and of a file without zones. */

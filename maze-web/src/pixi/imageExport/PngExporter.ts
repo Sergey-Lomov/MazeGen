@@ -1,11 +1,11 @@
 import { Container, Graphics, RenderTexture } from "pixi.js";
 import type { Application, ICanvas } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 import { createModeRenderer, type ModeRenderer } from "./modeRendererFactory";
-import { computeDigitalExportFit } from "./exportFit";
-import { computePrintExportFit } from "./printFit";
-import { resolveContentBoundsBasis } from "./exportMargins";
+import { computeDigitalExportFit } from "../../domain/imageExport/exportFit";
+import { computePrintExportFit } from "../../domain/imageExport/printFit";
+import { resolveContentBoundsBasis } from "../../domain/imageExport/exportMargins";
 import { resolveCutPlan, resolveExportContent } from "./exportContent";
 import { cutLineColors, cutLineStyleOf } from "./cutLineStyle";
 import type { CutPlan } from "./cutLines";
@@ -14,7 +14,7 @@ import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers } fro
 import type { PngExportSettings } from "../../store/storeTypes";
 import { beginCanvasLabelScale, endCanvasLabelScale } from "../renderers/canvasLabelResolution";
 import { whenRasterFontsSettled } from "../renderers/rasterFont/rasterMsdf";
-import { reportProjectFontProblems } from "../../store/labelFontSync";
+import { reportProjectFontProblems } from "../labelFontSync";
 
 /** On-screen length of one dash of a drawn cut line, and of its gap, in export pixels. */
 const GUIDE_DASH_PX = 8;

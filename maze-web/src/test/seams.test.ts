@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache, getCellGeometry, getFieldVersion } from "../pixi/cartesianCache";
+import { warmCartesianCache, getCellGeometry, getFieldVersion } from "../domain/cartesianCache";
 import {
   applyAffine,
   buildSeamModel,
@@ -11,7 +11,7 @@ import {
   type HalfEdge,
   type Seam,
   type SeamCellInput,
-} from "../pixi/selectors/seams";
+} from "../domain/selectors/seams";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

@@ -1,10 +1,10 @@
-import { presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
-import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../fieldEditUtils";
-import { allNodesAt, presetSplitNodeFaceKinds } from "../presetSplitResolve";
-import { formatLockKind, presetVertexMarkerEntities } from "../pointEntities";
-import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
-import { splitShapeBinding } from "../splitShape";
-import type { PresetSplitLabelContext } from "../presetSplitLabels";
+import { presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
+import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../../domain/fieldEditUtils";
+import { allNodesAt, presetSplitNodeFaceKinds } from "../../domain/presetSplitResolve";
+import { formatLockKind, presetVertexMarkerEntities } from "../../domain/pointEntities";
+import { splitNodeSemanticNamesFromKinds } from "../../domain/splitNodeNames";
+import { splitShapeBinding } from "../../domain/splitShape";
+import type { PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -13,7 +13,7 @@ import * as m from "~/paraglide/messages";
  *  split slot) — start/finish/gen-source markers, preset teleport/vertical-passage/elevator
  *  endpoints, and node locks (manual or auto), all addressed by exact `PresetEndpoint` match
  *  (GitHub issue #353's Preset Connections follow-up). Thin adapter over `presetVertexMarkerEntities`
- *  (`pixi/pointEntities.ts`, GitHub issue #540) — this function only appends the lock line, which
+ *  (`domain/pointEntities.ts`, GitHub issue #540) — this function only appends the lock line, which
  *  the entity-delete dialog's `point_all` scope reports separately instead. */
 function buildPresetNodeMarkerLines(
   endpoint: PresetEndpoint,

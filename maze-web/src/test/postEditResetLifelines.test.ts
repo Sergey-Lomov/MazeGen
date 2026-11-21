@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { collectAffectedLifelineKeys } from "../pixi/postEditLifelines";
-import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../pixi/postEditReplay";
-import { buildPostEditResetLifelines } from "../pixi/postEditResetLifelines";
+import { collectAffectedLifelineKeys } from "../domain/postEditLifelines";
+import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../domain/postEditReplay";
+import { buildPostEditResetLifelines } from "../domain/postEditResetLifelines";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import { nodeEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, edgeKey, type PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 

@@ -1,14 +1,15 @@
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
-import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
+import { LABEL_FONT_LOADED_EVENT } from "../../domain/renderers/fontChoice";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { WaypointOpeningRenderer } from "../renderers/WaypointOpeningRenderer";
-import { openingCutsWall, openingShowsPointer, resolveIndicatorMetrics } from "../../store/imageExportTypes";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { buildMarkerScaler } from "../markerScale";
+import { resolveIndicatorMetrics } from "../../store/imageExportTypes";
+import { openingCutsWall, openingShowsPointer } from "../../domain/waypointOpeningMode";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { buildMarkerScaler } from "../../domain/markerScale";
 import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
@@ -16,10 +17,10 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/Split
 import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, buildWaypointOpenings, isOpeningWall, openingGapReach } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, buildWaypointOpenings, isOpeningWall, openingGapReach } from "../../domain/selectors/mazeSelectors";
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
-import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
+import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../../domain/selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/MarkerIndexRenderer";
 import { SeamCopyRenderer } from "../renderers/SeamCopyRenderer";
 import { buildSeamCopySources } from "./seamCopySources";
@@ -28,20 +29,20 @@ import { computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWar
 import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "../../domain/imageExport/exportMargins";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
-import { exactCellBounds } from "../tessellationGeometry";
+import { exactCellBounds } from "../../domain/tessellationGeometry";
 import { drawTrimMask } from "./seamTrim";
-import { canvas } from "../colorTokens";
+import { canvas } from "../../domain/colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
-import { buildTeleportGroups } from "../selectors/teleportGroups";
+import { buildTeleportGroups } from "../../domain/selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { POLYGON_HIGHLIGHT_RADIUS, WALL_THICKNESS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WALL_THICKNESS, WARNING_HIGHLIGHT_COLOR } from "../../domain/renderConstants";
 import { roundedContourCorners } from "./roundedContour";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
@@ -323,7 +324,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
-  getTeleportConnectorPaths(): readonly { edge: import("../renderers/types").TeleportEdge; points: readonly number[] }[] {
+  getTeleportConnectorPaths(): readonly { edge: import("../../domain/renderers/types").TeleportEdge; points: readonly number[] }[] {
     // The base renderer can be in a backdrop-only pass while a cut sheet is displayed. Refreshing
     // its plan here keeps the editor independent of that presentation pass.
     this.renderAll(useMazeStore.getState());

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   presetEndpoint, presetEndpointsEqual, presetEndpointIsSplit, presetEndpointKey, presetEndpointFromKey, presetEndpointToDto,
-} from "../pixi/presetEndpoint";
+} from "../domain/presetEndpoint";
 
 describe("presetEndpoint", () => {
   it("no slotId — original node, point only", () => {

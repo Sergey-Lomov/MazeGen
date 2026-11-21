@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { collectMarkerLooks, markersLookAlikeWarningOf, markerLooksAlike, stateMarkerLooks } from "../pixi/selectors/exportMarkerLookAlike";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../domain/renderers/types";
 import { computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { squareCfg, twoFloorMaze, wallsSettings } from "./exportWarningFixtures";

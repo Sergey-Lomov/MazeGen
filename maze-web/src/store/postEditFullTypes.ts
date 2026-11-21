@@ -1,11 +1,11 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { PostEditEndpoint, PostEditHoveredEntity } from "../pixi/postEditEndpoint";
-import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
+import type { PostEditEndpoint, PostEditHoveredEntity } from "../domain/postEditEndpoint";
+import type { SplitNodeBlueprint } from "../domain/splitBlueprints";
 import type { PostEditCommand } from "./postEditCommandTypes";
-import type { PostEditResetLifelineDescriptor } from "../pixi/postEditResetLifelines";
-import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
-import type { PostEditPointEntityDescriptor } from "../pixi/postEditPointEntities";
-import type { EntityToolPurpose } from "../pixi/entityToolKinds";
+import type { PostEditResetLifelineDescriptor } from "../domain/postEditResetLifelines";
+import type { PostEditBaseline, PostEditDerivedState } from "../domain/postEditReplay";
+import type { PostEditPointEntityDescriptor } from "../domain/postEditPointEntities";
+import type { EntityToolPurpose } from "../domain/entityToolKinds";
 import type {
   PostEditTool,
   PostEditEdgeToolMode,
@@ -91,7 +91,7 @@ export interface PostEditState {
   postEditTool: PostEditTool;
   /** Ordered, replayable command log (GitHub issue #543) — the single source of truth for every
    * manual post-edit change. `postEditDraft*` fields below are derived from this log +
-   * `postEditBaseline` by `applyPostEditCommand`/`replayPostEditCommands` (`pixi/postEditReplay.ts`)
+   * `postEditBaseline` by `applyPostEditCommand`/`replayPostEditCommands` (`domain/postEditReplay.ts`)
    * and re-mirrored into those fields on every log mutation (`appendPostEditCommand`/
    * `replacePostEditCommands`, `postEditSliceHelpers.ts`) — kept as plain state fields (not lazy
    * getters) since most of the ~40 read sites across the codebase subscribe to them individually via
@@ -433,17 +433,17 @@ export interface PostEditActions {
   /** "Reset" action on one Changes-panel row (GitHub issue #547) — truncates `postEditCommands` to
    * end right after `commandIndex` (the log's own oldest-to-newest index, not the panel's reversed
    * display order), discarding every later command regardless of lifeline. See
-   * `resetCommandsAt` (`pixi/postEditReplay.ts`). */
+   * `resetCommandsAt` (`domain/postEditReplay.ts`). */
   resetPostEditCommand: (commandIndex: number) => void;
   /** "Delete" action on one Changes-panel row (GitHub issue #547) — removes exactly the command at
    * `commandIndex` and resolves what that leaves behind: cascades the whole lifeline for a command
    * that mints a fresh entity, or collapses a single entry (re-resolving later commands' own
-   * denormalized fields) for any other kind. See `deleteCommandAt` (`pixi/postEditReplay.ts`). */
+   * denormalized fields) for any other kind. See `deleteCommandAt` (`domain/postEditReplay.ts`). */
   deletePostEditCommand: (commandIndex: number) => void;
   /** Manual "Compact" action (GitHub issue #548) — drops every command in `postEditCommands` whose
    * effect is no longer observable in the log's own final state (superseded by a later command of
    * the same entity/face/point), then renormalizes every survivor's own denormalized fields. See
-   * `compactPostEditCommands` (`pixi/postEditCompaction.ts`). */
+   * `compactPostEditCommands` (`domain/postEditCompaction.ts`). */
   compactPostEditLog: () => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;

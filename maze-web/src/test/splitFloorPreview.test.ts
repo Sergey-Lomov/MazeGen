@@ -5,7 +5,7 @@ import type { PostEditEdge, PostEditTeleportEntry } from "../store/postEditTypes
 import { fieldOf } from "./fieldConfigFixtures";
 
 const { buildSplitFloorGeometry } = await import("../pixi/splitFloorPreview");
-const { splitEndpoint, nodeEndpoint } = await import("../pixi/postEditEndpoint");
+const { splitEndpoint, nodeEndpoint } = await import("../domain/postEditEndpoint");
 
 describe("buildSplitFloorGeometry", () => {
   it("resolves draft edges touching a split-node slot on floor 0 (GitHub issue #632 regression)", () => {

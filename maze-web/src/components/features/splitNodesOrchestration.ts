@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import { blueprintsFor } from "../../pixi/splitBlueprints";
-import { splitShapeBinding } from "../../pixi/splitShape";
-import { splitSlotColor } from "../../pixi/colorUtils";
-import { canvas } from "../../pixi/colorTokens";
-import { getCellNeighborOffsets } from "../../pixi/tessellationGeometry";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import type { TileFace, TileFaceNode } from "./TileFaceEditor";
+import { blueprintsFor } from "../../domain/splitBlueprints";
+import { splitShapeBinding } from "../../domain/splitShape";
+import { splitSlotColor } from "../../domain/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { getCellNeighborOffsets } from "../../domain/tessellationGeometry";
+import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import type { TileFace, TileFaceNode } from "../../domain/tileFace";
 import type { ElementInfo, LinkInfo, SplitNodesRow } from "./SplitNodesDialogView";
 
 export interface SplitNodesOrchestrationArgs<E> {

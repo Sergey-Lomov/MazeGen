@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { PrintExportSettings } from "../store/storeTypes";
-import { cellMeasureWorldUnits, printCellMeasureMm, resolveSheetSizeMm, DPI_BY_DENSITY, mmToPx } from "./imageExport/printFit";
+import { cellMeasureWorldUnits, printCellMeasureMm, resolveSheetSizeMm, DPI_BY_DENSITY, mmToPx } from "../domain/imageExport/printFit";
 
 export interface PaperLayoutWorldGeometry {
   sheetWidth: number;

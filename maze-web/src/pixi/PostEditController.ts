@@ -1,25 +1,25 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./fieldEditUtils";
-import { pickPostEditTeleportEndpointAt, pickPostEditVerticalPassageEndpointAt, pickPostEditElevatorEndpointAt } from "./postEditUtils";
+import { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "../domain/edgeHitTesting";
+import { pickPostEditTeleportEndpointAt, pickPostEditVerticalPassageEndpointAt, pickPostEditElevatorEndpointAt } from "../domain/postEditUtils";
 import type { PostEditTeleportEndpointHit, PostEditVerticalPassageEndpointHit, PostEditElevatorEndpointHit } from "../store/mazeStore";
-import { pointerCellAtConfig } from "./pointerInteraction";
-import { makeProjection } from "./tessellationProjection";
+import { pointerCellAtConfig } from "../domain/pointerInteraction";
+import { makeProjection } from "../domain/tessellationProjection";
 import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
 import { BaseController } from "./BaseController";
 import {
   type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint,
-} from "./postEditEndpoint";
-import { createFloorNodesSelector, selectNodeLevelResolver } from "./selectors/mazeSelectors";
+} from "../domain/postEditEndpoint";
+import { createFloorNodesSelector, selectNodeLevelResolver } from "../domain/selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
-import { recordOnLevel } from "./fieldEditUtils";
+import { recordOnLevel } from "../domain/fieldEditUtils";
 import { resolveDragTargets } from "../store/slices/postEditSliceHelpers";
 import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, buildPostEditPointEntitiesAt } from "../store/slices/postEditBaselineBuilders";
-import { postEditEntitiesForPurpose } from "./entityToolKinds";
-import type { PostEditPointEntityDescriptor } from "./postEditPointEntities";
-import type { FieldEdge } from "./fieldEditUtils";
-import { cancelPendingPointerAction, isPointerModalOpen, resetPointerHover } from "./pointerInteraction";
+import { postEditEntitiesForPurpose } from "../domain/entityToolKinds";
+import type { PostEditPointEntityDescriptor } from "../domain/postEditPointEntities";
+import type { FieldEdge } from "../domain/fieldEditUtils";
+import { cancelPendingPointerAction, isPointerModalOpen, resetPointerHover } from "../domain/pointerInteraction";
 import {
   notifyEditRefusal, SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE,
 } from "../notifications/editRefusalNotifications";

@@ -1,5 +1,5 @@
 import type { Container } from "pixi.js";
-import type { TessellationProjection } from "./tessellationProjection";
+import type { TessellationProjection } from "../domain/tessellationProjection";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 
 /** Shared canvas-space → grid-space conversion, used by FieldEditController.toGrid and the

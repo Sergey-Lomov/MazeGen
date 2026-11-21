@@ -1,5 +1,5 @@
 import type { NavNodeDto, NavEdgeDto, RouteInfoDto, MazeStatisticsDto, IssueDto } from "../wasm/types";
-import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import type { PostEditEndpoint } from "../domain/postEditEndpoint";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 

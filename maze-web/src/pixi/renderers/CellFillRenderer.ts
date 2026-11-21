@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { FieldConfig } from "../../fieldConfig";
-import { tracePath } from "../geometry/pathRenderer";
-import { getCellPath } from "../tessellationGeometry";
+import { tracePath } from "../../domain/geometry/pathRenderer";
+import { getCellPath } from "../../domain/tessellationGeometry";
 import { drawCellHighlightAt, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
 
 export type CellFillGroup = { cells: [number, number][]; color: number; alpha: number; inset?: number; cornerStyle?: CellHighlightCornerStyle; borderWidth?: number };

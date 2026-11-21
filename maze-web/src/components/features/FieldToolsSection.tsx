@@ -9,11 +9,11 @@ import { typography, muted, spacing, indent } from "../../styles/theme";
 import { Inline } from "../Layout";
 import { ToggleRow } from "../ToggleRow";
 import { Modal } from "../Modal";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
-import { canvas } from "../../pixi/colorTokens";
-import { TILE_SIZE } from "../../pixi/constants";
-import { fieldOperationAvailable } from "../../pixi/fieldOps";
-import { smoothingOf, zoneEditActive } from "../../pixi/fieldEditTarget";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { canvas } from "../../domain/colorTokens";
+import { TILE_SIZE } from "../../domain/constants";
+import { fieldOperationAvailable } from "../../domain/fieldOps";
+import { smoothingOf, zoneEditActive } from "../../store/fieldEditTarget";
 import { colorToHex } from "../colorFormat";
 import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut, ZONE_COMBINE_SHORTCUT } from "../../pixi/fieldPrimitiveShortcuts";
@@ -21,7 +21,7 @@ import * as m from "~/paraglide/messages";
 
 /** The shape tools shared by the custom field editor (`FieldSetupFeature`) and the zone editor
  *  (`ZoneEditPanel`, GitHub issue #1031): the same modes, tools, clipboard and smoothing controls
- *  acting on whichever target the canvas edits (`pixi/fieldEditTarget.ts`). */
+ *  acting on whichever target the canvas edits (`store/fieldEditTarget.ts`). */
 
 const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
   add: ["+"],

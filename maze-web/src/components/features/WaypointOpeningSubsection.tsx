@@ -1,11 +1,12 @@
 import type * as React from "react";
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { DirectionIndicatorGeometry, WaypointOpeningMode, WaypointOpeningPatch, WaypointOpeningSettings } from "../../store/imageExportTypes";
-import type { OneWayPattern } from "../../pixi/renderers/types";
+import type { DirectionIndicatorGeometry, WaypointOpeningPatch, WaypointOpeningSettings } from "../../store/imageExportTypes";
+import type { WaypointOpeningMode } from "../../domain/waypointOpeningMode";
+import type { OneWayPattern } from "../../domain/renderers/types";
 import type { ColorField, ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
-import { endpointOuterFaces, floorCellSet, resolveOpeningFace, type OuterFace } from "../../pixi/selectors/mazeSelectors/waypointOpening";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import { endpointOuterFaces, floorCellSet, resolveOpeningFace, type OuterFace } from "../../domain/selectors/mazeSelectors/waypointOpening";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/exportStyleBuilders";
 import { indent, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";

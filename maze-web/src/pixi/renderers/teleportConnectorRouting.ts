@@ -1,4 +1,4 @@
-import type { TeleportArrowMode, TeleportCurveDirection, TeleportEdge } from "./types";
+import type { TeleportArrowMode, TeleportCurveDirection, TeleportEdge } from "../../domain/renderers/types";
 
 /** A drawable polyline for one connector: `points` is `[x0,y0,x1,y1,...]`. A straight path has
  * two points, a regular orthogonal path has three, and a radial path can include sampled arc points.

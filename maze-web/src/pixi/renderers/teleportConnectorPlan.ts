@@ -1,12 +1,12 @@
-import type { TeleportEdge, TeleportLineStyle } from "./types";
+import type { TeleportEdge, TeleportLineStyle } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, type RoutedConnector } from "./teleportConnectorRouting";
 import type { TeleportConnectorRouter, EndpointMarkerStyle } from "./teleportConnectorRouter";
-import { getSeamModel } from "../selectors/seams";
+import { getSeamModel } from "../../domain/selectors/seams";
 import { cutPolylineAtChain, shortestSeamCrossing } from "../selectors/seamUnfold";
-import { displayTransform } from "../tessellationGeometry";
-import { applyTransform, invertTransform } from "../geometry/worldTransform";
-import { manualConnectorPoints, type ManualTeleportConnectorPath } from "./teleportConnectorManual";
+import { displayTransform } from "../../domain/tessellationGeometry";
+import { applyTransform, invertTransform } from "../../domain/geometry/worldTransform";
+import { manualConnectorPoints, type ManualTeleportConnectorPath } from "../../domain/renderers/teleportConnectorManual";
 
 /** Routes every connector of `edges` (one `RoutedConnector` per edge, same order) for `style`'s
  *  `connectorStyle` — pure routing, no drawing. Shared by `TeleportRenderer` (drawing) and the

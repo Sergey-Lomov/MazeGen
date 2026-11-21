@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getGeometrySnapshot, type PathCommand } from "../wasm/mazeService";
-import { tracePath, pathToSvg, arcSweep, type PathTarget } from "../pixi/geometry/pathRenderer";
-import { applyTransform, isSimilarity, transformCommand, type WorldTransform } from "../pixi/geometry/worldTransform";
-import { closestPointOnPolyline, offsetPolyline, polylineIntersections } from "../pixi/geometry/polylineOps";
+import { tracePath, pathToSvg, arcSweep, type PathTarget } from "../domain/geometry/pathRenderer";
+import { applyTransform, isSimilarity, transformCommand, type WorldTransform } from "../domain/geometry/worldTransform";
+import { closestPointOnPolyline, offsetPolyline, polylineIntersections } from "../domain/geometry/polylineOps";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const YFLIP: WorldTransform = { a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 0 };

@@ -1,4 +1,4 @@
-import type { PresetConnectionTool } from "./fieldEditUtils";
+import type { PresetConnectionTool } from "../domain/fieldEditUtils";
 import type { PostEditTool } from "../store/postEditTypes";
 
 type Shortcut = readonly string[];

@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
 import { getFieldCellSizes, getTessellationCellTypeSizes, type CellSizesReport, type CellTypeSizes } from "../wasm/mazeService";
-import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 
 /** A cell with a side under this (millimeters) is hard to print and to solve on paper. */
 export const MIN_COMFORTABLE_CELL_SIDE_MM = 5;

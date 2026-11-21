@@ -1,6 +1,6 @@
-import type { TeleportEdge } from "./types";
+import type { TeleportEdge } from "../../domain/renderers/types";
 import type { RoutedConnector } from "./teleportConnectorRouting";
-import type { TeleportGroup } from "../selectors/teleportGroups";
+import type { TeleportGroup } from "../../domain/selectors/teleportGroups";
 
 export function coordKey(x: number, y: number): string {
   return `${Math.round(x * 1000)},${Math.round(y * 1000)}`;

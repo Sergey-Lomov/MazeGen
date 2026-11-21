@@ -12,7 +12,7 @@ import {
   nearestWeight,
   plainLabelFont,
   weightFromStyleName,
-} from "../pixi/renderers/fontChoice";
+} from "../domain/renderers/fontChoice";
 
 describe("nearestWeight", () => {
   it("returns the offered weight closest to the wanted one", () => {

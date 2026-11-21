@@ -1,8 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { drawRoundedPolygon } from "./markerShapes";
-import { offsetPolyline, polylineLength, trimPolyline } from "../geometry/polylineOps";
-import { WALL_THICKNESS } from "../renderConstants";
+import { drawRoundedPolygon } from "../../domain/renderers/markerShapes";
+import { offsetPolyline, polylineLength, trimPolyline } from "../../domain/geometry/polylineOps";
+import { WALL_THICKNESS } from "../../domain/renderConstants";
 import { WALL_HIGHLIGHT_SPAN } from "./wallUtils";
 
 /// One highlighted stretch of the field boundary: a polyline (consecutive faces already merged) and its colour.

@@ -1,13 +1,13 @@
 import {
-  type MarkerSettings, type WaypointOpeningSettings, DirectionIndicatorGeometry, type WaypointOpeningMode, WAYPOINT_OPENING_MODES, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
+  type MarkerSettings, type WaypointOpeningSettings, DirectionIndicatorGeometry, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
-import type { MarkerShape, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
-import { CSS_FONT_WEIGHTS, DEFAULT_LABEL_FONT, type LabelFont } from "../../pixi/renderers/fontChoice";
+import type { MarkerShape, CornerStyle, TeleportGroupOverride } from "../../domain/renderers/types";
+import { CSS_FONT_WEIGHTS, DEFAULT_LABEL_FONT, type LabelFont } from "../../domain/renderers/fontChoice";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
-import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { sanitizeMarkerGlyph } from "../../domain/renderers/markerGlyph";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../domain/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -15,7 +15,8 @@ import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from
 import type { ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel, ParamDescriptor } from "../parameterLinks";
 import { validateLinkGraph, linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, type VectorByWallsParamPath, type VectorByCorridorsParamPath } from "../parameterLinksRegistry";
-import { MARKER_LAYOUT_MODES, type MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
+import { WAYPOINT_OPENING_MODES, type WaypointOpeningMode } from "../../domain/waypointOpeningMode";
+import { MARKER_LAYOUT_MODES, type MarkerLayoutMode } from "../../domain/selectors/mazeSelectors/markerLayout";
 import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
 
 // ─── Image Export (GitHub issue #295) ────────────────────────────────────────

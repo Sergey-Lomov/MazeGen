@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
-import { getSeamModel } from "../selectors/seams";
+import { getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../../domain/tessellationGeometry";
+import { getSeamModel } from "../../domain/selectors/seams";
 
 /** Smallest `1 - dot` of two outward normals at a shared vertex that still needs a wedge. A strip reaches
  *  `margin` beyond the wall, so even a tiny angle between neighbors opens a visible sliver there. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LOCALE_FONT_SCRIPT, fontSupportsScript } from "../components/fontLocaleSupport";
-import { MSDF_FONTS } from "../pixi/renderers/fontChoice";
+import { MSDF_FONTS } from "../domain/renderers/fontChoice";
 import { locales } from "../i18n/localeStore";
 
 // A new locale must say how font support is checked (GitHub issue #984). The `Record<Locale, ...>` type

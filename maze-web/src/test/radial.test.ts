@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
-import { buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
+import { buildSplitPassages } from "../domain/selectors/mazeSelectors";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 
-const { getCellPath, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, pointInPolygon, getCellVertices } = await import("../pixi/tessellationGeometry");
+const { getCellPath, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, pointInPolygon, getCellVertices } = await import("../domain/tessellationGeometry");
 
 // 9 first-ring cells, classic layout: rings 1-4 hold 9, 18, 18 and 36 cells.
 const cfg: FieldConfig = { tessellation: tessellationConfigOf("radial"), shape: { shape: "circle", radius: 4 } };

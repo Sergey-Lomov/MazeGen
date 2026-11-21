@@ -8,7 +8,7 @@ import {
   pointerCellAtConfig,
   resetPointerHover,
   toViewportCoordinates,
-} from "../pixi/pointerInteraction";
+} from "../domain/pointerInteraction";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("pointer interaction primitives", () => {

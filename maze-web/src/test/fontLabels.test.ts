@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fontWeightName, formatLabelFont } from "../store/fontLabels";
-import { CSS_FONT_WEIGHTS } from "../pixi/renderers/fontChoice";
+import { CSS_FONT_WEIGHTS } from "../domain/renderers/fontChoice";
 
 describe("fontWeightName", () => {
   it("names every CSS weight with its own non-empty label", () => {

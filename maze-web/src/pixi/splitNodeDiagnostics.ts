@@ -1,4 +1,4 @@
-import type { TileFaceNode } from "../components/features/TileFaceEditor";
+import type { TileFaceNode } from "../domain/tileFace";
 import type { SplitPattern } from "../wasm/types";
 import * as m from "~/paraglide/messages";
 

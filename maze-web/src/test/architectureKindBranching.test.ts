@@ -23,7 +23,7 @@ const web = resolve(__dirname, "..");
 const workspace = resolve(web, "../..");
 
 /// Registries and serialization: the only web files allowed to name a kind.
-const WEB_ALLOWED = ["pixi/geometry/tessellationUi.ts", "fieldConfig.ts", "store/projectExport/"];
+const WEB_ALLOWED = ["domain/geometry/tessellationUi.ts", "fieldConfig.ts", "store/projectExport/"];
 
 describe("no tessellation-kind branching outside factories and registries", () => {
   it("web (editor, renderers, export, store)", () => {

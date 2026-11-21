@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Graphics } from "pixi.js";
-import { borderCompensatedRadius, drawMarkerUnderlay, drawMarkerWithBorder, circlePolygonPoints, markerPolygonPoints, offsetPolygonPath, offsetPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
+import { borderCompensatedRadius, drawMarkerUnderlay, drawMarkerWithBorder, circlePolygonPoints, markerPolygonPoints, offsetPolygonPath, offsetPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../domain/renderers/markerShapes";
 
 /** Shoelace formula for a closed polygon's area from its flat point list. */
 function polygonArea(points: number[]): number {

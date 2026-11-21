@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ZoneGroup } from "../../store/zonesTypes";
 import type { Zone } from "../../wasm/mazeService";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
-import { zoneChipColors, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../pixi/selectors/zoneSelectors";
+import { zoneChipColors, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../domain/selectors/zoneSelectors";
 import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { Button } from "../Button";
 import { FloorBadgeRow } from "../FloorBadgeRow";

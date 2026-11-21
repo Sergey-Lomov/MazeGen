@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate } from "../store/projectExport";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { makeState, toJson } from "./projectExportKit";
 
 describe("parseAndValidate — malformed input", () => {

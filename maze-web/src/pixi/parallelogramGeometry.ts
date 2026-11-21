@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
-import { getCellVertices } from "./tessellationGeometry";
-import type { PolygonPoint } from "./polygonGeometry";
+import { getCellVertices } from "../domain/tessellationGeometry";
+import type { PolygonPoint } from "../domain/polygonGeometry";
 
 /** Pointer angle (radians) within which a side direction snaps to a tessellation edge direction. */
 const SNAP_TOLERANCE = (12 * Math.PI) / 180;

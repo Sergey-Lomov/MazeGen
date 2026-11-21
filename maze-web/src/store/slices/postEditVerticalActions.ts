@@ -1,9 +1,9 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, PostEditState, PostEditActions } from "../storeTypes";
-import { resolveVerticalPassageMove, resolveElevatorMove } from "../../pixi/postEditUtils";
-import { selectNodeLevelResolver } from "../../pixi/selectors/mazeSelectors";
-import { cellExistsAt } from "../../pixi/fieldEditUtils";
-import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
+import { resolveVerticalPassageMove, resolveElevatorMove } from "../../domain/postEditUtils";
+import { selectNodeLevelResolver } from "../../domain/selectors/sharedSelectors";
+import { cellExistsAt } from "../../domain/fieldValidity";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver } from "../../domain/postEditEndpoint";
 import { resolveFieldAtOf } from "../storeHelpers";
 import { tryCommitPostEditVerticalPassage, resolveDragTargets, dispatchPostEditElevatorPlacement, appendPostEditCommand } from "./postEditSliceHelpers";
 import { buildMultiFloorPointNodeMap } from "./postEditBaselineBuilders";

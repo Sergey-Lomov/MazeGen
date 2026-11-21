@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 
 describe("formatTargetLabel", () => {
   it("formats plain coordinates when floor and split suffix are both omitted", () => {

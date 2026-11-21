@@ -1,7 +1,7 @@
 import type React from "react";
 import type { GlueTabStyle } from "../../store/imageExportTypes";
 import { indent, spacing } from "../../styles/theme";
-import { GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE } from "../../domain/renderConstants";
 import { SectionHeader } from "../SectionHeader";
 import { Modal } from "../Modal";
 import { useGate } from "./LinkContext";

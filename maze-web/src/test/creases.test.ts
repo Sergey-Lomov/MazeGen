@@ -4,7 +4,7 @@ import { initialTopologyState } from "../store/slices/topologySlice";
 import { nextCreaseId, validateCreases, withCrease, type Crease } from "../store/creases";
 import { selectCreaseLines } from "../pixi/selectors/creaseLines";
 import { creaseDisplayPoint, creaseLabelPoint, faceMidpoint, nearestCreaseAnchor } from "../pixi/creaseGeometry";
-import { getCellGeometry } from "../pixi/cartesianCache";
+import { getCellGeometry } from "../domain/cartesianCache";
 import { baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 
 beforeEach(() => {

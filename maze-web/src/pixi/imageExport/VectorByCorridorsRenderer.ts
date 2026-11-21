@@ -1,45 +1,45 @@
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
-import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../../domain/selectors/mazeSelectors";
+import { LABEL_FONT_LOADED_EVENT } from "../../domain/renderers/fontChoice";
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
-import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
+import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../../domain/selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/MarkerIndexRenderer";
 import { SeamCopyRenderer } from "../renderers/SeamCopyRenderer";
 import { buildSeamCopySources } from "./seamCopySources";
 import { drawTrimMask } from "./seamTrim";
-import { getSeamModel } from "../selectors/seams";
+import { getSeamModel } from "../../domain/selectors/seams";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
-import { buildMarkerScaler } from "../markerScale";
+import { buildMarkerScaler } from "../../domain/markerScale";
 import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow } from "../renderers/wallUtils";
-import { buildTeleportGroups } from "../selectors/teleportGroups";
+import { buildTeleportGroups } from "../../domain/selectors/teleportGroups";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import { isHiddenSpecialMirror, type Viewport, type TeleportEdge, type SplitPassage, type SplitSpecialShape, type VerticalConnectionMarker } from "../renderers/types";
+import { isHiddenSpecialMirror, type Viewport, type TeleportEdge, type SplitPassage, type SplitSpecialShape, type VerticalConnectionMarker } from "../../domain/renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
 import { buildCorridorContour, buildCorridorContourInstances, traceCorridorContour, type CorridorShapeCache } from "./vectorByCorridorsContour";
 import { buildCorridorLineTiles, traceCorridorLineTile } from "./vectorByCorridorsLineTiles";
 import { CorridorTileLayer } from "./corridorTileLayer";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig } from "../../fieldConfig";
-import { TILE_SIZE } from "../constants";
+import { TILE_SIZE } from "../../domain/constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
-import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "../../domain/imageExport/exportMargins";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
-import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
+import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../../domain/tessellationGeometry";
 
 type SplitPoint = { x: number; y: number };
 type SplitClipViews = { clipView: Graphics; gapView: Graphics };
@@ -67,7 +67,7 @@ type SplitOneWayStyle = { color: number; thickness: number; width: number; join:
  * skipped entirely — their own follow-up sub-issue, same as `VectorByCorridorsSettings`' own doc
  * comment. */
 export class VectorByCorridorsRenderer implements ModeRenderer {
-  getTeleportConnectorPaths(): readonly { edge: import("../renderers/types").TeleportEdge; points: readonly number[] }[] {
+  getTeleportConnectorPaths(): readonly { edge: import("../../domain/renderers/types").TeleportEdge; points: readonly number[] }[] {
     this.renderAll(useMazeStore.getState());
     return this.teleports.getConnectorPaths();
   }

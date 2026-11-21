@@ -1,4 +1,4 @@
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig } from "../fieldConfig";

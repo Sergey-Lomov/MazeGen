@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual } from "../domain/presetEndpoint";
 import { fieldOf } from "./fieldConfigFixtures";
 import { noticeCodes } from "./notificationTestHelpers";
 import { setActiveFieldConfig, usePresetStateReset } from "./presetConnectionsSliceKit";

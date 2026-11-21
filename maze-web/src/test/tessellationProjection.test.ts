@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
+import { encodePoint, decodePoint } from "../domain/tessellationProjection";
 
 describe("encodePoint / decodePoint", () => {
   it("round-trips positive coords", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../pixi/presetSplitResolve", async () => {
-  const actual = await vi.importActual<typeof import("../pixi/presetSplitResolve")>("../pixi/presetSplitResolve");
+vi.mock("../domain/presetSplitResolve", async () => {
+  const actual = await vi.importActual<typeof import("../domain/presetSplitResolve")>("../domain/presetSplitResolve");
   return {
     ...actual,
     allNodesAt: (point: [number, number], _splitPoints: Record<string, number[]>, level?: number) => [
@@ -14,8 +14,8 @@ vi.mock("../pixi/presetSplitResolve", async () => {
   };
 });
 
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { presetTargetLabel, resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../pixi/presetSplitLabels";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { presetTargetLabel, resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../domain/presetSplitLabels";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("resolvePresetSplitNodeShortLabel", () => {

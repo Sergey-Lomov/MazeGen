@@ -1,7 +1,7 @@
 import type React from "react";
 import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { VerticalArrowStyle } from "../../pixi/renderers/types";
+import type { VerticalArrowStyle } from "../../domain/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { SelectRow } from "../SelectRow";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
@@ -23,9 +23,9 @@ import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/im
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { splitSlotColor } from "../../pixi/colorUtils";
-import { canvas } from "../../pixi/colorTokens";
-import { TILE_SIZE } from "../../pixi/constants";
+import { splitSlotColor } from "../../domain/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { TILE_SIZE } from "../../domain/constants";
 import { ColorVisibilityProvider } from "../ColorVisibilityContext";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";

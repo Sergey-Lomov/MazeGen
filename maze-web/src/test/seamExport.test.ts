@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import { WallRenderer } from "../pixi/renderers/WallRenderer";
-import { buildCorridorSegments, buildMazeWalls } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeWalls } from "../domain/selectors/mazeSelectors";
 import { buildCorridorLineTiles } from "../pixi/imageExport/vectorByCorridorsLineTiles";
 import { buildCorridorContour, contourToPolyline } from "../pixi/imageExport/vectorByCorridorsContour";
-import { getSeamModel } from "../pixi/selectors/seams";
-import { getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData } from "../pixi/tessellationGeometry";
+import { getSeamModel } from "../domain/selectors/seams";
+import { getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData } from "../domain/tessellationGeometry";
 import { trimMaskPolygons } from "../pixi/imageExport/VectorByWallsRenderer";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
 import { range } from "./seamFixtures";
 import { fieldOf } from "./fieldConfigFixtures";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 import type { TessellationKind } from "../fieldConfig";
 
 // Seam export (GitHub issue #842, `Specs/image-export.md`, "Seams in export"): both vector export
@@ -85,7 +85,7 @@ const cases: SeamCase[] = [
 
 const near = (p: { x: number; y: number }, q: { x: number; y: number }, tolerance = 1e-6): boolean => Math.hypot(p.x - q.x, p.y - q.y) <= tolerance;
 
-/// Whether a point lies inside any of the flat `[x0, y0, x1, y1, …]` polygons (even-odd ray casting).
+/// Whether a point lies inside any of the flat `[x0, y0, x1, y1, ï¿½]` polygons (even-odd ray casting).
 const boundsOf = new WeakMap<number[], [number, number, number, number]>();
 const insideAny = (polygons: number[][], px: number, py: number): boolean => polygons.some((polygon) => {
   let bounds = boundsOf.get(polygon);

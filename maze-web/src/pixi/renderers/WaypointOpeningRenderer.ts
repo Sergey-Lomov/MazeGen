@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { OneWayStyleOverride } from "./types";
+import type { OneWayStyleOverride } from "../../domain/renderers/types";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, type OneWayDrawStyle } from "./wallUtils";
 
 /** Where a pointer's gap ring must stop: the outer side the pointer stands on, which may be a curve. */

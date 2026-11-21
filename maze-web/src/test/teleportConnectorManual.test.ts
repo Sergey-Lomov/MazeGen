@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
 import { routeTeleportConnectors } from "../pixi/renderers/teleportConnectorPlan";
-import { curveControls, editableCurvePoints, manualConnectorPoints, parseTeleportConnectorKey, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import { curveControls, editableCurvePoints, manualConnectorPoints, parseTeleportConnectorKey, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../domain/renderers/teleportConnectorManual";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
+import type { TeleportEdge } from "../domain/renderers/types";
 
 const edge = (from: [number, number], to: [number, number], fromNode: number, toNode: number): TeleportEdge =>
   ({ from, to, fromNode, toNode, oneWay: false });

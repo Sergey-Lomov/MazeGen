@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { computeElevatorBadgeLayout, computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany, formatElevatorBadgeLabel, slotsPerRow } from "../pixi/renderers/elevatorBadgeLayout";
-import { TILE_SIZE } from "../pixi/constants";
-import { circleOverlapsRoundedRect } from "../pixi/renderers/verticalConnectionGeometry";
-import { markerIndexPlateBox, markerIndexPlateFootprint, type MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
+import { TILE_SIZE } from "../domain/constants";
+import { circleOverlapsRoundedRect } from "../domain/renderers/verticalConnectionGeometry";
+import { markerIndexPlateBox, markerIndexPlateFootprint, type MarkerIndexLabel } from "../domain/selectors/mazeSelectors/markerIndex";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("slotsPerRow", () => {

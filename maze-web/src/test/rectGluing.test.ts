@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type FieldShape } from "../fieldConfig";
 import { rectCloses, snapRectToClose, withoutRectGluing } from "../pixi/rectGluing";
-import { configAllCells } from "../pixi/tessellationCells";
+import { configAllCells } from "../domain/tessellationCells";
 import { presetTopologyOf } from "../store/presetTopology";
 import { buildPredefinedConfig } from "../store/storeHelpers";
 import { tessellationConfigOf } from "../fieldConfig";

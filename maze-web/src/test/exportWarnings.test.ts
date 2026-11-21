@@ -1,11 +1,11 @@
 import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors, computeTextOverflowWarningsAcrossFloors, TEXT_OVERFLOW_WARNING_ID } from "../pixi/selectors/exportWarnings";
-import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
+import { selectNodeLevelResolver } from "../domain/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
-import { canvas } from "../pixi/colorTokens";
+import { canvas } from "../domain/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";

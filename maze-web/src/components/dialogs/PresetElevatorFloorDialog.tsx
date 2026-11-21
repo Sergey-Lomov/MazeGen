@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ElevatorFloorPicker, type ElevatorFloorRow, type ElevatorFloorStatus } from "./ElevatorFloorPicker";
-import { cellExistsAt, resolveCells, presetConnectionsOnLevel } from "../../pixi/fieldEditUtils";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { resolvePresetSplitShapeLabel } from "../../pixi/presetSplitLabels";
+import { resolveCells, presetConnectionsOnLevel } from "../../domain/fieldEditUtils";
+import { cellExistsAt } from "../../domain/fieldValidity";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import { resolvePresetSplitShapeLabel } from "../../domain/presetSplitLabels";
 import { resolveFieldAtOf, levelFieldsOf } from "../../store/storeHelpers";
 import * as m from "~/paraglide/messages";
 

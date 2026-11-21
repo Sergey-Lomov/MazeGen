@@ -3,8 +3,8 @@ import { VectorByWallsRenderer } from "./VectorByWallsRenderer";
 import { VectorByCorridorsRenderer } from "./VectorByCorridorsRenderer";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
-import type { ExportMargin } from "./exportMargins";
-import type { TeleportEdge } from "../renderers/types";
+import type { ExportMargin } from "../../domain/imageExport/exportMargins";
+import type { TeleportEdge } from "../../domain/renderers/types";
 
 /** See `ModeRenderer.setRenderPass`. */
 export type RenderPass = "full" | "backdrop" | "content" | "overlay" | "foreground";

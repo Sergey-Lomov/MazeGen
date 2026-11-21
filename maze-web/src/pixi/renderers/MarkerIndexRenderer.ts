@@ -1,8 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
-import { markerIndexPlateBox, type MarkerIndexLabel, type MarkerIndexPlateBox } from "../selectors/mazeSelectors/markerIndex";
+import { markerIndexPlateBox, type MarkerIndexLabel, type MarkerIndexPlateBox } from "../../domain/selectors/mazeSelectors/markerIndex";
 import { makeCenteredLabel } from "./msdfFont";
-import { drawRoundedRect } from "./markerShapes";
+import { drawRoundedRect } from "../../domain/renderers/markerShapes";
 
 export interface MarkerIndexRenderData {
   labels: MarkerIndexLabel[];

@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { EntityChoiceDialog } from "./EntityChoiceDialog";
-import { formatTargetLabel } from "../../pixi/targetLabel";
-import { presetEntitiesForPurpose } from "../../pixi/entityToolKinds";
+import { formatTargetLabel } from "../../domain/targetLabel";
+import { presetEntitiesForPurpose } from "../../domain/entityToolKinds";
 import { presetEntityChoiceRows, presetEntityRowKey, usePresetPointEntities } from "./usePresetPointEntities";
 import * as m from "~/paraglide/messages";
 

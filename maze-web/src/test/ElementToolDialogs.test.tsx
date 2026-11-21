@@ -7,8 +7,8 @@ import { PresetEntityPickDialog } from "../components/dialogs/PresetEntityPickDi
 import { PostEditEntityPickDialog } from "../components/dialogs/PostEditEntityPickDialog";
 import { PresetLockSettingsDialog } from "../components/dialogs/PresetLockSettingsDialog";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
 

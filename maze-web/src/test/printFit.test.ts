@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
-import type { ExportMargin } from "../pixi/imageExport/exportMargins";
+import type { ExportMargin } from "../domain/imageExport/exportMargins";
 import type { PrintExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
-import { TILE_SIZE } from "../pixi/constants";
+import { TILE_SIZE } from "../domain/constants";
 
-const { cellMeasureWorldUnits, printMeasureFromEntered, printEnteredFromMeasure, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
+const { cellMeasureWorldUnits, printMeasureFromEntered, printEnteredFromMeasure, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../domain/imageExport/printFit");
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };

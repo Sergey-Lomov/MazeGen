@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCutShift } from "../pixi/imageExport/cutShift";
-import { DPI_BY_DENSITY, pxToMm } from "../pixi/imageExport/printFit";
+import { DPI_BY_DENSITY, pxToMm } from "../domain/imageExport/printFit";
 
 describe("formatCutShift", () => {
   const digital = { mode: "digital", digital: { scale: 2 } } as const;

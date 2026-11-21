@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FieldEditController } from "../pixi/FieldEditController";
-import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
+import { encodePoint, makeProjection } from "../domain/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { FieldSizeReadout } from "../pixi/fieldSizeReadout";
-import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import type { PrimitiveWorldGeometry } from "../domain/primitiveGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
 import { AUTO_FILL_PREVIEW_ACTIVE, SMOOTHING_AFFECTED, SMOOTHING_EMPTY_RESULT } from "../notifications/fieldSetupNotifications";

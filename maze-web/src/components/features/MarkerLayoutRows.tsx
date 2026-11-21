@@ -1,5 +1,5 @@
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import type { MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
+import type { MarkerLayoutMode } from "../../domain/selectors/mazeSelectors/markerLayout";
 import * as m from "~/paraglide/messages";
 
 /** "Layout" + "Scale" rows of the marker positioning layer (GitHub issue #735), shared by both

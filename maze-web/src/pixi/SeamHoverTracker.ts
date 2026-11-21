@@ -1,7 +1,7 @@
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { MazeState } from "../store/storeTypes";
-import { arrowContains, pairAt, type SeamArrow } from "./selectors/seamArrows";
+import { arrowContains, pairAt, type SeamArrow } from "../domain/selectors/seamArrows";
 import { selectSeamArrowData } from "./seamArrowSync";
 
 /// The pointer reach around an arrow, relative to its width.

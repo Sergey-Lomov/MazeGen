@@ -5,7 +5,7 @@ import { ManageSplitNodesDialog } from "../components/features/ManageSplitNodesD
 import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, postEditStatePatch } from "./storeTestHelpers";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint } from "../domain/postEditEndpoint";
 import { fieldOf } from "./fieldConfigFixtures";
 import { TileFaceEditor } from "../components/features/TileFaceEditor";
 import { resetNotifications } from "../notifications/notificationStore";

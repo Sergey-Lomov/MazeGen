@@ -1,7 +1,8 @@
 import { RotateCcw, RotateCw } from "lucide-react";
-import { canRotateSplit } from "../../pixi/splitShape";
-import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
-import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
+import { canRotateSplit } from "../../domain/splitShape";
+import { getSplitCircleRotationDeg, getTileDiagram } from "../../domain/tessellationGeometry";
+import { computeSplitFaceLayouts, computeSplitConnectors } from "../../domain/splitFaceLayout";
+import type { TileFaceKind, TileFaceNode } from "../../domain/tileFace";
 import type { FieldConfig } from "../../fieldConfig";
 import { ui, spacing, typography } from "../../styles/theme";
 import { disabledOf } from "../../styles/palette";
@@ -11,25 +12,6 @@ import type React from "react";
 import {
   type EditRefusalSource, notifyEditRefusal, SPLIT_BOUNDARY_FACE,
 } from "../../notifications/editRefusalNotifications";
-
-/** What a tile's face currently shows for one node, for the "Manage split nodes" dialog's
- * large-tile diagram (GitHub issue #234). `"one_way_out"`/`"one_way_in"` are relative to that
- * node — `out` means the node is the passage's source. */
-export type TileFaceKind = SplitFaceKind;
-
-export interface TileFace {
-  kind: TileFaceKind;
-  /** No neighboring tile exists on this side — clicking reports a refusal notice in editors.
-   * Identical for every node at this point (a property of the side itself), but carried per-face
-   * for convenience at the call site. */
-  boundary: boolean;
-}
-
-export interface TileFaceNode {
-  color: string;
-  /** One entry per `getNeighborData` offset index for this cell. */
-  faces: TileFace[];
-}
 
 interface Props {
   point: [number, number];

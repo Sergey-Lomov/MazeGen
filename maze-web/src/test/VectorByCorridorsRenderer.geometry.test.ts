@@ -3,14 +3,14 @@ import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGa
 import { clipStrokeToConvexPolygon, computeMiterJunctionPatch, selectInwardJunctionWedge, corridorCellStep } from "../pixi/imageExport/vectorByCorridorsGeometry";
 import { buildCorridorContour, contourToPolyline, type ContourPath, type PathCmd } from "../pixi/imageExport/vectorByCorridorsContour";
 import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
-import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
+import { buildTeleportGroups } from "../domain/selectors/teleportGroups";
 import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBuilders";
-import type { VerticalConnectionMarker } from "../pixi/renderers/types";
+import type { VerticalConnectionMarker } from "../domain/renderers/types";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { settingsA } from "./vbcKit";
 
 
-vi.mock("../pixi/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
+vi.mock("../domain/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
 vi.mock("../pixi/renderers/WallRenderer", async () => (await import("./vbcMocks")).wallRendererMock());
 vi.mock("../pixi/renderers/TeleportRenderer", async () => (await import("./vbcMocks")).teleportRendererMock());
 vi.mock("../pixi/renderers/VerticalConnectionRenderer", async () => (await import("./vbcMocks")).verticalConnectionRendererMock());

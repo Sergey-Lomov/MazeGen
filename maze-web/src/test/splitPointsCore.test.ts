@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveSplitPointsFromNodes } from "../pixi/splitPointsCore";
+import { deriveSplitPointsFromNodes } from "../domain/splitPointsCore";
 
 describe("deriveSplitPointsFromNodes", () => {
   it("returns an empty map when no point has more than one node", () => {

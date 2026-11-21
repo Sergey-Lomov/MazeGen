@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../../fieldConfig";
-import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
-import { getSeamModel } from "./seams";
+import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../../domain/tessellationGeometry";
+import { getSeamModel } from "../../domain/selectors/seams";
 
 /// The drawn copies of the logical edge between two cells, in display space: the one shared face of
 /// ordinary neighbors, or, across a seam, each side's own copy of the glued face (side of `a` first).

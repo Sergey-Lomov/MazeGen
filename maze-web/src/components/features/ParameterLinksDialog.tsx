@@ -12,7 +12,7 @@ import { SectionHeader } from "../SectionHeader";
 import { typography } from "../../styles/theme";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import { getParamValue, reachableFrom, wouldCreateCycle } from "../../store/slices/parameterLinksEngine";
-import { colorToHex } from "../../store/colorMath";
+import { colorToHex } from "../../domain/colorMath";
 import * as m from "~/paraglide/messages";
 import { styles } from "./ParameterLinksDialog.styles";
 import { buildPickerTree, BreadcrumbNav, ParamPicker } from "./ParameterLinksPicker";

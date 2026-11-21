@@ -1,7 +1,7 @@
 import type { NodeLockKind } from "../../wasm/types";
-import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
+import type { PostEditEndpoint } from "../../domain/postEditEndpoint";
+import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import type { PostEditCommand, ResolvedRotateNode, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdgeState } from "../postEditTypes";
 import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY } from "../storeTypes";
@@ -14,7 +14,7 @@ import type {
   ProjectFileFloorField,
   ProjectFileQuality,
 } from "./types";
-import { availablePresetKeys, polyhedronNetCount } from "../../pixi/fieldOps";
+import { availablePresetKeys, polyhedronNetCount } from "../../domain/fieldOps";
 import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type RectAxis, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,

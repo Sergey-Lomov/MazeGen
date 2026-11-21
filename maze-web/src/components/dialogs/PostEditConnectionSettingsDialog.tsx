@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { endpointBubble } from "../../pixi/postEditCommandLabels";
-import { resolveEndpointToHoverPoint, type PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { endpointBubble } from "../../domain/postEditCommandLabels";
+import { resolveEndpointToHoverPoint, type PostEditEndpoint } from "../../domain/postEditEndpoint";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import { ConnectionSettingsDialog } from "./ConnectionSettingsDialog";
 import * as m from "~/paraglide/messages";
 

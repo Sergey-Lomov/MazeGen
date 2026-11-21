@@ -1,25 +1,25 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
-import type { WaypointOpeningMode } from "../../store/imageExportTypes";
+import type { WaypointOpeningMode } from "../../domain/waypointOpeningMode";
 import {
   buildTeleportEdges, buildCorridorSegments, shortestCorridorFace, selectNodeLevelResolver,
   selectVerticalPassagePairSet, buildVerticalConnectionMarkers,
-} from "./mazeSelectors";
-import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers";
-import { endpointOuterFaces, floorCellSet } from "./mazeSelectors/waypointOpening";
-import type { TeleportFloorContext } from "./mazeSelectors";
-import type { TeleportEdge } from "../renderers/types";
+} from "../../domain/selectors/mazeSelectors";
+import { withMarkerVisibility, isWaypointVisible } from "../../domain/selectors/mazeSelectors/markers";
+import { endpointOuterFaces, floorCellSet } from "../../domain/selectors/mazeSelectors/waypointOpening";
+import type { TeleportFloorContext } from "../../domain/selectors/mazeSelectors";
+import type { TeleportEdge } from "../../domain/renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
 import { computeElevatorBadgeLayout, elevatorBadgesOverlap, formatElevatorBadgeLabel } from "../renderers/elevatorBadgeLayout";
 import { labelInkOverlaps } from "../textFit";
-import { plainLabelFont } from "../renderers/fontChoice";
-import { TILE_SIZE } from "../constants";
+import { plainLabelFont } from "../../domain/renderers/fontChoice";
+import { TILE_SIZE } from "../../domain/constants";
 import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
-import { oneWayStopLineShape, stopLineOverlapsRoundedRect, type RoundedRectGeometry } from "../renderers/verticalConnectionGeometry";
-import type { VerticalConnectionStyle } from "../renderers/types";
-import { buildMarkerIndexLabels, markerIndexPlateFootprint } from "./mazeSelectors/markerIndex";
-import type { TeleportGroup } from "./teleportGroups";
+import { oneWayStopLineShape, stopLineOverlapsRoundedRect, type RoundedRectGeometry } from "../../domain/renderers/verticalConnectionGeometry";
+import type { VerticalConnectionStyle } from "../../domain/renderers/types";
+import { buildMarkerIndexLabels, markerIndexPlateFootprint } from "../../domain/selectors/mazeSelectors/markerIndex";
+import type { TeleportGroup } from "../../domain/selectors/teleportGroups";
 import { getProjectTeleportGroups } from "./projectTeleportGroups";
 import { buildColorVisibility, visibleColor, type ColorVisibilityContext, type ColorVisibilityMaze } from "./colorFieldRegistry";
 import { withLazyResolvedGroupOverrides } from "../../store/teleportGroupLinks";

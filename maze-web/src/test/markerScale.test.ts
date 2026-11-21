@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getFieldAreaStats, warmCartesianCache } from "../pixi/cartesianCache";
-import { areaScaleFactor, buildMarkerScaler, hasCellAreaSpread, NO_MARKER_SCALING } from "../pixi/markerScale";
+import { getFieldAreaStats, warmCartesianCache } from "../domain/cartesianCache";
+import { areaScaleFactor, buildMarkerScaler, hasCellAreaSpread, NO_MARKER_SCALING } from "../domain/markerScale";
 import { footprintsOfMarkers, footprintsOfVertical } from "../pixi/markerFootprints";
-import type { VerticalConnectionMarker, VerticalConnectionStyle } from "../pixi/renderers/types";
+import type { VerticalConnectionMarker, VerticalConnectionStyle } from "../domain/renderers/types";
 import { WaypointsRenderer } from "../pixi/renderers/WaypointsRenderer";
 import { Container } from "pixi.js";
-import type { MarkerData } from "../pixi/renderers/types";
+import type { MarkerData } from "../domain/renderers/types";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const mixed = fieldOf("square_octagon", { shape: "circle", radius: 3 });

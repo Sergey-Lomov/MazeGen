@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../pixi/presetSplitResolve", async () => {
-  const actual = await vi.importActual<typeof import("../pixi/presetSplitResolve")>("../pixi/presetSplitResolve");
+vi.mock("../domain/presetSplitResolve", async () => {
+  const actual = await vi.importActual<typeof import("../domain/presetSplitResolve")>("../domain/presetSplitResolve");
   return {
     ...actual,
     allNodesAt: (point: [number, number], splitPoints: Record<string, number[]>, level?: number) => {
@@ -18,8 +18,8 @@ vi.mock("../pixi/presetSplitResolve", async () => {
 });
 
 import { buildPresetListCells, filterPresetListCells, PRESET_LIST_TYPES, PRESET_LIST_TYPES_OFF_BY_DEFAULT, type PresetListInput, type PresetListType } from "../components/features/PresetList";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import type { PresetSplitLabelContext } from "../pixi/presetSplitLabels";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import type { PresetSplitLabelContext } from "../domain/presetSplitLabels";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const emptyInput = (): PresetListInput => ({

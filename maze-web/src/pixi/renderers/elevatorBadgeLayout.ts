@@ -1,11 +1,11 @@
 import type { ElevatorBadgePlacement } from "../../store/imageExportTypes";
-import { TILE_SIZE } from "../constants";
-import { circleOverlapsRoundedRect, type RoundedRectGeometry } from "./verticalConnectionGeometry";
+import { TILE_SIZE } from "../../domain/constants";
+import { circleOverlapsRoundedRect, type RoundedRectGeometry } from "../../domain/renderers/verticalConnectionGeometry";
 
 // Label formatting moved to the neutral `indexLabel.ts` (shared with GitHub issue #471's marker
 // index labels). Re-exported here so existing importers keep working unchanged.
-export { toRoman, toLetters } from "./indexLabel";
-export { formatIndexLabel as formatElevatorBadgeLabel } from "./indexLabel";
+export { toRoman, toLetters } from "../../domain/renderers/indexLabel";
+export { formatIndexLabel as formatElevatorBadgeLabel } from "../../domain/renderers/indexLabel";
 
 /** One badge's own world-space center, in layout order (ascending floor index — see
  *  `ElevatorBadgeSettings`'s own doc comment). Pure geometry, no drawing — shared by

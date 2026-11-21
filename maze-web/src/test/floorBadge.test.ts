@@ -31,7 +31,7 @@ vi.mock("pixi.js", () => {
   } };
 });
 
-vi.mock("../pixi/tessellationGeometry", () => ({
+vi.mock("../domain/tessellationGeometry", () => ({
   getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
   getCellVertices: () => [
     { x: -10, y: -10 },

@@ -1,16 +1,17 @@
 import { Container, Graphics } from "pixi.js";
-import { seamHopSlots, seamStubHighlights, type SeamHopContext } from "./graphSeams";
+import { seamHopSlots, seamStubHighlights, type SeamHopContext } from "../domain/graphSeams";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
-import { NODE_RADIUS } from "./renderConstants";
-import { canvas } from "./colorTokens";
-import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/NodeEdgeHighlightRenderer";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
+import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
+import type { NodeEdgeHighlight } from "../domain/renderers/types";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { splitWallAndLineEdges } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
-import { buildNodePositions } from "./tessellationGeometry";
-import type { Pos } from "./tessellationGeometry";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
+import type { Pos } from "../domain/tessellationGeometry";
 import { buildCrossFloorMarkers, drawCrossFloorMarkers, type NodeCellResolver } from "./BaseGraphRenderer";
 
 const HIGHLIGHT_WIDTH = 3;

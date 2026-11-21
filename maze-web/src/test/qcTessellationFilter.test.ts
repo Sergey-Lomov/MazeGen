@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { qcForTessellation } from "../store/slices/qcTessellationFilter";
-import { selectTessellationWouldLoseData } from "../pixi/selectors/mazeSelectors";
+import { selectTessellationWouldLoseData } from "../store/tessellationLoss";
 import { getTessellationShapes, getTessellationCellTypes } from "../wasm/mazeService";
 import type { CheckDescriptor, RuleParamDescriptor, StrategyDescriptor } from "../wasm/types";
 import type { QcRuleState } from "../store/storeTypes";

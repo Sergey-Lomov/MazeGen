@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
+import { TESSELLATION_UI } from "../../domain/geometry/tessellationUi";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles } from "../../styles/shared";
@@ -10,7 +10,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { hasOpenModal } from "../Modal";
 import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
 import { blurActiveElement } from "../../pixi/toolShortcuts";
-import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
+import { selectTessellationWouldLoseData } from "../../store/tessellationLoss";
 import * as m from "~/paraglide/messages";
 
 /** Message keys of the labels of every kind's `paramSpecs` entry. */

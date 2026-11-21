@@ -36,7 +36,7 @@ vi.mock("pixi.js", () => {
 });
 
 vi.mock("../pixi/BaseGraphRenderer", () => graphSpies);
-vi.mock("../pixi/tessellationGeometry", () => ({
+vi.mock("../domain/splitNodeGeometry", () => ({
   buildNodePositions: () => new Map([[1, { x: 10, y: 20 }]]),
 }));
 vi.mock("../pixi/renderers/NodeEdgeHighlightRenderer", () => ({
@@ -52,8 +52,8 @@ vi.mock("../pixi/renderers/wallUtils", () => ({
 
 import { Container, Graphics } from "pixi.js";
 import { DebugRefHighlightOverlay } from "../pixi/DebugRefHighlightOverlay";
-import { NODE_RADIUS } from "../pixi/renderConstants";
-import { canvas } from "../pixi/colorTokens";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
 
 type FakeContainer = InstanceType<typeof Container> & { children: unknown[] };

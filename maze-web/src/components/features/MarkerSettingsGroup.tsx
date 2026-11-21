@@ -8,9 +8,9 @@ import { SectionHeader } from "../SectionHeader";
 import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
 import { useGate } from "./LinkContext";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
-import { DEFAULT_LABEL_FONT } from "../../pixi/renderers/fontChoice";
-import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../pixi/renderers/markerGlyph";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../domain/renderConstants";
+import { DEFAULT_LABEL_FONT } from "../../domain/renderers/fontChoice";
+import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../domain/renderers/markerGlyph";
 import * as m from "~/paraglide/messages";
 
 export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRows";

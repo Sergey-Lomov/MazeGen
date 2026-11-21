@@ -1,14 +1,14 @@
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
-import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
-import { markerIndexPlateFootprint } from "../selectors/mazeSelectors";
+import type { MarkerIndexLabel } from "../../domain/selectors/mazeSelectors/markerIndex";
+import { markerIndexPlateFootprint } from "../../domain/selectors/mazeSelectors";
 import type { SeamDisk } from "../selectors/seamCopies";
-import type { MarkerData, VerticalConnectionMarker, VerticalConnectionStyle } from "../renderers/types";
+import type { MarkerData, VerticalConnectionMarker, VerticalConnectionStyle } from "../../domain/renderers/types";
 import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/MarkerIndexRenderer";
 import { VerticalConnectionRenderer, verticalMarkerFootprint, type VerticalConnectionRenderData } from "../renderers/VerticalConnectionRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import type { SeamCopySource } from "../renderers/SeamCopyRenderer";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../renderConstants";
-import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../../domain/renderConstants";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../domain/markerScale";
 
 /// The free-standing artwork that can reach past a glued face, as `SeamCopySource`s for `SeamCopyRenderer`
 /// (GitHub issue #981, `Specs/topology.md`, "Elements that cross a seam"). Adding a kind is a bound per

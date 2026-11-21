@@ -1,7 +1,7 @@
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { mirrorStatus } from "../../pixi/mirror";
-import { zoneEditActive } from "../../pixi/fieldEditTarget";
+import { mirrorStatus } from "../../domain/mirror";
+import { zoneEditActive } from "../../store/fieldEditTarget";
 import type { FieldOperation } from "../../store/mazeStore";
 import { fieldOpErrorMessage } from "../../pixi/fieldOpErrorMessage";
 import { Button } from "../Button";

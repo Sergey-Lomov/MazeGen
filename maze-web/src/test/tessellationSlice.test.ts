@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { encodePoint } from "../pixi/tessellationProjection";
-import { resolveFieldConfig } from "../pixi/tessellationCells";
+import { encodePoint } from "../domain/tessellationProjection";
+import { resolveFieldConfig } from "../domain/tessellationCells";
 import { baseStoreState, emptyFreePoints, freeFieldEditState, hexPredefinedState, trianglePredefinedState, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";

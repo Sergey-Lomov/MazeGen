@@ -1,14 +1,14 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { splitSlotColor } from "../../pixi/colorUtils";
-import { canvas } from "../../pixi/colorTokens";
-import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
-import { splitShapeBinding } from "../../pixi/splitShape";
-import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
+import { splitSlotColor } from "../../domain/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { detectSplitSpecialShapeKind } from "../../domain/splitFaceLayout";
+import { splitShapeBinding } from "../../domain/splitShape";
+import { splitNodeSemanticNamesFromKinds } from "../../domain/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 

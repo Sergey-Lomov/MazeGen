@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveCellInspection } from "../pixi/cellInspectionResolver";
-import { resolveCells } from "../pixi/fieldEditUtils";
+import { resolveCells } from "../domain/fieldEditUtils";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 

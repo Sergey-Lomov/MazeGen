@@ -1,9 +1,9 @@
 import { Container, Graphics } from "pixi.js";
-import { TILE_SIZE } from "./constants";
-import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
+import { TILE_SIZE } from "../domain/constants";
+import { getCellVertices as geometryCellVertices } from "../domain/tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
-import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
-import { canvas } from "./colorTokens";
+import type { PrimitiveWorldGeometry } from "../domain/primitiveGeometry";
+import { canvas } from "../domain/colorTokens";
 import { controlLineWidth } from "./controlLineWidth";
 import { buildRegionContours, renderRegionContours, withRegionOnLeft } from "./renderers/regionContours";
 import { getCellHighlightInset } from "./cellHighlightGeometry";

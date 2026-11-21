@@ -21,12 +21,12 @@ import type {
   GlueTabStyle,
   EdgeMarkerStyle,
 } from "../storeTypes";
-import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
-import { canvas } from "../../pixi/colorTokens";
-import { DEFAULT_LABEL_FONT } from "../../pixi/renderers/fontChoice";
-import { TILE_SIZE } from "../../pixi/constants";
-import { AUTO_HUE_BASE_COLOR, DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
-import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
+import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../domain/selectors/mazeSelectors/markerLayout";
+import { canvas } from "../../domain/colorTokens";
+import { DEFAULT_LABEL_FONT } from "../../domain/renderers/fontChoice";
+import { TILE_SIZE } from "../../domain/constants";
+import { AUTO_HUE_BASE_COLOR, DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../domain/renderConstants";
+import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../domain/defaultMazeRenderStyle";
 import { propagate } from "./parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
 

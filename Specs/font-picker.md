@@ -19,7 +19,7 @@ Side panel for choosing a canvas label font, the counterpart of the color picker
 ## Stored value
 
 A font is stored as one `LabelFont` value, `{ family, weight }` (`textFont`, `labelFont`;
-`pixi/renderers/fontChoice.ts`; see `Specs/image-export.md`, "Font"), because the weights a
+`domain/renderers/fontChoice.ts`; see `Specs/image-export.md`, "Font"), because the weights a
 font offers depend on the font. `family` is the key of a baked MSDF font (`MSDF_FONTS`; the empty
 string is the bundled Roboto) or the name of an installed TTF/OTF font drawn by the browser; `weight`
 is a CSS weight, 100..900. The panel derives the font type from the family, so no extra field exists.
@@ -31,7 +31,7 @@ default font.
 `MSDF_FONTS` is a catalog (font name plus the atlas files of its weights) and costs nothing by itself.
 An atlas is downloaded and decoded only when its font is first needed (`loadMsdfFamily`,
 `pixi/renderers/msdfLoader.ts`): picked in a font picker, highlighted in the picker preview, or referenced
-by the export settings. The last case is `installLabelFontSync` (`store/labelFontSync.ts`): it watches
+by the export settings. The last case is `installLabelFontSync` (`pixi/labelFontSync.ts`, installed once at startup by `installStoreSyncs`, `pixi/installStoreSyncs.ts`, because the store never imports `pixi/`): it watches
 `vectorByWallsSettings`, `vectorByCorridorsSettings` and the maze graph (`nodes`, `edges`, `floors`), and any drawn
 `LabelFont` (see "Drawn fonts") that names a non-default catalog font starts its download once. It covers every way
 settings arrive (project load, visual preset, shared-style link, picker) without needing a font row on
@@ -105,7 +105,7 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   - **Row.** The font name (cut with an ellipsis), then the indicators, then the format bubble last (`FontOption`, memoized, so a move re-renders
     only the two rows whose selection changed). Indicators, in order: **in project** (lucide `CircleDot`, `FontUsedIcon`; the family is
     named by a drawn `LabelFont` of `vectorByWallsSettings` or `vectorByCorridorsSettings`, found by
-    `collectDrawnLabelFontFamilies`, `store/labelFontSync.ts`, see "Drawn fonts"; read once when the panel opens, because the live preview keeps the
+    `collectDrawnLabelFontFamilies`, `pixi/labelFontSync.ts`, see "Drawn fonts"; read once when the panel opens, because the live preview keeps the
     store on the highlighted font and would mark every browsed font; the default Roboto counts while any drawn text uses it),
     **uploaded by user** (`Upload`; an uploaded font file, hint "Uploaded by user"; a typed name has none), **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. All status icons share one size, `FONT_STATUS_ICON_SIZE` (14 px, `components/FontStatusIcons.tsx`, which also holds `FontUsedIcon`, reused by the delete dialog). The two status icons are muted
     with a `Tooltip` hint and an `aria-label` (not tab stops: the tooltip is `focusable={false}` so the list keeps keyboard focus). Every hint of the panel (indicators, format bubbles, filter chips, copyright icon) goes through the shared `Tooltip`, never a native `title`. The **format** is a `Bubble` (the shared chip) in one of two neutral hues
@@ -309,7 +309,7 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 
 ## Drawn fonts (GitHub issue #1012)
 
-A font counts as used by the project only while its text is drawn. `collectDrawnLabelFonts` (`store/labelFontSync.ts`)
+A font counts as used by the project only while its text is drawn. `collectDrawnLabelFonts` (`pixi/labelFontSync.ts`)
 walks the `labelFont` fields of `LINK_SCHEMA` (`textFont` of start and finish captions, teleport floor badges, elevator
 badges, marker indices and floor labels; the "Shared style" source `labelFont` is skipped, since it draws nothing
 itself) in both render modes and keeps a field's font only while its settings row is active

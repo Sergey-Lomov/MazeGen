@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { snapEquilateralAngle } from "../pixi/primitiveGeometry";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
-import { isIdentityLinear } from "../pixi/geometry/tessellationUi";
+import { snapEquilateralAngle } from "../domain/primitiveGeometry";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
+import { isIdentityLinear } from "../domain/geometry/tessellationUi";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const near = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-9;

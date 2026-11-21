@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { TILE_SIZE } from "../pixi/constants";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
+import { TILE_SIZE } from "../domain/constants";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
 import { fieldOf } from "./fieldConfigFixtures";
 
-const { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, anchorCanonicalFaces } = await import("../pixi/tessellationGeometry");
+const { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, anchorCanonicalFaces } = await import("../domain/tessellationGeometry");
 
 const cfg = fieldOf("snub_hexagonal", { shape: "rect", cols: 3, rows: 3 });
 // Wire cells are `[9q + kind, r]` with kind 0 hexagon, 1..6 triangles across hexagon faces 0..5, 7 and 8

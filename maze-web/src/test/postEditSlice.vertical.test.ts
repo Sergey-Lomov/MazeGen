@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { n, node, floorsExtra, seedPostEdit, resetPostEditStore } from "./postEditSliceKit";
-import { splitEndpoint } from "../pixi/postEditEndpoint";
+import { splitEndpoint } from "../domain/postEditEndpoint";
 import { noticeCodes, noticeParams } from "./notificationTestHelpers";
 import { ELEVATOR_DRAG_FAILED, VERTICAL_PASSAGE_DRAG_FAILED, VERTICAL_PASSAGE_NO_ADJACENT_CELL } from "../notifications/editRefusalNotifications";
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 import { computeAnalyticsAsync as computeAnalytics } from "../wasm/mazeService";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

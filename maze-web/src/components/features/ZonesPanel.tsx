@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { Zone } from "../../wasm/mazeService";
-import { countZonesOfKind, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../pixi/selectors/zoneSelectors";
+import { countZonesOfKind, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../domain/selectors/zoneSelectors";
 import { Button } from "../Button";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";

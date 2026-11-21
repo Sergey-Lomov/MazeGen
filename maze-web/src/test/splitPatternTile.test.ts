@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { degreeFor, originCellOf, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
-import { titleKeyForTopology } from "../pixi/splitPatternTitles";
+import { degreeFor, originCellOf, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../domain/splitPatternTile";
+import { titleKeyForTopology } from "../domain/splitPatternTitles";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

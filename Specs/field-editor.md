@@ -52,7 +52,7 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 
 Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #762):
 `field_capabilities(tessellation)` lists the presets (`key`, plus `params: [{name, min}]`) and the
-operations (`translate`, `reflect`) it supports. `pixi/fieldOps.ts` caches the capabilities per
+operations (`translate`, `reflect`) it supports. `domain/fieldOps.ts` caches the capabilities per
 tessellation. The shape selector lists exactly the offered presets; each preset's parameter form is
 built from its schema (one input per param, lower bound `min`). A tool whose operation is not
 offered is hidden (the Mirror tool needs `reflect`; moving a selection needs `translate`). The

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildSplitPassages, hasCrossFloorTeleport, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
-import { getCellCenter, nearestCellCoord } from "../pixi/tessellationGeometry";
+import { buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildSplitPassages, hasCrossFloorTeleport, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type TeleportBadgeSpreadOptions } from "../domain/selectors/mazeSelectors";
+import { getCellCenter, nearestCellCoord } from "../domain/tessellationGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import type { VerticalConnectionMarker } from "../pixi/renderers/types";
+import type { VerticalConnectionMarker } from "../domain/renderers/types";
 import { n, e, squareCfg, teleport, twoWay } from "./mazeSelectorsKit";
 
 vi.mock("pixi.js", async () => (await import("./mazeSelectorsMocks")).pixiMock());

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { PresetList } from "../components/features/PresetList";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";

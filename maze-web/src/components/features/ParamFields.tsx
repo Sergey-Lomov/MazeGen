@@ -16,7 +16,7 @@ import { nodeShapesOf } from "./nodeShapeVocabulary";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
 import { useMazeStore } from "../../store/mazeStore";
-import { cellTypeKeysOf } from "../../pixi/shapeTemplates";
+import { cellTypeKeysOf } from "../../domain/shapeTemplates";
 import * as m from "~/paraglide/messages";
 
 // Resolves an `EntityVisibility` condition against current maze state (GitHub issue #349) — the

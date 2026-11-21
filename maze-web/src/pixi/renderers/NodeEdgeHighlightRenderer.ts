@@ -1,20 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import type { EdgeHL } from "./types";
+import type { EdgeHL, NodeEdgeHighlight } from "../../domain/renderers/types";
 import { EdgeHighlightRenderer } from "./EdgeHighlightRenderer";
-
-export interface NodeEdgeHighlight {
-  from: { x: number; y: number };
-  to: { x: number; y: number };
-  color: number;
-  width: number;
-  alpha: number;
-  nodeRadius: number;
-  /** `false` leaves the start / end without its node marker (a stub ending at a seam). */
-  fromMarker?: boolean;
-  toMarker?: boolean;
-  /** Same meaning as `EdgeHL.bidirectional`. */
-  bidirectional?: boolean;
-}
 
 /** Shared "node-to-node" highlight primitive (GitHub issue #237) — a straight line between two
  *  node positions plus a small filled circle marker on each end, extracted from

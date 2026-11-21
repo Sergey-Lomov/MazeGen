@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { fieldOf } from "./fieldConfigFixtures";
 import { getTessellationShapes } from "../wasm/mazeService";
-import { patternShapeOf, shapeKeysOf, splitPatternsFor } from "../pixi/shapeTemplates";
-import { originCellOf } from "../pixi/splitPatternTile";
+import { patternShapeOf, shapeKeysOf, splitPatternsFor } from "../domain/shapeTemplates";
+import { originCellOf } from "../domain/splitPatternTile";
 import { tessellationConfigOf } from "../fieldConfig";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tessellationFamily, type FieldConfig } from "../fieldConfig";
-import { configAllCells, resolveFieldConfig } from "../pixi/tessellationCells";
-import { buildActiveCells } from "../pixi/selectors/fieldSelectors";
+import { configAllCells, resolveFieldConfig } from "../domain/tessellationCells";
+import { buildActiveCells } from "../domain/selectors/fieldSelectors";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("resolveFieldConfig", () => {

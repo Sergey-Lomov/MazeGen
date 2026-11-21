@@ -1,4 +1,4 @@
-import { type LabelFont, isMsdfFamily, MSDF_FONTS } from "../pixi/renderers/fontChoice";
+import { type LabelFont, isMsdfFamily, MSDF_FONTS } from "../domain/renderers/fontChoice";
 import * as m from "~/paraglide/messages";
 
 /** Localized name of a CSS font weight ("Bold"); the bare number for a weight outside the 100..900 scale. */

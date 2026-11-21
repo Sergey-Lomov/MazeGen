@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
 import { fieldOf } from "./fieldConfigFixtures";
 
-const { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, anchorCanonicalFaces } = await import("../pixi/tessellationGeometry");
+const { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, anchorCanonicalFaces } = await import("../domain/tessellationGeometry");
 
 // Pixels per world unit: a side is drawn 60 px long.
 const SIDE_PX = 60;

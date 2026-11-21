@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import { filterZonesToField } from "../pixi/fieldValidity";
-import type { ResolveFieldAt } from "../pixi/fieldEditUtils";
+import { filterZonesToField } from "../domain/fieldValidity";
+import type { ResolveFieldAt } from "../domain/fieldEditUtils";
 import type { Zone } from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
 

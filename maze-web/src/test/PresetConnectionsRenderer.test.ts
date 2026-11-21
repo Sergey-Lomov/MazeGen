@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { makeProjection } from "../pixi/tessellationProjection";
-import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { makeProjection } from "../domain/tessellationProjection";
+import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../domain/fieldEditUtils";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
 

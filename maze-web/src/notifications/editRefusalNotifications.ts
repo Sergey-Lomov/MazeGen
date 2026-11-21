@@ -1,4 +1,4 @@
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 import { registerNotificationCode } from "./notificationRegistry";
 import { notify } from "./notificationStore";
 import * as m from "~/paraglide/messages";

@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import {
   STATIC_FIELD_DEFS, STATIC_FIELD_ORDER, buildColorVisibility, visibleColor, unownedColor, writeColorField, isLayoutGateOpen,
 } from "../pixi/selectors/colorFieldRegistry";
-import type { TeleportGroupOverride } from "../pixi/renderers/types";
+import type { TeleportGroupOverride } from "../domain/renderers/types";
 import { STATIC_COLOR_FIELD_KEYS, parseColorFieldKey } from "../pixi/colorFieldKeys";
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { ColorRow } from "../components/ColorRow";

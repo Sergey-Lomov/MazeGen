@@ -1,7 +1,7 @@
 import type { WireFoldEnd } from "../../wasm/types";
 import type { MazeState } from "../../store/storeTypes";
 import { floorTopologyInfo, selectionRun } from "../../store/topologyInfo";
-import { canvas } from "../colorTokens";
+import { canvas } from "../../domain/colorTokens";
 import type { TopologyBand } from "../renderers/TopologyBandRenderer";
 import { mergedFacePolylines } from "../topologyGeometry";
 

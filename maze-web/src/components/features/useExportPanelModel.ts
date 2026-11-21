@@ -10,9 +10,9 @@ import { computeActivePaths, type ParamActivityContext } from "../../store/param
 import { computeTextFitItemsAcrossFloors, type ExportWarning } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/exportStyleBuilders";
 import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/textFit";
-import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
-import { hasCellAreaSpread } from "../../pixi/markerScale";
-import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../domain/renderConstants";
+import { hasCellAreaSpread } from "../../domain/markerScale";
+import { maxSplitNodeCount } from "../../domain/selectors/mazeSelectors";
 import { computeTopologyWarnings } from "../../pixi/selectors/topologyWarnings";
 import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";

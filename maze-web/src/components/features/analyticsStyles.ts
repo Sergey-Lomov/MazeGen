@@ -1,6 +1,6 @@
 import type React from "react";
 import { ui, typography, muted, disabled, spacing, indent, dialogSpacing } from "../../styles/theme";
-import { messageForTitleKey } from "../../pixi/splitPatternTitles";
+import { messageForTitleKey } from "../../domain/splitPatternTitles";
 
 export const messageFor = messageForTitleKey;
 

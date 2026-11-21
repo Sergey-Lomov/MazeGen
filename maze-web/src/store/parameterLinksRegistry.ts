@@ -1,7 +1,7 @@
 import type { ParamDescriptor, ParamType } from "./parameterLinks";
-import { colorToHex } from "./colorMath";
+import { colorToHex } from "../domain/colorMath";
 import { schemaEntriesFor, type LinkFieldDef, type LinkMode, type WallsLinkPath, type CorridorsLinkPath } from "./parameterLinkSchema";
-import { labelFontEquals, type LabelFont } from "../pixi/renderers/fontChoice";
+import { labelFontEquals, type LabelFont } from "../domain/renderers/fontChoice";
 import { formatLabelFont } from "./fontLabels";
 import * as m from "~/paraglide/messages";
 

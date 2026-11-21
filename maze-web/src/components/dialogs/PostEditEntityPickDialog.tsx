@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { EntityChoiceDialog, type EntityChoiceRow } from "./EntityChoiceDialog";
 import { buildPostEditPointEntitiesAt } from "../../store/slices/postEditBaselineBuilders";
-import { postEditEntitiesForPurpose } from "../../pixi/entityToolKinds";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { postEditEntitiesForPurpose } from "../../domain/entityToolKinds";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import * as m from "~/paraglide/messages";
 
 interface Props {

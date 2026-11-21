@@ -1,16 +1,16 @@
 import { Application, Graphics } from "pixi.js";
-import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
+import type { PresetConnectionTool } from "../../domain/fieldEditUtils";
 import type { PostEditTool } from "../../store/postEditTypes";
-import type { MarkerShape, CornerStyle } from "../../pixi/renderers/types";
-import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/markerShapes";
+import type { MarkerShape, CornerStyle } from "../../domain/renderers/types";
+import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay } from "../../domain/renderers/markerShapes";
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "../../pixi/renderers/wallUtils";
 import { drawOneWayWallTick } from "../../pixi/renderers/VerticalConnectionRenderer";
-import { arrowThickness, oneWayTickCenteringFraction, patternMidpointOffset } from "../../pixi/renderers/verticalConnectionGeometry";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
-import { TILE_SIZE } from "../../pixi/constants";
-import { canvas } from "../../pixi/colorTokens";
+import { arrowThickness, oneWayTickCenteringFraction, patternMidpointOffset } from "../../domain/renderers/verticalConnectionGeometry";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { TILE_SIZE } from "../../domain/constants";
+import { canvas } from "../../domain/colorTokens";
 import { base, hexToNumber } from "../../styles/palette";
 
 /** Live-rendered pictograms for the preset-connection AND post-edit tool buttons (GitHub issue #456).

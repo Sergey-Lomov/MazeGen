@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeMarkerGlyph, isValidMarkerGlyph } from "../pixi/renderers/markerGlyph";
+import { sanitizeMarkerGlyph, isValidMarkerGlyph } from "../domain/renderers/markerGlyph";
 
 describe("sanitizeMarkerGlyph", () => {
   it("returns an empty string unchanged", () => {

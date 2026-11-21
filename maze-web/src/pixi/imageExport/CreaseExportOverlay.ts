@@ -6,7 +6,7 @@ import { watchStoreInputs } from "../storeWatch";
 import { creaseStyleOf, drawExportCreases, selectExportCreases, shiftCreases } from "./creaseExport";
 import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers, shiftEdgeMarkers } from "./edgeMarkerExport";
 import { resolveActiveCutPlan } from "./exportContent";
-import type { ExportMargin } from "./exportMargins";
+import type { ExportMargin } from "../../domain/imageExport/exportMargins";
 
 /// What the overlay is drawn from: it redraws only when one of these changes.
 function creaseOverlayInputs(st: MazeStore): readonly unknown[] {

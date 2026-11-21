@@ -50,7 +50,7 @@ If `AnalyticsRenderer` and `GenerationRenderer` share rendering patterns, extrac
 
 ## Data-loss confirmation dialogs
 
-Confirmation dialogs that warn about data loss are driven by predicates in `src/pixi/selectors/mazeSelectors.ts` (`selectPostEditDirty`, `selectTessellationWouldLoseData`, etc.).
+Confirmation dialogs that warn about data loss are driven by predicates in `src/pixi/selectors/mazeSelectors/` (`selectPostEditDirty`, etc.) and `src/store/tessellationLoss.ts` (`selectTessellationWouldLoseData`).
 
 Current dirty flags in `MazeState` (all reset on `confirmTessellation` and project load):
 - `fieldDirty` — field setup changed (shape, size, custom points, orientation)
@@ -61,5 +61,5 @@ Current dirty flags in `MazeState` (all reset on `confirmTessellation` and proje
 **When adding a new feature that produces user data** (not read-only like analytics/debug overlays):
 1. Add a `myFeatureDirty: boolean` flag to `MazeState` in `mazeStore.ts`.
 2. Set it `true` on any user edit action, `false` on generate/reset/load and `confirmTessellation`.
-3. Add it to the relevant predicate(s) in `mazeSelectors.ts` (`selectTessellationWouldLoseData`, `selectPostEditDirty`, or a new one).
+3. Add it to the relevant predicate(s) in `mazeSelectors/` (`selectPostEditDirty`, ...) or `store/tessellationLoss.ts` (`selectTessellationWouldLoseData`), or a new one.
 4. Wire the predicate into the relevant confirmation dialog component.

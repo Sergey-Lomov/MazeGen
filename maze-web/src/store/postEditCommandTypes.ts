@@ -1,4 +1,4 @@
-import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import type { PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { PostEditEdgeState, PostEditTeleportDirection, PostEditVerticalPassageDirection } from "./postEditTypes";
 
 /** One resolved slot of an `applySplitBlueprint` command — `slotId` and `faces`' neighbor

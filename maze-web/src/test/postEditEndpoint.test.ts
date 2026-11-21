@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey, endpointIsNode, resolveEndpoint,
   buildSplitNodeResolver, resolvePostEditPartnerAt, endpointOnLevel, stripEndpointLevel, floorScopedEndpoint,
-} from "../pixi/postEditEndpoint";
+} from "../domain/postEditEndpoint";
 
 // GitHub issue #425: PostEditController's teleport-drag/hit-testing and ManageSplitNodesDialog's
 // endpointsMatch each need to check a maze-wide PostEditEndpoint against the active floor, then

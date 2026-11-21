@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import {
   computeLayoutOffsets, resolveLayoutMode, applyMarkerLayout, buildGroupBridgeMarkers, shiftMarkerIndexLabels,
   HOST_EXTENT_CELL, HOST_EXTENT_SPLIT_NODE, hostKey, markerFootprint, buildSplitHostKeys, shiftKey,
-} from "../pixi/selectors/mazeSelectors/markerLayout";
+} from "../domain/selectors/mazeSelectors/markerLayout";
 import { verticalMarkerFootprint } from "../pixi/renderers/VerticalConnectionRenderer";
 import { layoutExportMarkers } from "../pixi/imageExport/exportStyleBuilders";
 import { layoutEditorMarkers } from "../pixi/editorMarkerLayout";
-import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../pixi/selectors/mazeSelectors/markerLayout";
-import type { MarkerData, TeleportEdge, VerticalConnectionMarker, VerticalConnectionStyle } from "../pixi/renderers/types";
+import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../domain/selectors/mazeSelectors/markerLayout";
+import type { MarkerData, TeleportEdge, VerticalConnectionMarker, VerticalConnectionStyle } from "../domain/renderers/types";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 

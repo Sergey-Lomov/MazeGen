@@ -45,8 +45,8 @@ const spied = vi.hoisted(() => ({
 }));
 
 // The cell area statistics come from wasm; the test sets the "cells differ in area" flag directly.
-vi.mock("../pixi/markerScale", async (importActual) => ({
-  ...(await importActual<typeof import("../pixi/markerScale")>()),
+vi.mock("../domain/markerScale", async (importActual) => ({
+  ...(await importActual<typeof import("../domain/markerScale")>()),
   hasCellAreaSpread: () => spied.areaSpread,
 }));
 

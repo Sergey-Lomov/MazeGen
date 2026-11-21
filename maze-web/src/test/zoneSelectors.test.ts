@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Zone } from "../wasm/mazeService";
 import {
   buildZoneHoverRegion, buildZoneRegions, overridesWithDraft, zonesWithDraft, buildZonesCellInspection, countManualZones, countZonesOfKind, zoneDisplayName, zoneFloors, zonesOfCell,
-} from "../pixi/selectors/zoneSelectors";
+} from "../domain/selectors/zoneSelectors";
 import { useMazeStore } from "../store/mazeStore";
 
 const zones: Zone[] = [

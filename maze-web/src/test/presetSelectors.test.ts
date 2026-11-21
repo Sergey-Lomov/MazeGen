@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { presetEdgeKey } from "../pixi/presetSplitResolve";
-import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEdgeKey } from "../domain/presetSplitResolve";
+import type { PresetConnectionEntry } from "../domain/fieldEditUtils";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import type { FieldConfig } from "../fieldConfig";
-import { TILE_SIZE } from "../pixi/constants";
-import { canvas } from "../pixi/colorTokens";
+import { TILE_SIZE } from "../domain/constants";
+import { canvas } from "../domain/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
 
 // getCellCenter (via cartesianCache's getCartesian) delegates to wasm, unavailable in this
@@ -22,7 +22,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
 }));
 
 const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights, buildPresetNodePositions, buildPresetSplitHostKeys } = await import("../pixi/selectors/presetSelectors");
-const { getCellCenter } = await import("../pixi/tessellationGeometry");
+const { getCellCenter } = await import("../domain/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
@@ -106,7 +106,7 @@ describe("buildPresetMarkers", () => {
 
 describe("withoutLevel", () => {
   it("strips `level` while keeping `point`/`slotId`, matching what buildPresetNodePositions keys split nodes on (GitHub issue #589)", async () => {
-    const { withoutLevel } = await import("../pixi/presetEndpoint");
+    const { withoutLevel } = await import("../domain/presetEndpoint");
     expect(withoutLevel(presetEndpoint([3, 5], 2, 1))).toEqual({ point: [3, 5], slotId: 2 });
     expect(withoutLevel(presetEndpoint([3, 5]))).toEqual({ point: [3, 5], slotId: undefined });
   });

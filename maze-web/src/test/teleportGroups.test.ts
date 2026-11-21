@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildTeleportGroups, teleportEdgeKey } from "../pixi/selectors/teleportGroups";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import { buildTeleportGroups, teleportEdgeKey } from "../domain/selectors/teleportGroups";
+import type { TeleportEdge } from "../domain/renderers/types";
 
 describe("teleportEdgeKey", () => {
   it("is order-independent over fromNode/toNode", () => {

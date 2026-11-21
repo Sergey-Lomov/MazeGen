@@ -3,15 +3,15 @@ import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PostEditSeed } from "./storeTestHelpers";
-import { encodePoint } from "../pixi/tessellationProjection";
-import { edgeKey, nodeEndpoint } from "../pixi/postEditEndpoint";
+import { encodePoint } from "../domain/tessellationProjection";
+import { edgeKey, nodeEndpoint } from "../domain/postEditEndpoint";
 import { PostEditController } from "../pixi/PostEditController";
 import type { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications } from "../notifications/notificationStore";
 import { noticeCodes } from "./notificationTestHelpers";
 import { SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE } from "../notifications/editRefusalNotifications";
-import { splitEndpoint } from "../pixi/postEditEndpoint";
+import { splitEndpoint } from "../domain/postEditEndpoint";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,

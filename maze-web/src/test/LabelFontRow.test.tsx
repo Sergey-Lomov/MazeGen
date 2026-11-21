@@ -3,7 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { LabelFontRow } from "../components/features/LabelFontRow";
 import { LinkContextProvider, type LinkContextValue } from "../components/features/LinkContext";
-import { markMsdfFamilyLoaded } from "../pixi/renderers/fontChoice";
+import { markMsdfFamilyLoaded } from "../domain/renderers/fontChoice";
 import * as m from "~/paraglide/messages";
 
 // A row's accessible name also holds its badges, so rows are found by their label (the first child).

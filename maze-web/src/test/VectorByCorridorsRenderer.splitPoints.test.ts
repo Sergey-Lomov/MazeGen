@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { Graphics } from "pixi.js";
-import { buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import { buildSplitPassages } from "../domain/selectors/mazeSelectors";
 import type { FieldConfig } from "../fieldConfig";
-import { getCellVertices, pointInPolygon } from "../pixi/tessellationGeometry";
+import { getCellVertices, pointInPolygon } from "../domain/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 import { settingsA, settingsB, baseState, makeRenderer, useRendererReset } from "./vbcKit";
 
 import { mockStore } from "./vbcMocks";
 
-vi.mock("../pixi/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
+vi.mock("../domain/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
 vi.mock("../pixi/renderers/WallRenderer", async () => (await import("./vbcMocks")).wallRendererMock());
 vi.mock("../pixi/renderers/TeleportRenderer", async () => (await import("./vbcMocks")).teleportRendererMock());
 vi.mock("../pixi/renderers/VerticalConnectionRenderer", async () => (await import("./vbcMocks")).verticalConnectionRendererMock());

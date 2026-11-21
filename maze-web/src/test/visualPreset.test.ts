@@ -12,7 +12,7 @@ import {
 } from "../store/projectExport";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { markLinked } from "../store/slices/parameterLinksEngine";
-import type { TeleportGroupOverride } from "../pixi/renderers/types";
+import type { TeleportGroupOverride } from "../domain/renderers/types";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/mazeService")>()),

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import { buildCutPlan, clipSpans, cutLineOf, cutLineSides, lineInside, lineSpans, offsetForPoint, resolveGroupCuts, type CutLineSetting, type GroupCut } from "../pixi/imageExport/cutLines";
 import { floorCutLines, resolveCutPlan, resolveExportContent } from "../pixi/imageExport/exportContent";
-import { resolveFieldConfig } from "../pixi/tessellationCells";
-import { cellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment } from "../pixi/tessellationGeometry";
+import { resolveFieldConfig } from "../domain/tessellationCells";
+import { cellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment } from "../domain/tessellationGeometry";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 import { oneGlue, range } from "./seamFixtures";

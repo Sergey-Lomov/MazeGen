@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validatePostEditCommand } from "../store/projectExport/validateSections";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 
 const n = nodeEndpoint;
 

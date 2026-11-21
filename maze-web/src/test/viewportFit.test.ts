@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
-import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../pixi/constants";
+import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../domain/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 
 

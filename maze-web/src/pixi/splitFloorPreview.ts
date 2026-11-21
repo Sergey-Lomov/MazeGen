@@ -1,9 +1,9 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/postEditTypes";
-import { resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
-import { recordOnLevel } from "./fieldEditUtils";
-import { splitPointFaceKindsByNode } from "./splitNodeGeometry";
-import type { SplitFaceKind } from "./splitFaceLayout";
+import { resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "../domain/postEditEndpoint";
+import { recordOnLevel } from "../domain/fieldEditUtils";
+import { splitPointFaceKindsByNode } from "../domain/splitNodeGeometry";
+import type { SplitFaceKind } from "../domain/splitFaceLayout";
 
 /** A split point's floor-scoped node/edge geometry (GitHub issue #567 follow-up), shared by
  * `PostEditSplitTargetDialog`'s preview and `PostEditElevatorFloorDialog`'s per-floor status

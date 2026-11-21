@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOrder } from "../pixi/renderers/TeleportRenderer";
-import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
-import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
+import { buildTeleportGroups } from "../domain/selectors/teleportGroups";
+import type { TeleportEdge, TeleportLineStyle } from "../domain/renderers/types";
 import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting";
 import { tessellationConfigOf } from "../fieldConfig";
 

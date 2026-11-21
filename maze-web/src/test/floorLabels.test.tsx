@@ -10,7 +10,7 @@ import { convertFloorLabelPosition, floorLabelCenter, floorLabelPosition, floorL
 import { FloorLabelDragController } from "../pixi/imageExport/FloorLabelDragController";
 import { requiredTextPlateDimensions, textOverflows } from "../pixi/textFit";
 import { maxFittingFontSize } from "../pixi/textFit";
-import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../pixi/renderConstants";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../domain/renderConstants";
 import { computeTextFitItemsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";

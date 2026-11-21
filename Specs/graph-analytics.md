@@ -190,7 +190,7 @@ Keyed on `(graph.version(), meta.start, meta.finish)` — same invalidation shap
 
 `GraphStatsDto.region_classes: HashMap<String, String>` (maze-wasm) — component id (as string key) → `"path" | "alternative" | "unreachable" | "trap"`. Computed in `build_analytics_snapshot` only when both `maze.meta.start` and `maze.meta.finish` are set; empty otherwise (region classes are unavailable without both endpoints, independent of whether a route actually exists between them).
 
-Web overlay: **`RegionClassesRenderer`** (`maze-web/src/pixi/`), toggled via `showRegionClassesOverlay` in `mazeStore`. Renders the same per-component cell groups as `RegionsRenderer` (derived from `statistics.graph_stats.node_component`), tinted by `REGION_CLASS_COLORS` (`maze-web/src/pixi/colorUtils.ts`) instead of the rotating component palette — fixed colors per class (path: green, alternative: blue, unreachable: gray, trap: red). An info icon next to the toggle opens a legend modal mapping each class's color to its name and meaning. The toggle is disabled whenever `statistics.graph_stats.region_classes` is empty (start or finish unset), not when no route exists — see `analytics-web.md`.
+Web overlay: **`RegionClassesRenderer`** (`maze-web/src/pixi/`), toggled via `showRegionClassesOverlay` in `mazeStore`. Renders the same per-component cell groups as `RegionsRenderer` (derived from `statistics.graph_stats.node_component`), tinted by `REGION_CLASS_COLORS` (`maze-web/src/domain/colorUtils.ts`) instead of the rotating component palette — fixed colors per class (path: green, alternative: blue, unreachable: gray, trap: red). An info icon next to the toggle opens a legend modal mapping each class's color to its name and meaning. The toggle is disabled whenever `statistics.graph_stats.region_classes` is empty (start or finish unset), not when no route exists — see `analytics-web.md`.
 
 ## Distance Maps (`distance_from_start` / `distance_from_finish`)
 
@@ -490,7 +490,7 @@ the outer `Vec` and each group's node iteration is unspecified.
 Public on `Graph` (not `stats.rs`-private) because both the Rust analytics side
 (`compute_vertical_stats`) and the web post-edit store need the same "what does this elevator
 actually connect" answer — the web side has its own connected-component BFS,
-`elevatorComponent` (`maze-web/src/pixi/postEditVerticalUtils.ts`, re-exported via
+`elevatorComponent` (`maze-web/src/domain/postEditVerticalUtils.ts`, re-exported via
 `postEditUtils.ts`), used by `extractPostEditElevators` to turn generation's `elevator` edges into
 baseline elevator entries (one per connected component, GitHub issue #564) and by `markerIndex.ts`
 for image-export elevator numbering. `elevatorComponent`

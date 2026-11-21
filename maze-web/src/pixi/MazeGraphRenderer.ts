@@ -1,14 +1,14 @@
 import { BitmapText, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { NODE_RADIUS } from "./renderConstants";
-import { canvas } from "./colorTokens";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
 import { base, hexToNumber } from "../styles/palette";
 import { MSDF_FONT_FAMILY } from "./renderers/msdfFont";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
-import { buildNodePositions } from "./tessellationGeometry";
-import type { SeamHopContext } from "./graphSeams";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
+import type { SeamHopContext } from "../domain/graphSeams";
 
 const LABEL_STYLE = { fontFamily: MSDF_FONT_FAMILY, fontSize: 9, fill: hexToNumber(base.textInverse) };
 

@@ -4,20 +4,21 @@ import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey,
   resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, resolveEndpointToHoverPoint,
   buildLogicalCandidates, resolvePartnerForPlacement,
-} from "../../pixi/postEditEndpoint";
-import { resolveFaceNeighbor, resolveFaceNeighbors } from "../../pixi/faceNeighbors";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
-import { splitShapeBinding } from "../../pixi/splitShape";
-import { postEditTargetLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+} from "../../domain/postEditEndpoint";
+import { resolveFaceNeighbor, resolveFaceNeighbors } from "../../domain/faceNeighbors";
+import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import { splitNodeSemanticNames } from "../../domain/splitNodeNames";
+import { splitShapeBinding } from "../../domain/splitShape";
+import { postEditTargetLabel, type SplitLabelContext } from "../../domain/postEditSplitLabels";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
-import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditRotation";
-import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
-import { buildPostEditPointEntities, postEditNodesAt } from "../../pixi/postEditPointEntities";
-import type { TileFace, TileFaceKind } from "./TileFaceEditor";
+import { recordOnLevel } from "../../domain/fieldEditUtils";
+import { rotateSplitPointBreaksNeighborShape } from "../../domain/postEditRotation";
+import { SplitNodesDialogView, createRequiredLinksTracker, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { buildPostEditPointEntities, postEditNodesAt } from "../../domain/postEditPointEntities";
+import type { TileFace, TileFaceKind } from "../../domain/tileFace";
+import { splitNodeLabel } from "../../domain/splitNodeLabels";
 import { resolveActiveSplitEndpoint, splitPointKey, useSplitDialogFieldCells, useSplitNodesDialogOrchestration } from "./splitNodesOrchestration";
 import * as m from "~/paraglide/messages";
 

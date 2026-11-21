@@ -3,7 +3,7 @@ import type { BackgroundImage, BackgroundImageLayerMode } from "../store/tessell
 import type { PrintExportSettings } from "../store/storeTypes";
 import type { MazeState } from "../store/storeTypes";
 import type { FieldConfig } from "../fieldConfig";
-import { cellBounds } from "./tessellationGeometry";
+import { cellBounds } from "../domain/tessellationGeometry";
 import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
 import { backgroundImageEditMode } from "./sceneTypes";
 

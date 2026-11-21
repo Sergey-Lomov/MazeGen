@@ -13,11 +13,11 @@ import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
-import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportFloorInputs } from "./selectors/mazeSelectors";
-import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
-import { recordOnLevel } from "./fieldEditUtils";
+import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportFloorInputs } from "../domain/selectors/mazeSelectors";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "../domain/postEditEndpoint";
+import { recordOnLevel } from "../domain/fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
-import type { Viewport } from "./renderers/types";
+import type { Viewport } from "../domain/renderers/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { EdgeDto } from "../wasm/types";
 

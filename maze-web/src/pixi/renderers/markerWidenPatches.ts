@@ -1,7 +1,7 @@
 import type { Graphics } from "pixi.js";
-import type { MarkerData, CornerStyle } from "./types";
-import { drawMarkerUnderlay } from "./markerShapes";
-import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import type { MarkerData, CornerStyle } from "../../domain/renderers/types";
+import { drawMarkerUnderlay } from "../../domain/renderers/markerShapes";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../domain/markerScale";
 
 /** Draws a filled patch matching each marker's own shape, in the line's own color, wherever a
  *  marker sits on top of a stroked line — GitHub issue #311's reusable "widen the line so a

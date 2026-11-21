@@ -1,9 +1,9 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { WireFoldEnd } from "../wasm/types";
-import { getCellGeometry } from "./cartesianCache";
-import { applyTransform } from "./geometry/worldTransform";
-import { formatTargetLabel } from "./targetLabel";
-import { displayTransform } from "./tessellationGeometry";
+import { getCellGeometry } from "../domain/cartesianCache";
+import { applyTransform } from "../domain/geometry/worldTransform";
+import { formatTargetLabel } from "../domain/targetLabel";
+import { displayTransform } from "../domain/tessellationGeometry";
 
 const SIDE_ARROWS = ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"] as const;
 

@@ -4,10 +4,10 @@ import type { DebugValueDescriptor } from "../debug/eventTape";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { QcRuleState, CheckInstance, FloorFieldConfig, MazeStore } from "../store/storeTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import { replayPostEditCommands } from "../pixi/postEditReplay";
+import { replayPostEditCommands } from "../domain/postEditReplay";
 import { derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
 import { buildPostEditBaseline } from "../store/slices/postEditBaselineBuilders";
-import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
+import { parsePostEditIdNumber } from "../domain/postEditIdFormat";
 import { fieldOf } from "./fieldConfigFixtures";
 
 export { emptyFreePoints };

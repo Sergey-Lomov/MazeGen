@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
-const { getCellPath, getCellCenter, nearestCellCoord } = await import("../pixi/tessellationGeometry");
+const { getCellPath, getCellCenter, nearestCellCoord } = await import("../domain/tessellationGeometry");
 
 const cfg: FieldConfig = { tessellation: tessellationConfigOf("voronoi"), shape: { shape: "circle", radius: 4 } };
 

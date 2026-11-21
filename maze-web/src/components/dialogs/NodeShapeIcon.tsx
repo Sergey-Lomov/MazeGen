@@ -2,11 +2,11 @@ import { useEffect, useRef } from "react";
 import { Container, Graphics } from "pixi.js";
 import { renderOffscreen } from "../../pixi/sharedOffscreenRenderer";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellCenter, getCellVertices } from "../../pixi/tessellationGeometry";
-import { buildMazeWalls } from "../../pixi/selectors/mazeSelectors";
+import { getCellCenter, getCellVertices } from "../../domain/tessellationGeometry";
+import { buildMazeWalls } from "../../domain/selectors/mazeSelectors";
 import { WallRenderer } from "../../pixi/renderers/WallRenderer";
 import { fitTileToWorld, clipToTile } from "../../pixi/tilePreviewFit";
-import { originCellOf } from "../../pixi/splitPatternTile";
+import { originCellOf } from "../../domain/splitPatternTile";
 import { shapeFaceIndices, shapeMiniMaze } from "../../pixi/nodeShapeTile";
 import { ui } from "../../styles/theme";
 

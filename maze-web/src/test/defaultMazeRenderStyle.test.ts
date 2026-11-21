@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { isMarkerDrawn, withMarkerVisibility } from "../pixi/selectors/mazeSelectors/markers";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
+import { isMarkerDrawn, withMarkerVisibility } from "../domain/selectors/mazeSelectors/markers";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../domain/renderConstants";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { DEFAULT_VERTICAL_STYLE } from "../pixi/renderers/VerticalConnectionRenderer";
 import {
   buildMarkerStyle,

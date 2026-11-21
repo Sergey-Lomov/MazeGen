@@ -1,7 +1,7 @@
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import type { NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, GraphStatsDto, VerticalStatsDto } from "../../wasm/types";
-import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
+import { titleKeyForTopology } from "../../domain/splitPatternTitles";
 import { styles, messageFor } from "./analyticsStyles";
 import * as m from "~/paraglide/messages";
 import React from "react";

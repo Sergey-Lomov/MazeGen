@@ -3,10 +3,11 @@ import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
-import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
+import { TileFaceEditor } from "./TileFaceEditor";
+import type { TileFaceNode } from "../../domain/tileFace";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
-import { messageForTitleKey } from "../../pixi/splitPatternTitles";
+import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../domain/splitBlueprints";
+import { messageForTitleKey } from "../../domain/splitPatternTitles";
 import { Tooltip } from "../Tooltip";
 import { WarningsSection } from "../WarningsSection";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
@@ -16,24 +17,9 @@ import * as m from "~/paraglide/messages";
 import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
-import { splitShapeBinding } from "../../pixi/splitShape";
+import { splitShapeBinding } from "../../domain/splitShape";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
-
-/** 1-based node number for a split point's node, in row order (GitHub issue #468). Slot 0 is not a
- *  special node any more — every node of a split point, the point's original node included, gets the
- *  same numbering: the original node is `1`, a slot's number is its `slotId + 2` (matching
- *  `NodeDto.i + 1`, since `slotId` is `i - 1`). Shared by `ManageSplitNodesDialog` and
- *  `PresetSplitNodesDialog`. */
-export const splitNodeNumber = (slotId: number | undefined): number => (slotId === undefined ? 1 : slotId + 2);
-
-/** Full "Node N" label — for a row title / the cell-inspector-style status readout. */
-export const splitNodeLabel = (slotId: number | undefined): string =>
-  m["post_edit.split_node_label"]({ slotId: splitNodeNumber(slotId) });
-
-/** Compact "N{N}" label — for the link-bubble coordinate suffix, where space is tight. */
-export const splitNodeLabelShort = (slotId: number | undefined): string =>
-  m["post_edit.split_node_label_short"]({ slotId: splitNodeNumber(slotId) });
 
 /** One link (edge or teleport) from a node, resolved to a small display label — grouped into 3
  *  sections in the card (GitHub issue #234 follow-up): `required` (a decided passage/one-way,

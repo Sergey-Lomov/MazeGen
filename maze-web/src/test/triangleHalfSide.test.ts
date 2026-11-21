@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { configAllCells } from "../pixi/tessellationCells";
-import { getFaceEdgeSegment } from "../pixi/tessellationGeometry";
-import { BRACE_OFFSET, buildSeamArrows } from "../pixi/selectors/seamArrows";
-import { distance } from "../pixi/selectors/seamRouting";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { configAllCells } from "../domain/tessellationCells";
+import { getFaceEdgeSegment } from "../domain/tessellationGeometry";
+import { BRACE_OFFSET, buildSeamArrows } from "../domain/selectors/seamArrows";
+import { distance } from "../domain/selectors/seamRouting";
 import { fieldOf } from "./fieldConfigFixtures";
 import { oneGlue } from "./seamFixtures";
 

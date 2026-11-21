@@ -1,10 +1,10 @@
-import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "./fieldEditUtils";
-import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
+import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../domain/fieldEditUtils";
+import { getCellCenter, nearestCellCoord } from "../domain/tessellationGeometry";
 import { presetEndpointScreenPos } from "./selectors/presetSelectors";
-import { withoutLevel, type PresetEndpoint } from "./presetEndpoint";
+import { withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
 import type { FieldConfig } from "../fieldConfig";
-import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
-import { resolveCrossFloorBadgeCells, type CrossFloorBadgePair } from "./selectors/mazeSelectors/teleport";
+import type { TeleportEdge, VerticalConnectionMarker } from "../domain/renderers/types";
+import { resolveCrossFloorBadgeCells, type CrossFloorBadgePair } from "../domain/selectors/mazeSelectors/teleport";
 
 /** Per-floor cells that draw a *center* marker in the preset editor (GitHub issue #480) — the preset
  *  analogue of `buildTeleportBadgeBlockedCells`, so a cross-floor teleport badge is relocated off any

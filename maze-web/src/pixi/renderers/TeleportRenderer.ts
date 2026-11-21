@@ -1,19 +1,19 @@
 import { Container, Graphics } from "pixi.js";
-import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
+import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { TILE_SIZE } from "../constants";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
+import { TILE_SIZE } from "../../domain/constants";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "../../domain/renderers/markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter } from "./teleportConnectorRouter";
 import { routeTeleportConnectors } from "./teleportConnectorPlan";
-import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
+import { buildTeleportGroups, type TeleportGroup } from "../../domain/selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
-import { formatIndexLabel } from "./indexLabel";
+import { formatIndexLabel } from "../../domain/renderers/indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
-import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
-import type { ManualTeleportConnectorPath } from "./teleportConnectorManual";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../domain/markerScale";
+import type { ManualTeleportConnectorPath } from "../../domain/renderers/teleportConnectorManual";
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's

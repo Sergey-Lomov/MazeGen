@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link2, Spline, Waypoints } from "lucide-react";
-import { manualPathMode, parseTeleportConnectorKey, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
+import { manualPathMode, parseTeleportConnectorKey, straightCubicControls, type ManualTeleportConnectorMode } from "../../domain/renderers/teleportConnectorManual";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Tooltip } from "../Tooltip";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
-import { endpointBubble, splitPointBubble, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
-import { nodeEndpoint } from "../../pixi/postEditEndpoint";
+import { endpointBubble, splitPointBubble, type PostEditEntityBubble } from "../../domain/postEditCommandLabels";
+import { nodeEndpoint } from "../../domain/postEditEndpoint";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { buildTeleportConnectorSegments, type TeleportConnectorSegment } from "../../pixi/selectors/teleportConnectorSegments";
 import { ListCell, ListCellAction } from "../ListCell";

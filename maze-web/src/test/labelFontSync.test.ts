@@ -20,9 +20,9 @@ vi.mock("../pixi/renderers/labelFont", async (importOriginal) => ({
   loadLabelFont: (font: unknown) => loadLabelFont(font),
 }));
 
-const { MSDF_FONTS } = await import("../pixi/renderers/fontChoice");
+const { MSDF_FONTS } = await import("../domain/renderers/fontChoice");
 const { setFontPickerOpen } = await import("../pixi/renderers/rasterFont/pickerSession");
-const { collectDrawnLabelFontFamilies, collectLabelFonts, installLabelFontSync, reportProjectFontProblems } = await import("../store/labelFontSync");
+const { collectDrawnLabelFontFamilies, collectLabelFonts, installLabelFontSync, reportProjectFontProblems } = await import("../pixi/labelFontSync");
 const { useNotificationStore, resetNotifications } = await import("../notifications/notificationStore");
 const { resetFontProblems } = await import("../notifications/fontNotifications");
 const { addManualFontName, registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");

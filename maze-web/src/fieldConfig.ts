@@ -1,4 +1,4 @@
-import { TESSELLATION_UI } from "./pixi/geometry/tessellationUi";
+import { TESSELLATION_UI } from "./domain/geometry/tessellationUi";
 
 /** Registered tessellation kinds — mirrors `maze-runner`'s `TessellationKind` wire values. */
 export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "truncated_hexagonal" | "truncated_trihexagonal" | "elongated_triangular" | "snub_square" | "curved_quadrilateral" | "radial" | "voronoi";

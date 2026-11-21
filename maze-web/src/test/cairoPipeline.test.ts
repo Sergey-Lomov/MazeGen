@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { computeDigitalExportFit } from "../pixi/imageExport/exportFit";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { computeDigitalExportFit } from "../domain/imageExport/exportFit";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import { useMazeStore } from "../store/mazeStore";
 import { computeAnalyticsAsync, generateMaze, startGenerateMaze } from "../wasm/mazeService";

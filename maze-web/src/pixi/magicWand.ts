@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
-import { decodePoint, encodePoint } from "./tessellationProjection";
-import { getCellNeighborOffsets } from "./tessellationGeometry";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
+import { getCellNeighborOffsets } from "../domain/tessellationGeometry";
 
 export type MagicWandCells = [number, number][];
 

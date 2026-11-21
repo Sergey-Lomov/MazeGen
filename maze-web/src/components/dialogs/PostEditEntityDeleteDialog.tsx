@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { EntityChoiceDialog, type EntityChoiceRow } from "./EntityChoiceDialog";
 import { buildPostEditPointEntitiesAt } from "../../store/slices/postEditBaselineBuilders";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import * as m from "~/paraglide/messages";
 
 interface Props {

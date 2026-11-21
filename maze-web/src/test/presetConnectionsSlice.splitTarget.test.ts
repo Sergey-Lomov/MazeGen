@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual } from "../domain/presetEndpoint";
 import { addFloor, usePresetStateReset } from "./presetConnectionsSliceKit";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

@@ -2,13 +2,13 @@ import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { canvas } from "../pixi/colorTokens";
-import { WALL_THICKNESS } from "../pixi/renderConstants";
-import { splitSlotColor } from "../pixi/colorUtils";
+import { canvas } from "../domain/colorTokens";
+import { WALL_THICKNESS } from "../domain/renderConstants";
+import { splitSlotColor } from "../domain/colorUtils";
 import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
-import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
-import { TILE_SIZE } from "../pixi/constants";
+import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../domain/imageExport/printFit";
+import { TILE_SIZE } from "../domain/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({

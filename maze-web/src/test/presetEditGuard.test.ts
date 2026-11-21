@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { GUARDED_PRESET_ACTIONS } from "../store/presetEditGuard";
 import { hasGeneration } from "../store/storeHelpers";
 import type { NodeDto } from "../wasm/types";

@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, fireEvent, within } from "@testing-librar
 import { FontPickerPanel } from "../components/FontPickerPanel";
 import { FontButton } from "../components/FontButton";
 import { useMazeStore } from "../store/mazeStore";
-import { MSDF_FONTS } from "../pixi/renderers/fontChoice";
+import { MSDF_FONTS } from "../domain/renderers/fontChoice";
 import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
 import * as m from "~/paraglide/messages";
 

@@ -1,13 +1,13 @@
 import type { ExportWarning, ExportWarningId } from "./exportWarnings";
-import type { TeleportEdge } from "../renderers/types";
-import type { Pos } from "../tessellationGeometry";
-import { getCellVertices } from "../tessellationGeometry";
-import { TILE_SIZE } from "../constants";
+import type { TeleportEdge } from "../../domain/renderers/types";
+import type { Pos } from "../../domain/tessellationGeometry";
+import { getCellVertices } from "../../domain/tessellationGeometry";
+import { TILE_SIZE } from "../../domain/constants";
 import { arrowPlacements } from "../renderers/teleportConnectorRouting";
-import { manualConnectorPoints } from "../renderers/teleportConnectorManual";
+import { manualConnectorPoints } from "../../domain/renderers/teleportConnectorManual";
 import { coordKey, computeFloorBadges, planGroupDrawOrder } from "../renderers/teleportGeometry";
-import { FIELD_EXIT_SAMPLE_STEP, pointInField, pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
-import { buildTeleportGroups } from "./teleportGroups";
+import { FIELD_EXIT_SAMPLE_STEP, pointInField, pointToSegmentDistance } from "../../domain/renderers/teleportGeometryUtils";
+import { buildTeleportGroups } from "../../domain/selectors/teleportGroups";
 import { buildTeleportConnectorContext, type TeleportConnectorContext, type TeleportConnectorInput } from "./teleportConnectorContext";
 
 type Pt = [number, number];

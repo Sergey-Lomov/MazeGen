@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { TeleportConnectorRouter, axisIntersection, pointToSegmentDistance } from "../pixi/renderers/teleportConnectorRouter";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
+import type { TeleportEdge } from "../domain/renderers/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
 
@@ -376,7 +376,7 @@ describe("getConnectorAxes", () => {
   });
 
   it("Cairo uses only oblique axes so routes do not sit on horizontal/vertical edges", async () => {
-    const { getCellVertices } = await import("../pixi/tessellationGeometry");
+    const { getCellVertices } = await import("../domain/tessellationGeometry");
     const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const axes = getConnectorAxes(cairoCfg);
     expect(axes).toHaveLength(4);

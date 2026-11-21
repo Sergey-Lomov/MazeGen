@@ -7,18 +7,18 @@ import {
   selectVerticalPassagePairSet,
   buildVerticalConnectionMarkers,
   selectFloorScopedMaze,
-} from "./mazeSelectors";
-import type { TeleportFloorContext } from "./mazeSelectors";
-import type { TeleportEdge } from "../renderers/types";
-import { nearestCellCoord } from "../tessellationGeometry";
+} from "../../domain/selectors/mazeSelectors";
+import type { TeleportFloorContext } from "../../domain/selectors/mazeSelectors";
+import type { TeleportEdge } from "../../domain/renderers/types";
+import { nearestCellCoord } from "../../domain/tessellationGeometry";
 import { textOverflows, type TextFitItem } from "../textFit";
-import { formatIndexLabel } from "../renderers/indexLabel";
-import { DEFAULT_LABEL_FONT, plainLabelFont } from "../renderers/fontChoice";
+import { formatIndexLabel } from "../../domain/renderers/indexLabel";
+import { DEFAULT_LABEL_FONT, plainLabelFont } from "../../domain/renderers/fontChoice";
 import { floorLabelText } from "../renderers/FloorLabelRenderer";
-import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
+import { buildMarkerIndexLabels } from "../../domain/selectors/mazeSelectors/markerIndex";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../domain/renderConstants";
 import type { ExportWarning, ExportWarningId, WarningFloor } from "./exportWarnings";
-import type { TeleportGroup } from "./teleportGroups";
+import type { TeleportGroup } from "../../domain/selectors/teleportGroups";
 import { getProjectTeleportGroups } from "./projectTeleportGroups";
 import { trackedMemo } from "./trackedMemo";
 

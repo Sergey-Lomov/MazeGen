@@ -1,10 +1,10 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
-import { buildCorridorSegments, getSplitAwareNodePosition } from "./mazeSelectors";
-import { isMarkerDrawn, withMarkerVisibility } from "./mazeSelectors/markers";
-import { pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
-import { pointInPolygon } from "../tessellationGeometry";
+import { buildCorridorSegments, getSplitAwareNodePosition } from "../../domain/selectors/mazeSelectors";
+import { isMarkerDrawn, withMarkerVisibility } from "../../domain/selectors/mazeSelectors/markers";
+import { pointToSegmentDistance } from "../../domain/renderers/teleportGeometryUtils";
+import { pointInPolygon } from "../../domain/tessellationGeometry";
 import { buildCorridorContourInstances, contourToPolyline } from "../imageExport/vectorByCorridorsContour";
 import type { ExportWarning } from "./exportWarnings";
 

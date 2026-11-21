@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
+import { buildCellInspection } from "../domain/selectors/mazeSelectors";
 import { setLocale } from "~/paraglide/runtime";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";

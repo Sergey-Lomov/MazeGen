@@ -2,9 +2,10 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { SeamArrowLayer } from "./seamArrowSync";
 import { selectSeamPairs } from "./selectors/seamHop";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "./fieldEditUtils";
-import type { FieldEdge } from "./fieldEditUtils";
-import { makeProjection } from "./tessellationProjection";
+import { presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "../domain/fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../domain/fieldValidity";
+import type { FieldEdge } from "../domain/fieldEditUtils";
+import { makeProjection } from "../domain/tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
@@ -20,7 +21,7 @@ import { drawTeleportPreview } from "./renderers/teleportPreviewGlyph";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } from "./presetConnectionsGeometry";
-import { buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
+import { buildTeleportAvoidanceWaypoints } from "../domain/selectors/mazeSelectors";
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
@@ -36,11 +37,11 @@ import {
   buildLinkHoverHighlight,
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
-import { presetEndpoint, withoutLevel, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
 import { layoutEditorMarkersOnHosts } from "./editorMarkerLayout";
-import { canvas } from "./colorTokens";
-import { WALL_THICKNESS } from "./renderConstants";
-import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { canvas } from "../domain/colorTokens";
+import { WALL_THICKNESS } from "../domain/renderConstants";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";

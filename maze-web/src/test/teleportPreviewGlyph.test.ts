@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { clipDistance } from "../pixi/renderers/teleportGeometry";
 
 vi.mock("pixi.js", () => ({

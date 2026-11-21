@@ -2,7 +2,7 @@ import React from "react";
 import { typography } from "../styles/theme";
 import { Inline } from "./Layout";
 import { FontButton } from "./FontButton";
-import type { LabelFont } from "../pixi/renderers/fontChoice";
+import type { LabelFont } from "../domain/renderers/fontChoice";
 import type { TextFitKind } from "../pixi/selectors/exportWarnings";
 
 /** Shared labeled font-picker row: label + `FontButton`, mirrors `ColorRow` / `SelectRow` so a font

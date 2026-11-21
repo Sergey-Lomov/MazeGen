@@ -10,10 +10,11 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
-import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
-import type { ResolveMarkerEndpointVisual } from "../pixi/selectors/mazeSelectors/markerIndex";
-import { getCellCenter, buildNodePositions } from "../pixi/tessellationGeometry";
-import { formatIndexLabel } from "../pixi/renderers/indexLabel";
+import { buildMarkerIndexLabels } from "../domain/selectors/mazeSelectors";
+import type { ResolveMarkerEndpointVisual } from "../domain/selectors/mazeSelectors/markerIndex";
+import { getCellCenter } from "../domain/tessellationGeometry";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
+import { formatIndexLabel } from "../domain/renderers/indexLabel";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 import type { NodeDto, EdgeDto } from "../wasm/types";

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { nodeRadius, buildPairedRenderEdges, buildPathRenderEdges, buildCrossFloorMarkers } from "../pixi/BaseGraphRenderer";
-import { NODE_RADIUS } from "../pixi/renderConstants";
-import { TILE_SIZE } from "../pixi/constants";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { TILE_SIZE } from "../domain/constants";
 import { computeCrossFloorBadgePos } from "../pixi/renderers/floorBadge";
-import { getCellCenter, nearestCellCoord } from "../pixi/tessellationGeometry";
+import { getCellCenter, nearestCellCoord } from "../domain/tessellationGeometry";
 import type { Pos } from "../pixi/BaseGraphRenderer";
 import type { FieldConfig } from "../fieldConfig";
 import { debugRefEdgePairs } from "../pixi/DebugRefHighlightOverlay";

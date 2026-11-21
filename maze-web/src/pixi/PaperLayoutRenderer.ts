@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { FieldConfig } from "../fieldConfig";
 import type { PrintExportSettings } from "../store/storeTypes";
-import { canvas, contrastGray } from "./colorTokens";
+import { canvas, contrastGray } from "../domain/colorTokens";
 import { drawPaperLayoutDim, drawPaperLayoutFrame, drawPaperLayoutMargins } from "./imageExport/paperLayoutGraphics";
 import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
 

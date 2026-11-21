@@ -1,11 +1,11 @@
-import type { TeleportEdge } from "./types";
-import { getConnectorAxes, SQUARE_AXES, type Axis } from "./teleportConnectorAxes";
+import type { TeleportEdge } from "../../domain/renderers/types";
+import { getConnectorAxes, SQUARE_AXES, type Axis } from "../../domain/renderers/teleportConnectorAxes";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellVertices, type Pos } from "../tessellationGeometry";
+import { getCellVertices, type Pos } from "../../domain/tessellationGeometry";
 import type { RoutedConnector } from "./teleportConnectorRouting";
 import { chooseOrthogonalPaths, segmentsOverlap, type Segment } from "./teleportPathSelection";
 
-export { axisIntersection, pointToSegmentDistance } from "./teleportGeometryUtils";
+export { axisIntersection, pointToSegmentDistance } from "../../domain/renderers/teleportGeometryUtils";
 
 /** Structural cache key for one `route()` call — cheap (O(edge count)) relative to the routing
  *  itself (O(edge count² × axis count²) for the first pass alone), so building it fresh on every

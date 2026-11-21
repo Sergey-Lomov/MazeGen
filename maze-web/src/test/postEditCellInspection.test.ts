@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildPostEditMazeSource, resolveCellInspection } from "../pixi/cellInspectionResolver";
-import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { buildCellInspection } from "../domain/selectors/mazeSelectors";
+import { nodeEndpoint, splitEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
 import { useMazeStore } from "../store/mazeStore";

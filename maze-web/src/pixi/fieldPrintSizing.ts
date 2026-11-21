@@ -1,11 +1,11 @@
 import { isSwitchedShape, type FieldConfig, type PresetFieldShape } from "../fieldConfig";
 import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { getFieldPrintSizing } from "../wasm/mazeService";
-import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
-import { printMeasureToCellSideMm } from "./imageExport/printFit";
-import { compactNetOf } from "./fieldOps";
-import { displayTransform } from "./tessellationGeometry";
-import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { PAPER_SIZES_MM } from "../domain/imageExport/paperSizes";
+import { printMeasureToCellSideMm } from "../domain/imageExport/printFit";
+import { compactNetOf } from "../domain/fieldOps";
+import { displayTransform } from "../domain/tessellationGeometry";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 
 /** Smallest physical cell measure the print sizing dialog accepts. */
 export const MIN_PRINT_CELL_SIZE_MM = 3;

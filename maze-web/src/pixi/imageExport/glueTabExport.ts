@@ -1,13 +1,13 @@
 import type { GlueTabStyle } from "../../store/imageExportTypes";
 import type { MazeState } from "../../store/storeTypes";
 import type { WireFoldEnd, WireTopology } from "../../wasm/types";
-import { getSeamModel } from "../selectors/seams";
-import { displayTransform } from "../tessellationGeometry";
-import { TESSELLATION_UI } from "../geometry/tessellationUi";
-import { applyTransform } from "../geometry/worldTransform";
+import { getSeamModel } from "../../domain/selectors/seams";
+import { displayTransform } from "../../domain/tessellationGeometry";
+import { TESSELLATION_UI } from "../../domain/geometry/tessellationUi";
+import { applyTransform } from "../../domain/geometry/worldTransform";
 import { cutLineOf, cutSettingOf, cutTabShift, lineSpans, sheetSpan, type Vec2 } from "./cutLines";
 import { floorGroupCuts, tilePolygons } from "./exportContent";
-import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 
 /// Glue tabs of the export (GitHub issue #901, `Specs/image-export.md`, "Glue tabs"): trapezoidal flaps, one per straight
 /// stretch of the glued edge of side A of every glue, drawn outward from the cells. Display space.

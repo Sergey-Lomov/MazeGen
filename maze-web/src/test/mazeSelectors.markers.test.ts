@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
-import { type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
-import { getCellCenter } from "../pixi/tessellationGeometry";
+import { buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, type MarkerStyle } from "../domain/selectors/mazeSelectors";
+import { type PostEditHoveredEntity } from "../domain/postEditEndpoint";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import { n, squareCfg, twoWay, hexCfg, hexNeighborNodes } from "./mazeSelectorsKit";
 

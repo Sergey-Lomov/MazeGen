@@ -1,10 +1,10 @@
 import { Container, Graphics } from "pixi.js";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { FLOOR_LABEL_ANCHORS, type FloorLabelAnchor, type FloorLabelPosition, type FloorLabelSettings } from "../../store/imageExportTypes";
-import { getCellCenter, nearestCellCoord } from "../tessellationGeometry";
-import { formatIndexLabel } from "./indexLabel";
+import { getCellCenter, nearestCellCoord } from "../../domain/tessellationGeometry";
+import { formatIndexLabel } from "../../domain/renderers/indexLabel";
 import { makeCenteredLabel } from "./msdfFont";
-import { drawRoundedPolygon, drawRoundedRect, offsetPolygonPath } from "./markerShapes";
+import { drawRoundedPolygon, drawRoundedRect, offsetPolygonPath } from "../../domain/renderers/markerShapes";
 import { measureText, rectangularTextFrameHalfExtents, type TextExtent } from "../textFit";
 
 export interface FloorBounds {

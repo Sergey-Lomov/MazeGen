@@ -1,12 +1,12 @@
-import { type PresetConnectionEntry, type PresetVerticalPassageEntry, resolveCells } from "../../pixi/fieldEditUtils";
-import { presetEdgeKey, resolvePresetSplitTargets } from "../../pixi/presetSplitResolve";
-import { presetEndpoint, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import { type PresetConnectionEntry, type PresetVerticalPassageEntry, resolveCells } from "../../domain/fieldEditUtils";
+import { presetEdgeKey, resolvePresetSplitTargets } from "../../domain/presetSplitResolve";
+import { presetEndpoint, type PresetEndpoint } from "../../domain/presetEndpoint";
 import type { MazeState, MazeStore } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { resolveFaceNeighbors } from "../../pixi/faceNeighbors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import { resolveFaceNeighbors } from "../../domain/faceNeighbors";
 import { levelFieldsOf } from "../storeHelpers";
 
 /** Removes `presetConnections[key]`, but — unlike a plain `.delete` — leaves the pair reading as

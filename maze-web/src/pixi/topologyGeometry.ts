@@ -1,9 +1,9 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { WireFoldEnd } from "../wasm/types";
-import { getCellGeometry, GEOMETRY_TOLERANCE } from "./cartesianCache";
-import { applyTransform } from "./geometry/worldTransform";
-import { flattenSegments } from "./geometry/pathFlatten";
-import { displayTransform } from "./tessellationGeometry";
+import { getCellGeometry, GEOMETRY_TOLERANCE } from "../domain/cartesianCache";
+import { applyTransform } from "../domain/geometry/worldTransform";
+import { flattenSegments } from "../domain/geometry/pathFlatten";
+import { displayTransform } from "../domain/tessellationGeometry";
 
 /// A face's open polyline in display space (the space the canvas draws in), both ends included.
 export function faceDisplayPolyline(end: WireFoldEnd, cfg: FieldConfig): [number, number][] {

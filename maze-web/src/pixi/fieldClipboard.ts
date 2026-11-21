@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { fieldOperationAvailable } from "./fieldOps";
+import { fieldOperationAvailable } from "../domain/fieldOps";
 
 /** The canvas side of the field clipboard; the field editor controller registers itself. */
 export interface FieldClipboardHost {

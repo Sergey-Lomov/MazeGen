@@ -34,7 +34,7 @@ Stateless: the web store owns the zones and sends them with every call. Cells ar
 
 Core rejects a cell outside the field, so the web drops such cells before sending zones, the same
 approach as the preset filters (`buildValidPresetConnections`): `filterZonesToField(zones,
-resolveFieldAt)` (`pixi/fieldValidity.ts`) removes cells whose point is not a cell of their floor's
+resolveFieldAt)` (`domain/fieldValidity.ts`) removes cells whose point is not a cell of their floor's
 field or whose floor no longer exists. Zone ids, names, kinds and order are kept; a zone left with
 no cells stays, so its id remains stable.
 
@@ -89,7 +89,7 @@ leaving the zones card (`ZonesFeature` unmounting drops the unconfirmed zone and
 same components (`FieldToolsSection`, `SmoothingToggleRow`): Add / Remove / Select modes, point, shapes, polygon,
 parallelogram, connected area, mirror, copy and paste, smoothing, with the same hotkeys and gestures. The tools
 are not duplicated: `FieldEditController`, `FieldEditorOverlay`, the mirror panel and the scene read the edit
-target through `pixi/fieldEditTarget.ts` (`editFieldOf`, `fieldToolsActive`, `zoneEditActive`), which hands them
+target through `store/fieldEditTarget.ts` (`editFieldOf`, `fieldToolsActive`, `zoneEditActive`), which hands them
 either the floor's custom field or a view of it whose `fieldPoints` are the edited zone's cells on the active
 floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared with the field editor.
 

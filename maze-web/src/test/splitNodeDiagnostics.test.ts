@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../pixi/splitNodeDiagnostics";
-import type { TileFaceNode } from "../components/features/TileFaceEditor";
+import type { TileFaceNode } from "../domain/tileFace";
 import type { SplitPattern } from "../wasm/types";
 
 function node(faces: TileFaceNode["faces"]): TileFaceNode {

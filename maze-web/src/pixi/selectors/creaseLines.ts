@@ -1,5 +1,5 @@
 import type { MazeState } from "../../store/storeTypes";
-import { canvas } from "../colorTokens";
+import { canvas } from "../../domain/colorTokens";
 import { creaseDisplayPoint } from "../creaseGeometry";
 import type { CreaseLine } from "../renderers/CreaseRenderer";
 

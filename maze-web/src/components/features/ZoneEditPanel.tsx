@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Plus, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { editedZoneOf } from "../../pixi/fieldEditTarget";
-import { overridesWithDraft, zoneColors, zoneDisplayName, zoneChipColors, zoneFloors, zoneGroupDisplayName, zoneIntersections, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
+import { editedZoneOf } from "../../store/fieldEditTarget";
+import { overridesWithDraft, zoneColors, zoneDisplayName, zoneChipColors, zoneFloors, zoneGroupDisplayName, zoneIntersections, zonesWithDraft } from "../../domain/selectors/zoneSelectors";
 import { Button } from "../Button";
 import { ConfirmModal } from "../ConfirmModal";
 import { UnregisteredColorRow } from "../ColorRow";

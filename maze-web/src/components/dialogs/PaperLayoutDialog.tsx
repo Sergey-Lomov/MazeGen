@@ -3,7 +3,7 @@ import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
 import { MIN_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
-import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
+import { DPI_BY_DENSITY, printCellMeasureMm } from "../../domain/imageExport/printFit";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";

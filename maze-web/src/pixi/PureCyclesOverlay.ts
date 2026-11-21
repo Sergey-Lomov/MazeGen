@@ -1,10 +1,10 @@
 import { Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { NODE_RADIUS } from "./renderConstants";
-import { canvas } from "./colorTokens";
-import { buildNodePositions } from "./tessellationGeometry";
-import type { SeamHopContext } from "./graphSeams";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
+import type { SeamHopContext } from "../domain/graphSeams";
 import { BaseGraphRenderer, buildCrossFloorMarkers, buildPathRenderEdges } from "./BaseGraphRenderer";
 import type { NodeCellResolver, Pos } from "./BaseGraphRenderer";
 

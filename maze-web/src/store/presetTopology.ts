@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { belowMinimum } from "../pixi/tessellationCells";
+import { belowMinimum } from "../domain/presetCells";
 import type { WireTopology } from "../wasm/types";
 import { getFieldPresetCreases, getFieldPresetTopology, type FieldOpError } from "../wasm/mazeService";
 import type { Crease } from "./creases";

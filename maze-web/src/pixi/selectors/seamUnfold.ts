@@ -1,6 +1,6 @@
 import type { WorldPoint } from "../../wasm/mazeService";
-import { flattenSegments } from "../geometry/pathFlatten";
-import { applyAffine, type Affine, type HalfEdge, type Seam, type SeamModel } from "./seams";
+import { flattenSegments } from "../../domain/geometry/pathFlatten";
+import { applyAffine, type Affine, type HalfEdge, type Seam, type SeamModel } from "../../domain/selectors/seams";
 
 /// Shortest way between two points through a seam, as if the field continued beyond the glue (GitHub issue #873, `Specs/teleport_connectors.md`). The partner side is unfolded into this
 /// side's frame with the half-edge's `fromPartner`; the straight line to the unfolded target crosses

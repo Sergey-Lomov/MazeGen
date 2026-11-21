@@ -1,10 +1,11 @@
 import type { StateCreator } from "zustand";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, moveVerticalPassageEndpoint, moveElevatorEndpoint } from "../../pixi/fieldEditUtils";
-import { resolvePresetActiveEndpoint, allNodesAt } from "../../pixi/presetSplitResolve";
-import { presetEndpoint, presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
-import { presetPurposeEntitiesAt, type EntityToolPurpose } from "../../pixi/entityToolKinds";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
+import { applyTool, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../domain/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, moveVerticalPassageEndpoint, moveElevatorEndpoint } from "../../domain/fieldValidity";
+import { resolvePresetActiveEndpoint, allNodesAt } from "../../domain/presetSplitResolve";
+import { presetEndpoint, presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "../../domain/presetEndpoint";
+import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../domain/pointEntities";
+import { presetPurposeEntitiesAt, type EntityToolPurpose } from "../../domain/entityToolKinds";
 import type { NodeLockKind } from "../../wasm/types";
 import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnectionsState, type PresetConnectionsActions } from "../storeTypes";
 import { debugStaleOf, buildResetDownstreamState, withRecomputedAutoLock, recomputeAutoLock, activeFloorLevel, resolveFieldAtOf } from "../storeHelpers";

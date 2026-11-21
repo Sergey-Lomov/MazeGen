@@ -9,7 +9,7 @@ vi.mock("pixi.js", () => ({
   Assets: { load: (url: string) => assetsLoad(url) },
 }));
 
-const { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, isMsdfFamilyLoaded, msdfFace } = await import("../pixi/renderers/fontChoice");
+const { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, isMsdfFamilyLoaded, msdfFace } = await import("../domain/renderers/fontChoice");
 const { loadMsdfFamily } = await import("../pixi/renderers/msdfLoader");
 
 function registerFont(family: string) {

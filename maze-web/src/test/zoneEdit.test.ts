@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
-import { activeFieldCellKeys, cellsInActiveField, editFieldOf, fieldToolsActive, smoothingOf, zoneEditActive, zonePointsOnFloor, zoneToolReaches } from "../pixi/fieldEditTarget";
-import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { activeFieldCellKeys, cellsInActiveField, editFieldOf, fieldToolsActive, smoothingOf, zoneEditActive, zonePointsOnFloor, zoneToolReaches } from "../store/fieldEditTarget";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
 import type { Zone } from "../wasm/mazeService";
-import { hidesOtherZones, zoneColors, zoneIntersections } from "../pixi/selectors/zoneSelectors";
+import { hidesOtherZones, zoneColors, zoneIntersections } from "../domain/selectors/zoneSelectors";
 
 const floors = [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }];
 const FAR = 900;

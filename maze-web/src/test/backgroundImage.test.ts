@@ -71,7 +71,7 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-vi.mock("../pixi/tessellationGeometry", () => ({
+vi.mock("../domain/tessellationGeometry", () => ({
   getCellVertices: vi.fn(),
   cellBounds: (cells: [number, number][]) => cells.length === 0
     ? { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }

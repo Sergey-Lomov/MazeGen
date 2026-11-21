@@ -1,10 +1,10 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellCenter } from "../tessellationGeometry";
+import { getCellCenter } from "../../domain/tessellationGeometry";
 import { drawEdge } from "../BaseGraphRenderer";
-import { hopPieces, type SeamHopContext } from "../graphSeams";
-import { NODE_RADIUS } from "../renderConstants";
+import { hopPieces, type SeamHopContext } from "../../domain/graphSeams";
+import { NODE_RADIUS } from "../../domain/renderConstants";
 
 export interface MapHighlightData {
   nodes: NodeDto[];

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { n, node, bridgeFace, seedPostEdit, resetPostEditStore } from "./postEditSliceKit";
-import { splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
-import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import { splitEndpoint, edgeKey } from "../domain/postEditEndpoint";
+import type { PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 

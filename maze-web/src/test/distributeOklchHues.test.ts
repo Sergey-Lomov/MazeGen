@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { colorToOklch, distributeOklchHues, oklchToColor } from "../store/colorMath";
+import { colorToOklch, distributeOklchHues, oklchToColor } from "../domain/colorMath";
 
 describe("distributeOklchHues", () => {
   const base = oklchToColor({ l: 70, c: 0.1, h: 40 });

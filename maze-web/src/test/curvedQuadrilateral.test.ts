@@ -1,16 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { getConnectorAxes } from "../domain/renderers/teleportConnectorAxes";
 import type { Graphics } from "pixi.js";
 import { drawCellHighlightAt } from "../pixi/cellHighlightGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
-import { buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import { buildSplitPassages } from "../domain/selectors/mazeSelectors";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 
 /** Pixels per unit of core space: the underlying square's side. */
 const UNIT = TESSELLATION_UI.curved_quadrilateral.pixelsPerUnit;
 
-const { getCellPath, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, pointInPolygon, getCellVertices } = await import("../pixi/tessellationGeometry");
+const { getCellPath, getCellCenter, getNeighborData, getSharedEdgeSegment, nearestCellCoord, pointInPolygon, getCellVertices } = await import("../domain/tessellationGeometry");
 
 const cfg = fieldOf("curved_quadrilateral", { shape: "rect", cols: 4, rows: 4 });
 const CELLS: [number, number][] = [[0, 0], [1, 0], [0, 1], [-1, -1], [-2, 3]];

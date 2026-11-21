@@ -1,21 +1,21 @@
 import { describe, it, expect, vi } from "vitest";
 import { routeTeleportConnectors } from "../pixi/renderers/teleportConnectorPlan";
 import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
-import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
+import type { TeleportEdge, TeleportLineStyle } from "../domain/renderers/types";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import type { FieldConfig } from "../fieldConfig";
-import { buildSeamModel, type SeamCellInput, type SeamModel } from "../pixi/selectors/seams";
+import { buildSeamModel, type SeamCellInput, type SeamModel } from "../domain/selectors/seams";
 import type { FoldFace } from "../wasm/mazeService";
 
 // GitHub issue #873: a connector goes through a seam whenever that is shorter than the direct one, as
 // if the field continued beyond the glue. The seam model needs a warm geometry snapshot, so it is
 // swapped for hand-made ones; the display transform is the identity.
 let model: SeamModel;
-vi.mock("../pixi/selectors/seams", async (importActual) => ({
-  ...(await importActual<typeof import("../pixi/selectors/seams")>()),
+vi.mock("../domain/selectors/seams", async (importActual) => ({
+  ...(await importActual<typeof import("../domain/selectors/seams")>()),
   getSeamModel: () => model,
 }));
-vi.mock("../pixi/tessellationGeometry", () => ({ displayTransform: () => ({ a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 }) }));
+vi.mock("../domain/tessellationGeometry", () => ({ displayTransform: () => ({ a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 }) }));
 
 const seam = { cfg: {} as FieldConfig };
 

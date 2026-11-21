@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parallelogramFromPoints, snapBaseEnd, tessellationEdgeDirections } from "../pixi/parallelogramGeometry";
-import { cellsInsidePolygon } from "../pixi/polygonGeometry";
+import { cellsInsidePolygon } from "../domain/polygonGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const deg = (value: number) => (value * Math.PI) / 180;

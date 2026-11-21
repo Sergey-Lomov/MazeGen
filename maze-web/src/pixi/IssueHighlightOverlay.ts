@@ -1,19 +1,19 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { NODE_RADIUS } from "./renderConstants";
-import type { Pos } from "./tessellationGeometry";
-import { buildNodePositions } from "./tessellationGeometry";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import type { Pos } from "../domain/tessellationGeometry";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
 import { drawDirectionArrow, splitWallAndLineEdges } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
-import { TILE_SIZE } from "./constants";
+import { TILE_SIZE } from "../domain/constants";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
-import { canvas } from "./colorTokens";
+import { canvas } from "../domain/colorTokens";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import type { IssueHighlightEdge } from "../store/postEditFullTypes";
-import { hopPieces, type SeamHopContext } from "./graphSeams";
+import { hopPieces, type SeamHopContext } from "../domain/graphSeams";
 
 const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;

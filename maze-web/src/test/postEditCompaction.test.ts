@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { compactPostEditCommands } from "../pixi/postEditCompaction";
-import { replayPostEditCommands } from "../pixi/postEditReplay";
-import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../pixi/postEditReplay";
+import { compactPostEditCommands } from "../domain/postEditCompaction";
+import { replayPostEditCommands } from "../domain/postEditReplay";
+import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../domain/postEditReplay";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
-import { nodeEndpoint, type PostEditEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, type PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 
 const n = nodeEndpoint;

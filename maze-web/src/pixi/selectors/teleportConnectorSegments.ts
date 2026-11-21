@@ -1,8 +1,8 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "./mazeSelectors";
-import { teleportConnectorKey } from "../renderers/teleportConnectorManual";
-import { nearestCellCoord } from "../tessellationGeometry";
+import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import { teleportConnectorKey } from "../../domain/renderers/teleportConnectorManual";
+import { nearestCellCoord } from "../../domain/tessellationGeometry";
 
 /** What the teleport connector editor's list needs to know about one drawn connector piece
  *  (GitHub issue #989): the cells it joins on its own floor and its direction. A same-floor

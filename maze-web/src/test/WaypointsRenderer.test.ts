@@ -40,7 +40,7 @@ vi.mock("../pixi/renderers/msdfFont", () => ({
 
 const { WaypointsRenderer } = await import("../pixi/renderers/WaypointsRenderer");
 const { Container, Graphics } = await import("pixi.js");
-import type { MarkerData } from "../pixi/renderers/types";
+import type { MarkerData } from "../domain/renderers/types";
 
 function labelCalls(): { text: string; fontFamily: string; fontSize: number; fill: number }[] {
   return ((globalThis as { __labelCalls?: unknown[] }).__labelCalls ?? []) as { text: string; fontFamily: string; fontSize: number; fill: number }[];

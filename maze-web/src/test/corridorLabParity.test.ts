@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { FAMILIES, cellSize, faceLength, labCellGeometry, prepareFamily, scaleCell, type LabCell } from "../components/CorridorGeometryTestPage";
-import { buildCorridorSegments } from "../pixi/selectors/mazeSelectors/corridors";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../pixi/tessellationGeometry";
+import { buildCorridorSegments } from "../domain/selectors/mazeSelectors/corridors";
+import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../domain/tessellationGeometry";
 import {
   buildCorridorGeometryDebug,
   contourToPolyline,

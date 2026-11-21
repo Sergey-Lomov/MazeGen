@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import type { NodeDto } from "../../wasm/types";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildNodeByIdMap } from "../../pixi/postEditCommandLabels";
-import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { buildNodeByIdMap } from "../../domain/postEditCommandLabels";
+import type { SplitLabelContext } from "../../domain/postEditSplitLabels";
+import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
 
 /** Everything needed to label an entity endpoint with the post-edit bubble format
  *  (`endpointBubble`): the node lookup, whether the project has several floors, and the

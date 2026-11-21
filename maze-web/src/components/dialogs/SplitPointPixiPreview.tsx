@@ -2,13 +2,14 @@ import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellVertices, getCellCenter, buildNodePositions } from "../../pixi/tessellationGeometry";
-import { buildSplitPassages } from "../../pixi/selectors/mazeSelectors";
+import { getCellVertices, getCellCenter } from "../../domain/tessellationGeometry";
+import { buildNodePositions } from "../../domain/splitNodeGeometry";
+import { buildSplitPassages } from "../../domain/selectors/mazeSelectors";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../../pixi/renderers/SplitJunctionRenderer";
 import { WallRenderer } from "../../pixi/renderers/WallRenderer";
 import { fitTileToWorld, clipToTile } from "../../pixi/tilePreviewFit";
-import { canvas } from "../../pixi/colorTokens";
-import { splitSlotColor } from "../../pixi/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { splitSlotColor } from "../../domain/colorUtils";
 import { ui } from "../../styles/theme";
 
 interface Props {

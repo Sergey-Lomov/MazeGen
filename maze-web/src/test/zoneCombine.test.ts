@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
-import { combineZoneCells, previewZoneCombine } from "../pixi/selectors/zoneCombine";
+import { combineZoneCells, previewZoneCombine } from "../domain/selectors/zoneCombine";
 
 const zone = (id: number, cells: Zone["cells"]): Zone => ({ id, name: "", kind: "manual", cells });
 const sorted = (cells: Zone["cells"]) => cells.map((c) => c.join(",")).sort();

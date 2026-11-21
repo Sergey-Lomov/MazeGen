@@ -1,8 +1,8 @@
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import type { Pos } from "../tessellationGeometry";
-import { getCellCenter, getSharedEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
-import { buildCellSet } from "./sharedSelectors";
+import type { Pos } from "../../domain/tessellationGeometry";
+import { getCellCenter, getSharedEdgeSegment, getCellNeighborOffsets } from "../../domain/tessellationGeometry";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
 
 export interface RegionGeometry {
   /** This region's cells, for fill rendering. */
