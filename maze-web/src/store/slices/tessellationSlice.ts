@@ -11,6 +11,7 @@ import { qcForTessellation } from "./qcTessellationFilter";
 import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellationSettings, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 import { computeMirrorPreview } from "../../domain/mirror";
 import { decodePoint, encodePoint } from "../../domain/tessellationProjection";
+import { zonesInitialState } from "./zonesSlice";
 
 /** Field-editing modes and previews that never outlive the project they were opened in (GitHub issue #946). */
 export const tessellationTransientUi = {
@@ -154,6 +155,9 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         postEditDraftSplitPoints: {},
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
+        // Zone cell coordinates belong to the old tessellation, so neither saved manual zones
+        // nor an in-progress zone edit can survive a tessellation change.
+        ...zonesInitialState,
       } : { debugStale: debugStaleOf(state) }),
       // A split pattern belongs to a shape template, not a tessellation (GitHub issue #758): it
       // survives any tessellation config change (kind or params) only when the new config provides
@@ -205,6 +209,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       presetSplitPointIds: {},
       _nextPresetSplitPointId: 1,
       presetEntityOrder: [],
+      // This direct kind switch also invalidates every manual zone coordinate.
+      ...zonesInitialState,
       splitPatterns: splitPatternsFor(state.splitPatterns, freshField.fieldConfig.tessellation),
       ...qcForTessellation(state, freshField.fieldConfig.tessellation),
     };
