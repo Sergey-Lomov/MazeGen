@@ -195,6 +195,17 @@ describe("FieldEditController smoothing hotkey", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
   });
 
+  it("prevents the browser save shortcut while Ctrl constrains a shape", () => {
+    const { controller } = startCircleDrag();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ControlLeft", key: "Control" }));
+    const event = new KeyboardEvent("keydown", { code: "KeyS", ctrlKey: true, cancelable: true });
+
+    expect(window.dispatchEvent(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(useMazeStore.getState().smoothInverted).toBe(true);
+    expect((controller as unknown as { controlHeld: boolean }).controlHeld).toBe(true);
+  });
+
   it("drops the inversion when the window loses focus", () => {
     startCircleDrag();
     key("keydown");

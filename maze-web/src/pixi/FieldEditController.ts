@@ -147,6 +147,14 @@ export class FieldEditController {
       else this.paste();
       return;
     }
+    // Smoothing remains a hold gesture while Ctrl/Cmd constrains a shape. Handle it before the
+    // no-modifier shortcuts so Ctrl/Cmd+S cannot reach the browser's Save Page command.
+    if (fieldToolsActive(state) && !e.altKey && e.code === "KeyS") {
+      e.preventDefault();
+      blurActiveElement();
+      this.setSmoothInverted(true);
+      return;
+    }
     if (fieldToolsActive(state) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const operation = e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd"
         ? "add"
@@ -165,12 +173,6 @@ export class FieldEditController {
         e.preventDefault();
         blurActiveElement();
         state.toggleZoneCombine();
-        return;
-      }
-      if (e.code === "KeyS") {
-        e.preventDefault();
-        blurActiveElement();
-        this.setSmoothInverted(true);
         return;
       }
       const primitive = fieldPrimitiveForShortcut(e.code);

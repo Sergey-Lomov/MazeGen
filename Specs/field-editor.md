@@ -608,7 +608,9 @@ for print sizing. The two implementations are kept equal by `fieldPrintSizing.te
 extent against the extent of the cells `configAllCells` returns, for every tessellation and preset
 shape) and by `normalize` unit tests in core.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
-cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
+cells and primitive results; point-by-point editing is unchanged. In Custom mode, holding `S`
+temporarily inverts smoothing even while `Ctrl`/`Cmd` constrains a proportional shape; the editor
+prevents the browser's corresponding Save Page shortcut. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results. In Default mode the Smoothing toggle sits above "Calculate for print". Its info dialog is one text for both modes, but the line about holding `S` is shown only in Custom mode (the tooltip's hold hint likewise): the hotkey works only in the custom field editor.
 
 When smoothing excludes cells from a shape preview, the excluded cells remain visible with a
