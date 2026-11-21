@@ -192,7 +192,9 @@ export class GridRenderer {
 
     this.g.clear();
 
-    this.g.setStrokeStyle({ width: 1 / scale, color, alpha: GRID_LINE_ALPHA });
+    // Grid strokes live in world space like the cells they outline. Do not compensate for viewport
+    // zoom: the grid inside a field and the surrounding viewport grid must scale together.
+    this.g.setStrokeStyle({ width: 1, color, alpha: GRID_LINE_ALPHA });
     const drawCell = (xi: number, yi: number): void => {
       tracePath(this.g, getCellOutlinePath(xi, yi, cfg), undefined, viewportGridMaxChordAngle(scale));
     };
