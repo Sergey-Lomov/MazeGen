@@ -1,14 +1,14 @@
-import type { MarkerShape, TeleportEdge, VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/types";
+import type { MarkerShape, TeleportEdge, VerticalConnectionStyle, VerticalMarkerStyle } from "../../domain/renderers/types";
 import type { TeleportSettingsFields } from "../../store/storeTypes";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { hasLowContrast } from "../colorContrast";
 import { buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
 import { withLazyResolvedGroupOverrides } from "../../store/teleportGroupLinks";
-import { buildVerticalConnectionMarkers, selectNodeLevelResolver, selectVerticalPassagePairSet, buildTeleportEdges, selectFloorScopedMaze } from "./mazeSelectors";
-import { withMarkerVisibility } from "./mazeSelectors/markers";
+import { buildVerticalConnectionMarkers, selectNodeLevelResolver, selectVerticalPassagePairSet, buildTeleportEdges, selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import { withMarkerVisibility } from "../../domain/selectors/mazeSelectors/markers";
 import type { AnySettings } from "./exportWarningGroups";
-import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
+import { buildTeleportGroups, teleportEdgeKey, coordKey } from "../../domain/selectors/teleportGroups";
 import { buildPointFillStates } from "./exportTeleportWarnings";
 import type { ExportWarning } from "./exportWarnings";
 

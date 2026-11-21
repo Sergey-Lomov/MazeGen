@@ -1,14 +1,14 @@
 import { Container, Graphics } from "pixi.js";
-import { pathLength, pointAtLength, type Point } from "./selectors/seamRouting";
+import { pathLength, pointAtLength, type Point } from "../domain/selectors/seamRouting";
 import { useMazeStore } from "../store/mazeStore";
-import { NODE_RADIUS } from "./renderConstants";
-import { canvas } from "./colorTokens";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
-import { TILE_SIZE } from "./constants";
+import { TILE_SIZE } from "../domain/constants";
 import { computeCrossFloorBadgePos, drawCrossFloorBadge, drawCrossFloorStub, isCrossFloorBadgeCrowded, CROWDED_BADGE_RADIUS_FACTOR } from "./renderers/floorBadge";
-import type { Pos } from "./tessellationGeometry";
+import type { Pos } from "../domain/tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
-import { hopPieces, seamHopPieces, type SeamHopContext } from "./graphSeams";
+import { hopPieces, seamHopPieces, type SeamHopContext } from "../domain/graphSeams";
 
 export type { Pos };
 

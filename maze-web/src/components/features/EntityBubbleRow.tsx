@@ -1,5 +1,5 @@
 import type React from "react";
-import type { PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import type { PostEditEntityBubble } from "../../domain/postEditCommandLabels";
 import { useMazeStore } from "../../store/mazeStore";
 import { spacing } from "../../styles/theme";
 import { Bubble, BubbleArrow } from "../Bubble";

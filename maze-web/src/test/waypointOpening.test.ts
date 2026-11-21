@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildMazeWalls, buildWaypointOpenings, endpointOuterFaces, floorCellSet, isOpeningWall, listOuterFaces, openingGapReach, resolveOpeningFace } from "../pixi/selectors/mazeSelectors";
+import { buildMazeWalls, buildWaypointOpenings, endpointOuterFaces, floorCellSet, isOpeningWall, listOuterFaces, openingGapReach, resolveOpeningFace } from "../domain/selectors/mazeSelectors";
 import { validateWaypointOpening } from "../store/projectExport/validateImageExport";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import type { NodeDto } from "../wasm/types";
-import type { WaypointOpeningMode } from "../store/imageExportTypes";
+import type { WaypointOpeningMode } from "../domain/waypointOpeningMode";
 import { n, squareCfg } from "./mazeSelectorsKit";
 
 vi.mock("pixi.js", async () => (await import("./mazeSelectorsMocks")).pixiMock());

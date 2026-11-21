@@ -1,14 +1,14 @@
 import type { Graphics } from "pixi.js";
-import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
-import { getSharedEdgeSegment, getFaceEdgeSegment, getCellCenter } from "../tessellationGeometry";
-import { getSeamModel } from "../selectors/seams";
+import { TILE_SIZE } from "../../domain/constants";
+import { canvas } from "../../domain/colorTokens";
+import { getSharedEdgeSegment, getFaceEdgeSegment, getCellCenter } from "../../domain/tessellationGeometry";
+import { getSeamModel } from "../../domain/selectors/seams";
 import type { FieldConfig } from "../../fieldConfig";
 import type { WorldPoint } from "../../wasm/mazeService";
-import { drawRoundedPolygon } from "./markerShapes";
-import { WALL_THICKNESS, HEAD_WIDTH_RATIO } from "../renderConstants";
-import { tracePath } from "../geometry/pathRenderer";
-import { offsetPolyline, polylineLength, trimPolyline } from "../geometry/polylineOps";
+import { drawRoundedPolygon } from "../../domain/renderers/markerShapes";
+import { WALL_THICKNESS, HEAD_WIDTH_RATIO } from "../../domain/renderConstants";
+import { tracePath } from "../../domain/geometry/pathRenderer";
+import { offsetPolyline, polylineLength, trimPolyline } from "../../domain/geometry/polylineOps";
 
 /** Shared style knobs for every one-way indicator pattern (`drawOneWayTriangle`/`Chevron`/`Arrow`)
  *  — GitHub issue #292 (renamed border->gap in #302 follow-up, consistent with the marker/connector

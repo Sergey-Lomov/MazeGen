@@ -1,11 +1,11 @@
 import { Container, Graphics } from "pixi.js";
-import { isHiddenSpecialMirror, type SplitPassage, type SplitSpecialShape, type SplitStyleOverride, type WallStyleOverride } from "./types";
+import { isHiddenSpecialMirror, type SplitPassage, type SplitSpecialShape, type SplitStyleOverride, type WallStyleOverride } from "../../domain/renderers/types";
 import { drawDirectionArrow } from "./wallUtils";
 import { chainSegmentsAtSharedVertices } from "./WallRenderer";
-import { WALL_THICKNESS } from "../renderConstants";
-import { TILE_SIZE } from "../constants";
+import { WALL_THICKNESS } from "../../domain/renderConstants";
+import { TILE_SIZE } from "../../domain/constants";
 import { disabledOfNumber } from "../../styles/palette";
-import { facePolyline } from "../splitFaceLayout";
+import { facePolyline } from "../../domain/splitFaceLayout";
 
 const pointKeyOf = (p: { x: number; y: number }) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
 

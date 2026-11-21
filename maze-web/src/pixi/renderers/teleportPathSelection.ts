@@ -1,10 +1,10 @@
-import type { TeleportEdge } from "./types";
-import type { Axis } from "./teleportConnectorAxes";
-import type { Pos } from "../tessellationGeometry";
+import type { TeleportEdge } from "../../domain/renderers/types";
+import type { Axis } from "../../domain/renderers/teleportConnectorAxes";
+import type { Pos } from "../../domain/tessellationGeometry";
 import {
   AXIS_EPSILON, alongAxis, perpOffset, sameAxis, axisIntersection, pointToSegmentDistance,
   lineSpanInField, FIELD_EXIT_SAMPLE_STEP,
-} from "./teleportGeometryUtils";
+} from "../../domain/renderers/teleportGeometryUtils";
 
 /** One straight piece of a connector's routed path, running along `axis` (a unit direction, see
  *  `Axis`) at the fixed perpendicular offset `fixed` from the origin along that axis's own normal

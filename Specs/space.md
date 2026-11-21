@@ -608,7 +608,7 @@ the snapshot equals the plain one. A folded face's `neighbor` is still the base 
 outside the field); the glued partner is given by `fold` only. The snapshot rebuilds its `Field` on every call. The benchmark measures the snapshot as its
 `geometry` stage.
 
-Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is the web geometry
+Status (GitHub issue #761, first step): `maze-web/src/domain/cartesianCache.ts` is the web geometry
 access layer. It holds the snapshot of the current field's cells, invalidated by the tessellation
 instance (the serialized config) and a web-owned field version (bumped when the cell set or the
 instance changes) — never by the display transform. Reads (`getCellGeometry`, `getCartesian`) are
@@ -630,8 +630,8 @@ results are exact for the polyline and within the snapshot's flatten tolerance o
 Status (GitHub issue #761, third step): the web has no per-tessellation geometry code.
 `FaceGeometry` also carries `neighbor` (the adjacent cell, `None` at the field edge) and
 `canonical_face` (the template's canonical index of the local face), so the web needs no face tables.
-`pixi/geometry/tessellationUi.ts` holds only UI metadata per `kind` (name, orientations, default
-params, the display base transform and pixel sizes). `pixi/tessellationGeometry.ts` derives cell
+`domain/geometry/tessellationUi.ts` holds only UI metadata per `kind` (name, orientations, default
+params, the display base transform and pixel sizes). `domain/tessellationGeometry.ts` derives cell
 centers, vertices, shared edges, neighbor offsets, and nearest-cell lookup from the snapshot through
 the display transform (`pixel = pixelsPerUnit · Orient · Base · core`). Face indices of cells in the web —
 split blueprints, post-edit and preset face editors — follow core's `faces_of` order
@@ -642,7 +642,7 @@ cell's `canonical_face` (`anchorCanonicalFaces`).
 Status (GitHub issue #764): `CellGeometry` also carries `shape` (the cell's `ShapeDescriptor` key:
 `regular:4`, `regular:6`, `cairo_pentagon`, …). Special split shape recognition (`bridge`, `diagonal`,
 `hex_*`, `cairo_*`), their node positions and semantic names are keyed on that shape and evaluated on
-the template's canonical faces (`splitShapeBinding`, `pixi/splitShape.ts`), not on the tessellation
+the template's canonical faces (`splitShapeBinding`, `domain/splitShape.ts`), not on the tessellation
 kind or the cell's face count. Shared-edge contact points come from core's `contact_point` for every
 face. `CellGeometry` carries `allowed_group` (the cell's allowed transforms as canonical-face permutations,
 identity first); split-point rotation (`rotateFaceIndex`) applies the group element that shifts every
@@ -660,7 +660,7 @@ access layer. Each floor holds one `selectedShape` instead of per-kind shape fie
 
 Status (GitHub issue #763): drawing and hit-testing work from core geometry snapshots through the
 single display transform. The cache requests `{ kind: "path" }` boundaries and derives a flattened
-`polyline` per cell (`pixi/geometry/pathFlatten.ts`, tolerance `1e-3` world units). Cells, walls,
+`polyline` per cell (`domain/geometry/pathFlatten.ts`, tolerance `1e-3` world units). Cells, walls,
 one-way markers, edge highlights and the grid draw with `tracePath` on the display-space path
 (`getCellPath`, `SharedEdge.path`); geometric operations (hit-testing, wall chaining, boundary
 highlight bands, region contours, `closestPointOnPolyline`, `offsetPolyline`, `trimPolyline`) use

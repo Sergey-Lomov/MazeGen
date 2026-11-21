@@ -12,7 +12,7 @@ A blueprint is a plain client-side template — applying it directly rewrites th
 nodes/edges (post-edit/preset) or is converted once into a fresh `SplitPattern` (generation
 settings); it is never itself sent to wasm and never stored in the project file.
 
-## Wire type (`maze-web/src/pixi/splitBlueprints.ts`, TS-only — no Rust/wasm counterpart)
+## Wire type (`maze-web/src/domain/splitBlueprints.ts`, TS-only — no Rust/wasm counterpart)
 
 - **`SplitNodeBlueprint`** — `{ id, degree, nodeFaces, titleKey? }`. `id` is unique only within its own
   degree's list and gives an unnamed blueprint's one-based fallback number in the picker tooltip.

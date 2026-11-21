@@ -1,6 +1,6 @@
-import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
+import { getCellVertices as geometryCellVertices } from "../domain/tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
-import type { WorldPoint } from "./primitiveGeometry";
+import type { WorldPoint } from "../domain/primitiveGeometry";
 
 export type BoundarySegment = [WorldPoint, WorldPoint];
 

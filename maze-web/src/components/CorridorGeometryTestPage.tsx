@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { getTileDiagram } from "../pixi/tessellationGeometry";
+import { getTileDiagram } from "../domain/tessellationGeometry";
 import {
   buildCorridorGeometryDebug,
   contourToSvgPath,

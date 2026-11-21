@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { applyPostEditCommand, replayPostEditCommands, replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
-import { filterCommandsForPoint, isCreateCommand, resetCommandsAt, deleteCommandAt, affectedIndicesForReset, affectedIndicesForDelete } from "../pixi/postEditLifelines";
-import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../pixi/postEditReplay";
+import { applyPostEditCommand, replayPostEditCommands, replayPostEditCommandsFailClosed } from "../domain/postEditReplay";
+import { filterCommandsForPoint, isCreateCommand, resetCommandsAt, deleteCommandAt, affectedIndicesForReset, affectedIndicesForDelete } from "../domain/postEditLifelines";
+import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../domain/postEditReplay";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
-import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 
 const n = nodeEndpoint;

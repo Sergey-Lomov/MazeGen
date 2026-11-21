@@ -1,9 +1,9 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
-import { shortestCorridorFaceAcrossFloors, selectNodeLevelResolver, selectFloorScopedMaze } from "./mazeSelectors";
-import type { TeleportFloorContext } from "./mazeSelectors";
-import type { TeleportGroup } from "./teleportGroups";
+import { shortestCorridorFaceAcrossFloors, selectNodeLevelResolver, selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import type { TeleportFloorContext } from "../../domain/selectors/mazeSelectors";
+import type { TeleportGroup } from "../../domain/selectors/teleportGroups";
 import type { MarkerLookKind } from "./exportMarkerLookAlike";
 export { computeTextFitItemsAcrossFloors, TEXT_OVERFLOW_WARNING_ID } from "./exportTextFit";
 export type { TextFitKind } from "./exportTextFit";

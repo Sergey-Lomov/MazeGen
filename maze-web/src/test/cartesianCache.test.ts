@@ -16,9 +16,9 @@ import {
   DEFAULT_MAX_OUTSIDE_CELLS,
   setMaxOutsideCells,
   warmCartesianCache,
-} from "../pixi/cartesianCache";
-import { getCellNeighborOffsets, getCellVertices, getNeighborData } from "../pixi/tessellationGeometry";
-import { configAllCells } from "../pixi/tessellationCells";
+} from "../domain/cartesianCache";
+import { getCellNeighborOffsets, getCellVertices, getNeighborData } from "../domain/tessellationGeometry";
+import { configAllCells } from "../domain/tessellationCells";
 import { fieldOf } from "./fieldConfigFixtures";
 
 // Runs against the real `maze-core` module loaded by `setup.ts`.

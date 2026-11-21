@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import type { TeleportEdge } from "../domain/renderers/types";
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
   return { from, to, oneWay: false };

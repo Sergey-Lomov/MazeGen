@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto } from "../pixi/selectors/mazeSelectors";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { postEditEdgesToDto } from "../domain/selectors/mazeSelectors";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 import { pe, noSplits } from "./mazeSelectorsKit";
 
 vi.mock("pixi.js", async () => (await import("./mazeSelectorsMocks")).pixiMock());

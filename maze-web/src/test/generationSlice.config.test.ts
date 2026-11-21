@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
+import { encodePoint } from "../domain/tessellationProjection";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
 import { TRANSIENT_UI_STATE } from "../store/transientUiState";
@@ -42,7 +42,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 import { generateMaze, startGenerateMaze, computeAnalytics, computeAnalyticsAsync } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 import { fieldOf } from "./fieldConfigFixtures";
-import { configAllCells } from "../pixi/tessellationCells";
+import { configAllCells } from "../domain/tessellationCells";
 
 beforeEach(() => {
   // `loadProject` waits for the registry unless it is already loaded (GitHub issue #967).

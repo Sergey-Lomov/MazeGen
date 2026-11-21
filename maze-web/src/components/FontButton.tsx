@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { sharedStyles } from "../styles/shared";
 import { FontPickerPanel } from "./FontPickerPanel";
-import type { LabelFont } from "../pixi/renderers/fontChoice";
+import type { LabelFont } from "../domain/renderers/fontChoice";
 import { formatLabelFont } from "../store/fontLabels";
 import type { TextFitKind } from "../pixi/selectors/exportWarnings";
 

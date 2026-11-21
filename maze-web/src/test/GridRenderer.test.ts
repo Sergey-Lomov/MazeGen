@@ -30,7 +30,7 @@ import {
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
-import { cellsInDisplayRect, getCellVertices, gridEdgesNearDisplayRect } from "../pixi/tessellationGeometry";
+import { cellsInDisplayRect, getCellVertices, gridEdgesNearDisplayRect } from "../domain/tessellationGeometry";
 
 describe("viewport grid density", () => {
   it("counts the inclusive viewport bounds", () => {

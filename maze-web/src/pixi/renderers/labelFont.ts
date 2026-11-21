@@ -1,5 +1,5 @@
 import { BitmapText, CanvasTextMetrics, Text } from "pixi.js";
-import { LABEL_FONT_LOADED_EVENT, convertsToMsdf, isMsdfFamily, msdfFace, type LabelFont } from "./fontChoice";
+import { LABEL_FONT_LOADED_EVENT, convertsToMsdf, isMsdfFamily, msdfFace, type LabelFont } from "../../domain/renderers/fontChoice";
 import { loadMsdfFamily } from "./msdfLoader";
 import { canvasLabelResolution, registerCanvasLabel } from "./canvasLabelResolution";
 import { isRasterFontReady, rasterCoversText } from "./rasterFont/rasterMsdf";

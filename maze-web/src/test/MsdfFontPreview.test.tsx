@@ -26,7 +26,7 @@ vi.mock("../pixi/renderers/msdfFont", () => ({
 }));
 vi.mock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily: (family: string) => loadMsdfFamily(family) }));
 
-const { MSDF_FONTS, markMsdfFamilyLoaded } = await import("../pixi/renderers/fontChoice");
+const { MSDF_FONTS, markMsdfFamilyLoaded } = await import("../domain/renderers/fontChoice");
 const { MsdfFontPreview } = await import("../components/MsdfFontPreview");
 
 const face = (id: string, weight: number) => ({ weight, atlasName: `${id}-${weight}`, url: `/fonts/${id}-${weight}.fnt` });

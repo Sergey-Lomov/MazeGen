@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Container } from "pixi.js";
 import { canvasToGrid, DefaultHoverProvider } from "../pixi/hoverProviders";
-import { makeProjection } from "../pixi/tessellationProjection";
-import type { TessellationProjection } from "../pixi/tessellationProjection";
-import { TILE_SIZE } from "../pixi/constants";
+import { makeProjection } from "../domain/tessellationProjection";
+import type { TessellationProjection } from "../domain/tessellationProjection";
+import { TILE_SIZE } from "../domain/constants";
 import { MazeScene, shouldCancelFieldEditGesture, TESSELLATION_CONFIG_BY_CARD } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";

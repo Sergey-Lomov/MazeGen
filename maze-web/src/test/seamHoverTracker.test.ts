@@ -6,7 +6,7 @@ import { HOVER_DELAY_MS, SeamHoverTracker, seamArrowsShown, exportSeamLayerShown
 // Which arrow or pair the pointer is over comes from the arrow hit-tests, mocked here as "the pointer's x is the
 // arrow index, its y the pair index"; what is under test is when the focus reaches the store.
 vi.mock("../pixi/seamArrowSync", () => ({ selectSeamArrowData: () => ({ arrows: [{ id: 0, width: 1 }, { id: 1, width: 1 }, { id: 2, width: 1 }], focus: null }) }));
-vi.mock("../pixi/selectors/seamArrows", () => ({
+vi.mock("../domain/selectors/seamArrows", () => ({
   arrowContains: (arrow: { id: number }, at: [number, number]) => arrow.id === at[0],
   pairAt: (_arrow: unknown, at: [number, number], _reach: number, cells: boolean) => (cells ? at[1] : null),
 }));

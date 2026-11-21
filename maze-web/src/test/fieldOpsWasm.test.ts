@@ -6,8 +6,8 @@ import {
   translateFieldCells,
 } from "../wasm/mazeService";
 import { tessellationConfigOf } from "../fieldConfig";
-import { fieldOperationAvailable } from "../pixi/fieldOps";
-import { configAllCells } from "../pixi/tessellationCells";
+import { fieldOperationAvailable } from "../domain/fieldOps";
+import { configAllCells } from "../domain/tessellationCells";
 import { fieldOf } from "./fieldConfigFixtures";
 
 // Runs against the real `maze-core` module loaded by `setup.ts`.

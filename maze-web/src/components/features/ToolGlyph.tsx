@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { TILE_SIZE } from "../../pixi/constants";
+import { TILE_SIZE } from "../../domain/constants";
 import { getToolGlyphs, TOOL_GLYPH_BOX, type ToolGlyphKey } from "./toolGlyphs";
 
 /** Blits the offscreen-rendered pictogram for `tool` (see `toolGlyphs.ts`) into a square 2D

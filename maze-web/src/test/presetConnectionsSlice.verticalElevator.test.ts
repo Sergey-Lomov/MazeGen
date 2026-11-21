@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual } from "../domain/presetEndpoint";
 import { fieldOf } from "./fieldConfigFixtures";
 import { noticeCodes, noticeParams } from "./notificationTestHelpers";
 import {
   ELEVATOR_DRAG_FAILED, VERTICAL_PASSAGE_DRAG_FAILED, VERTICAL_PASSAGE_NO_ADJACENT_CELL,
 } from "../notifications/editRefusalNotifications";
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 import { addFloor, usePresetStateReset } from "./presetConnectionsSliceKit";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

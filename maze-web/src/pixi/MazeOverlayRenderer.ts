@@ -5,10 +5,10 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { layoutEditorMarkers } from "./editorMarkerLayout";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, buildTeleportAvoidanceWaypoints, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, buildTeleportAvoidanceWaypoints, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "../domain/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { canvas } from "./colorTokens";
+import { canvas } from "../domain/colorTokens";
 
 export interface MazeOverlayData {
   nodes: NodeDto[];

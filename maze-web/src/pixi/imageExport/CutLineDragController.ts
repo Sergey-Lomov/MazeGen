@@ -1,7 +1,7 @@
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PointerHandler } from "../sceneTypes";
-import { toViewportCoordinates } from "../pointerInteraction";
+import { toViewportCoordinates } from "../../domain/pointerInteraction";
 import { distanceToSegment, offsetForPoint } from "./cutLines";
 import { drawnSideSpans } from "./cutLineSpans";
 import { floorCutLines, type CutLineHandle } from "./exportContent";

@@ -1,10 +1,10 @@
 import type { ExportWarning } from "./exportWarnings";
-import type { WallEdge } from "../renderers/types";
-import type { CorridorSegment } from "./mazeSelectors";
+import type { WallEdge } from "../../domain/renderers/types";
+import type { CorridorSegment } from "../../domain/selectors/mazeSelectors";
 import { BOUNDARY_HIGHLIGHT_PADDING, chevronRowStep, oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { buildOneWayStyle } from "../imageExport/exportStyleBuilders";
-import { pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
-import { getSharedEdgeSegment } from "../tessellationGeometry";
+import { pointToSegmentDistance } from "../../domain/renderers/teleportGeometryUtils";
+import { getSharedEdgeSegment } from "../../domain/tessellationGeometry";
 import { buildTeleportConnectorContext, type TeleportConnectorContext, type TeleportConnectorInput } from "./teleportConnectorContext";
 
 /** One drawn one-way indicator: its center, a circle bounding what it draws, and the node pair of

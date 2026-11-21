@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildClosedCells, buildMazeWalls, buildCorridorSegments, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions } from "../pixi/selectors/mazeSelectors";
-import { getCellCenter, getCellVertices, getSharedEdgeSegment } from "../pixi/tessellationGeometry";
+import { buildClosedCells, buildMazeWalls, buildCorridorSegments, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions } from "../domain/selectors/mazeSelectors";
+import { getCellCenter, getCellVertices, getSharedEdgeSegment } from "../domain/tessellationGeometry";
 import type { EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";

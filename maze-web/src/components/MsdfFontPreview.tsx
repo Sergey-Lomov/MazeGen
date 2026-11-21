@@ -3,7 +3,7 @@ import type React from "react";
 import { Application } from "pixi.js";
 import { truncateToWidth } from "../pixi/ellipsisFit";
 import { loadMsdfFont, makeCenteredLabel } from "../pixi/renderers/msdfFont";
-import { isMsdfFamilyLoaded, type LabelFont } from "../pixi/renderers/fontChoice";
+import { isMsdfFamilyLoaded, type LabelFont } from "../domain/renderers/fontChoice";
 import { loadMsdfFamily } from "../pixi/renderers/msdfLoader";
 
 /** Gap in px between the left edge of the preview and its text. */

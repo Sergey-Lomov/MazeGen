@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectIdentity, namesIdentity } from "./splitBindingFixture";
-import { type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { type SplitFaceKind } from "../domain/splitFaceLayout";
 
 // GitHub issue #487 — a split point whose face configuration matches a recognized special-split
 // topology gets semantic per-node names instead of "Node N". Named: degree-4 "bridge"/"diagonal",

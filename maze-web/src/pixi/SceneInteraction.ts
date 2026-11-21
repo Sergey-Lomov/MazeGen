@@ -1,13 +1,13 @@
 import type { Application } from "pixi.js";
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { editFieldOf, fieldToolsActive, zoneEditActive } from "./fieldEditTarget";
+import { editFieldOf, fieldToolsActive, zoneEditActive } from "../store/fieldEditTarget";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
-import { canvas } from "./colorTokens";
+import { canvas } from "../domain/colorTokens";
 import { isTypingTarget } from "./domUtils";
 
 interface SceneInteractionDeps {

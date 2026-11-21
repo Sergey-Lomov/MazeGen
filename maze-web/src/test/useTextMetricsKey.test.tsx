@@ -5,7 +5,7 @@ let key = "a";
 vi.mock("../pixi/textFit", () => ({ textMetricsKey: () => key }));
 
 const { useTextMetricsKey } = await import("../components/features/useTextMetricsKey");
-const { LABEL_FONT_LOADED_EVENT } = await import("../pixi/renderers/fontChoice");
+const { LABEL_FONT_LOADED_EVENT } = await import("../domain/renderers/fontChoice");
 
 describe("useTextMetricsKey", () => {
   it("returns a new key after a label font finishes loading", () => {

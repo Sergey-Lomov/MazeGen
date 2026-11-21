@@ -157,7 +157,7 @@ registered title — see "Split Pattern Statistics Modal" below.
 
 #### Named Split Patterns
 
-`maze-web/src/pixi/splitPatternTitles.ts` — a small, curated, client-only title registry mapping a
+`maze-web/src/domain/splitPatternTitles.ts` — a small, curated, client-only title registry mapping a
 handful of recognizable canonical topologies to an i18n title (`split_pattern_title.*`), filtered
 by tile degree (`topology[0].length`) the same way `splitBlueprints.ts`'s `SplitNodeBlueprint`
 registry is filtered by degree. Deliberately independent from that blueprint registry — a blueprint

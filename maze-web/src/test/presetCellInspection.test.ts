@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildPresetCellInspection } from "../pixi/selectors/presetCellInspection";
-import { presetEndpoint, type PresetEndpoint } from "../pixi/presetEndpoint";
-import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../pixi/fieldEditUtils";
-import { presetEdgeKey } from "../pixi/presetSplitResolve";
+import { presetEndpoint, type PresetEndpoint } from "../domain/presetEndpoint";
+import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../domain/fieldEditUtils";
+import { presetEdgeKey } from "../domain/presetSplitResolve";
 import type { FieldConfig } from "../fieldConfig";
 import type { NodeLockKind } from "../wasm/types";
 import { setLocale } from "~/paraglide/runtime";

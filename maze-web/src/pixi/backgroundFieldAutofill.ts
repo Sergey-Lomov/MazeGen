@@ -1,9 +1,9 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { BackgroundImage } from "../store/tessellationTypes";
-import { colorToRgb } from "../store/colorMath";
+import { colorToRgb } from "../domain/colorMath";
 import { backgroundImageCrop } from "./BackgroundImageLayer";
-import { getCellVertices, pointInPolygon } from "./tessellationGeometry";
-import { makeProjection, encodePoint } from "./tessellationProjection";
+import { getCellVertices, pointInPolygon } from "../domain/tessellationGeometry";
+import { makeProjection, encodePoint } from "../domain/tessellationProjection";
 
 export type BackgroundAutoFillMode = "transparent" | "color";
 

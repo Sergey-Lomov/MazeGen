@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { drawMarkerWidenPatches } from "../pixi/renderers/markerWidenPatches";
-import type { MarkerData } from "../pixi/renderers/types";
+import type { MarkerData } from "../domain/renderers/types";
 
 class FakeGraphics {
   calls: { fn: string; args: unknown[] }[] = [];

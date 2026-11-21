@@ -1,10 +1,10 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { TeleportSettingsFields, MarkerLayoutSettingsFields } from "../../store/storeTypes";
-import { getSplitAwareNodePosition } from "./mazeSelectors";
-import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
-import type { TeleportEdge } from "../renderers/types";
-import { applyMarkerLayout, MARKER_LAYOUT_SPACING, buildSplitHostKeys } from "./mazeSelectors/markerLayout";
+import { getSplitAwareNodePosition } from "../../domain/selectors/mazeSelectors";
+import { buildTeleportGroups, teleportEdgeKey, coordKey } from "../../domain/selectors/teleportGroups";
+import type { TeleportEdge } from "../../domain/renderers/types";
+import { applyMarkerLayout, MARKER_LAYOUT_SPACING, buildSplitHostKeys } from "../../domain/selectors/mazeSelectors/markerLayout";
 import type { ExportWarning } from "./exportWarnings";
 
 /** Marker "radius" in world px for the given `MarkerSettings`-like size — used only for the

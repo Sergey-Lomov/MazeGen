@@ -1,5 +1,5 @@
-import type { MarkerData, TeleportEdge, TeleportLineStyle, VerticalConnectionMarker, VerticalConnectionStyle } from "./renderers/types";
-import type { MarkerFootprint } from "./markerScale";
+import type { MarkerData, TeleportEdge, TeleportLineStyle, VerticalConnectionMarker, VerticalConnectionStyle } from "../domain/renderers/types";
+import type { MarkerFootprint } from "../domain/markerScale";
 import { coordKey, computeFloorBadges } from "./renderers/teleportGeometry";
 
 /** Adapters from each marker kind's render data to the shared `MarkerFootprint` the marker scaler

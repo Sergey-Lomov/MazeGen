@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { notify } from "../notifications/notificationStore";
 import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "./projectLoadNotifications";
-import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
 import { guardPresetEdits } from "./presetEditGuard";
 import { raisePanelsOnOpen } from "./sidePanelRaise";
@@ -19,16 +19,14 @@ import { createZonesSlice } from "./slices/zonesSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
-import { installEdgeMarkerSync } from "./edgeMarkerSync";
 import { installTeleportConnectorPathSync, retainLiveTeleportConnectorPaths } from "./teleportConnectorPathSync";
 import { installExportEditStateSync } from "./exportEditStateSync";
-import { installLabelFontSync } from "./labelFontSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { resolveFieldConfig } from "../pixi/tessellationCells";
-import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { resolveFieldConfig } from "../domain/tessellationCells";
+import { replayPostEditCommandsFailClosed } from "../domain/postEditReplay";
 import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./slices/postEditSliceHelpers";
 
 /** Identifies the newest project load so an older asynchronous load cannot hide its progress UI. */
@@ -415,6 +413,4 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
 installTopologySync(useMazeStore);
 installFieldClipboardSync(useMazeStore);
 installExportEditStateSync(useMazeStore);
-installEdgeMarkerSync(useMazeStore);
 installTeleportConnectorPathSync(useMazeStore);
-installLabelFontSync(useMazeStore);

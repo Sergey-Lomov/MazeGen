@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { makeState, toJson } from "./projectExportKit";
 

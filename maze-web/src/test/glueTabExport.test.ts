@@ -7,8 +7,8 @@ import { DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import type { GlueTabStyle } from "../store/imageExportTypes";
 import type { MazeState } from "../store/storeTypes";
 import type { WireTopology } from "../wasm/types";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { getCellVertices } from "../pixi/tessellationGeometry";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { getCellVertices } from "../domain/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const style = (patch: Partial<GlueTabStyle> = {}): GlueTabStyle => ({ ...DEFAULT_GLUE_TAB_STYLE, showTabs: true, ...patch });

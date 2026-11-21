@@ -1,6 +1,6 @@
 import type { Container } from "pixi.js";
-import type { FieldEdge } from "./fieldEditUtils";
-import { PointerDragTracker, toViewportCoordinates } from "./pointerInteraction";
+import type { FieldEdge } from "../domain/fieldEditUtils";
+import { PointerDragTracker, toViewportCoordinates } from "../domain/pointerInteraction";
 
 export abstract class BaseController {
   protected getViewport: () => Container;

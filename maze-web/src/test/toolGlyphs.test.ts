@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PostEditTool } from "../store/postEditTypes";
-import type { PresetConnectionTool } from "../pixi/fieldEditUtils";
+import type { PresetConnectionTool } from "../domain/fieldEditUtils";
 
 // `toolGlyphs` pulls in pixi.js at module load (`Application`, `Graphics`); the offscreen render
 // path itself needs a real GL context and is not exercised here — only the static `GLYPHS` map.

@@ -7,14 +7,14 @@ import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
 import { LabelFontRow } from "./LabelFontRow";
 import { useGate } from "./LinkContext";
-import { FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE, TEXT_MARGIN_RANGE } from "../../domain/renderConstants";
 import { SectionHeader } from "../SectionHeader";
 import { AutoFitButton } from "./TextFitContext";
 import { TextInput } from "../TextInput";
 import { Button } from "../Button";
 import { sharedStyles } from "../../styles/shared";
-import { exactCellBounds } from "../../pixi/tessellationGeometry";
-import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
+import { exactCellBounds } from "../../domain/tessellationGeometry";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 import { convertFloorLabelPosition } from "../../pixi/renderers/FloorLabelRenderer";
 import * as m from "~/paraglide/messages";
 

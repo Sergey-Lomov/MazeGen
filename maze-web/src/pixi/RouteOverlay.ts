@@ -1,13 +1,13 @@
 import { Graphics } from "pixi.js";
-import { NODE_RADIUS } from "./renderConstants";
+import { NODE_RADIUS } from "../domain/renderConstants";
 import type { RouteInfoDto, NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { buildNodePositions } from "./tessellationGeometry";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import { drawCrossFloorBadge } from "./renderers/floorBadge";
-import { canvas } from "./colorTokens";
-import { seamHopPieces, type SeamHopContext } from "./graphSeams";
+import { canvas } from "../domain/colorTokens";
+import { seamHopPieces, type SeamHopContext } from "../domain/graphSeams";
 
 const ROUTE_LINE_COLOR = 0xffdd44;
 const ROUTE_LINE_WIDTH = 3;

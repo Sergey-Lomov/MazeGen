@@ -1,8 +1,8 @@
 import type { MazeState } from "../../store/storeTypes";
 import type { ParamActivityContext } from "../../store/parameterLinksActivity";
 import type { EdgeDto } from "../../wasm/types";
-import { maxSplitNodeCount } from "./mazeSelectors";
-import { hasCrossFloorTeleport } from "./mazeSelectors/teleport";
+import { maxSplitNodeCount } from "../../domain/selectors/mazeSelectors";
+import { hasCrossFloorTeleport } from "../../domain/selectors/mazeSelectors/teleport";
 
 // The maze-derived gates the parameter link schema's activity rules read (GitHub issues #965, #1012): which
 // elements the project's maze has. Shared by everything that asks "is this setting's element drawn" over the

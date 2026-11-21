@@ -1,5 +1,5 @@
 import { Assets } from "pixi.js";
-import { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, hasMsdfFamilyAtlases, isMsdfFamily, markMsdfFamilyLoaded } from "./fontChoice";
+import { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, hasMsdfFamilyAtlases, isMsdfFamily, markMsdfFamilyLoaded } from "../../domain/renderers/fontChoice";
 
 /** On-demand loading of the baked MSDF atlases (GitHub issue #982). A font's atlases are downloaded and
  *  decoded the first time the font is needed (picked in the font picker, referenced by an opened project,

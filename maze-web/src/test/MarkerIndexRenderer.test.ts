@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
+import type { MarkerIndexLabel } from "../domain/selectors/mazeSelectors/markerIndex";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 
 // Minimal pixi stubs — the renderer draws a closed rounded path, then calls `fill().stroke()` on `Graphics` and

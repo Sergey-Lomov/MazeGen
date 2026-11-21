@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shortestCorridorFace, shortestCorridorFaceAcrossFloors, type CorridorSegment } from "../pixi/selectors/mazeSelectors/corridors";
+import { shortestCorridorFace, shortestCorridorFaceAcrossFloors, type CorridorSegment } from "../domain/selectors/mazeSelectors/corridors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

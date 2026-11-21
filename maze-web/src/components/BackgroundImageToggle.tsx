@@ -1,6 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
-import { resolveCells } from "../pixi/fieldEditUtils";
-import { TILE_SIZE } from "../pixi/constants";
+import { resolveCells } from "../domain/fieldEditUtils";
+import { TILE_SIZE } from "../domain/constants";
 import {
   backgroundImageCrop,
   calculateBackgroundImageLayout,

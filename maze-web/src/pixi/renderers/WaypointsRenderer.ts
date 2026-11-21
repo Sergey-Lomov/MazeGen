@@ -1,10 +1,10 @@
 import { Container, Graphics } from "pixi.js";
-import type { MarkerData } from "./types";
-import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
+import type { MarkerData } from "../../domain/renderers/types";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "../../domain/renderers/markerShapes";
 import { makeCenteredLabel } from "./msdfFont";
-import { DEFAULT_LABEL_FONT } from "./fontChoice";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../renderConstants";
-import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import { DEFAULT_LABEL_FONT } from "../../domain/renderers/fontChoice";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../../domain/renderConstants";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../domain/markerScale";
 
 export class WaypointsRenderer {
   private readonly g: Graphics;

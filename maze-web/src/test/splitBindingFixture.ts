@@ -1,6 +1,6 @@
-import { detectSplitSpecialShapeKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
-import type { SplitShapeBinding } from "../pixi/splitShape";
-import { splitNodeSemanticNames, type SplitNodeFaces } from "../pixi/splitNodeNames";
+import { detectSplitSpecialShapeKind, type SplitFaceKind } from "../domain/splitFaceLayout";
+import type { SplitShapeBinding } from "../domain/splitShape";
+import { splitNodeSemanticNames, type SplitNodeFaces } from "../domain/splitNodeNames";
 
 const SHAPE_BY_DEGREE: Record<number, string> = { 3: "regular:3", 4: "regular:4", 5: "cairo_pentagon", 6: "regular:6", 8: "regular:8" };
 

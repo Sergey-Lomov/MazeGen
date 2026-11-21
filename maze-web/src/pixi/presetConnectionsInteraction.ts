@@ -1,5 +1,5 @@
 import type { PresetConnectionsState } from "../store/presetConnectionsTypes";
-import type { PresetTeleportEntry } from "./fieldEditUtils";
+import type { PresetTeleportEntry } from "../domain/fieldEditUtils";
 
 /**
  * Returns whether a preset-side picker or delete prompt owns the current interaction.

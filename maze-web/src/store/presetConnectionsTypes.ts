@@ -1,9 +1,9 @@
 import type { NodeLockKind } from "../wasm/types";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetEdgeToolMode, PresetTeleportDirection, PresetVerticalPassageDirection, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
-import type { PresetEndpoint } from "../pixi/presetEndpoint";
-import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
-import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../pixi/pointEntities";
-import type { EntityToolPurpose } from "../pixi/entityToolKinds";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetEdgeToolMode, PresetTeleportDirection, PresetVerticalPassageDirection, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../domain/fieldEditUtils";
+import type { PresetEndpoint } from "../domain/presetEndpoint";
+import type { SplitNodeBlueprint } from "../domain/splitBlueprints";
+import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../domain/pointEntities";
+import type { EntityToolPurpose } from "../domain/entityToolKinds";
 import type { PendingPresetEdit } from "./presetEditGuard";
 
 export function isPresetLockTool(tool: PresetConnectionTool): boolean {

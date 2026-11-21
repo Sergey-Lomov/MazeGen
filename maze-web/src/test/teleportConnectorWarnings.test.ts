@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { computeTeleportConnectorWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, type ExportWarning, type ExportWarningId } from "../pixi/selectors/exportWarnings";
-import { getCellCenter } from "../pixi/tessellationGeometry";
-import type { ManualTeleportConnectorPath } from "../pixi/renderers/teleportConnectorManual";
+import { getCellCenter } from "../domain/tessellationGeometry";
+import type { ManualTeleportConnectorPath } from "../domain/renderers/teleportConnectorManual";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import { corridorsSettings, squareCfg, wallsSettings } from "./exportWarningFixtures";
 import type { VectorByWallsSettings } from "../store/storeTypes";

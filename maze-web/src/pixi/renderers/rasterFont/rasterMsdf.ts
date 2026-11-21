@@ -1,6 +1,6 @@
 import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, VECTOR_FONT_FAMILY, nearestWeight, registerRasterFace, unregisterRasterFace, type LabelFont } from "../fontChoice";
+import { LABEL_FONT_LOADED_EVENT, MSDF_FONTS, VECTOR_FONT_FAMILY, nearestWeight, registerRasterFace, unregisterRasterFace, type LabelFont } from "../../../domain/renderers/fontChoice";
 import { DynamicMsdfFont } from "./dynamicMsdfFont";
 import { getMsdfService } from "./msdfClient";
 import { currentCharset } from "./glyphCharset";

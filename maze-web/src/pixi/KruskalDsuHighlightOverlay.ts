@@ -2,7 +2,7 @@ import { Container } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
-import { buildPalette } from "./colorUtils";
+import { buildPalette } from "../domain/colorUtils";
 
 const HIGHLIGHT_WIDTH = 2;
 const HIGHLIGHT_ALPHA = 0.6;

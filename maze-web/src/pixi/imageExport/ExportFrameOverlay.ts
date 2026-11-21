@@ -1,11 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { createFloorNodesSelector } from "../selectors/mazeSelectors";
-import { computePrintExportFit, computeSheetScreenLayout, computePrintPlacementFromViewport, computeViewportFromPrintPlacement, DPI_BY_DENSITY, mmToPx } from "./printFit";
-import { computeDigitalExportFit } from "./exportFit";
-import { resolveBackgroundColor, resolveContentBoundsBasis } from "./exportMargins";
+import { createFloorNodesSelector } from "../../domain/selectors/mazeSelectors";
+import { computePrintExportFit, computeSheetScreenLayout, computePrintPlacementFromViewport, computeViewportFromPrintPlacement, DPI_BY_DENSITY, mmToPx } from "../../domain/imageExport/printFit";
+import { computeDigitalExportFit } from "../../domain/imageExport/exportFit";
+import { resolveBackgroundColor, resolveContentBoundsBasis } from "../../domain/imageExport/exportMargins";
 import { resolveCutPlan, resolveExportContent } from "./exportContent";
-import { contrastGray } from "../colorTokens";
+import { contrastGray } from "../../domain/colorTokens";
 import type { ViewportListener } from "../sceneTypes";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import type { ImageExportRenderer } from "./ImageExportRenderer";

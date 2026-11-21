@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
-import { encodePoint } from "../pixi/tessellationProjection";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { encodePoint } from "../domain/tessellationProjection";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { PresetConnectionsController } from "../pixi/PresetConnectionsController";
 import type { PresetConnectionsRenderer } from "../pixi/PresetConnectionsRenderer";
-import type { PresetConnectionEntry, PresetElevatorEntry, PresetTeleportEntry, PresetVerticalPassageEntry } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetElevatorEntry, PresetTeleportEntry, PresetVerticalPassageEntry } from "../domain/fieldEditUtils";
 import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications } from "../notifications/notificationStore";
 import { noticeCodes, noticeParams } from "./notificationTestHelpers";
 import { TELEPORT_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED } from "../notifications/editRefusalNotifications";
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,

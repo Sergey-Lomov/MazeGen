@@ -1,0 +1,447 @@
+import type { NodeDto } from "../wasm/types";
+import type { PostEditCommand } from "../store/postEditCommandTypes";
+import type { PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
+import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint, resolveEndpointToHoverPoint, nodeEndpoint } from "./postEditEndpoint";
+import { messageForTitleKey } from "./splitPatternTitles";
+import { splitNodeLabelShort } from "./splitNodeLabels";
+import { resolveSplitNodeShortLabel, type SplitLabelContext } from "./postEditSplitLabels";
+import { formatTargetLabel } from "./targetLabel";
+import * as m from "~/paraglide/messages";
+
+/** One entity bubble in a "Changes" panel row (GitHub issue #546) — `text` is the same `Lf x:y`/
+ *  `x:y` coordinate convention the debug event tree's own bubbles use (`bubbleLabel`,
+ *  `debugRowText.ts`), never a raw `NodeId`/entity id. Always names exactly one point (GitHub issue
+ *  #546 second follow-up dropped the earlier "combined" bubble that named several floors of the same
+ *  coordinate at once — each floor gets its own bubble now, so `highlight` is always a plain `point`,
+ *  never `points`). `null` for a bubble naming an entity the log no longer has enough information to
+ *  highlight — a removed/dangling id with no live draft entry left to resolve a point from. */
+export interface PostEditEntityBubble {
+  text: string;
+  highlight: PostEditHoveredEntity | null;
+}
+
+/** One row of the "Changes" panel (GitHub issue #545, bubbles added by #546, per-point bubbles and
+ *  `rowHighlight` by the #546 second follow-up) — a human-readable action plus one or more entity
+ *  bubbles, each naming exactly one point (never a combined multi-floor bubble — an elevator's
+ *  three floors are three separate bubbles, `L1 x:y`/`L2 x:y`/`L3 x:y`, not one `x:y [L1,L2,L3]`),
+ *  derived from a single `PostEditCommand`. `showArrow` draws a plain text glyph between exactly
+ *  two bubbles (same "from -> to" reading `SplitNodesDialogView`'s link bubbles use) without
+ *  implying anything about `rowHighlight` — a vertical passage/elevator/cross-floor teleport shows
+ *  the arrow (it still has a direction) but highlights per-point, not as one connecting line. */
+export interface PostEditCommandLabel {
+  action: string;
+  bubbles: PostEditEntityBubble[];
+  /** `true` draws a plain text arrow glyph between `bubbles[0]` and `bubbles[1]` (always exactly
+   *  two bubbles when set) — purely cosmetic, independent of `rowHighlight`. */
+  showArrow: boolean;
+  /** `"<->"` for a wall/passage face (undirected — the same kind applies in both directions) or a
+   *  two-way teleport/vertical passage; `"->"`/`"<-"` for a one-way one, telling which of the two
+   *  fixed bubble positions traffic flows FROM and TO — same convention `SplitNodesDialogView`'s
+   *  own link arrows use. `bubbles`' own order never changes with direction (GitHub issue #546
+   *  follow-up: flipping a one-way face/passage's direction used to swap which bubble showed first,
+   *  which reads as "the points swapped places" rather than "the arrow flipped") — only the glyph
+   *  does. Only meaningful when `showArrow`. */
+  arrow: "->" | "<-" | "<->";
+  /** What hovering the row itself (not one of its own bubbles) highlights on the canvas (GitHub
+   *  issue #546 second follow-up) — `null` for a row with no natural "whole row" target (a
+   *  single-bubble point/split-structure row; its one bubble already covers that). A `link` for a
+   *  same-floor edge/teleport (the connecting line itself reads naturally as "this row"); a
+   *  `points` group for a vertical passage/elevator/cross-floor teleport — every one of THOSE
+   *  entities' points that's actually drawn on some floor, which after `activeLevel` gating
+   *  (`buildHoveredEntityHighlight`) collapses to just the point(s) on the floor being viewed. Never
+   *  a `link` for a cross-floor entity — a straight line needs both ends on one floor, which a
+   *  vertical/cross-floor entity's own two points never share. */
+  rowHighlight: PostEditHoveredEntity | null;
+  /** The entity's own stable id (GitHub issue #574's `entityIdOf`), rendered as its own hoverable/
+   *  clickable bubble (GitHub issue #573) rather than baked into `action`'s text — `undefined` for a
+   *  command kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
+   *  `rotateSplitPoint`). Hovering it highlights every other row sharing the same id (the panel's own
+   *  concern, not this module's); clicking it sets the entity-id filter (`setPostEditChangesEntityFilter`). */
+  entityId: string | undefined;
+}
+
+/** Coordinate text for one point, via the shared `formatTargetLabel` (GitHub issue #602) — same
+ *  `x:y`/`Lf x:y` + `" (suffix)"` convention every stage now shares. `"?"` for a point that never
+ *  resolved at all (a not-yet-confirmed split node). */
+function formatPoint(p: PostEditHoverPoint | undefined, multiFloor: boolean, slotSuffix?: string): string {
+  if (p === undefined) return "?";
+  return formatTargetLabel(p.point, p.level ?? 0, multiFloor, slotSuffix);
+}
+
+/** One bubble naming a plain point/node endpoint, hover-highlighting it as a `point` entity. Any
+ *  endpoint whose point is a split tile gets a "(N{n})"/semantic-short parenthetical suffix (GitHub
+ *  issue #546 fourth follow-up, eighth follow-up) — resolved via `resolveSplitNodeShortLabel`
+ *  (`postEditSplitLabels.ts`), the same "is this point a split tile at all" check and semantic-name
+ *  lookup `ManageSplitNodesDialog`'s own link bubbles use, NOT `NodeDto.i > 0` — the point's
+ *  ORIGINAL node (`i === 0`) is just as much a split tile's node as any extra slot and must get the
+ *  same suffix. `splitCtx` is `null` where the caller has no field/edges context to resolve against
+ *  (falls back to no suffix at all, same as an unsplit point). */
+export function endpointBubble(ep: PostEditEndpoint, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
+  const p = resolveEndpointToHoverPoint(ep, nodeById);
+  const suffix = p ? resolveSplitNodeShortLabel(splitCtx, p.point, p.level, ep) : undefined;
+  return { text: formatPoint(p, multiFloor, suffix), highlight: p ? { kind: "point", ...p } : null };
+}
+
+/** One bubble naming a split point directly by its own `(point, level)` — used by split-structure
+ *  commands that address the whole point rather than a single resolved node (`rotateSplitPoint`,
+ *  `applySplitBlueprint`). No slot suffix here — deliberately, unlike `endpointBubble`/the
+ *  `slotId`-bearing overload below: these commands rotate/reset the WHOLE tile, not one node of
+ *  it, so naming a single slot would misrepresent what changed. */
+export function splitPointBubble(point: [number, number], level: number | undefined, multiFloor: boolean): PostEditEntityBubble {
+  return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level, highlightMode: "outset" } };
+}
+
+/** Same as `splitPointBubble`, for a command that DOES address one specific slot (`addSplitNode`,
+ *  `removeSplitNode`, `updateSplitNodeFaces`) — appends that slot's own "(N{n})"/semantic-short
+ *  parenthetical (GitHub issue #546 fourth follow-up, eighth follow-up: prefers
+ *  `resolveSplitNodeShortLabel`'s semantic name, falling back to plain `splitNodeLabelShort` only
+ *  when `splitCtx` is `null` or the topology isn't a recognized named one). */
+function splitSlotBubble(point: [number, number], level: number | undefined, slotId: number, multiFloor: boolean, splitCtx: SplitLabelContext | null, danger = false): PostEditEntityBubble {
+  const suffix = resolveSplitNodeShortLabel(splitCtx, point, level, { kind: "split", point, slotId, level }) ?? splitNodeLabelShort(slotId);
+  return { text: formatPoint({ point, level }, multiFloor, suffix), highlight: { kind: "point", point, level, highlightMode: "outset", ...(danger ? { danger: true } : {}) } };
+}
+
+/** Same as `splitSlotBubble`, for `updateSplitNodeFaces` with `slotId: undefined` — the point's
+ *  original node (GitHub issue #564 follow-up: editing the original node's faces is editing the
+ *  split, same as any numbered slot). The original has no `split`-kind endpoint to build (structurally
+ *  addressed only as `{kind:"node", id}`, never `{kind:"split", ...}` — see `postEditCommandTypes.ts`),
+ *  so resolve its `NodeId` from `nodeById` by coordinates and delegate to `endpointBubble`, which
+ *  already resolves `node`-kind endpoints (and their short-label suffix) correctly. */
+function splitOriginalNodeBubble(point: [number, number], level: number | undefined, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
+  const original = [...nodeById.values()].find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0) && n.i === 0);
+  if (original === undefined) return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level, highlightMode: "outset" } };
+  const bubble = endpointBubble(nodeEndpoint(original.id), nodeById, multiFloor, splitCtx);
+  return { ...bubble, highlight: bubble.highlight ? { ...bubble.highlight, highlightMode: "outset" } : null };
+}
+
+/** Two bubbles for a same-floor edge/teleport-shaped entity — rendered "from -> to" by the panel
+ *  (GitHub issue #546), same pairing `SplitNodesDialogView`'s link bubbles use. Each bubble
+ *  highlights its own endpoint on hover; the pair together also drives the `link`-kind highlight
+ *  when the row itself (not a single bubble) is hovered — see `linkRowHighlight`. */
+function edgeBubbles(from: PostEditEndpoint, to: PostEditEndpoint, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble[] {
+  return [endpointBubble(from, nodeById, multiFloor, splitCtx), endpointBubble(to, nodeById, multiFloor, splitCtx)];
+}
+
+/** One bubble per elevator floor (GitHub issue #546 second follow-up) — every one of an elevator's
+ *  floor endpoints shares one `(x, y)` (it's a vertical stack at one point, see
+ *  `startPostEditElevatorPlacement`), but each still gets its own bubble (`L1 x:y`, `L2 x:y`,
+ *  ..., the same `Lf x:y` format `formatPoint` already uses for any multi-floor point) rather than one
+ *  combined `x:y [L1,L2,L3]` bubble — so hovering ONE floor's bubble highlights only that floor's
+ *  own point, matching every other point bubble's "hover me, highlight me" contract instead of
+ *  lighting up every floor at once. `multiFloor` is always `true` here in practice (an elevator only
+ *  exists where there's more than one floor to span), but threaded through for consistency with
+ *  every other bubble builder. */
+function elevatorBubbles(floors: readonly PostEditEndpoint[], nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble[] {
+  return floors.map((ep) => endpointBubble(ep, nodeById, multiFloor, splitCtx));
+}
+
+/** Two bubbles for a vertical passage (GitHub issue #546 second follow-up) — `from`/`to` share one
+ *  `(x, y)` (see `PostEditVerticalPassageEntry`'s doc comment), only their floor differs; each still
+ *  gets its own `Lf x:y` bubble (not a combined `x:y [L1->L2]` one) so hovering one floor's bubble
+ *  highlights only that floor's own point. `direction` only decides the row's `arrow` glyph
+ *  (`postEditCommandLabel` sets it), not anything about these two bubbles themselves — `from`/`to`'s
+ *  own display order is always fixed (GitHub issue #546 follow-up: flipping direction changes the
+ *  arrow glyph, never which floor's bubble comes first). */
+function verticalPassageBubbles(from: PostEditEndpoint, to: PostEditEndpoint, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble[] {
+  return [endpointBubble(from, nodeById, multiFloor, splitCtx), endpointBubble(to, nodeById, multiFloor, splitCtx)];
+}
+
+/** Arrow glyph for a teleport's `direction` (GitHub issue #546 third follow-up fixed a bug where
+ *  `"backward"` was mapped the same as `"forward"`, `"->"` — direction changes on an existing
+ *  teleport, e.g. `setTeleportDirection`/`moveTeleportEndpoint`, never flipped the row's own glyph).
+ *  `undefined` (an id-only command whose live entry has already been removed) also falls back to
+ *  `"->"`, same tolerance every other unresolved-entity case already has. */
+function teleportArrow(direction: PostEditTeleportDirection | undefined): "->" | "<-" | "<->" {
+  return direction === "two_way" ? "<->" : direction === "backward" ? "<-" : "->";
+}
+
+/** Same fix as `teleportArrow`, for a vertical passage's `direction`. */
+function verticalPassageArrow(direction: PostEditVerticalPassageDirection | undefined): "->" | "<-" | "<->" {
+  return direction === "two_way" ? "<->" : direction === "backward" ? "<-" : "->";
+}
+
+/** Arrow glyph for `setVerticalPassageDirection` specifically (GitHub issue #546 fourth follow-up) —
+ *  unlike every other direction-bearing command, this one's own `command.direction` is the entry's
+ *  direction BEFORE the click, not after: `cyclePostEditVerticalPassageDirection` in
+ *  `postEditSlice.ts` reads the *live* entry's current direction to log it, then the replay reducer
+ *  (`postEditReplay.ts`) ignores `command.direction` entirely and just flips whatever the entry's
+ *  direction already was at replay time — so the command's own field is "informational only" (see
+ *  `postEditSlice.ts`'s own doc comment on `cyclePostEditVerticalPassageDirection`), never the
+ *  resulting direction. Showing `command.direction` verbatim was one click behind reality (a
+ *  forward->backward flip showed the pre-click "forward" arrow, and the NEXT row — whether another
+ *  flip or the following `addVerticalPassage`/`moveVerticalPassageEndpoint` reading the live entry —
+ *  then showed what THIS row should have shown, reading as permanently one step desynced). Flipping
+ *  it here (forward<->backward, two_way untouched — same toggle `cyclePostEditVerticalPassageDirection`
+ *  itself does) reconstructs the actual post-click direction from the log entry alone. */
+function flippedVerticalPassageArrow(direction: PostEditVerticalPassageDirection): "->" | "<-" | "<->" {
+  if (direction === "two_way") return "<->";
+  return direction === "forward" ? "<-" : "->";
+}
+
+/** Row-hover highlight for a vertical passage/elevator/cross-floor teleport (GitHub issue #546
+ *  second follow-up) — every point of the entity that's actually drawn on some floor, as a
+ *  `points`-kind entity; `buildHoveredEntityHighlight`'s own `activeLevel` gate then collapses this
+ *  to just the point(s) on the floor currently being viewed (never a straight line — a vertical/
+ *  cross-floor entity's own two points never share a floor to draw one on). `null` when no bubble
+ *  resolved a point at all. */
+function pointsRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null {
+  const points = bubbles
+    .map((b) => (b.highlight?.kind === "point" ? b.highlight : undefined))
+    .filter((p): p is PostEditHoverPoint & { kind: "point" } => p !== undefined);
+  return points.length > 0 ? { kind: "points", points } : null;
+}
+
+/** Row-hover target for a non-link command: keep a single entity as a `point` target, while
+ * multi-point commands (currently elevators) use the `points` group shape. */
+function plainRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null {
+  if (bubbles.length === 1 && bubbles[0].highlight?.kind === "point") return bubbles[0].highlight;
+  return pointsRowHighlight(bubbles);
+}
+
+/** Row-hover highlight for a same-floor edge/teleport row (GitHub issue #546 second follow-up) — the
+ *  connecting line itself, mirroring the old `postEditRowHighlight`. `null` when either bubble's own
+ *  highlight didn't resolve to a plain point. */
+function linkRowHighlight(bubbles: readonly PostEditEntityBubble[], highlightStyle: "line" | "one_way" | "boundary" = "line"): PostEditHoveredEntity | null {
+  if (bubbles.length !== 2) return null;
+  const [from, to] = bubbles;
+  if (from.highlight?.kind !== "point" || to.highlight?.kind !== "point") return null;
+  return {
+    kind: "link",
+    from: from.highlight,
+    to: to.highlight,
+    ...(highlightStyle !== "line" ? { highlightStyle } : {}),
+  };
+}
+
+/** Builds the `nodeById` map `postEditCommandLabel` needs, from the confirmed node snapshot
+ *  (`state.nodes`) — the same lookup basis `ManageSplitNodesDialog`/`PostEditController` use for
+ *  resolving a `node` endpoint back to its point. */
+export function buildNodeByIdMap(nodes: readonly NodeDto[]): Map<number, NodeDto> {
+  return new Map(nodes.map((n) => [n.id, n]));
+}
+
+/** Picks whichever of a `setEdgePair`'s two sides is the one-way one, or `undefined` if neither is
+ *  (a wall/basic pair) — `setEdgePair` never makes both sides one-way at once (see
+ *  `PostEditCommand`'s own doc comment in `postEditCommandTypes.ts`), so "the resulting one-way
+ *  side" is always at most one of `aToB`/`bToA`. Shared by `entityIdOf` and `postEditCommandLabel`'s
+ *  own `setEdgePair` case so the two never resolve a command's one-way side differently. */
+/** The stable entity id a command is associated with (GitHub issue #574), or `undefined` for a
+ *  command kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
+ *  `rotateSplitPoint` — a face toggle/meta slot/whole-tile rotation isn't a stably-identified
+ *  entity). Mirrors exactly the id `postEditCommandLabel` stamps onto `PostEditCommandLabel.entityId`
+ *  (GitHub issue #573's own id bubble) — the same id, not a lifeline key (`lifelineKeysOf` in
+ *  `postEditSliceHelpers.ts` serves a different, broader purpose: point-reset pruning, which also
+ *  covers wall/basic edges and start/finish via synthetic `edge:`/`meta:` keys that are never shown
+ *  to the user). Used by the "Changes" panel's entity-id filter (GitHub issue #574) to decide which
+ *  rows a given id filters in — matches the associated id itself, never a text search over the row's
+ *  own label. */
+export function entityIdOf(command: PostEditCommand): string | undefined {
+  switch (command.kind) {
+    case "setEdge":
+      return undefined;
+    case "setEdgePair":
+      return undefined;
+    case "addTeleport": case "setTeleportDirection": case "moveTeleportEndpoint": case "removeTeleport":
+      return command.id;
+    case "addVerticalPassage": case "setVerticalPassageDirection": case "moveVerticalPassageEndpoint": case "removeVerticalPassage":
+      return command.id;
+    case "addElevator": case "updateElevatorFloors": case "removeElevator":
+      return command.id;
+    case "addSplitNode": case "removeSplitNode": case "removeSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
+      return command.pointId;
+    case "addMeta": case "setMeta": case "removeMeta": case "rotateSplitPoint":
+      return command.kind === "rotateSplitPoint" ? undefined : command.id;
+  }
+}
+
+/** Formats one `PostEditCommand` for the "Changes" panel. `nodeById` must be built from the
+ *  confirmed node snapshot (`buildNodeByIdMap`) — an endpoint that doesn't resolve yet (a
+ *  not-yet-confirmed split node) falls back to `"?"` rather than throwing, same "nothing to
+ *  resolve yet" tolerance every other endpoint consumer has. Every command carries its own
+ *  bubble-relevant fields (from/to/direction/floors) denormalized at construction time (GitHub
+ *  issue #564) rather than resolving through a live draft lookup by id — an id-only lookup is
+ *  correct only for the newest row about an entity, and breaks for any older row once a later
+ *  command edits or removes it. `multiFloor` selects the debug tree's own `Lf x:y` vs. plain `x:y`
+ *  bubble format (`floors.length > 1`, GitHub issue #546). */
+export function postEditCommandLabel(
+  command: PostEditCommand,
+  nodeById: ReadonlyMap<number, NodeDto>,
+  multiFloor: boolean,
+  splitCtx: SplitLabelContext | null = null,
+): PostEditCommandLabel {
+  // The generated Paraglide module can lag behind message JSON during a dev-server session.
+  // New lifecycle labels must therefore degrade to their existing wording instead of crashing
+  // the Changes panel when the module has not been regenerated yet.
+  const localized = (key: string, fallback: () => string): string => {
+    const candidate = (m as Record<string, unknown>)[key];
+    return typeof candidate === "function" ? (candidate as () => string)() : fallback();
+  };
+  const edge = (from: PostEditEndpoint, to: PostEditEndpoint) => edgeBubbles(from, to, nodeById, multiFloor, splitCtx);
+  const link = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", highlightStyle: "line" | "one_way" | "boundary" = "line"): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: linkRowHighlight(bubbles, highlightStyle), entityId: undefined });
+  // A teleport's own connector is drawn by `TeleportRenderer` (routed, possibly non-straight, GitHub
+  // issue #546 — see `Specs/post-edit.md`'s own note on why the row-hover link highlight was never
+  // extended to follow that routing) — a straight-line `link` row-highlight over it reads as a second,
+  // wrong connector, so a same-floor teleport row highlights both endpoint points instead, same as a
+  // vertical passage/elevator (GitHub issue #546 third follow-up).
+  const teleportRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
+  const dangerBubbles = (bubbles: PostEditEntityBubble[]): PostEditEntityBubble[] => bubbles.map((bubble) => ({
+    ...bubble,
+    highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null,
+  }));
+  const dangerPointsRow = (bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null => {
+    const rowHighlight = pointsRowHighlight(bubbles);
+    return rowHighlight ? { ...rowHighlight, danger: true } : null;
+  };
+  const verticalPassageRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
+  // An elevator never shows an arrow glyph (GitHub issue #546 third follow-up) — unlike a vertical
+  // passage/teleport, it has no single "from -> to" direction of its own even when it happens to
+  // span exactly two floors (`addElevator`'s `floors` is an unordered set of stops, not a directed
+  // pair), so `showArrow` is unconditionally `false` regardless of `bubbles.length`.
+  const elevatorRow = (action: string, bubbles: PostEditEntityBubble[], danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: false, arrow: "->", rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
+  const plain = (action: string, bubbles: PostEditEntityBubble[], danger = false): PostEditCommandLabel => {
+    const rowHighlight = plainRowHighlight(bubbles);
+    return {
+      action, bubbles, showArrow: false, arrow: "->",
+      rowHighlight: danger && rowHighlight ? { ...rowHighlight, danger: true } : rowHighlight,
+      entityId: undefined,
+    };
+  };
+
+  // The entity's own stable id (GitHub issue #574's `entityIdOf`) is attached to the label as its
+  // own field, not baked into `action`'s text (GitHub issue #573 split it out into its own bubble) —
+  // computed once here and stamped onto whichever branch's label the switch below returns, so no
+  // branch has to thread it through its own action-string construction.
+  const entityId = entityIdOf(command);
+  const withEntityId = (label: PostEditCommandLabel): PostEditCommandLabel => ({ ...label, entityId });
+
+  switch (command.kind) {
+    case "setEdge": {
+      const kind = command.edge.kind;
+      const actionKey = kind === "wall"
+        ? "post_edit.changes_action_set_edge_wall"
+        : kind === "basic"
+        ? "post_edit.changes_action_set_edge_passage"
+        : "post_edit.changes_action_set_edge_one_way";
+      const arrow = kind === "wall" || kind === "basic" ? "<->" : "->";
+      return withEntityId(link(m[actionKey](), edge(command.edge.from, command.edge.to), arrow, kind === "wall" || kind === "basic" ? "boundary" : "one_way"));
+    }
+    case "setEdgePair": {
+      if (command.aToB.kind === "wall" && command.bToA.kind === "wall") {
+        return withEntityId(link(m["post_edit.changes_action_set_edge_wall"](), edge(command.a, command.b), "<->", "boundary"));
+      }
+      if (command.aToB.kind === "basic" && command.bToA.kind === "basic") {
+        return withEntityId(link(m["post_edit.changes_action_set_edge_passage"](), edge(command.a, command.b), "<->", "boundary"));
+      }
+      const action = m["post_edit.changes_action_set_edge_one_way"]();
+      // Bubble order is always `a, b` (GitHub issue #546 follow-up: fixed point order, direction
+      // shown by the arrow glyph alone, not by swapping which bubble comes first) — `aToB` says
+      // whether traffic actually flows a->b or b->a.
+      return withEntityId(link(action, edge(command.a, command.b), command.aToB.kind === "one_way_forward" ? "->" : "<-", "one_way"));
+    }
+    case "addTeleport":
+      return withEntityId(teleportRow(m["post_edit.changes_action_add_teleport"](), edge(command.from, command.to), teleportArrow(command.direction)));
+    case "setTeleportDirection":
+      // `from`/`to` are this command's own denormalized fields (GitHub issue #564 follow-up) —
+      // same reasoning as every vertical-passage command's fix.
+      return withEntityId(teleportRow(m["post_edit.changes_action_set_teleport_direction"](), edge(command.from, command.to), teleportArrow(command.direction)));
+    case "moveTeleportEndpoint":
+      return withEntityId(teleportRow(m["post_edit.changes_action_move_teleport_endpoint"](), edge(command.from, command.to), teleportArrow(command.direction)));
+    case "removeTeleport":
+      return withEntityId(teleportRow(
+        m["post_edit.changes_action_remove_teleport"](),
+        dangerBubbles(edge(command.from, command.to)),
+        teleportArrow(command.direction),
+        true,
+      ));
+    case "addMeta": case "setMeta": case "removeMeta": {
+      const set = command.kind !== "removeMeta";
+      const action = command.slot === "start"
+        ? (command.kind === "addMeta" ? localized("post_edit.changes_action_add_start", () => "Create start") : set ? m["post_edit.changes_action_set_start"]() : m["post_edit.changes_action_clear_start"]())
+        : (command.kind === "addMeta" ? localized("post_edit.changes_action_add_finish", () => "Create finish") : set ? m["post_edit.changes_action_set_finish"]() : m["post_edit.changes_action_clear_finish"]());
+      // `previousEndpoint` (GitHub issue #564 follow-up) is this clear's own denormalized prior
+      // value — without it a "start/finish cleared" row showed no coordinates at all.
+      const bubbleEndpoint = command.endpoint ?? ("previousEndpoint" in command ? command.previousEndpoint : undefined);
+      const bubble = bubbleEndpoint ? endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx) : undefined;
+      const deletionBubble = bubble && command.kind === "removeMeta"
+        ? { ...bubble, highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null }
+        : bubble;
+      return withEntityId(plain(action, deletionBubble ? [deletionBubble] : [], command.kind === "removeMeta"));
+    }
+    case "addSplitNode":
+      return withEntityId(plain(m["post_edit.changes_action_add_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));
+    case "removeSplitNode":
+      return withEntityId(plain(m["post_edit.changes_action_remove_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx, true)], true));
+    case "removeSplitPoint":
+      // Un-splitting the whole tile (GitHub issue #550 follow-up feedback point 1) — no slot suffix,
+      // unlike `removeSplitNode`'s single-slot bubble: naming one particular node would misrepresent
+      // an action that also folds in the original node's own generation-edge restore.
+      {
+        const bubble = splitPointBubble(command.point, command.level, multiFloor);
+        return withEntityId(plain(m["post_edit.changes_action_remove_split_point"](), [{
+          ...bubble,
+          highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null,
+        }], true));
+      }
+    case "rotateSplitPoint":
+      return plain(m["post_edit.changes_action_rotate_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]);
+    case "applySplitBlueprint": {
+      const action = command.blueprintTitleKey
+        ? m["post_edit.changes_action_apply_split_blueprint_named"]({ name: messageForTitleKey(command.blueprintTitleKey) })
+        : m["post_edit.changes_action_apply_split_blueprint"]();
+      return withEntityId(plain(action, [splitPointBubble(command.point, command.level, multiFloor)]));
+    }
+    case "updateSplitNodeFaces":
+      return withEntityId(plain(
+        m["post_edit.changes_action_update_split_node_faces"](),
+        [command.slotId === undefined
+          ? splitOriginalNodeBubble(command.point, command.level, nodeById, multiFloor, splitCtx)
+          : splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)],
+      ));
+    case "addVerticalPassage":
+      return withEntityId(verticalPassageRow(m["post_edit.changes_action_add_vertical_passage"](), verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx), verticalPassageArrow(command.direction)));
+    case "setVerticalPassageDirection":
+      // `from`/`to` are this command's own denormalized fields (GitHub issue #564 follow-up) —
+      // an id-based lookup into the CURRENT draft would show a stale or unresolved bubble for an
+      // old row, since this id may have since moved on or been removed by a later command.
+      return withEntityId(verticalPassageRow(
+        m["post_edit.changes_action_set_vertical_passage_direction"](),
+        verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
+        command.absolute ? verticalPassageArrow(command.direction) : flippedVerticalPassageArrow(command.direction),
+      ));
+    case "moveVerticalPassageEndpoint":
+      // `from`/`to`/`direction` are this command's own denormalized fields (GitHub issue #564
+      // follow-up) — reading the CURRENT draft by id for the arrow used to default a
+      // since-removed two-way passage's old move row to a plain "->", same class of bug the
+      // bubbles had before.
+      return withEntityId(verticalPassageRow(
+        m["post_edit.changes_action_move_vertical_passage_endpoint"](),
+        verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
+        verticalPassageArrow(command.direction),
+      ));
+    case "removeVerticalPassage":
+      // `from`/`to`/`direction` are the removed passage's own denormalized fields (GitHub issue
+      // #564 partial) — the entity is gone from the CURRENT draft by the time this row renders,
+      // so an id-based lookup would otherwise always miss.
+      return withEntityId(verticalPassageRow(
+        m["post_edit.changes_action_remove_vertical_passage"](),
+        dangerBubbles(verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx)),
+        verticalPassageArrow(command.direction),
+        true,
+      ));
+    case "addElevator":
+      return withEntityId(elevatorRow(m["post_edit.changes_action_add_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx)));
+    case "updateElevatorFloors":
+      return withEntityId(elevatorRow(m["post_edit.changes_action_update_elevator_floors"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx)));
+    case "removeElevator":
+      // `floors` is the removed elevator's own denormalized field (GitHub issue #564 partial) —
+      // same reasoning as `removeVerticalPassage` above.
+      {
+        const bubbles = dangerBubbles(elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
+        return withEntityId(elevatorRow(m["post_edit.changes_action_remove_elevator"](), bubbles, true));
+      }
+  }
+}

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { presetEntitiesForPurpose, postEditEntitiesForPurpose } from "../pixi/entityToolKinds";
-import type { PresetPointEntityDescriptor, PresetPointEntityKind } from "../pixi/pointEntities";
-import type { PostEditPointEntityDescriptor, PostEditPointEntityKind } from "../pixi/postEditPointEntities";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { presetEntitiesForPurpose, postEditEntitiesForPurpose } from "../domain/entityToolKinds";
+import type { PresetPointEntityDescriptor, PresetPointEntityKind } from "../domain/pointEntities";
+import type { PostEditPointEntityDescriptor, PostEditPointEntityKind } from "../domain/postEditPointEntities";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
 
 const preset = (kind: PresetPointEntityKind): PresetPointEntityDescriptor =>
   ({ kind, id: kind, endpoint: presetEndpoint([0, 0]), nodeIndex: 0, title: kind });

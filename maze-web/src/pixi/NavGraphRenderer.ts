@@ -1,11 +1,11 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { NODE_RADIUS } from "./renderConstants";
-import { canvas } from "./colorTokens";
+import { NODE_RADIUS } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
 import { BaseGraphRenderer, buildPathRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
-import { buildNodePositions } from "./tessellationGeometry";
-import type { SeamHopContext } from "./graphSeams";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
+import type { SeamHopContext } from "../domain/graphSeams";
 
 export interface NavGraphData {
   nodes: NodeDto[];

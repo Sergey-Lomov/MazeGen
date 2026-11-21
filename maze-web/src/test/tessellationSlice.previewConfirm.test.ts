@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { encodePoint } from "../domain/tessellationProjection";
 import { baseStoreState, emptyFreePoints, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
-import { selectTessellationWouldLoseData } from "../pixi/selectors/mazeSelectors";
-import { presetParams } from "../pixi/fieldOps";
+import { selectTessellationWouldLoseData } from "../store/tessellationLoss";
+import { presetParams } from "../domain/fieldOps";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,

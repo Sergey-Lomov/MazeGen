@@ -1,6 +1,6 @@
 import { useMazeStore } from "../../store/mazeStore";
 import { EntityChoiceDialog } from "./EntityChoiceDialog";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import { presetEntityChoiceRows, presetEntityRowKey, usePresetPointEntities } from "./usePresetPointEntities";
 import * as m from "~/paraglide/messages";
 

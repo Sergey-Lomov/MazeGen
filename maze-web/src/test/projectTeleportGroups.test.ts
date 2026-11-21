@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import { buildProjectTeleportGroups, getProjectTeleportGroups, mergeTeleportGroupsAcrossFloors, resolveFloorGroupOverrides, resolveRendererGroupOverrides } from "../pixi/selectors/projectTeleportGroups";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import type { TeleportGroup } from "../pixi/selectors/teleportGroups";
+import type { TeleportGroup } from "../domain/selectors/teleportGroups";
 import { fieldOf } from "./fieldConfigFixtures";
-import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
+import { buildMarkerIndexLabels } from "../domain/selectors/mazeSelectors";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 
 // Cell centers resolve through wasm, unavailable in unit tests — canonical square formula.

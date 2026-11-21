@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { printMeasureFromEntered } from "../pixi/imageExport/printFit";
+import { printMeasureFromEntered } from "../domain/imageExport/printFit";
 import { cellSourceOf, hasTooSmallSide, measurePrintCells, measureTessellationCellTypes, type CellSource } from "../pixi/printCellSizes";
-import { configAllCells } from "../pixi/tessellationCells";
+import { configAllCells } from "../domain/tessellationCells";
 import * as mazeService from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
 

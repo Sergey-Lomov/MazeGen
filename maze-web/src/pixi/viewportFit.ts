@@ -1,5 +1,5 @@
-import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
-import { getCellCenter } from "./tessellationGeometry";
+import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../domain/constants";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
 
 /** Computes the viewport transform that fits generated maze nodes onto the screen (GitHub issue

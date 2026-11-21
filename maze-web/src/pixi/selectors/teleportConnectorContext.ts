@@ -1,20 +1,20 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
-import type { TeleportEdge, TeleportLineStyle, VerticalConnectionStyle, WallEdge } from "../renderers/types";
+import type { TeleportEdge, TeleportLineStyle, VerticalConnectionStyle, WallEdge } from "../../domain/renderers/types";
 import {
   buildMazeWalls, buildMazeMarkers, buildCorridorSegments, buildSplitPassages, buildVerticalConnectionMarkers,
   buildTeleportAvoidanceWaypoints, maxSplitNodeCount, selectNodeLevelResolver, selectVerticalPassagePairSet,
   type CorridorSegment,
-} from "./mazeSelectors";
-import { buildSplitHostKeys } from "./mazeSelectors/markerLayout";
+} from "../../domain/selectors/mazeSelectors";
+import { buildSplitHostKeys } from "../../domain/selectors/mazeSelectors/markerLayout";
 import {
   buildEffectiveSplitNodeColors, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, layoutExportMarkers,
 } from "../imageExport/exportStyleBuilders";
 import { TeleportConnectorRouter } from "../renderers/teleportConnectorRouter";
 import { routeTeleportConnectors } from "../renderers/teleportConnectorPlan";
 import type { RoutedConnector } from "../renderers/teleportConnectorRouting";
-import { buildMarkerScaler, type MarkerFootprint, type MarkerScaler } from "../markerScale";
+import { buildMarkerScaler, type MarkerFootprint, type MarkerScaler } from "../../domain/markerScale";
 import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 
 /** Shared by every call: the orthogonal router's cache keeps a settings slider drag from re-routing

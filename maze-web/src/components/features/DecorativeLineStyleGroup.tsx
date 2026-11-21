@@ -6,7 +6,7 @@ import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelect
 import { spacing } from "../../styles/theme";
 import { LinkedColorRow, LinkedSliderRow } from "./LinkedRows";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
-import { TILE_SIZE } from "../../pixi/constants";
+import { TILE_SIZE } from "../../domain/constants";
 import * as m from "~/paraglide/messages";
 
 /** One decorative-style vertical-connection pictogram's line settings (GitHub issue #428) — line

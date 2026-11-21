@@ -1,15 +1,15 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { TeleportSettingsFields } from "../../store/storeTypes";
-import { buildSplitPassages, maxSplitNodeCount } from "./mazeSelectors";
-import { buildTeleportGroups, teleportEdgeKey } from "./teleportGroups";
-import type { TeleportEdge } from "../renderers/types";
+import { buildSplitPassages, maxSplitNodeCount } from "../../domain/selectors/mazeSelectors";
+import { buildTeleportGroups, teleportEdgeKey } from "../../domain/selectors/teleportGroups";
+import type { TeleportEdge } from "../../domain/renderers/types";
 import { hasLowContrast } from "../colorContrast";
 import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilders";
-import { nearestCellCoord } from "../tessellationGeometry";
+import { nearestCellCoord } from "../../domain/tessellationGeometry";
 import { visibleColor, unownedColor, type ColorVisibilityContext, type VisibleColor } from "./colorFieldRegistry";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
-import { isMarkerDrawn } from "./mazeSelectors/markers";
+import { isMarkerDrawn } from "../../domain/selectors/mazeSelectors/markers";
 import type { ExportWarningId, ExportWarning } from "./exportWarnings";
 
 export type WarningEdge = [number, number];

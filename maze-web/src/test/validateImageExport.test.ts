@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { DEFAULT_LABEL_FONT } from "../pixi/renderers/fontChoice";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../domain/renderConstants";
+import { DEFAULT_LABEL_FONT } from "../domain/renderers/fontChoice";
 import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, optLabelFont, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport, validateElevatorBadgeSettings, validatePrintExportSettings } from "../store/projectExport/validateImageExport";
 import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";

@@ -24,6 +24,7 @@ src/
     Tooltip         — accessible tooltip for disabled controls — see notifications.md
     FieldHint       — `useFieldHint()` field-anchored hint — see notifications.md
     floating/       — shared floating-ui positioning for Tooltip / FieldHint
+  domain/           — pure logic shared by the store and the canvas (see "Layers")
   store/
     mazeStore       — Zustand store: maze state + actions
   notifications/
@@ -37,6 +38,17 @@ src/
   pixi/
     MazeRenderer    — Pixi.js Application wrapper, graph rendering
 ```
+
+## Layers
+
+Imports point one way: `domain/` ← `store/` ← `pixi/` ← `components/`.
+
+- `domain/` holds pure logic with no canvas and no UI: field and cell geometry, preset and post-edit endpoint and split resolution, shape templates, mirror, id formatting, post-edit replay, tile-face types and split-node labels, colour math, the render-style types and defaults the store seeds from. It may import `store/` for **types only** (`import type`).
+- `store/` imports `domain/` freely and never `pixi/`. Store subscriptions that need the canvas layer (`pixi/edgeMarkerSync`, `pixi/labelFontSync`) are installed from `pixi/installStoreSyncs.ts` at startup, not from `mazeStore`.
+- `pixi/` imports `store/` and `domain/`, never `components/`.
+- `src/test/architectureLayers.test.ts` enforces this (store → pixi, domain → pixi/UI, domain → store values, pixi → components) and that no value-import cycle exists anywhere in `src/` (type-only and dynamic imports are ignored). A module that must register itself into a lower layer (e.g. `components/features/nodeShapeVocabulary`) is imported from the `main.tsx` bootstrap, never by a side-effect import from the lower layer.
+
+A new pure helper the store needs goes to `domain/`, not `pixi/`.
 
 ## Data Flow
 

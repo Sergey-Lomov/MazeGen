@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ElevatorFloorPicker, type ElevatorFloorRow, type ElevatorFloorStatus } from "./ElevatorFloorPicker";
-import { cellExistsAt } from "../../pixi/fieldEditUtils";
+import { cellExistsAt } from "../../domain/fieldValidity";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
-import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
-import { splitShapeBinding } from "../../pixi/splitShape";
-import { splitPointShapeName } from "../../pixi/splitNodeNames";
+import { detectSplitSpecialShapeKind } from "../../domain/splitFaceLayout";
+import { splitShapeBinding } from "../../domain/splitShape";
+import { splitPointShapeName } from "../../domain/splitNodeNames";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import * as m from "~/paraglide/messages";
 

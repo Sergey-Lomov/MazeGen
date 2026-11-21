@@ -1,5 +1,5 @@
 import { beginActivity, endActivity, isActivityRunning, subscribeActivity } from "../../../activity/backgroundActivity";
-import { CSS_FONT_WEIGHTS, weightFromStyleName } from "../fontChoice";
+import { CSS_FONT_WEIGHTS, weightFromStyleName } from "../../../domain/renderers/fontChoice";
 import { FontFileFailure, readBlobBytes, readFontInfo, toSfnt, type FontFileError } from "./sfnt";
 
 /** Where the raster fonts come from, and what became of each (GitHub issue #966). A raster font is an

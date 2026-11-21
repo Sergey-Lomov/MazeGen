@@ -1,4 +1,4 @@
-import type { FieldEdge } from "./fieldEditUtils";
+import type { FieldEdge } from "../domain/fieldEditUtils";
 
 export interface PostEditHoverState {
   edge: FieldEdge | null;

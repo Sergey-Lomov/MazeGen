@@ -4,9 +4,9 @@ import type {
   ImageExportState,
   ImageExportActions,
 } from "../storeTypes";
-import { canvas } from "../../pixi/colorTokens";
-import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageExport/printFit";
-import { splitSlotColor } from "../../pixi/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../domain/imageExport/printFit";
+import { splitSlotColor } from "../../domain/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
 import type { CreaseExportStyle, DirectionIndicatorGeometryPatch, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind, WaypointOpeningPatch } from "../imageExportTypes";

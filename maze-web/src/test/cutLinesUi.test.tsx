@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import { cutLineSides } from "../pixi/imageExport/cutLines";
-import { getCellCenter } from "../pixi/tessellationGeometry";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 import { oneGlue, range } from "./seamFixtures";

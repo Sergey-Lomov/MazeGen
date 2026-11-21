@@ -5,9 +5,9 @@ import { configSizeDescription } from "../components/dialogs/FieldPrintSizingDia
 import type { FieldConfig } from "../fieldConfig";
 import { useMazeStore } from "../store/mazeStore";
 import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
-import { mmToPx } from "../pixi/imageExport/printFit";
-import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
-import { getCartesian } from "../pixi/cartesianCache";
+import { mmToPx } from "../domain/imageExport/printFit";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
+import { getCartesian } from "../domain/cartesianCache";
 import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { computePrintSizing } from "../pixi/printSizingJob";

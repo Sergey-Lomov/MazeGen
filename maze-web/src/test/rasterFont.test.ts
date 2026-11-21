@@ -7,7 +7,7 @@ import { createMsdfEngine, type GlyphBitmap, type MsdfEngine } from "../pixi/ren
 import { readKerning } from "../pixi/renderers/rasterFont/kerning";
 import { FontFileFailure, readFontInfo, toSfnt } from "../pixi/renderers/rasterFont/sfnt";
 import { ATLAS_PAGE_SIZE, DynamicMsdfFont, MAX_ATLAS_PAGES } from "../pixi/renderers/rasterFont/dynamicMsdfFont";
-import { hasRasterFace, msdfFace } from "../pixi/renderers/fontChoice";
+import { hasRasterFace, msdfFace } from "../domain/renderers/fontChoice";
 import {
   MAX_IDLE_RASTER_FONTS, isRasterFontReady, loadRasterFont, pruneRasterFonts, rasterCoversText, rasterFontCount,
 } from "../pixi/renderers/rasterFont/rasterMsdf";

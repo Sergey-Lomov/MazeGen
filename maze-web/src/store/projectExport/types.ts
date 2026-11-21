@@ -3,8 +3,8 @@ import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPatter
 import type { Crease } from "../creases";
 import type { Zone } from "../../wasm/mazeService";
 import type { ZoneGroup } from "../zonesTypes";
-import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
+import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation, QcProblem } from "../storeTypes";

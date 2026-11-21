@@ -44,6 +44,10 @@ async function bootstrap() {
 
   // The store builds its initial field through wasm at module load, so the app modules must be
   // imported only after wasm is ready.
+  const { installStoreSyncs } = await import("./pixi/installStoreSyncs");
+  installStoreSyncs();
+  // Registers the applied-node-shape source that issue labels and narration read.
+  await import("./components/features/nodeShapeVocabulary");
   if (isCorridorGeometryRoute) {
     const { CorridorGeometryTestPage } = await import("./components/CorridorGeometryTestPage");
     createRoot(root).render(

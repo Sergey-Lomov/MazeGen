@@ -1,8 +1,8 @@
 import type { FieldConfig } from "../../fieldConfig";
-import { applyTransform, invertTransform, isSimilarity, type WorldTransform } from "../geometry/worldTransform";
-import { flattenSegments } from "../geometry/pathFlatten";
-import { displayTransform } from "../tessellationGeometry";
-import { getSeamModel, type Affine, type HalfEdge } from "./seams";
+import { applyTransform, invertTransform, isSimilarity, type WorldTransform } from "../../domain/geometry/worldTransform";
+import { flattenSegments } from "../../domain/geometry/pathFlatten";
+import { displayTransform } from "../../domain/tessellationGeometry";
+import { getSeamModel, type Affine, type HalfEdge } from "../../domain/selectors/seams";
 
 /// Seam copies (GitHub issue #981, `Specs/topology.md`, "Elements that cross a seam"): an element anchored
 /// in one cell may reach past a glued face. The export cuts the artwork at the face, so the part beyond it

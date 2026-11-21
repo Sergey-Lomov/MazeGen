@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fieldOf } from "./fieldConfigFixtures";
 import { DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
-import { pruneEdgeMarkerOverrides, syncEdgeMarkers } from "../store/edgeMarkerSync";
+import { pruneEdgeMarkerOverrides, syncEdgeMarkers } from "../pixi/edgeMarkerSync";
 import { selectActiveProfileColors } from "../pixi/selectors/projectColorsSelector";
 
 const { useMazeStore } = await import("../store/mazeStore");

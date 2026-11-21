@@ -6,12 +6,13 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { dialogPanelStyles, type SplitEdgeKind, KIND_LABEL } from "../features/SplitNodesDialogView";
-import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
+import { TileFaceEditor } from "../features/TileFaceEditor";
+import type { TileFaceNode } from "../../domain/tileFace";
 import { WarningsSection } from "../WarningsSection";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { typography } from "../../styles/theme";
-import { anchorCanonicalFaces } from "../../pixi/tessellationGeometry";
-import { originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
+import { anchorCanonicalFaces } from "../../domain/tessellationGeometry";
+import { originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../domain/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 

@@ -1,7 +1,7 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { GridRenderer } from "./renderers/GridRenderer";
-import type { Viewport } from "./renderers/types";
+import type { Viewport } from "../domain/renderers/types";
 
 export class TessellationRenderer {
   private readonly root: Container;

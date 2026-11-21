@@ -1,7 +1,7 @@
 import { range } from "./seamFixtures";
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { buildSeamArrows } from "../pixi/selectors/seamArrows";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { buildSeamArrows } from "../domain/selectors/seamArrows";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

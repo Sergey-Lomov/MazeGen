@@ -1,13 +1,13 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../tessellationGeometry";
+import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../../domain/tessellationGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
-import { drawMarkerWithBorder } from "./markerShapes";
-import type { MarkerShape } from "./types";
-import { TILE_SIZE } from "../constants";
+import { drawMarkerWithBorder } from "../../domain/renderers/markerShapes";
+import type { MarkerShape } from "../../domain/renderers/types";
+import { TILE_SIZE } from "../../domain/constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
-import { DEFAULT_LABEL_FONT, type LabelFont } from "./fontChoice";
+import { DEFAULT_LABEL_FONT, type LabelFont } from "../../domain/renderers/fontChoice";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
 export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;

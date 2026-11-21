@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellsInsidePolygon, polygonWorldGeometry } from "../pixi/polygonGeometry";
+import { cellsInsidePolygon, polygonWorldGeometry } from "../domain/polygonGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("polygon field geometry", () => {

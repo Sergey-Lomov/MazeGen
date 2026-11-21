@@ -334,7 +334,7 @@ describe("drawDirectionArrow", () => {
   });
 
   it("fills with the given color, falling back to canvas.edge.oneWay when unset", async () => {
-    const { canvas } = await import("../pixi/colorTokens");
+    const { canvas } = await import("../domain/colorTokens");
     const g = newG();
     drawDirectionArrow(g, 0, 0, 1, 0, 10);
     const [fillCall] = g.calls.filter((c) => c.fn === "fill");

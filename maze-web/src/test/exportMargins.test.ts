@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveContentBoundsBasis, resolveBackgroundColor } from "../pixi/imageExport/exportMargins";
+import { resolveContentBoundsBasis, resolveBackgroundColor } from "../domain/imageExport/exportMargins";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 
 describe("resolveContentBoundsBasis", () => {

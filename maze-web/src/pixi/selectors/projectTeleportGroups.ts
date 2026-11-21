@@ -1,8 +1,8 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import type { TeleportGroupOverride } from "../renderers/types";
-import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "./mazeSelectors";
-import { buildTeleportGroups, coordKey, teleportNodePairKey, type TeleportGroup } from "./teleportGroups";
+import type { TeleportGroupOverride } from "../../domain/renderers/types";
+import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import { buildTeleportGroups, coordKey, teleportNodePairKey, type TeleportGroup } from "../../domain/selectors/teleportGroups";
 
 /** Merges per-floor teleport groups into project-wide groups (GitHub issue #727 follow-up). A
  *  cross-floor teleport is built on each floor it touches, where it lands in that floor's own

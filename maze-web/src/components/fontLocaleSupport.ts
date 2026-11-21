@@ -1,4 +1,4 @@
-import { MSDF_FONTS, isMsdfFamily, type FontScript } from "../pixi/renderers/fontChoice";
+import { MSDF_FONTS, isMsdfFamily, type FontScript } from "../domain/renderers/fontChoice";
 import { fontCoversSample } from "../pixi/renderers/labelFont";
 import { ensureUploadedFace, storedUploadedCoverage, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
 import type { Locale } from "../i18n/localeStore";

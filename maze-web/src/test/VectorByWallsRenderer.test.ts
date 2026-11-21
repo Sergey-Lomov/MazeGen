@@ -1,11 +1,11 @@
 import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint } from "../domain/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
-import { splitSlotColor } from "../pixi/colorUtils";
-import { canvas } from "../pixi/colorTokens";
+import { splitSlotColor } from "../domain/colorUtils";
+import { canvas } from "../domain/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
-import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
+import { buildTeleportEdges } from "../domain/selectors/mazeSelectors";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -30,7 +30,7 @@ function makeEmptyBounds(): FakeBounds {
   return makeBounds(Infinity, Infinity, -Infinity, -Infinity);
 }
 
-vi.mock("../pixi/selectors/mazeSelectors", () => ({
+vi.mock("../domain/selectors/mazeSelectors", () => ({
   buildMazeWalls: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
   buildWaypointOpenings: vi.fn(() => []),

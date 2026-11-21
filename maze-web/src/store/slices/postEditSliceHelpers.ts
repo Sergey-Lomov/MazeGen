@@ -1,15 +1,15 @@
 import type { PostEditEndpointWasmDto } from "../../wasm/types";
-import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import { nodeEndpoint, splitEndpoint, endpointsEqual } from "../../pixi/postEditEndpoint";
-import { buildRestoredOriginalFaces, buildNeighborRedirectCommands } from "../../pixi/postEditUtils";
-import type { PostEditBaseline, PostEditDerivedState } from "../../pixi/postEditReplay";
-import { applyPostEditCommand, replayPostEditCommands } from "../../pixi/postEditReplay";
-import { cascadeRemoveLifelines } from "../../pixi/postEditLifelines";
-import { compactPostEditCommands } from "../../pixi/postEditCompaction";
+import type { PostEditEndpoint } from "../../domain/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, endpointsEqual } from "../../domain/postEditEndpoint";
+import { buildRestoredOriginalFaces, buildNeighborRedirectCommands } from "../../domain/postEditUtils";
+import type { PostEditBaseline, PostEditDerivedState } from "../../domain/postEditReplay";
+import { applyPostEditCommand, replayPostEditCommands } from "../../domain/postEditReplay";
+import { cascadeRemoveLifelines } from "../../domain/postEditLifelines";
+import { compactPostEditCommands } from "../../domain/postEditCompaction";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { MazeStore, PostEditDragOverride, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditTeleportEntry } from "../postEditTypes";
-import { formatPostEditId, parsePostEditIdNumber } from "../../pixi/postEditIdFormat";
+import { formatPostEditId, parsePostEditIdNumber } from "../../domain/postEditIdFormat";
 import { buildMultiFloorPointNodeMap, resolveNodeIdToEndpoint } from "./postEditBaselineBuilders";
 
 /** Structural equality of two drag previews (GitHub issue #739) — `setPostEditDragOverride` skips

@@ -1,15 +1,15 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeStatisticsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
 import type { DisplayOrientation, FieldConfig, FieldShape, PresetFieldShape, PresetFieldShapeName, TessellationConfig } from "../fieldConfig";
 import { hexOrientationOf, tessellationConfigOf, triOrientationOf } from "../fieldConfig";
-import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
-import { availablePresetKeys, presetParams } from "../pixi/fieldOps";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
-import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
-import { presetEdgeKey } from "../pixi/presetSplitResolve";
+import { encodePoint, decodePoint } from "../domain/tessellationProjection";
+import { availablePresetKeys, presetParams } from "../domain/fieldOps";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../domain/fieldEditUtils";
+import { computeAutoLockedNodes } from "../domain/fieldEditUtils";
+import { presetEdgeKey } from "../domain/presetSplitResolve";
 import { tessellationFingerprint } from "./topologyWire";
-import type { PresetEndpoint } from "../pixi/presetEndpoint";
-import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
+import type { PresetEndpoint } from "../domain/presetEndpoint";
+import { remapPresetEndpointLevel, remapLevelKey } from "../domain/presetEndpoint";
 import type {
   MazeState, TessellationKind, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../pixi/selectors/mazeSelectors";
+import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../domain/selectors/mazeSelectors";
 import { ConfirmModal } from "../ConfirmModal";
 import { SidePanel } from "../SidePanel";
 import { Stack } from "../Layout";

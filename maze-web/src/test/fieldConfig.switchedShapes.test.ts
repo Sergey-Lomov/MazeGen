@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, tessellationConfigOf, type PolyhedronShapeName } from "../fieldConfig";
-import { compactNetOf, polyhedronFaceCount, polyhedronNetCount } from "../pixi/fieldOps";
+import { compactNetOf, polyhedronFaceCount, polyhedronNetCount } from "../domain/fieldOps";
 import { configCellCount } from "../components/features/FieldSetupFeature";
 import { fieldOf } from "./fieldConfigFixtures";
 

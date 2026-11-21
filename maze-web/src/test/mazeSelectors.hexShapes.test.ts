@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildSplitPassages } from "../pixi/selectors/mazeSelectors";
-import { getCellVertices } from "../pixi/tessellationGeometry";
+import { buildSplitPassages } from "../domain/selectors/mazeSelectors";
+import { getCellVertices } from "../domain/tessellationGeometry";
 import type { EdgeDto } from "../wasm/types";
 import { n, e, twoWay, hexCfg, hexNeighborNodes } from "./mazeSelectorsKit";
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint } from "../domain/postEditEndpoint";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { es, makeState, toJson } from "./projectExportKit";
 

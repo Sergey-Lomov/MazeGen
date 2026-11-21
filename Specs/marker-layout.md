@@ -1,7 +1,7 @@
 # Marker layout (GitHub issue #735)
 
 Positioning layer for several markers hosted by the same cell or the same split-tile node. Lives in
-`maze-web/src/pixi/selectors/mazeSelectors/markerLayout.ts`; both vector export renderers run it.
+`maze-web/src/domain/selectors/mazeSelectors/markerLayout.ts`; both vector export renderers run it.
 
 ## Scope
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildBackgroundFieldPreview, buildBackgroundFieldPreviewFromImage, getBackgroundImageTopLeftColor, topLeftPixelColor } from "../pixi/backgroundFieldAutofill";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { encodePoint } from "../domain/tessellationProjection";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const image = {

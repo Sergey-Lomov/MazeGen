@@ -1,9 +1,9 @@
 import type { Graphics } from "pixi.js";
-import { drawRoundedPolygon } from "./renderers/markerShapes";
-import { getCellPath, getCellVertices, type Pos } from "./tessellationGeometry";
-import { tracePath } from "./geometry/pathRenderer";
+import { drawRoundedPolygon } from "../domain/renderers/markerShapes";
+import { getCellPath, getCellVertices, type Pos } from "../domain/tessellationGeometry";
+import { tracePath } from "../domain/geometry/pathRenderer";
 import type { FieldConfig } from "../fieldConfig";
-import { WALL_THICKNESS } from "./renderConstants";
+import { WALL_THICKNESS } from "../domain/renderConstants";
 
 /** World-space gap kept between a cell highlight and its cell boundary. */
 /** Computes the world-space inset from the wall style used by the owning renderer. */

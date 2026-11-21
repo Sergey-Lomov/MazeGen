@@ -4,7 +4,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { VerticalConnectionRenderer } from "../pixi/renderers/VerticalConnectionRenderer";
-import type { VerticalConnectionMarker } from "../pixi/renderers/types";
+import type { VerticalConnectionMarker } from "../domain/renderers/types";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

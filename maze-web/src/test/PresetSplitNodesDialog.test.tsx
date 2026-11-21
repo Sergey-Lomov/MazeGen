@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PresetSplitNodesDialog } from "../components/features/PresetSplitNodesDialog";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { baseStoreState } from "./storeTestHelpers";
 
 beforeEach(() => {

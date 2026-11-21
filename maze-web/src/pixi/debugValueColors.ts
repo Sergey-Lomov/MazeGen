@@ -1,4 +1,4 @@
-import { buildPalette, hslToRgb } from "./colorUtils";
+import { buildPalette, hslToRgb } from "../domain/colorUtils";
 
 // Predefined debug-value highlight colors (GitHub issue #164) — keyed by (scope, name), not a
 // combined string, so the lookup stays extensible to non-algorithm scopes later (e.g. QC/repair

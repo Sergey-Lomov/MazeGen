@@ -1,12 +1,12 @@
 import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import { MSDF_FONTS, type LabelFont } from "./renderers/fontChoice";
+import { MSDF_FONTS, type LabelFont } from "../domain/renderers/fontChoice";
 import { msdfFontFamily } from "./renderers/msdfFont";
 import { isLabelFontLoaded, labelFontCss, labelFontMetricsKey, usesCanvasText } from "./renderers/labelFont";
 import { rasterAtlasSignature } from "./renderers/rasterFont/rasterMsdf";
-import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
-import type { MarkerShape } from "./renderers/types";
-import { markerPolygonPoints } from "./renderers/markerShapes";
+import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "../domain/renderConstants";
+import type { MarkerShape } from "../domain/renderers/types";
+import { markerPolygonPoints } from "../domain/renderers/markerShapes";
 
 /** Text-vs-plate fit math for marker captions and floor-number badges (GitHub issue #707).
  *

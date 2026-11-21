@@ -1,13 +1,13 @@
 import { Graphics } from "pixi.js";
 import type { Container } from "pixi.js";
-import type { Viewport } from "./types";
+import type { Viewport } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { makeProjection } from "../tessellationProjection";
-import { getCellOutlinePath, gridEdgesNearDisplayRect } from "../tessellationGeometry";
-import { tracePath } from "../geometry/pathRenderer";
-import { TILE_SIZE } from "../constants";
-import { GRID_LINE_ALPHA } from "../renderConstants";
-import { canvas } from "../colorTokens";
+import { makeProjection } from "../../domain/tessellationProjection";
+import { getCellOutlinePath, gridEdgesNearDisplayRect } from "../../domain/tessellationGeometry";
+import { tracePath } from "../../domain/geometry/pathRenderer";
+import { TILE_SIZE } from "../../domain/constants";
+import { GRID_LINE_ALPHA } from "../../domain/renderConstants";
+import { canvas } from "../../domain/colorTokens";
 
 /** Above this count the grid is visually too dense to be useful and too expensive to rebuild. */
 export const MAX_VIEWPORT_GRID_CELLS = 50_000;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Container, Graphics } from "pixi.js";
 import { fitTileToWorld, clipToTile, expandConvexPolygon } from "../pixi/tilePreviewFit";
-import { WALL_THICKNESS } from "../pixi/renderConstants";
+import { WALL_THICKNESS } from "../domain/renderConstants";
 
 describe("fitTileToWorld", () => {
   it("scales a square tile's vertex bbox to fill the canvas", () => {

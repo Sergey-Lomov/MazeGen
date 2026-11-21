@@ -9,7 +9,7 @@ import { resolveIssueHighlight, type NormalizedIssuePayload, type NormalizedEdge
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
-import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
+import { selectNodeLevelResolver } from "../domain/selectors/mazeSelectors";
 import { FloorBadgeRow } from "./FloorBadgeRow";
 import * as m from "~/paraglide/messages";
 import type React from "react";

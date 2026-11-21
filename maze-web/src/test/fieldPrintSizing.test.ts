@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { calculatePrintFieldConfig, MIN_PRINT_CELL_SIZE_MM, minPrintEnteredSize, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
-import { configAllCells, presetShapeExtents } from "../pixi/tessellationCells";
-import { availablePresetKeys } from "../pixi/fieldOps";
-import { cellBounds, displayTransform } from "../pixi/tessellationGeometry";
-import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import { configAllCells, presetShapeExtents } from "../domain/tessellationCells";
+import { availablePresetKeys } from "../domain/fieldOps";
+import { cellBounds, displayTransform } from "../domain/tessellationGeometry";
+import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 import type { FieldConfig, TessellationKind } from "../fieldConfig";
 import type { PredefinedFieldConfig } from "../pixi/fieldPrintSizing";
 import * as mazeService from "../wasm/mazeService";

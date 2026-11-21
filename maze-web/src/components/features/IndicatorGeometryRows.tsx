@@ -1,6 +1,6 @@
 import type { DirectionIndicatorGeometry, DirectionIndicatorLeaf } from "../../store/imageExportTypes";
 import type { WallsLinkPath } from "../../store/parameterLinkSchema";
-import { TILE_SIZE } from "../../pixi/constants";
+import { TILE_SIZE } from "../../domain/constants";
 import { LinkedSliderRow } from "./LinkedRows";
 import * as m from "~/paraglide/messages";
 

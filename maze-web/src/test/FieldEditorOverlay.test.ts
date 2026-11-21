@@ -110,7 +110,7 @@ vi.mock("../pixi/BackgroundImageLayer", () => ({
   },
 }));
 
-vi.mock("../pixi/tessellationProjection", () => ({
+vi.mock("../domain/tessellationProjection", () => ({
   encodePoint: (x: number, y: number) => ((x & 0xFFFF) << 16) | (y & 0xFFFF),
   decodePoint: (key: number): [number, number] => [key >> 16, ((key & 0xFFFF) << 16) >> 16],
   makeProjection: () => ({
@@ -119,26 +119,26 @@ vi.mock("../pixi/tessellationProjection", () => ({
   }),
 }));
 
-vi.mock("../pixi/tessellationCells", () => ({
+vi.mock("../domain/tessellationCells", () => ({
   configAllCells: (cfg: { shape: { cols?: number } }, smooth = false) => cfg.shape.cols === 0 ? [] : smooth ? [[0, 0]] : [[0, 0], [2, 4]],
   resolveFieldConfig: (cfg: unknown) => cfg,
 }));
 
-vi.mock("../pixi/tessellationGeometry", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../pixi/tessellationGeometry")>(),
+vi.mock("../domain/tessellationGeometry", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../domain/tessellationGeometry")>(),
   cellBounds: (cells: [number, number][]) => cells.length === 0
     ? { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
     : { minX: -10, minY: 20, maxX: 30, maxY: 60 },
 }));
 
-vi.mock("../pixi/mirror", () => ({
+vi.mock("../domain/mirror", () => ({
   computeMirrorPreview: vi.fn(() => ({ sourceCells: [[0, 0]], mirroredCells: [[2, 0]] })),
   mirrorCandidateCells: vi.fn(() => [[0, 0]]),
 }));
 
 import { Container } from "pixi.js";
 import { FieldEditorOverlay, configScreenCenter, fitFieldViewport } from "../pixi/FieldEditorOverlay";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { encodePoint } from "../domain/tessellationProjection";
 
 type FakeContainer = InstanceType<typeof Container> & { visible: boolean; children: unknown[] };
 type Stub = { render: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };

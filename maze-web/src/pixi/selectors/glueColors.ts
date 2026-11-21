@@ -1,7 +1,7 @@
 import type { FieldConfig } from "../../fieldConfig";
 import type { WireTopology } from "../../wasm/types";
-import { glueColor } from "../renderers/SeamArrowRenderer";
-import { seamArrowsFor } from "./seamArrows";
+import { glueColor } from "../../domain/glueColor";
+import { seamArrowsFor } from "../../domain/selectors/seamArrows";
 
 /// The colour (0xRRGGBB) each glue's arrow is drawn in on the canvas, by glue id. A glue that glues
 /// nothing has no arrow and no entry. Everything that marks a glue on the canvas or beside it takes its

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
 import { baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 

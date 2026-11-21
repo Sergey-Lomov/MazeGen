@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { getSeamModel } from "../pixi/selectors/seams";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { getSeamModel } from "../domain/selectors/seams";
 import { planSeamCopies, type SeamCopy } from "../pixi/selectors/seamCopies";
-import { applyTransform, isReflection } from "../pixi/geometry/worldTransform";
-import { displayTransform, getCellVertices, pointInPolygon } from "../pixi/tessellationGeometry";
+import { applyTransform, isReflection } from "../domain/geometry/worldTransform";
+import { displayTransform, getCellVertices, pointInPolygon } from "../domain/tessellationGeometry";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

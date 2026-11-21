@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { canonicalFaceKinds, rotationTransform, type SplitShapeBinding } from "../pixi/splitShape";
-import { detectSplitSpecialShapeKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { canonicalFaceKinds, rotationTransform, type SplitShapeBinding } from "../domain/splitShape";
+import { detectSplitSpecialShapeKind, type SplitFaceKind } from "../domain/splitFaceLayout";
 
 const dihedral = (n: number): number[][] => [
   ...Array.from({ length: n }, (_, k) => Array.from({ length: n }, (_, i) => (i + k) % n)),

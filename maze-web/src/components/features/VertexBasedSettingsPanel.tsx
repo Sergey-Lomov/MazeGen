@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
-import { configAllCells } from "../../pixi/tessellationCells";
+import { configAllCells } from "../../domain/tessellationCells";
 import { getTessellationCellTypes } from "../../wasm/mazeService";
 import { SidePanel } from "../SidePanel";
 import { CategoryInfoModal } from "../CategoryInfoModal";

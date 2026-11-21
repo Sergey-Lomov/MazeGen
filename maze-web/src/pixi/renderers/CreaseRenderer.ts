@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import { WALL_THICKNESS } from "../renderConstants";
+import { WALL_THICKNESS } from "../../domain/renderConstants";
 
 /// One crease line in display space. `preview` marks the segment being drawn (its end follows the pointer).
 export interface CreaseLine {

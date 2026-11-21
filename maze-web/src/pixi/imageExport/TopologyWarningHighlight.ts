@@ -5,12 +5,12 @@ import type { ViewportListener } from "../sceneTypes";
 import { TopologyBandRenderer } from "../renderers/TopologyBandRenderer";
 import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import { watchStoreInputs } from "../storeWatch";
-import { pointInPolygonBy } from "../tessellationGeometry";
+import { pointInPolygonBy } from "../../domain/tessellationGeometry";
 import { resolveActiveCutPlan } from "./exportContent";
 import { resolveEffectiveEndpoints } from "./exportStyleBuilders";
-import type { ExportMargin } from "./exportMargins";
+import type { ExportMargin } from "../../domain/imageExport/exportMargins";
 import type { CutPlan } from "./cutLines";
-import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../../domain/renderConstants";
 
 /// What the highlight is drawn from: it redraws only when one of these changes.
 function highlightInputs(st: MazeStore): readonly unknown[] {

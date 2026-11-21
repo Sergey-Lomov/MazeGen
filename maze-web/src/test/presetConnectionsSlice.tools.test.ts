@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
 import { noticeCodes } from "./notificationTestHelpers";

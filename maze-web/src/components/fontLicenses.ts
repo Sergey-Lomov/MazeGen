@@ -1,4 +1,4 @@
-import { VECTOR_FONT_FAMILY } from "../pixi/renderers/fontChoice";
+import { VECTOR_FONT_FAMILY } from "../domain/renderers/fontChoice";
 
 /** License of a bundled font; keys the full text served from `public/licenses/`. */
 export type FontLicense = "apache-2.0" | "ofl-1.1";

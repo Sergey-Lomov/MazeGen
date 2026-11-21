@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, createFloorNodesSelector } from "../pixi/selectors/mazeSelectors";
+import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, createFloorNodesSelector } from "../domain/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 
 vi.mock("pixi.js", async () => (await import("./mazeSelectorsMocks")).pixiMock());

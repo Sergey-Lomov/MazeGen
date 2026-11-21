@@ -1,6 +1,6 @@
 import { useMazeStore } from "../../store/mazeStore";
 import { EntityChoiceDialog, type EntityChoiceRow } from "./EntityChoiceDialog";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import * as m from "~/paraglide/messages";
 
 interface Props {

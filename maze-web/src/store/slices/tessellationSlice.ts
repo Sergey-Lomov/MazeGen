@@ -1,16 +1,16 @@
 import type { StateCreator } from "zustand";
 import type { TessellationConfig } from "../../fieldConfig";
-import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { resolveFieldConfig } from "../../pixi/tessellationCells";
-import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
+import { warmCartesianCache } from "../../domain/cartesianCache";
+import { resolveFieldConfig } from "../../domain/tessellationCells";
+import type { PresetConnectionEntry } from "../../domain/fieldEditUtils";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
-import { splitPatternsFor } from "../../pixi/shapeTemplates";
+import { splitPatternsFor } from "../../domain/shapeTemplates";
 import { qcForTessellation } from "./qcTessellationFilter";
 import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellationSettings, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
-import { computeMirrorPreview } from "../../pixi/mirror";
-import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
+import { computeMirrorPreview } from "../../domain/mirror";
+import { decodePoint, encodePoint } from "../../domain/tessellationProjection";
 
 /** Field-editing modes and previews that never outlive the project they were opened in (GitHub issue #946). */
 export const tessellationTransientUi = {

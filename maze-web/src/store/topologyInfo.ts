@@ -1,4 +1,4 @@
-import { configAllCells } from "../pixi/tessellationCells";
+import { configAllCells } from "../domain/tessellationCells";
 import { getTopologyInfo, type TopologyFloorRequest, type TopologyInfo } from "../wasm/mazeService";
 import type { WireFoldEnd, WireTopology } from "../wasm/types";
 import type { TopologyProblem } from "./topologyProblem";

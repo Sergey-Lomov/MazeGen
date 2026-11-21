@@ -1,7 +1,7 @@
 import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { beforeEach, expect, vi } from "vitest";
 import { VectorByCorridorsRenderer } from "../pixi/imageExport/VectorByCorridorsRenderer";
-import { buildCorridorSegments } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments } from "../domain/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";

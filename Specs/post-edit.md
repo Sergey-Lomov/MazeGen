@@ -50,12 +50,12 @@ semantics for free.
 Every stable post-edit entity id (split point, teleport, vertical passage, elevator — GitHub issue
 #564) is a type-prefixed **string**, not a bare number — `"t3"`/`"s1"`/`"v2"`/`"e7"` for
 teleport/splitPoint/verticalPassage/elevator respectively
-(`formatPostEditId`/`parsePostEditIdNumber`/`PREFIX`, `pixi/postEditIdFormat.ts`), so an id string
+(`formatPostEditId`/`parsePostEditIdNumber`/`PREFIX`, `domain/postEditIdFormat.ts`), so an id string
 alone already says what kind of entity it names — useful in the "Changes" panel, exported project
 files, and logs. Each category has its own fully independent counter/namespace (`_nextPostEdit*Id`,
 still a plain `number` — only the *minted*/formatted id is a string) — a one-way edge and a split
 point can both be "id 3" without colliding, since `"o3"` and `"s3"` never compare equal.
-`assignSequentialIds(items: { key: string }[]): Map<string, number>` (`pixi/postEditUtils.ts`) is the
+`assignSequentialIds(items: { key: string }[]): Map<string, number>` (`domain/postEditUtils.ts`) is the
 shared deterministic-numbering primitive every category's baseline extraction uses: sort candidate
 entities by their own canonical key (an endpoint/edge key, never array/iteration order, which isn't
 guaranteed stable across a reload/re-serialization of the same generation snapshot), then number
@@ -186,7 +186,7 @@ resolved **once, at command-construction time**, reading live confirmed/derived 
 itself never reads outside its own `PostEditReplayContext`/fold state:
 
 - `rotateSplitPoint.nodes`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
-  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditRotation.ts`)
+  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `domain/postEditRotation.ts`)
   — replay has no tessellation/field access, so a rotation's or blueprint's geometric outcome is
   computed once by the store action, not re-derived during replay. `rotateSplitPoint.nodes` is a
   COMPLETE snapshot of every affected node's own face list (`ResolvedRotateNode`, the same shape
@@ -201,12 +201,12 @@ itself never reads outside its own `PostEditReplayContext`/fold state:
 - One-way is a face state. `setEdge`/`setEdgePair` records the resulting direction directly; there
   is no one-way id, minting, reuse, or lifecycle.
 
-### Replay (`pixi/postEditReplay.ts`)
+### Replay (`domain/postEditReplay.ts`)
 
 `postEditReplay.ts` holds `applyPostEditCommand` and the replay entry points. The lifeline grouping, cascade, delete/reset and
 renormalization helpers built on top of it (`lifelineKeysOf`, `collectAffectedLifelines`, `cascadeRemoveLifelines`,
-`deleteCommandAt`, `resetCommandsAt`, `filterCommandsForPoint`, ...) live in `pixi/postEditLifelines.ts`; the split-point
-rotation and face-owner resolution live in `pixi/postEditRotation.ts`; `pixi/postEditUtils.ts` keeps the draft/redirect
+`deleteCommandAt`, `resetCommandsAt`, `filterCommandsForPoint`, ...) live in `domain/postEditLifelines.ts`; the split-point
+rotation and face-owner resolution live in `domain/postEditRotation.ts`; `domain/postEditUtils.ts` keeps the draft/redirect
 builders.
 
 ```typescript
@@ -286,7 +286,7 @@ entity ever touched"), not an implementation accident.
 commands, point, level), /* dirty */ true)`. `resetPostEdit()` (whole graph) is the trivial case:
 `replacePostEditCommands(get, set, [], /* dirty */ false)`.
 
-### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditLifelines.ts`)
+### Per-command Reset/Delete (GitHub issue #547, `domain/postEditLifelines.ts`)
 
 Each Changes-panel row (below) carries two actions, both confirmed via `ConfirmModal` before
 running: **Reset** truncates the log to end right after that row's own command
@@ -346,7 +346,7 @@ authored intent (`endpoint` on a move, the `direction`/`floors` being set) is le
 authored, since re-deriving it from `before` would silently change what the user asked for rather
 than just refresh a stale snapshot.
 
-### Log compaction (GitHub issue #548, `pixi/postEditCompaction.ts`)
+### Log compaction (GitHub issue #548, `domain/postEditCompaction.ts`)
 
 `compactPostEditCommands(baseline, commands)` drops every command whose effect is no longer
 observable in the log's own final state — a stale command superseded by a later one of the same
@@ -484,7 +484,7 @@ directly.
 | `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. Ephemeral UI state, not in the log. |
 | `postEditFocusedPoint` | `[number, number] \| null` | The point currently selected for the "Manage split nodes" panel. |
 | `postEditSplitTargetPrompt` | `{ point; level?; nodeIds: number[]; action } \| null` | In-progress "which split node?" prompt (GitHub issue #474) — see "Split-target prompt" below. `null` when no prompt is open. Not persisted. |
-| `postEditHoveredEntity` | `PostEditHoveredEntity \| null` | The entity currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue #237) or the "Changes" panel's entity bubbles (GitHub issue #546) — drives a canvas highlight via `PostEditRenderer`'s `linkHover`/`entityHighlight`, `null` when nothing is hovered. A `point`/`points`/`link` union addressed by raw `[x,y]`+`level` (`PostEditHoverPoint`), not `PostEditEndpoint` — see `pixi/postEditEndpoint.ts`'s doc comment for why. Ephemeral UI state, not persisted; cleared on panel close. Supersedes the old `postEditHoveredLink` (a bare `from`/`to` `PostEditEndpoint` pair). |
+| `postEditHoveredEntity` | `PostEditHoveredEntity \| null` | The entity currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue #237) or the "Changes" panel's entity bubbles (GitHub issue #546) — drives a canvas highlight via `PostEditRenderer`'s `linkHover`/`entityHighlight`, `null` when nothing is hovered. A `point`/`points`/`link` union addressed by raw `[x,y]`+`level` (`PostEditHoverPoint`), not `PostEditEndpoint` — see `domain/postEditEndpoint.ts`'s doc comment for why. Ephemeral UI state, not persisted; cleared on panel close. Supersedes the old `postEditHoveredLink` (a bare `from`/`to` `PostEditEndpoint` pair). |
 | `postEditVerticalPassagePending` / `postEditElevatorPending` | ... | In-progress vertical-passage/elevator placement state — ephemeral, not in the log. |
 | `postEditEdges` | `Record<string, PostEditEdge> \| null` | Snapshot of `postEditDraftEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
@@ -498,7 +498,7 @@ directly.
 | `postEditDirty` | `boolean` | True after any manual post-edit change since the last generate/reset. |
 
 ### Changes Panel (GitHub issue #545, bubbles + hover highlight added by #546, per-point bubbles and
-row-hover redesign by #546 second follow-up, `pixi/postEditCommandLabels.ts`)
+row-hover redesign by #546 second follow-up, `domain/postEditCommandLabels.ts`)
 
 Renders `postEditCommands` as a human-readable list — one row per command, each formatted by
 `postEditCommandLabel(command, nodeById, multiFloor)` into a `PostEditCommandLabel`
@@ -543,7 +543,7 @@ hoverable chip — same monospace bubble style `DebugRefBubble`/`SplitNodesDialo
 use — instead of a plain text string. `text` matches the debug event tree's own bubble convention
 exactly (`bubbleLabel`, `debugRowText.ts`): `x:y` on a single-floor maze, `Lf x:y` (1-based floor) on
 a multi-floor one — no words, no parens; never a raw `NodeId`/entity id. This text is produced by
-the single shared `formatTargetLabel` (`maze-web/src/pixi/targetLabel.ts`, GitHub issue #602) —
+the single shared `formatTargetLabel` (`maze-web/src/domain/targetLabel.ts`, GitHub issue #602) —
 `point`/`level`/`includeFloor`/`splitLabel` in, `"Lf x:y (suffix)"` out — the one formatter every
 stage (preset, post-edit, debug event tree) now goes through instead of each assembling its own
 coordinate/floor/split-node text independently. Each stage keeps its own resolver responsible for
@@ -766,7 +766,7 @@ teleport whose points sit on different floors) needs every floor's nodes as matc
 off-floor endpoint could never resolve at all. This is safe against the floor-collision bug it
 replaced (GitHub issue #546 follow-up: a floor-1 point/link kept drawing on floor 0 whenever the
 coordinates happened to coincide) because `buildHoveredEntityHighlight`'s point-matching
-(`pixi/selectors/mazeSelectors/postEdit.ts`, `pointMatchesNode`) checks each `PostEditHoverPoint`'s
+(`domain/selectors/mazeSelectors/postEdit.ts`, `pointMatchesNode`) checks each `PostEditHoverPoint`'s
 own `level` against the candidate node's `level` explicitly — widening the candidate list to every
 floor never lets a point match a same-`(x, y)` node on the wrong floor.
 
@@ -792,7 +792,7 @@ resulting face state. There is no direction-change flag or one-way identity to p
 A text input at the top of the panel (sticky within the scrollable log, so it never scrolls out of
 view with the rows) narrows `postEditCommands` down to the rows belonging to one entity id, with a
 clear (×) button inside the field, on its right edge, that resets back to the full log. `entityIdOf
-(command)` (`pixi/postEditCommandLabels.ts`) returns the id a command is associated with — the same
+(command)` (`domain/postEditCommandLabels.ts`) returns the id a command is associated with — the same
 id exposed as `PostEditCommandLabel.entityId` and rendered as the row's own id bubble (`"o5"`, `"t3"`,
 ... — not a lifeline key: `lifelineKeysOf` in `postEditLifelines.ts` serves point-reset pruning, a
 different and broader
@@ -899,7 +899,7 @@ A tile's point can resolve to more than one graph node ("split point", see `Spec
 
 **Why not a raw `NodeId`:** as of GitHub issue #236, `compute_analytics` rebuilds `Field`/`Graph` directly from the client's own authoritative `state.nodes` list (`Field::from_id_cells`) instead of re-minting every id from `tessellation.points` order — so a node's `NodeId` **is** stable across confirms once it exists in that list, including a confirmed split node. What is still not stable is a *not-yet-confirmed* split node: it has no real `NodeId` at all until `apply_split_points` mints one on its first confirm (matched to its slot by its real `NodeDto.i`, never by position — see `apply_split_points` in `maze-wasm/src/analytics.rs` and `NodeDto.i`'s doc comment in `maze-wasm/src/dto.rs`), so the window between `addSplitNode` and that first successful confirm has nothing to reference yet. `PostEditEndpoint`'s `split` variant exists for that window, not because ids are unstable afterward — every place that needs to survive a confirm (`PostEditEdge`/`PostEditTeleportEntry`'s `from`/`to`, `PostEditMeta`'s `start`/`finish`) still stores a `PostEditEndpoint`, resolved to a real id fresh on each use, since nothing upstream can tell in advance whether a given node has been confirmed yet.
 
-Provided by `pixi/postEditEndpoint.ts`: `nodeEndpoint`/`splitEndpoint` (constructors), `endpointsEqual` (structural equality, used regardless of confirm state), `endpointKey`/`edgeKey` (stable string keys — `"n42"` for a node, `"s3,5:7"` for a split, disjoint prefixes), `endpointIsNode`, `resolveEndpoint` (resolves to a real id via a caller-supplied `resolveSplit` lookup, `undefined` if not resolvable yet), `buildSplitNodeResolver` (builds that lookup from a confirmed node snapshot grouped by point, plus `postEditDraftSplitPoints`).
+Provided by `domain/postEditEndpoint.ts`: `nodeEndpoint`/`splitEndpoint` (constructors), `endpointsEqual` (structural equality, used regardless of confirm state), `endpointKey`/`edgeKey` (stable string keys — `"n42"` for a node, `"s3,5:7"` for a split, disjoint prefixes), `endpointIsNode`, `resolveEndpoint` (resolves to a real id via a caller-supplied `resolveSplit` lookup, `undefined` if not resolvable yet), `buildSplitNodeResolver` (builds that lookup from a confirmed node snapshot grouped by point, plus `postEditDraftSplitPoints`).
 
 **Unresolved-endpoint contract:** a `split` endpoint doesn't resolve in the window between `addSplitNode` (which writes the slotId to the draft immediately) and the first successful `confirmPostEdit` after that. Canvas/renderer code (`postEditEdgesToDto`/`postEditTeleportsToDto`) silently drops any entry with an unresolved endpoint — nothing to draw yet, same as an ordinary id with no `nodeById` match. `confirmPostEdit`'s WASM call never needs to resolve edges/teleports' `split` endpoints on the JS side at all — `split_points` is sent alongside them in the same call, so WASM always resolves them itself, after creating the node. `start`/`finish` are the one place resolution happens client-side (see below).
 
@@ -929,16 +929,16 @@ interface PostEditTeleportEntry {
 }
 ```
 
-Edits teleport links by node/split endpoint (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is a type-prefixed string (`"t3"`, GitHub issue #564 — `formatPostEditId`/`parsePostEditIdNumber`, `pixi/postEditIdFormat.ts`) assigned from `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
+Edits teleport links by node/split endpoint (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is a type-prefixed string (`"t3"`, GitHub issue #564 — `formatPostEditId`/`parsePostEditIdNumber`, `domain/postEditIdFormat.ts`) assigned from `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
 
 `PostEditVerticalPassageEntry`/`PostEditElevatorEntry` (`postEditTypes.ts`) follow the identical
 shape/id convention — `id: string` (`"v2"`/`"e7"`), assigned from `_nextPostEditVerticalPassageId`/
 `_nextPostEditElevatorId`. Since GitHub issue #564, both are full baseline draft entries from the
 moment `generate()` builds the baseline — `extractPostEditVerticalPassages`/`extractPostEditElevators`
-(`pixi/postEditVerticalUtils.ts`) extract every generation-time vertical passage/elevator into
+(`domain/postEditVerticalUtils.ts`) extract every generation-time vertical passage/elevator into
 id-less entities plus their own canonical key (elevator: sorted joined endpoint keys of its
 connected component, mirroring `elevatorComponent`'s existing node-partitioning logic used elsewhere
-for image-export marker numbering), and `assignSequentialIds` (`pixi/postEditUtils.ts`, shared with
+for image-export marker numbering), and `assignSequentialIds` (`domain/postEditUtils.ts`, shared with
 the one-way/split-point categories) numbers each category by sorting its own canonical keys — never
 by input array/iteration order, so the same generation snapshot always produces the same
 `canonicalKey → id` mapping regardless of `edges`/`nodes` order. There is no longer a separate
@@ -960,7 +960,7 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 
 Lets the user manually add extra nodes to a tile's point and wire up edges to them explicitly — e.g. two independent passages (N↔S and E↔W) through what the generator produced as a single 4-way junction. There is no "routing group" concept: the feature only lets the user create additional nodes at a point and connect edges to them like any other manual edge edit; which of a point's nodes ends up connected to what is entirely up to the user, one edge at a time.
 
-The slot-list bookkeeping below (minting/removing/cycling/setting the active slot of a point) is not post-edit-exclusive: it lives in the tessellation-agnostic `pixi/splitPointsCore.ts` module, generic over the endpoint type, and is shared verbatim with the Preset Connections feature's own split-node management (GitHub issue #231 — see `Specs/preset-connections.md`'s "Split nodes" section). `splitPointsCore.ts` only knows about slot existence and the active-slot map; cleaning up references to a removed slot in edges/teleports/presets/locks is the caller's responsibility, done as a separate step right after calling into the shared core (`removeSplitNode` below, and presets' `removePresetSplitNode`).
+The slot-list bookkeeping below (minting/removing/cycling/setting the active slot of a point) is not post-edit-exclusive: it lives in the tessellation-agnostic `domain/splitPointsCore.ts` module, generic over the endpoint type, and is shared verbatim with the Preset Connections feature's own split-node management (GitHub issue #231 — see `Specs/preset-connections.md`'s "Split nodes" section). `splitPointsCore.ts` only knows about slot existence and the active-slot map; cleaning up references to a removed slot in edges/teleports/presets/locks is the caller's responsibility, done as a separate step right after calling into the shared core (`removeSplitNode` below, and presets' `removePresetSplitNode`).
 
 - **`postEditDraftSplitPoints`** stores the list of slotIds per point (not a count, not a positional index — see the `PostEditEndpoint` section for why a positional scheme doesn't work). Each slotId is unique only **within its own point** — `PostEditEndpoint`'s `split` variant already addresses point+slotId together, so no global counter is needed. `addSplitNode` mints the next slotId as `max(existing slotIds for this point) + 1` (or `0` if the point has none yet).
 - **The point's original node can never be removed** — only slotIds added via `addSplitNode` can be.
@@ -984,11 +984,11 @@ the Changes log records one split-template event plus one movement event per aff
 
 **Why not position-based matching:** an earlier version of this fix matched `split_points` entries to `nodes`' per-point extra-node list by array position (`slot_id + 1`'s position among survivors). This breaks the moment a *non-last* split node is removed: `state.nodes` after a confirm following `removeSplitNode` no longer contains the removed node at all, so the *remaining* slots' positions compact down — a surviving later slot silently resolves to a different (or the wrong) node instead of its own. Matching by the real `i` instead of position is immune to this, since `i` never shifts regardless of what else was removed.
 
-**`ComputeAnalyticsConfig.nodes` must be pruned client-side before it's sent** — `apply_split_points`/`run_compute_analytics` never remove a node on their own; every entry in `cfg.nodes` is rebuilt into the graph unconditionally by design (this is exactly what makes a node's `NodeId` stable — see above). When a split slot is removed (`removeSplitNode`, or the cell branch of the unified Reset tool — GitHub issue #327) without also dropping its `NodeDto` from what's sent as `cfg.nodes`, the node stays in the graph and in the point's node count forever — walled off (no edges reference it) but still enough to make `SplitJunctionRenderer` keep treating the point as split even after its last extra slot is gone. `confirmPostEdit` builds a `prunedNodes` list before anything else, via the shared `pixi/postEditUtils.ts`'s `pruneRemovedSplitNodes` (keyed multi-floor, `"x,y"`/`"x,y@level"`): a node survives if it's the point's original (`i === 0`) or its slotId (`i - 1`) is still present in `postEditDraftSplitPoints` for that point; `prunedNodes` (not `state.nodes`) is what's sent as `cfg.nodes` and what `pointNodeMap`/`resolveSplit` are built from.
+**`ComputeAnalyticsConfig.nodes` must be pruned client-side before it's sent** — `apply_split_points`/`run_compute_analytics` never remove a node on their own; every entry in `cfg.nodes` is rebuilt into the graph unconditionally by design (this is exactly what makes a node's `NodeId` stable — see above). When a split slot is removed (`removeSplitNode`, or the cell branch of the unified Reset tool — GitHub issue #327) without also dropping its `NodeDto` from what's sent as `cfg.nodes`, the node stays in the graph and in the point's node count forever — walled off (no edges reference it) but still enough to make `SplitJunctionRenderer` keep treating the point as split even after its last extra slot is gone. `confirmPostEdit` builds a `prunedNodes` list before anything else, via the shared `domain/postEditUtils.ts`'s `pruneRemovedSplitNodes` (keyed multi-floor, `"x,y"`/`"x,y@level"`): a node survives if it's the point's original (`i === 0`) or its slotId (`i - 1`) is still present in `postEditDraftSplitPoints` for that point; `prunedNodes` (not `state.nodes`) is what's sent as `cfg.nodes` and what `pointNodeMap`/`resolveSplit` are built from.
 
 **The same staleness exists client-side before any confirm lands** (GitHub issue #388) — `state.nodes` is only ever replaced wholesale by a `confirmPostEdit` response, so a slot removed on the draft (`removeSplitNode`/`resetPostEditPoint`) still has its stale `NodeDto` sitting in `state.nodes` until the next confirm resolves. With `postEditAutoConfirm === false`, or simply during the in-flight confirm, the canvas would otherwise keep drawing the point as split even though `postEditDraftSplitPoints` already says only the original node remains. `PostEditRenderer.floorScoped` calls the same `pruneRemovedSplitNodes` helper (bare `"x,y"` key, since its own `postEditDraftSplitPoints` is already floor-scoped) on the nodes it hands to `buildMazeWalls`/`buildClosedCells`/`buildSplitPassages` — the WASM-payload pruning and the on-canvas pruning share one formula so they can't drift apart.
 
-`nodes: Vec<NodeDto>` in the outgoing snapshot is built from `Field::all_cells()`/`nodes_at()` (deterministic: a point's original node first, then each extra node in creation order), not `Graph::nodes()`'s insertion order — this makes "which node of a split point is the original one" a real, documented contract, not an incidental observation of `Graph`'s internals. Each node's `i` in the snapshot is looked up from the *previous* call's own `cfg.nodes` where the node already existed there, or is a fresh position-based index for a node this exact call just minted (safe only because a newly minted node can't yet have a hole before it). The web-side node map (grouped by point) relies on this order too. `pixi/splitPointsCore.ts`'s `deriveSplitPointsFromNodes` mirrors the same rule client-side: it reads each node's `i` directly (`slotId = n.i - 1` for `i > 0`) rather than counting/positional derivation, for the same removal-hole reason.
+`nodes: Vec<NodeDto>` in the outgoing snapshot is built from `Field::all_cells()`/`nodes_at()` (deterministic: a point's original node first, then each extra node in creation order), not `Graph::nodes()`'s insertion order — this makes "which node of a split point is the original one" a real, documented contract, not an incidental observation of `Graph`'s internals. Each node's `i` in the snapshot is looked up from the *previous* call's own `cfg.nodes` where the node already existed there, or is a fresh position-based index for a node this exact call just minted (safe only because a newly minted node can't yet have a hole before it). The web-side node map (grouped by point) relies on this order too. `domain/splitPointsCore.ts`'s `deriveSplitPointsFromNodes` mirrors the same rule client-side: it reads each node's `i` directly (`slotId = n.i - 1` for `i > 0`) rather than counting/positional derivation, for the same removal-hole reason.
 
 ### Controller/UI
 
@@ -1026,7 +1026,7 @@ confirmation modal. Clicking a boundary face in the tile editor emits
 
 Rotation is defined by the cell's shape template: one step is the element of the cell's allowed
 transform group (`CellGeometry.allowed_group`) that moves every canonical face to the next one
-(`rotationTransform`, `pixi/splitShape.ts`), so face wiring shifts to the adjacent canonical face. A
+(`rotationTransform`, `domain/splitShape.ts`), so face wiring shifts to the adjacent canonical face. A
 cell whose allowed group has no such element cannot rotate: Cairo's group is identity plus one
 reflection, so its rotate buttons are hidden (`canRotateSplit`) and `rotateFaceIndex` leaves faces
 unchanged. Owner resolution otherwise uses the ordinary existing-owner and safe-fallback tiers.
@@ -1044,9 +1044,9 @@ Rotating a split point's tile (the panel's rotate buttons) shifts **every one of
 2. **Geometry evidence** (`canCompleteOppositePair`, `splitFaceLayout.ts`) — a neighbor candidate whose OWN decided faces already contain one that is geometrically opposite the target face (`circularDist === degree/2`) is picked, since handing it this face completes a recognized bridge/diagonal shape. Guarded by an `assignedThisRotation` map so two different new faces in the same multi-move rotation can't both claim the same neighbor node via evidence — the second one falls through to the next tier instead. Undefined for odd tile degree (a triangle has no "opposite" face).
 3. **Neighbor's active UI slot or original node** — the fallback when neither of the above finds anything, restricted to candidates that don't already hold a *complete* opposite pair on a split point (`isFinishedSplitPair`: a complete opposite pair counts only when the neighbor has more than one node; the single node of a plain point, e.g. a straight corridor through a hexagon, is always safe to extend), so the fallback never hands a face to an already-finished bridge/diagonal and silently breaks its recognized shape.
 
-**Wall-compensating a vacated face.** An old neighbor node that used to be `ep`'s partner but isn't picked up as anyone's *new* owner this rotation loses its connection on the face that used to point at `point`. If that old neighbor is itself split (more than one declared node at its point), simply deleting the stale edge would leave the face merely absent — read by the UI as an undecided/optional face — and silently degrade one of the neighbor's *other*, unrelated decided faces into part of a broken bridge/diagonal shape (a recognized shape requires an exact face count, no tolerance for a missing one). So the stale edge is rewritten to an explicit `wall` instead, keyed by the exact `(ep, oldNeighborNode)` pair (not just "is this neighbor node claimed by *some* move" — the same physical neighbor node can simultaneously lose one of `point`'s nodes as an old partner and gain a *different* one of `point`'s nodes as a new partner within one rotation). A plain (non-split) old neighbor has nothing else to protect and keeps the simpler "just vanishes" behavior. Preset connections (`rotatePresetSplitPoint`, `pixi/fieldEditUtils.ts`) mirror this exact algorithm — same tiering, same wall-compensation — over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`.
+**Wall-compensating a vacated face.** An old neighbor node that used to be `ep`'s partner but isn't picked up as anyone's *new* owner this rotation loses its connection on the face that used to point at `point`. If that old neighbor is itself split (more than one declared node at its point), simply deleting the stale edge would leave the face merely absent — read by the UI as an undecided/optional face — and silently degrade one of the neighbor's *other*, unrelated decided faces into part of a broken bridge/diagonal shape (a recognized shape requires an exact face count, no tolerance for a missing one). So the stale edge is rewritten to an explicit `wall` instead, keyed by the exact `(ep, oldNeighborNode)` pair (not just "is this neighbor node claimed by *some* move" — the same physical neighbor node can simultaneously lose one of `point`'s nodes as an old partner and gain a *different* one of `point`'s nodes as a new partner within one rotation). A plain (non-split) old neighbor has nothing else to protect and keeps the simpler "just vanishes" behavior. Preset connections (`rotatePresetSplitPoint`, `domain/fieldEditUtils.ts`) mirror this exact algorithm — same tiering, same wall-compensation — over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`.
 
-**Warning before a rotation breaks a neighbor's shape** (GitHub issue #588). Wall-compensation keeps a neighbor's *other* faces internally consistent, but it can still turn a neighbor's own currently-recognized special shape (bridge/diagonal/etc., `detectSplitSpecialShapeKind`) unrecognized — losing a decided face this way is exactly the kind of change that degrades a shape, and this is expected by design (either the rotating tile or its neighbor can lose its shape when a shared face stops matching). `SplitNodesDialogView`'s rotate buttons dry-run the rotation before applying it: `rotateSplitPointBreaksNeighborShape` (`pixi/postEditUtils.ts`) calls the pure `rotateSplitPointNodes`, rebuilds the resulting edges via `applyRotatedNodesToEdges` — the same helper `postEditReplay.ts`'s own `"rotateSplitPoint"` case calls (not a parallel reimplementation, so the dry run and the real replay can never disagree on what a rotation produces) — then compares every one of `point`'s geometric neighbors' `detectSplitSpecialShapeKind` result before/after via `postEditSplitNodeFaceKinds` (the any-point counterpart of `ManageSplitNodesDialog`'s inline `facesOf`). If any split neighbor goes from recognized to unrecognized, the dialog shows a `ConfirmModal` before committing instead of rotating immediately. Preset connections use the mirrored `rotatePresetSplitPointBreaksNeighborShape` (`pixi/fieldEditUtils.ts`), comparing `presetSplitNodeFaceKinds` before/after — simpler there since `rotatePresetSplitPoint` already returns the full post-rotation `presetConnections` map rather than a per-node snapshot. Both wire into `SplitNodesDialogView`'s optional `wouldBreakNeighborShape` prop, shared by `ManageSplitNodesDialog` and `PresetSplitNodesDialog`.
+**Warning before a rotation breaks a neighbor's shape** (GitHub issue #588). Wall-compensation keeps a neighbor's *other* faces internally consistent, but it can still turn a neighbor's own currently-recognized special shape (bridge/diagonal/etc., `detectSplitSpecialShapeKind`) unrecognized — losing a decided face this way is exactly the kind of change that degrades a shape, and this is expected by design (either the rotating tile or its neighbor can lose its shape when a shared face stops matching). `SplitNodesDialogView`'s rotate buttons dry-run the rotation before applying it: `rotateSplitPointBreaksNeighborShape` (`domain/postEditUtils.ts`) calls the pure `rotateSplitPointNodes`, rebuilds the resulting edges via `applyRotatedNodesToEdges` — the same helper `postEditReplay.ts`'s own `"rotateSplitPoint"` case calls (not a parallel reimplementation, so the dry run and the real replay can never disagree on what a rotation produces) — then compares every one of `point`'s geometric neighbors' `detectSplitSpecialShapeKind` result before/after via `postEditSplitNodeFaceKinds` (the any-point counterpart of `ManageSplitNodesDialog`'s inline `facesOf`). If any split neighbor goes from recognized to unrecognized, the dialog shows a `ConfirmModal` before committing instead of rotating immediately. Preset connections use the mirrored `rotatePresetSplitPointBreaksNeighborShape` (`domain/fieldEditUtils.ts`), comparing `presetSplitNodeFaceKinds` before/after — simpler there since `rotatePresetSplitPoint` already returns the full post-rotation `presetConnections` map rather than a per-node snapshot. Both wire into `SplitNodesDialogView`'s optional `wouldBreakNeighborShape` prop, shared by `ManageSplitNodesDialog` and `PresetSplitNodesDialog`.
 
 **Resolving a face click's (point-node, neighbor-node) pair** (`ManageSplitNodesDialog.tsx`'s `resolveFaceClickPair`) is asymmetric by design: the `point` side is always the user's explicitly active node (a click edits whichever node the user selected in the panel, never a different one of `point`'s own nodes that evidence might otherwise prefer) — only the `neighbor` side is resolved by evidence (`resolveConnectedNeighborAt`), so a click correctly targets a split neighbor's real connected node even when the neighbor's own active slot isn't the one connected to `point`'s active side.
 
@@ -1099,7 +1099,7 @@ Absent/empty (`queue`/`picks` both `undefined`) for every plain-placement action
 
 `PostEditSplitTargetDialog`'s pick button never calls `onClose` itself — only `pick(id)` (`applyPostEditSplitTargetPick`). `onClose` (== `cancelPostEditSplitTarget`) wiping the prompt right after every pick used to short-circuit a multi-floor elevator placement's queue: `pick` had just advanced `postEditSplitTargetPrompt` to the next queued floor, and the immediately-following `onClose` call nulled it right back out, so the dialog only ever appeared for the first split floor and the elevator was silently never placed (the dispatch only fires once `applyPostEditSplitTargetPick` sees an empty queue). The dialog's own X/backdrop close (`onClose` from `Modal`) still cancels explicitly, unaffected.
 
-`PostEditElevatorFloorDialog`'s per-floor row appends a split-cell hint to its status label (`"Available, Split cell"` / `"Available, Bridge"` etc.) when that floor's own point is split — `splitPointShapeName` (`pixi/splitNodeNames.ts`) names a recognized `SplitSpecialShapeKind` as a whole (distinct from `splitNodeSemanticNamesFromKinds`, which names each individual node WITHIN a shape, used by `PostEditSplitTargetDialog`'s own node-picker buttons), falling back to the generic "Split cell" label when the point is split but not a recognized special shape. Both dialogs compute this per-floor "is this point split here, and if so what shape" geometry (floor-scoped node/edge/teleport resolution feeding `splitPointFaceKindsByNode`) through the same shared `buildSplitFloorGeometry` (`pixi/splitFloorPreview.ts`) — factored out after the two dialogs' own copies of this ~40-line computation started drifting apart during this feature's development.
+`PostEditElevatorFloorDialog`'s per-floor row appends a split-cell hint to its status label (`"Available, Split cell"` / `"Available, Bridge"` etc.) when that floor's own point is split — `splitPointShapeName` (`domain/splitNodeNames.ts`) names a recognized `SplitSpecialShapeKind` as a whole (distinct from `splitNodeSemanticNamesFromKinds`, which names each individual node WITHIN a shape, used by `PostEditSplitTargetDialog`'s own node-picker buttons), falling back to the generic "Split cell" label when the point is split but not a recognized special shape. Both dialogs compute this per-floor "is this point split here, and if so what shape" geometry (floor-scoped node/edge/teleport resolution feeding `splitPointFaceKindsByNode`) through the same shared `buildSplitFloorGeometry` (`pixi/splitFloorPreview.ts`) — factored out after the two dialogs' own copies of this ~40-line computation started drifting apart during this feature's development.
 
 ### Persistence
 
@@ -1115,7 +1115,7 @@ A split point (a point with more than one `NodeDto`) is excluded from `buildMaze
 
 - For each geometric face a node connects across (`kind !== "teleport"`, matched by node id, not just cell coordinate — a "face" means a neighboring tile, not a specific node of that neighbor), that node draws its own share of the wall on that face (`SplitPassage.wallSegments`, in its own color). When several of the point's nodes connect across the same face, the face's edge is divided evenly among them in slot order, each getting one contiguous sub-segment, so two independent passages sharing a face read as visually distinct rather than overlapping. Every face always has one of `"wall" | "passage" | "one_way_out" | "one_way_in" | "undefined"` — post-edit defaults an undecided face to `"wall"` (no optional-connection concept exists here; see `Specs/preset-connections.md`'s "Split nodes" section for the preset stage's `"undefined"` default). When the neighbor across a face is itself split, each node's *specific* partner among the neighbor's nodes is resolved individually (not a single assumed "the" neighbor node), so a decided connection to one particular neighbor slot is never misread against a different one of that neighbor's nodes.
 - Those shares are linked into `connectors`: a node with **exactly 2** connected faces, both plain two-way passages, draws one straight line directly between its two shares' centers — no hub point (unless that line makes an angle below `MIN_STRAIGHT_CONNECTOR_ANGLE_DEG` = 20° with either face, e.g. a half face of the brick tessellation; GitHub issue #791 — then the hub fan-out below applies), since a pure through-passage reads more naturally as one continuous corridor than a bent one via a hub. Any other count (1, or 3+), or exactly 2 but not both plain passages, draws one line per share from the node's own point on a small circle around the tile center (radius = 1/2 of the cell's own radius, i.e. `TILE_SIZE / 4`, evenly distributed among the point's node count — 3 nodes → 0°/120°/240°, etc. — rotated by a per-tessellation starting angle, `getSplitCircleRotationDeg` in `tessellationGeometry.ts` — 45° for square, 0° for hex/tri pending visual tuning) out to that share's center. The circle itself is never drawn. A node with zero connections draws nothing at all. A one-way's arrowhead is drawn on this connector line (never on the along-face segment); an `"undefined"` share/connector renders desaturated (`disabledOf`/`disabledOfNumber`) instead of the node's normal color. A face where every one of the point's nodes explicitly has `"wall"` renders as one plain solid wall spanning the whole face instead of per-node segments.
-- The geometric layout itself (face division, hub fan-out, the straightening exception, active-node z-order, arrow placement) lives in the tessellation/stage-agnostic `pixi/splitFaceLayout.ts`, shared with the "Manage split nodes" panel's tile diagram (`TileFaceEditor.tsx`) and the preset stage's own rendering (`Specs/preset-connections.md`) so the three never drift apart.
+- The geometric layout itself (face division, hub fan-out, the straightening exception, active-node z-order, arrow placement) lives in the tessellation/stage-agnostic `domain/splitFaceLayout.ts`, shared with the "Manage split nodes" panel's tile diagram (`TileFaceEditor.tsx`) and the preset stage's own rendering (`Specs/preset-connections.md`) so the three never drift apart.
 - **Straightening exception:** the 2-face straight-line case above is skipped (hub point kept instead) for a node passed in `buildSplitPassages`'s `specialNodeIds` — `PostEditRenderer` populates this from `start`/`finish` (resolved node ids) and every teleport edge's endpoints, so a marker/teleport line landing on that node always has a single unambiguous hub point to sit on, instead of an arbitrary spot along a straightened line.
 - **Active-node z-order:** `postEditActiveSplitNode` also determines draw order — the active node's own segments/connectors always render on top of every other node's, in both the canvas and the panel's tile diagram (GitHub issue #234 follow-up).
 - **Marker/teleport anchoring:** `buildNodePositions` (`tessellationGeometry.ts`) is the single source of truth for where a node-anchored entity draws — the plain cell center for an unsplit node, or that same node's hub point (identical radius/rotation/slot formula to `buildSplitPassages`) for an ordinary split one. `buildMazeMarkers` (start/finish) and `buildTeleportEdges` (teleport endpoints) both build the map once per call and read positions from it instead of resolving `getCellCenter` per node directly, so a marker or teleport line on a split point visibly lands on one specific node, not the tile as a whole; `getSplitAwareNodePosition` (`mazeSelectors.ts`) is a thin single-node wrapper over the same map, kept for callers needing only one lookup (e.g. `exportWarnings.ts`). Every caller still takes the point's full node list — the other nodes needed for the slot index/shape detection come from the caller's own full value set, which is always the complete node list (unsplit callers like `GenerationRenderer` simply never have more than one node per point, so this is a no-op for them).
@@ -1217,7 +1217,7 @@ Endpoint hit-testing is done by `pickPostEditTeleportEndpointAt` (in `postEditUt
 
 Both tools use an override-preview + commit-on-release pattern, distinct from teleport's own live-per-move-write drag: `postEditDragOverride` holds the live preview (set on pointerdown/pointermove, read by `PostEditRenderer` in place of the entry's committed endpoint) and nothing is appended to the command log until pointerup, so an intermediate cell the cursor passes over never produces a command. This lets the whole gesture be reverted cleanly if the release point turns out to be unresolvable, instead of leaving a partial edit behind.
 
-`setPostEditDragOverride` is a no-op when the new override is structurally equal to the current one (`postEditDragOverridesEqual`, GitHub issue #739): pointermove fires many times within one cell, and each store write would notify every subscriber and trigger a full `PostEditRenderer.redrawAll`. For the same reason `PostEditRenderer.updateHover`/`updateCellHover` skip redrawing an unchanged highlight, and `PostEditController.getFloorNodes` goes through its own `createFloorNodesSelector` instance (`pixi/selectors/mazeSelectors/state.ts`), memoized on `nodes`/`floors`/`activeFloorId`, so the per-move node map is not rebuilt.
+`setPostEditDragOverride` is a no-op when the new override is structurally equal to the current one (`postEditDragOverridesEqual`, GitHub issue #739): pointermove fires many times within one cell, and each store write would notify every subscriber and trigger a full `PostEditRenderer.redrawAll`. For the same reason `PostEditRenderer.updateHover`/`updateCellHover` skip redrawing an unchanged highlight, and `PostEditController.getFloorNodes` goes through its own `createFloorNodesSelector` instance (`domain/selectors/mazeSelectors/state.ts`), memoized on `nodes`/`floors`/`activeFloorId`, so the per-move node map is not rebuilt.
 
 `PostEditRenderer.redrawAll` skips layers whose inputs did not change since they were last drawn (GitHub issue #739). `sceneBase` memoizes everything derived from `nodes`/`edges`/`floors`/`activeFloorId`/`postEditDraftEdges`/`postEditDraftSplitPoints`/`postEditActiveSplitNode` plus the tessellation config (floor-scoped nodes, resolvers, draft edge DTOs, wall edges); `splitScene` memoizes split passages on that base plus the special node ids that sit on split points. Floor, walls, split junctions and the issue highlight are re-rendered only when those memoized results change; closed cells only when the closed-cell list or the tessellation config changes. The issue highlight is also redrawn whenever the hovered issue changes; a graph/floor change that already went through `redrawAll` does not draw it a second time. A drag preview therefore rebuilds only the teleport, marker and vertical-connection layers. `clearAll` resets this bookkeeping so a reopened card redraws every layer.
 
@@ -1347,7 +1347,7 @@ the edge tools.
 
 **Entry point:** a left click on any in-field cell calls `requestPostEditEntityDelete(point, level,
 bulk)`, mirroring the preset-side `requestPresetEntityDelete` from #540. It counts the live
-descriptors `buildPostEditPointEntities` (`pixi/postEditPointEntities.ts`) returns for the point: 0
+descriptors `buildPostEditPointEntities` (`domain/postEditPointEntities.ts`) returns for the point: 0
 is a no-op, exactly 1 calls `removePostEditPointEntity` on it directly (no dialog), more than 1
 opens `postEditEntityDeletePrompt` — `PostEditEntityDeleteDialog` then lists each entity with a
 "Delete all" button, and clicking a row removes just that one entity (dialog stays open, rebuilding
@@ -1357,7 +1357,7 @@ held stays bulk for its whole gesture) bypasses the picker entirely and calls
 `deletePostEditPoint(point)` directly — the old pre-#550 one-shot behavior.
 
 **Row shape** (GitHub issue #550 follow-ups): each descriptor (`PostEditPointEntityDescriptor`,
-`pixi/postEditPointEntities.ts`) carries `title` (a bare noun label — `post_edit.entity_delete_label_*`
+`domain/postEditPointEntities.ts`) carries `title` (a bare noun label — `post_edit.entity_delete_label_*`
 for teleport/vertical-passage, `status.cell_*` for start/finish/elevator/split-point;
 direction/target text is never baked into it, unlike the status-bar/cell-inspection selector's own
 use of `status.cell_teleport`/`_vertical_passage`, which still show `{arrow}`/`{target}` inline —
@@ -1367,7 +1367,7 @@ entity's own stable id, `undefined` for start/finish/split-point — same conven
 (`PostEditEntityBubble[]`, one coordinate bubble per endpoint, `bubbles[0]` always the point
 currently being edited), and `showArrow`/`arrow` (a plain text arrow glyph between `bubbles[0]`/
 `bubbles[1]` for a teleport/vertical-passage row, `false` for every other kind) — built with
-the exact same `endpointBubble`/`splitPointBubble` helpers (`pixi/postEditCommandLabels.ts`, exported
+the exact same `endpointBubble`/`splitPointBubble` helpers (`domain/postEditCommandLabels.ts`, exported
 for this reuse) and the same `SplitLabelContext` the Changes panel builds, so a dialog row renders
 with the same title/id-bubble/coordinate-bubble/arrow vocabulary as that entity's own Changes-panel
 row, laid out as a single wrapping flex row (not the panel's own column layout) in a dialog sized via
@@ -1530,7 +1530,7 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` —
 
 ## `buildPostEditDraftEdgesFromGenerated`
 
-Shared function in `pixi/postEditUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
+Shared function in `domain/postEditUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
 (`postEditBaselineBuilders.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
 trivial `resetPostEdit` case, see "Lifecycle" above). Ignores `kind: "teleport"`, `kind:
 "vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked
@@ -1546,7 +1546,7 @@ The "Reset to generation" action uses a compact confirmation alert: the action l
 
 ## `extractPostEditTeleports`
 
-Shared function in `pixi/postEditTeleportUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
+Shared function in `domain/postEditTeleportUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
 alongside `buildPostEditDraftEdgesFromGenerated` (same call sites as above). Filters generation's `EdgeDto[]` down to `kind: "teleport"` entries and rebuilds them as `PostEditTeleportEntry[]`: a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry. Returns `{ teleports, nextId }` — `nextId` seeds `_nextPostEditTeleportId` so ids assigned afterward by `addPostEditTeleport` don't collide. Not folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` output because a Teleport and a Basic edge can coexist in the same direction between the same pair — that `Record` has only one slot per `from-to` key and would drop one of the two.
 
 ## `postEditTeleportsToDto`

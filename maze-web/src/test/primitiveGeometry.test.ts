@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCells, primitiveCells, primitiveWorldGeometry, snapEquilateralAngle } from "../pixi/primitiveGeometry";
-import { configAllCells } from "../pixi/tessellationCells";
-import { regularHexagonDimensions } from "../pixi/shapeSelection";
+import { normalizeCells, primitiveCells, primitiveWorldGeometry, snapEquilateralAngle } from "../domain/primitiveGeometry";
+import { configAllCells } from "../domain/tessellationCells";
+import { regularHexagonDimensions } from "../domain/shapeSelection";
 import { triCenterOffset, triTriangleRaw } from "../pixi/triShapeHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 

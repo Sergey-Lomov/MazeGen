@@ -1,6 +1,6 @@
 import type { MazeState } from "../../store/storeTypes";
-import type { SeamHopContext, SeamPairsContext } from "../graphSeams";
-import { seamArrowsFor, type SeamArrow, type SeamPair } from "./seamArrows";
+import type { SeamHopContext, SeamPairsContext } from "../../domain/graphSeams";
+import { seamArrowsFor, type SeamArrow, type SeamPair } from "../../domain/selectors/seamArrows";
 
 const pairsCache = new WeakMap<SeamArrow[], Map<number, SeamPair>>();
 const contextCache = new WeakMap<object, { arrows: SeamArrow[]; context: SeamHopContext }>();

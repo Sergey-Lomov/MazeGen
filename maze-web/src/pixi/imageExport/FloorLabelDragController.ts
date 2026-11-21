@@ -1,9 +1,9 @@
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { isFloorLabelDragActive, type PointerHandler } from "../sceneTypes";
-import { toViewportCoordinates } from "../pointerInteraction";
-import { exactCellBounds, nearestCellCoord } from "../tessellationGeometry";
-import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
+import { toViewportCoordinates } from "../../domain/pointerInteraction";
+import { exactCellBounds, nearestCellCoord } from "../../domain/tessellationGeometry";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 import { floorLabelPosition } from "../renderers/FloorLabelRenderer";
 
 /** Moves the active floor label while its explicit canvas-drag mode owns pointer input. */

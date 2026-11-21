@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
 
-import { canonicalize, edgeKey, computeInvalidKeysFromCells, computeAutoLockedNodes, applyTool, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, presetTeleportEntryToState, pickEdgeAtPosition, presetConnectionsOnLevel, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, cycleVerticalPassageDirection, moveVerticalPassageEndpoint, moveElevatorEndpoint, presetVerticalPassageDirectionToDto, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, lockedNodesWithMovedLock } from "../pixi/fieldEditUtils";
-import { presetEdgeKey, rotatePresetSplitPoint, rotatePresetSplitPointBreaksNeighborShape, resolvePresetPartnerAt, allNodesAt, presetSplitNodeFaceKinds } from "../pixi/presetSplitResolve";
-import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import { makeProjection } from "../pixi/tessellationProjection";
-import { TILE_SIZE } from "../pixi/constants";
-import type { LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
+import { canonicalize, edgeKey, computeAutoLockedNodes, applyTool, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, presetTeleportEntryToState, presetConnectionsOnLevel, cycleVerticalPassageDirection, presetVerticalPassageDirectionToDto, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, lockedNodesWithMovedLock } from "../domain/fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, moveVerticalPassageEndpoint, moveElevatorEndpoint } from "../domain/fieldValidity";
+import { pickEdgeAtPosition } from "../domain/edgeHitTesting";
+import { presetEdgeKey, rotatePresetSplitPoint, rotatePresetSplitPointBreaksNeighborShape, resolvePresetPartnerAt, allNodesAt, presetSplitNodeFaceKinds } from "../domain/presetSplitResolve";
+import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../domain/fieldEditUtils";
+import { presetEndpoint } from "../domain/presetEndpoint";
+import { makeProjection } from "../domain/tessellationProjection";
+import { TILE_SIZE } from "../domain/constants";
+import type { LevelField, ResolveFieldAt } from "../domain/fieldEditUtils";
 import { fieldOf } from "./fieldConfigFixtures";
 
 // --- canonicalize ---

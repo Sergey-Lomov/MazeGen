@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditElevatorEntry, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/postEditTypes";
-import { pickPostEditTeleportEndpointAt } from "../pixi/postEditTeleportUtils";
-import { pickPostEditElevatorEndpointAt, pickPostEditVerticalPassageEndpointAt } from "../pixi/postEditVerticalUtils";
+import { pickPostEditTeleportEndpointAt } from "../domain/postEditTeleportUtils";
+import { pickPostEditElevatorEndpointAt, pickPostEditVerticalPassageEndpointAt } from "../domain/postEditVerticalUtils";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const cfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });

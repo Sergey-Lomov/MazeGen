@@ -1,9 +1,9 @@
 import type { StateCreator } from "zustand";
 import { computeAnalyticsAsync } from "../../wasm/mazeService";
 import type { NodeDto, PostEditEdgeWasmDto } from "../../wasm/types";
-import { postEditTeleportsToDto, currentSplitNodeFaces, postEditVerticalToDto, pruneRemovedSplitNodes } from "../../pixi/postEditUtils";
-import { presetEndpointToDto } from "../../pixi/presetEndpoint";
-import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver, edgeKey } from "../../pixi/postEditEndpoint";
+import { postEditTeleportsToDto, currentSplitNodeFaces, postEditVerticalToDto, pruneRemovedSplitNodes } from "../../domain/postEditUtils";
+import { presetEndpointToDto } from "../../domain/presetEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver, edgeKey } from "../../domain/postEditEndpoint";
 import type {
   MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
@@ -11,18 +11,18 @@ import type {
 import { ruleHasSendableChecks, sendableChecks } from "../storeTypes";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
-import { replayPostEditCommands } from "../../pixi/postEditReplay";
-import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt, isCreateCommand, lifelineKeysOf } from "../../pixi/postEditLifelines";
-import { compactPostEditCommands } from "../../pixi/postEditCompaction";
-import { postEditEntitiesForPurpose, type EntityToolPurpose } from "../../pixi/entityToolKinds";
-import type { PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
+import { replayPostEditCommands } from "../../domain/postEditReplay";
+import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt, isCreateCommand, lifelineKeysOf } from "../../domain/postEditLifelines";
+import { compactPostEditCommands } from "../../domain/postEditCompaction";
+import { postEditEntitiesForPurpose, type EntityToolPurpose } from "../../domain/entityToolKinds";
+import type { PostEditPointEntityDescriptor } from "../../domain/postEditPointEntities";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorLevel, floorTessellationOf } from "../storeHelpers";
-import { configAllCells } from "../../pixi/tessellationCells";
+import { configAllCells } from "../../domain/tessellationCells";
 import { toWasmEndpoint, commitPostEditVerticalPassage, dispatchPostEditElevatorPlacement, appendPostEditCommand, replacePostEditCommands, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters, removePostEditSplitSlots, postEditDragOverridesEqual } from "./postEditSliceHelpers";
 import { buildMultiFloorPointNodeMap, buildPostEditBaseline, buildPostEditPointEntitiesAt, resolveNodeIdToEndpoint, buildPostEditResetLifelinesAt } from "./postEditBaselineBuilders";
-import { formatPostEditId } from "../../pixi/postEditIdFormat";
+import { formatPostEditId } from "../../domain/postEditIdFormat";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
 import * as m from "~/paraglide/messages";

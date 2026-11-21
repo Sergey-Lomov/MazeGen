@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { n, node, resetPostEditStore, key01 } from "./postEditSliceKit";
-import { splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { splitEndpoint, edgeKey } from "../domain/postEditEndpoint";
 
 vi.mock("../wasm/mazeService", async (importActual) =>
   (await import("./postEditSliceMocks")).mazeServiceMock(await importActual<typeof import("../wasm/mazeService")>()));

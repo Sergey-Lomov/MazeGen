@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { setLocale } from "~/paraglide/runtime";
 import { applyModifiers, applyColorModifiers, type ColorModifier, type ParamLink } from "../store/parameterLinks";
-import { colorToRgb, colorToHsl, colorToOklch } from "../store/colorMath";
+import { colorToRgb, colorToHsl, colorToOklch } from "../domain/colorMath";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 import { addLink, propagate, writeLinkedParam, applyLinkedPatch, propagateLinkedSources } from "../store/slices/parameterLinksEngine";
 

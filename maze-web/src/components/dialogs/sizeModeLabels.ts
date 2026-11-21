@@ -1,4 +1,4 @@
-import type { PrintSizeMode } from "../../pixi/geometry/tessellationUi";
+import type { PrintSizeMode } from "../../domain/geometry/tessellationUi";
 import * as m from "~/paraglide/messages";
 
 /** What the size field takes in each mode: the label of the field, and the name in the mode select. */

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { TILE_SIZE } from "../pixi/constants";
+import { TILE_SIZE } from "../domain/constants";
 import type { FieldConfig } from "../fieldConfig";
-import type { ExportMargin } from "../pixi/imageExport/exportMargins";
+import type { ExportMargin } from "../domain/imageExport/exportMargins";
 import type { DigitalExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
 
-const { computeDigitalExportFit, placeInBox } = await import("../pixi/imageExport/exportFit");
+const { computeDigitalExportFit, placeInBox } = await import("../domain/imageExport/exportFit");
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };

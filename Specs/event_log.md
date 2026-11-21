@@ -768,7 +768,7 @@ it's a static per-run declaration — but guarded defensively), the stale-kind e
 rebuilt rather than fed data it can't render. `render()` takes both a `kindFor: (name: string) =>
 DebugValueKind` and a `colorFor: (name: string) => number` callback; `GenerationRenderer` builds
 `colorFor` from `buildDebugValuePalette(debugArena.debugValueNames.length)`
-(`maze-web/src/pixi/colorUtils.ts`) indexed by each name's position in the declared name list — a
+(`maze-web/src/domain/colorUtils.ts`) indexed by each name's position in the declared name list — a
 small set of calm, analogous hues (blue/teal/violet, lower saturation than the full-spectrum
 `buildPalette` used for e.g. connectivity regions), varied by lightness across passes, so
 simultaneously-toggled debug values read as related shades rather than clashing unrelated colors.

@@ -1,4 +1,4 @@
-import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToColor } from "./colorMath";
+import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToColor } from "../domain/colorMath";
 
 /** Family of a linkable parameter — constrains which parameters can be linked to one another (only
  *  same-type pairs) and which link a `"number"` pair may carry a `ParamModifier` chain on (#645), or
@@ -7,7 +7,7 @@ import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToCo
  *  render modes (same underlying TS type and value set) — split out from a generic catch-all so each
  *  gets its own localized `format` instead of showing a raw enum string. `boolean` covers plain
  *  on/off toggles. A `"color"` value is a packed 24-bit RGB number, same as every other color field
- *  in the app (`store/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. A
+ *  in the app (`domain/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. A
  *  `"labelFont"` value is a `{ family, weight }` object, so its descriptor overrides `equals` (GitHub
  *  issue #973). */
 export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "oneWayPattern" | "openingMode" | "teleportCurveDirection" | "indexLabelStyle" | "elevatorBadgeBacking" | "labelFont" | "lineStyle" | "boolean";

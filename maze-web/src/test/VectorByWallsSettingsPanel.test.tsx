@@ -7,7 +7,7 @@ import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
-import { distributeOklchHues } from "../store/colorMath";
+import { distributeOklchHues } from "../domain/colorMath";
 import { getTooltipAnchor, getTooltipAnchors } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
 

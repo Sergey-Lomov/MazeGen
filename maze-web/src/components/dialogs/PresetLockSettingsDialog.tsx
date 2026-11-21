@@ -1,6 +1,6 @@
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { presetEndpointKey } from "../../pixi/presetEndpoint";
+import { presetEndpointKey } from "../../domain/presetEndpoint";
 import type { NodeLockKind } from "../../wasm/types";
 import { Modal } from "../Modal";
 import { Button } from "../Button";

@@ -1,9 +1,9 @@
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState } from "../store/mazeStore";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import { buildPostEditBaseline } from "../store/slices/postEditBaselineBuilders";
 import type { PostEditEdgeState } from "../store/postEditTypes";
-import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import type { PostEditEndpoint } from "../domain/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { WireTopology } from "../wasm/types";

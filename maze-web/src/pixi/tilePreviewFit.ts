@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import type { Pos } from "./tessellationGeometry";
-import { WALL_THICKNESS } from "./renderConstants";
+import type { Pos } from "../domain/tessellationGeometry";
+import { WALL_THICKNESS } from "../domain/renderConstants";
 
 /** Shared by `SplitPointPixiPreview`/`PresetSplitPointPixiPreview` (GitHub issue #609) — both are
  * tiny single-tile Pixi previews built from a selector that resolves the *whole floor's* split

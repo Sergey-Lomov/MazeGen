@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { LinkPath } from "../../store/parameterLinkSchema";
-import { DEFAULT_LABEL_FONT, isMsdfFamilyLoaded, labelFontEquals, type LabelFont } from "../../pixi/renderers/fontChoice";
+import { DEFAULT_LABEL_FONT, isMsdfFamilyLoaded, labelFontEquals, type LabelFont } from "../../domain/renderers/fontChoice";
 import { noteFontSelected } from "../../pixi/renderers/canvasLabelResolution";
 import { isLabelFontLoaded, loadLabelFont } from "../../pixi/renderers/labelFont";
 import { LinkedFontRow } from "./LinkedRows";

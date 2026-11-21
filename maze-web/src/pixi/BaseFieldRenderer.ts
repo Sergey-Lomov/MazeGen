@@ -1,8 +1,8 @@
 import { useMazeStore } from "../store/mazeStore";
-import { resolveCells } from "./fieldEditUtils";
-import { encodePoint } from "./tessellationProjection";
+import { resolveCells } from "../domain/fieldEditUtils";
+import { encodePoint } from "../domain/tessellationProjection";
 import type { FieldConfig } from "../fieldConfig";
-import type { Viewport } from "./renderers/types";
+import type { Viewport } from "../domain/renderers/types";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 

@@ -5,7 +5,7 @@ import { creaseDisplayPoint } from "../pixi/creaseGeometry";
 import { creaseStyleOf, selectExportCreases } from "../pixi/imageExport/creaseExport";
 import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from "../store/projectExport/validateImageExport";
-import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../pixi/renderConstants";
+import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../domain/renderConstants";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { CreaseExportStyle } from "../store/imageExportTypes";
 import { isGateOpen, type GateName } from "../store/parameterLinkRules";
@@ -208,7 +208,7 @@ describe("EdgeMarkerSettingsSubsection linked", () => {
 describe("EdgeMarkerSettingsSubsection auto colours", () => {
   it("sets each shown marker's own colour from the hue distribution of the shared colour, once", async () => {
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
-    const { distributeHueGroups } = await import("../store/colorMath");
+    const { distributeHueGroups } = await import("../domain/colorMath");
     const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
     const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;
     setCreases([crease]);

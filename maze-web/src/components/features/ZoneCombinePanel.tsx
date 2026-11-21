@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { editedZoneOf } from "../../pixi/fieldEditTarget";
-import { previewZoneCombine, ZONE_COMBINE_OPS, type ZoneCombineOp } from "../../pixi/selectors/zoneCombine";
-import { overridesWithDraft, zoneColors, zoneDisplayName, zoneFloors, zonesWithDraft } from "../../pixi/selectors/zoneSelectors";
-import { FIELD_EDITOR_PREVIEW_COLORS } from "../../pixi/colorTokens";
+import { editedZoneOf } from "../../store/fieldEditTarget";
+import { previewZoneCombine, ZONE_COMBINE_OPS, type ZoneCombineOp } from "../../domain/selectors/zoneCombine";
+import { overridesWithDraft, zoneColors, zoneDisplayName, zoneFloors, zonesWithDraft } from "../../domain/selectors/zoneSelectors";
+import { FIELD_EDITOR_PREVIEW_COLORS } from "../../domain/colorTokens";
 import { Button } from "../Button";
 import { EntityColorSwatch, cssColor } from "../EntityColorSwatch";
 import { FloorBadgeRow } from "../FloorBadgeRow";

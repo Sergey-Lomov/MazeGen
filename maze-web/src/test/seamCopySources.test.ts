@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { getSeamModel } from "../pixi/selectors/seams";
-import { applyTransform } from "../pixi/geometry/worldTransform";
-import { displayTransform } from "../pixi/tessellationGeometry";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { getSeamModel } from "../domain/selectors/seams";
+import { applyTransform } from "../domain/geometry/worldTransform";
+import { displayTransform } from "../domain/tessellationGeometry";
 import { DEFAULT_VERTICAL_STYLE } from "../pixi/renderers/VerticalConnectionRenderer";
-import type { VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
+import type { VerticalConnectionMarker } from "../domain/renderers/types";
+import type { MarkerIndexLabel } from "../domain/selectors/mazeSelectors/markerIndex";
 import { Container } from "pixi.js";
 import { SeamCopyRenderer, type SeamCopySource } from "../pixi/renderers/SeamCopyRenderer";
 import { buildSeamCopySources, markerIndexDisks, markerIndexSource, verticalMarkerDisks, verticalSource, waypointDisks } from "../pixi/imageExport/seamCopySources";

@@ -1,7 +1,7 @@
 import type React from "react";
 import type { CreaseExportStyle } from "../../store/imageExportTypes";
 import { indent, spacing } from "../../styles/theme";
-import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../../pixi/renderConstants";
+import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../../domain/renderConstants";
 import { SectionHeader } from "../SectionHeader";
 import { useGate } from "./LinkContext";
 import { LinkedSelectRow, LinkedSliderRow, LinkedToggleRow, LinkedUnregisteredColorRow } from "./LinkedRows";

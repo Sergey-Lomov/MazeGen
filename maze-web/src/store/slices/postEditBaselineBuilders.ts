@@ -1,17 +1,17 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
-import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds, extractPostEditVerticalPassages, extractPostEditElevators } from "../../pixi/postEditUtils";
-import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../../pixi/postEditReplay";
+import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver } from "../../domain/postEditEndpoint";
+import { deriveSplitPointsFromNodes } from "../../domain/splitPointsCore";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds, extractPostEditVerticalPassages, extractPostEditElevators } from "../../domain/postEditUtils";
+import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../../domain/postEditReplay";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from "../postEditTypes";
-import { formatPostEditId } from "../../pixi/postEditIdFormat";
-import { buildPostEditPointEntities, type PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
-import { buildNodeByIdMap } from "../../pixi/postEditCommandLabels";
-import { buildPostEditResetLifelines, type PostEditResetLifelineDescriptor } from "../../pixi/postEditResetLifelines";
-import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { formatPostEditId } from "../../domain/postEditIdFormat";
+import { buildPostEditPointEntities, type PostEditPointEntityDescriptor } from "../../domain/postEditPointEntities";
+import { buildNodeByIdMap } from "../../domain/postEditCommandLabels";
+import { buildPostEditResetLifelines, type PostEditResetLifelineDescriptor } from "../../domain/postEditResetLifelines";
+import type { SplitLabelContext } from "../../domain/postEditSplitLabels";
+import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed

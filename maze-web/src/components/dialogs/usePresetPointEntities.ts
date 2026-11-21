@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import type { PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../domain/pointEntities";
+import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import type { PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import type { EntityChoiceRow } from "./EntityChoiceDialog";
 import * as m from "~/paraglide/messages";
 

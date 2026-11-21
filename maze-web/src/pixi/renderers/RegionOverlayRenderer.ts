@@ -2,11 +2,11 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { RegionHighlightRenderer } from "./RegionHighlightRenderer";
-import { NODE_RADIUS } from "../renderConstants";
+import { NODE_RADIUS } from "../../domain/renderConstants";
 import { attachFloorBadgeNavigation, computeRegionBadgeRingPos, drawFloorBadge } from "./floorBadge";
-import { getCellCenter } from "../tessellationGeometry";
-import { canvas } from "../colorTokens";
-import type { TeleportEdge } from "./types";
+import { getCellCenter } from "../../domain/tessellationGeometry";
+import { canvas } from "../../domain/colorTokens";
+import type { TeleportEdge } from "../../domain/renderers/types";
 
 /** Shared by `RegionsRenderer` (color by `ComponentId`) and `RegionClassesRenderer` (color by
  *  `RegionClass`) — both are "one filled cell group per SCC region, plus that region's own

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../domain/tessellationProjection";
 import {
   computeMirrorPreview,
   snapMirrorPoint,
   mirrorStatus,
   type MirrorOptions,
-} from "../pixi/mirror";
+} from "../domain/mirror";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const cfg = fieldOf("square", { shape: "custom", points: [[0, 0], [1, 0], [2, 0], [1, 1]] as [number, number][] });

@@ -1,6 +1,6 @@
 import type { Graphics } from "pixi.js";
-import type { TeleportEdge, MarkerData, VerticalConnectionMarker } from "../renderers/types";
-import type { TeleportGroup } from "../selectors/teleportGroups";
+import type { TeleportEdge, MarkerData, VerticalConnectionMarker } from "../../domain/renderers/types";
+import type { TeleportGroup } from "../../domain/selectors/teleportGroups";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 
 /** Builds one `MarkerData` per unique teleport point (GitHub issue #313 follow-up: teleport markers

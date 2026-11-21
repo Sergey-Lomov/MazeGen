@@ -1,19 +1,19 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { Viewport, MarkerData, VerticalConnectionMarker, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/types";
+import type { Viewport, MarkerData, VerticalConnectionMarker, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../../domain/renderers/types";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../../domain/renderers/types";
 import { verticalMarkerFootprint } from "../renderers/VerticalConnectionRenderer";
 import type { MarkerSettings, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
-import type { MarkerStyle } from "../selectors/mazeSelectors";
-import { withMarkerVisibility } from "../selectors/mazeSelectors/markers";
-import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } from "../selectors/mazeSelectors/markerLayout";
-import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
-import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
-import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
+import type { MarkerStyle } from "../../domain/selectors/mazeSelectors";
+import { withMarkerVisibility } from "../../domain/selectors/mazeSelectors/markers";
+import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } from "../../domain/selectors/mazeSelectors/markerLayout";
+import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../../domain/selectors/mazeSelectors/markerIndex";
+import { buildTeleportGroups, coordKey } from "../../domain/selectors/teleportGroups";
+import { resolveEndpoint, buildSplitNodeResolver } from "../../domain/postEditEndpoint";
 import { resolveIndicatorMetrics } from "../../store/imageExportTypes";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
-import { splitSlotColor } from "../colorUtils";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { TILE_SIZE } from "../../domain/constants";
+import { canvas } from "../../domain/colorTokens";
+import { splitSlotColor } from "../../domain/colorUtils";
 
 export function buildEffectiveSplitNodeColors(splitNodeColors: readonly number[], maxSplit: number): number[] {
   return Array.from(

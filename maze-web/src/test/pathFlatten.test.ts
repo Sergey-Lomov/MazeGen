@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PathCommand, SegmentDto } from "../wasm/mazeService";
-import { flattenCommands, flattenSegments, segmentsToCommands } from "../pixi/geometry/pathFlatten";
-import { fractionAlong, pointAtFraction, polylineLength, trimPolyline, closestPointOnPolyline } from "../pixi/geometry/polylineOps";
+import { flattenCommands, flattenSegments, segmentsToCommands } from "../domain/geometry/pathFlatten";
+import { fractionAlong, pointAtFraction, polylineLength, trimPolyline, closestPointOnPolyline } from "../domain/geometry/polylineOps";
 
 const SQUARE: PathCommand[] = [
   { op: "move_to", to: [0, 0] },

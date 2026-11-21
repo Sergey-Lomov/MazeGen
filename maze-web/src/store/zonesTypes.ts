@@ -1,5 +1,5 @@
 import type { Zone } from "../wasm/mazeService";
-import type { ZoneCombine, ZoneCombineOp } from "../pixi/selectors/zoneCombine";
+import type { ZoneCombine, ZoneCombineOp } from "../domain/selectors/zoneCombine";
 
 /** Section of the zones list: the zones of one kind. */
 export type ZonesListMode = "auto" | "manual";

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNodeByIdMap, entityIdOf, postEditCommandLabel,
-} from "../pixi/postEditCommandLabels";
-import type { SplitLabelContext } from "../pixi/postEditSplitLabels";
-import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
+} from "../domain/postEditCommandLabels";
+import type { SplitLabelContext } from "../domain/postEditSplitLabels";
+import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { NodeDto } from "../wasm/types";

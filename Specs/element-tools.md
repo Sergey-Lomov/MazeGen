@@ -53,7 +53,7 @@ presets, `delete` on post-edit).
 `move` (four-arrow glyph) relocates elements, including elements on any node of a split tile.
 
 - A left press on a cell lists the cell's movable elements across every node of a split tile
-  (`presetEntitiesForPurpose`/`postEditEntitiesForPurpose`, `pixi/entityToolKinds.ts`): start,
+  (`presetEntitiesForPurpose`/`postEditEntitiesForPurpose`, `domain/entityToolKinds.ts`): start,
   finish, generation source (presets), teleport endpoints, vertical-passage endpoints, and elevator
   stops, and user locks (presets). Auto locks, edges, and split tiles are not movable.
 - **One element:** the press picks it up. Dragging and releasing elsewhere drops it there in one

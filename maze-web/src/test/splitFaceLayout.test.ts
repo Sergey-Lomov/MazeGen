@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectIdentity } from "./splitBindingFixture";
-import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, isFinishedSplitPair, MIN_STRAIGHT_CONNECTOR_ANGLE_DEG, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, isFinishedSplitPair, MIN_STRAIGHT_CONNECTOR_ANGLE_DEG, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../domain/splitFaceLayout";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };

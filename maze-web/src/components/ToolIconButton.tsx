@@ -1,7 +1,7 @@
 import type React from "react";
 import { ArrowBigUp, Option } from "lucide-react";
 import { radius, ui } from "../styles/theme";
-import { TILE_SIZE } from "../pixi/constants";
+import { TILE_SIZE } from "../domain/constants";
 import { Tooltip } from "./Tooltip";
 
 export type ShortcutKey = string;

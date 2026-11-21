@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
-import { nodeEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, edgeKey } from "../domain/postEditEndpoint";
 import { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { WallRenderer } from "../pixi/renderers/WallRenderer";
 import { SplitJunctionRenderer } from "../pixi/renderers/SplitJunctionRenderer";
@@ -11,7 +11,7 @@ import { WaypointsRenderer } from "../pixi/renderers/WaypointsRenderer";
 import { CellFillRenderer } from "../pixi/renderers/CellFillRenderer";
 import { EdgeHighlightRenderer } from "../pixi/renderers/EdgeHighlightRenderer";
 import { IssueHighlightOverlay } from "../pixi/IssueHighlightOverlay";
-import { canvas } from "../pixi/colorTokens";
+import { canvas } from "../domain/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({

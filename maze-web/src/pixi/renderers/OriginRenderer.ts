@@ -1,8 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { FieldConfig } from "../../fieldConfig";
-import { makeProjection } from "../tessellationProjection";
-import { originCellOf } from "../splitPatternTile";
-import { canvas } from "../colorTokens";
+import { makeProjection } from "../../domain/tessellationProjection";
+import { originCellOf } from "../../domain/splitPatternTile";
+import { canvas } from "../../domain/colorTokens";
 import { CROSS_WIDTH, drawCrossMarker } from "./crossMarker";
 
 export class OriginRenderer {

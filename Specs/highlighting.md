@@ -428,7 +428,7 @@ boundary highlighting.
 | Field cursor | `maze-web/src/pixi/FieldEditorOverlay.ts` |
 | Preset cursor/warnings | `maze-web/src/pixi/PresetConnectionsRenderer.ts` |
 | Post-edit cursor/entity/issues | `maze-web/src/pixi/PostEditRenderer.ts` |
-| Post-edit entity classification | `maze-web/src/pixi/selectors/mazeSelectors/postEdit.ts` |
+| Post-edit entity classification | `maze-web/src/domain/selectors/mazeSelectors/postEdit.ts` |
 
 ## 7. Invariants for new highlights
 

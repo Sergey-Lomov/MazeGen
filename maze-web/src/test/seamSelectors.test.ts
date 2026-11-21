@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
-import { configAllCells } from "../pixi/tessellationCells";
+import { warmCartesianCache } from "../domain/cartesianCache";
+import { configAllCells } from "../domain/tessellationCells";
 import { buildPairedRenderEdges } from "../pixi/BaseGraphRenderer";
-import { seamCellSlots, seamStubHighlights } from "../pixi/graphSeams";
+import { seamCellSlots, seamStubHighlights } from "../domain/graphSeams";
 import { tuckEnds } from "../pixi/renderers/SeamArrowRenderer";
-import { getCellCenter } from "../pixi/tessellationGeometry";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import { buildLinkHoverHighlight } from "../pixi/selectors/presetSelectors";
 import { selectIssueHighlightData } from "../pixi/selectors/issueHighlight";
 import { selectSeamHopContext, selectSeamPairs } from "../pixi/selectors/seamHop";

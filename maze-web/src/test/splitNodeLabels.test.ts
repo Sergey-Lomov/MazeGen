@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitNodeNumber, splitNodeLabel, splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
+import { splitNodeNumber, splitNodeLabel, splitNodeLabelShort } from "../domain/splitNodeLabels";
 
 // GitHub issue #468: slot 0 is not a special node any more — every node of a split point, the
 // point's original node included, shares one 1-based numbering. The original node is N=1; a slot's

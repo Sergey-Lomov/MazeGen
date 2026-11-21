@@ -1,6 +1,6 @@
 import { useMazeStore } from "../../store/mazeStore";
-import { formatTargetLabel } from "../../pixi/targetLabel";
-import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import { formatTargetLabel } from "../../domain/targetLabel";
+import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import { ConnectionSettingsDialog } from "./ConnectionSettingsDialog";
 import * as m from "~/paraglide/messages";
 

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges } from "../domain/selectors/mazeSelectors";
 import { settingsA, baseState, stableCfg, startMarker, finishMarker, makeRenderer, useRendererReset } from "./vbcKit";
 
 import { mockStore } from "./vbcMocks";
 
-vi.mock("../pixi/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
+vi.mock("../domain/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
 vi.mock("../pixi/renderers/WallRenderer", async () => (await import("./vbcMocks")).wallRendererMock());
 vi.mock("../pixi/renderers/TeleportRenderer", async () => (await import("./vbcMocks")).teleportRendererMock());
 vi.mock("../pixi/renderers/VerticalConnectionRenderer", async () => (await import("./vbcMocks")).verticalConnectionRendererMock());

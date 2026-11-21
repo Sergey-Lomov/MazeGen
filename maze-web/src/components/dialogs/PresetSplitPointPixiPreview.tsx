@@ -1,15 +1,15 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import type { FieldConfig } from "../../fieldConfig";
-import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
-import { getCellVertices, getCellCenter } from "../../pixi/tessellationGeometry";
+import type { PresetConnectionEntry } from "../../domain/fieldEditUtils";
+import { getCellVertices, getCellCenter } from "../../domain/tessellationGeometry";
 import { buildPresetSplitPassages, buildPresetNodePositions, presetEndpointScreenPos } from "../../pixi/selectors/presetSelectors";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../../pixi/renderers/SplitJunctionRenderer";
 import { WallRenderer } from "../../pixi/renderers/WallRenderer";
 import { fitTileToWorld, clipToTile } from "../../pixi/tilePreviewFit";
-import { presetEndpoint } from "../../pixi/presetEndpoint";
-import { canvas } from "../../pixi/colorTokens";
-import { splitSlotColor } from "../../pixi/colorUtils";
+import { presetEndpoint } from "../../domain/presetEndpoint";
+import { canvas } from "../../domain/colorTokens";
+import { splitSlotColor } from "../../domain/colorUtils";
 import { ui } from "../../styles/theme";
 
 interface Props {

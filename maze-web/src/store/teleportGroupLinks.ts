@@ -1,4 +1,4 @@
-import type { TeleportGroupOverride, TeleportGroupRole } from "../pixi/renderers/types";
+import type { TeleportGroupOverride, TeleportGroupRole } from "../domain/renderers/types";
 import type { MarkerSettings } from "./storeTypes";
 import type { ParamLink } from "./parameterLinks";
 import { applyLinkChain } from "./slices/parameterLinksEngine";

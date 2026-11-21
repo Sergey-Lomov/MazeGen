@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
-import { TILE_SIZE } from "../pixi/constants";
+import { TILE_SIZE } from "../domain/constants";
 import { fieldOf } from "./fieldConfigFixtures";
-import { getCellGeometry } from "../pixi/cartesianCache";
+import { getCellGeometry } from "../domain/cartesianCache";
 
-const { canRotateSplit } = await import("../pixi/splitShape");
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, anchorCanonicalFaces, nearestCellCoord, cellsInDisplayRect, getCellPath } = await import("../pixi/tessellationGeometry");
+const { canRotateSplit } = await import("../domain/splitShape");
+const { splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions } = await import("../domain/splitNodeGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, anchorCanonicalFaces, nearestCellCoord, cellsInDisplayRect, getCellPath } = await import("../domain/tessellationGeometry");
 
 // A face's `v0 -> v1` direction must agree with `getSharedEdgeSegment`'s own choice for that same
 // shared edge — both the split-node dialog's tile diagram (`TileFaceEditor`, via `getTileDiagram`)

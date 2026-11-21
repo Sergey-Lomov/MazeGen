@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { LABEL_FONT_LOADED_EVENT } from "../../pixi/renderers/fontChoice";
+import { LABEL_FONT_LOADED_EVENT } from "../../domain/renderers/fontChoice";
 import { textMetricsKey } from "../../pixi/textFit";
 
 const subscribe = (listener: () => void) => {

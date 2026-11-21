@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BaseController } from "../pixi/BaseController";
-import type { FieldEdge } from "../pixi/fieldEditUtils";
+import type { FieldEdge } from "../domain/fieldEditUtils";
 import type { Container } from "pixi.js";
 
 /** Exposes BaseController's protected members as public so tests can drive them directly,

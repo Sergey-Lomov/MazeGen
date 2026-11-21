@@ -1,12 +1,11 @@
 import type { MazeState } from "../mazeStore";
-import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport, type ProjectFileQuality } from "./types";
-import { decodePoint } from "../../pixi/tessellationProjection";
+import { decodePoint } from "../../domain/tessellationProjection";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
 
 export function serializeProject(state: MazeState): ProjectFile {
-  const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
+  const postEdit: ProjectFilePostEdit | null = state.postEditDirty
     ? {
         commands: state.postEditCommands,
         nextTeleportId: state._nextPostEditTeleportId,

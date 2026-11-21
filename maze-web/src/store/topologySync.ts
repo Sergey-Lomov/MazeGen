@@ -1,5 +1,5 @@
 import type { StoreApi } from "zustand";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import { notify } from "../notifications/notificationStore";
 import { registerNotificationCode } from "../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";

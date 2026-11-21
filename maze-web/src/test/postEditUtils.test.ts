@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto, postEditVerticalPassageDirectionToDto, cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint, removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes } from "../pixi/postEditUtils";
-import { rotateSplitPointNodes, rotateSplitPointBreaksNeighborShape } from "../pixi/postEditRotation";
-import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitFaceLayout";
-import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto, postEditVerticalPassageDirectionToDto, cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint, removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes } from "../domain/postEditUtils";
+import { rotateSplitPointNodes, rotateSplitPointBreaksNeighborShape } from "../domain/postEditRotation";
+import { canCompleteOppositePair, hasCompleteOppositePair } from "../domain/splitFaceLayout";
+import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../domain/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import { getNeighborData } from "../pixi/tessellationGeometry";
+import { getNeighborData } from "../domain/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const noSplits = () => undefined;

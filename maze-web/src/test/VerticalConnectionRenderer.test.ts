@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import type { VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
-import { patternVisualTipFraction, patternBaseFraction, oneWayStopLineShape } from "../pixi/renderers/verticalConnectionGeometry";
+import type { VerticalConnectionMarker } from "../domain/renderers/types";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../domain/renderers/types";
+import { patternVisualTipFraction, patternBaseFraction, oneWayStopLineShape } from "../domain/renderers/verticalConnectionGeometry";
 
 const navigateToFloorMock = vi.fn();
 vi.mock("../pixi/renderers/floorNavigation", () => ({

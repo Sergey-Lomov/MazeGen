@@ -12,7 +12,7 @@ import {
   type ProjectFileFloorField,
 } from "./types";
 import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
-import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
+import { TESSELLATION_UI } from "../../domain/geometry/tessellationUi";
 import type { TessellationKind } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig, WireTopology } from "../../wasm/types";
 import { tessellationFingerprint, validateWireTopology } from "../topologyWire";

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
-import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
-import { buildPresetPointEntities } from "../pixi/pointEntities";
+import { presetEndpoint, presetEndpointsEqual } from "../domain/presetEndpoint";
+import { buildPresetPointEntities } from "../domain/pointEntities";
 import { usePresetStateReset } from "./presetConnectionsSliceKit";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

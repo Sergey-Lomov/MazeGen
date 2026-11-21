@@ -1,12 +1,12 @@
 import { Graphics, Rectangle, type Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { isTeleportConnectorEditActive, type PointerHandler, type ViewportListener } from "../sceneTypes";
-import { toViewportCoordinates } from "../pointerInteraction";
-import { getCellCenter, getCellVertices } from "../tessellationGeometry";
-import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
+import { toViewportCoordinates } from "../../domain/pointerInteraction";
+import { getCellCenter, getCellVertices } from "../../domain/tessellationGeometry";
+import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 import { distanceToSegment } from "./cutLines";
-import { CUBIC_SAMPLE_STEPS, curveControls, editableCurvePoints, manualPathMode, straightCubicControls, teleportConnectorKey } from "../renderers/teleportConnectorManual";
-import type { TeleportEdge } from "../renderers/types";
+import { CUBIC_SAMPLE_STEPS, curveControls, editableCurvePoints, manualPathMode, straightCubicControls, teleportConnectorKey } from "../../domain/renderers/teleportConnectorManual";
+import type { TeleportEdge } from "../../domain/renderers/types";
 import { notifyTeleportConnectorEndpointCannotBeRemoved } from "../../notifications/teleportConnectorEditNotifications";
 
 type Drawn = { edge: TeleportEdge; points: readonly number[] };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { connectedMagicWandCells } from "../pixi/magicWand";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { encodePoint } from "../domain/tessellationProjection";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("connectedMagicWandCells", () => {

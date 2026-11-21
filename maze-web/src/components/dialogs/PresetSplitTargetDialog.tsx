@@ -1,18 +1,18 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { splitSlotColor } from "../../pixi/colorUtils";
-import { canvas } from "../../pixi/colorTokens";
-import { presetConnectionsOnLevel, recordOnLevel, resolveCells } from "../../pixi/fieldEditUtils";
-import { presetSplitNodeFaceKinds } from "../../pixi/presetSplitResolve";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { splitSlotColor } from "../../domain/colorUtils";
+import { canvas } from "../../domain/colorTokens";
+import { presetConnectionsOnLevel, recordOnLevel, resolveCells } from "../../domain/fieldEditUtils";
+import { presetSplitNodeFaceKinds } from "../../domain/presetSplitResolve";
+import { buildCellSet } from "../../domain/selectors/sharedSelectors";
 import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
-import { presetEndpoint } from "../../pixi/presetEndpoint";
+import { presetEndpoint } from "../../domain/presetEndpoint";
 import type { NodeLockKind } from "../../wasm/types";
-import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
-import { splitShapeBinding } from "../../pixi/splitShape";
+import { splitNodeSemanticNamesFromKinds } from "../../domain/splitNodeNames";
+import { splitShapeBinding } from "../../domain/splitShape";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { formatTargetLabel } from "../../domain/targetLabel";
 import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 

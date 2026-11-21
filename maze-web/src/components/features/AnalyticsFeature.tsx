@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { Button } from "../Button";
-import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
+import { selectAnalyticsIssues } from "../../domain/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";

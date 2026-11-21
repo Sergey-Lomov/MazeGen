@@ -8,12 +8,12 @@ import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from
 import { useMazeStore } from "../store/mazeStore";
 import type { EdgeMarkerStyle, FloorEdgeMarkerStyle } from "../store/imageExportTypes";
 import type { WireTopology } from "../wasm/types";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { MarkerLook } from "../pixi/selectors/exportMarkerLookAlike";
-import { getSeamModel, pointOnHalfEdge } from "../pixi/selectors/seams";
-import { displayTransform } from "../pixi/tessellationGeometry";
-import { applyTransform } from "../pixi/geometry/worldTransform";
+import { getSeamModel, pointOnHalfEdge } from "../domain/selectors/seams";
+import { displayTransform } from "../domain/tessellationGeometry";
+import { applyTransform } from "../domain/geometry/worldTransform";
 
 const style = (patch: Partial<EdgeMarkerStyle> = {}): EdgeMarkerStyle => ({ ...DEFAULT_EDGE_MARKER_STYLE, mode: "gluings", ...patch });
 const floorStyle = (patch: Partial<FloorEdgeMarkerStyle> = {}): FloorEdgeMarkerStyle => ({ ...DEFAULT_EDGE_MARKER_STYLE, mode: "gluings", overrides: {}, ...patch });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { brightColor, colorToOklch, distributeHueGroups, hueGroupColors } from "../store/colorMath";
-import { AUTO_COLOR_COUNT, glueColor } from "../pixi/renderers/SeamArrowRenderer";
-import { AUTO_HUE_BASE_COLOR } from "../pixi/renderConstants";
+import { brightColor, colorToOklch, distributeHueGroups, hueGroupColors } from "../domain/colorMath";
+import { AUTO_COLOR_COUNT, glueColor } from "../domain/glueColor";
+import { AUTO_HUE_BASE_COLOR } from "../domain/renderConstants";
 
 const lightness = (color: number) => colorToOklch(color).l;
 

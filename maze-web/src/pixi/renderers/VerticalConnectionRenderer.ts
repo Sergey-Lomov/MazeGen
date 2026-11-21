@@ -1,17 +1,17 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern } from "./types";
-import { DEFAULT_LABEL_FONT, type LabelFont } from "./fontChoice";
+import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern } from "../../domain/renderers/types";
+import { DEFAULT_LABEL_FONT, type LabelFont } from "../../domain/renderers/fontChoice";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
-import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "../../domain/renderers/markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
 import {
   arrowThickness, arrowMidpointFraction, oneWayTickCenteringFraction, oneWayWallTickRect, stairsArrowGeometry, stairsTickSegment,
-} from "./verticalConnectionGeometry";
+} from "../../domain/renderers/verticalConnectionGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel, type ElevatorBadgeObstacle } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../domain/markerScale";
 
 
 /** Fixed live-canvas `VerticalConnectionStyle` shared by every read-only/tool-driven view with no

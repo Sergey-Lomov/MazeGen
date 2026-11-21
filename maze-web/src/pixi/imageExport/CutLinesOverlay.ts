@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ViewportListener } from "../sceneTypes";
 import { watchStoreInputs } from "../storeWatch";
 import type { MazeStore } from "../../store/storeTypes";
-import { glueColor } from "../renderers/SeamArrowRenderer";
+import { glueColor } from "../../domain/glueColor";
 import { selectActiveSeamArrows } from "../selectors/seamHop";
 import { selectSeamArrowData } from "../seamArrowSync";
 import { activeCutLines, cutEditingActive } from "./CutLineDragController";

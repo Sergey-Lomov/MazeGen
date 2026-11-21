@@ -1,9 +1,10 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
 import { removePresetEntityOrder, tryCommitPresetVerticalPassage, dispatchPresetElevatorPlacement } from "./presetConnectionsHelpers";
-import { cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, moveElevatorEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
-import { resolvePresetSplitTargets } from "../../pixi/presetSplitResolve";
-import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import { cycleVerticalPassageDirection, removeVerticalPassage, removeElevator } from "../../domain/fieldEditUtils";
+import { moveVerticalPassageEndpoint, moveElevatorEndpoint, cellExistsAt } from "../../domain/fieldValidity";
+import { resolvePresetSplitTargets } from "../../domain/presetSplitResolve";
+import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import { debugStaleOf, resolveFieldAtOf } from "../storeHelpers";
 import { notifyVerticalDragFailure, notifyVerticalPassageUnavailable } from "../../notifications/editRefusalNotifications";
 

@@ -1,9 +1,9 @@
 import { Container, Graphics } from "pixi.js";
-import type { LockEntry } from "./types";
+import type { LockEntry } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellCenter } from "../tessellationGeometry";
-import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
+import { getCellCenter } from "../../domain/tessellationGeometry";
+import { TILE_SIZE } from "../../domain/constants";
+import { canvas } from "../../domain/colorTokens";
 
 export class LockRenderer {
   private readonly g: Graphics;

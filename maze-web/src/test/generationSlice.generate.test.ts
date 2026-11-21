@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { encodePoint } from "../domain/tessellationProjection";
 import { fieldConfigToWasm, resolveAlgorithmKind } from "../store/slices/generationSlice";
-import { configAllCells } from "../pixi/tessellationCells";
+import { configAllCells } from "../domain/tessellationCells";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import { resetNotifications } from "../notifications/notificationStore";

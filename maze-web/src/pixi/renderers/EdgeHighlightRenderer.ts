@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
-import type { EdgeHL } from "./types";
+import type { EdgeHL } from "../../domain/renderers/types";
 import { drawDirectionArrow } from "./wallUtils";
-import { tracePath } from "../geometry/pathRenderer";
+import { tracePath } from "../../domain/geometry/pathRenderer";
 
 export class EdgeHighlightRenderer {
   private readonly g: Graphics;

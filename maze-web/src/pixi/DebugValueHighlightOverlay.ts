@@ -1,5 +1,5 @@
 import { Container } from "pixi.js";
-import type { SeamHopContext } from "./graphSeams";
+import type { SeamHopContext } from "../domain/graphSeams";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueKind } from "../debug/eventTape";

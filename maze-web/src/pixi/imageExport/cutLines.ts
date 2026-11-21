@@ -1,9 +1,9 @@
 import type { FieldConfig } from "../../fieldConfig";
 import type { WireTopology } from "../../wasm/types";
 import type { CutExportSettings, CutLineSetting, CutMode } from "../../store/imageExportTypes";
-import { getSeamModel, type Seam, type HalfEdge } from "../selectors/seams";
-import { displayTransform, getCellVertices } from "../tessellationGeometry";
-import { applyTransform } from "../geometry/worldTransform";
+import { getSeamModel, type Seam, type HalfEdge } from "../../domain/selectors/seams";
+import { displayTransform, getCellVertices } from "../../domain/tessellationGeometry";
+import { applyTransform } from "../../domain/geometry/worldTransform";
 
 /// Cut lines for export (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). A glue (fold
 /// group) whose seam is a pure translation makes the surface periodic along that translation. A cut

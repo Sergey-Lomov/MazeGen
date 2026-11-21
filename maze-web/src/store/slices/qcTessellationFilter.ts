@@ -2,7 +2,7 @@ import type { MazeState, QcRuleState, CheckInstance, NestedStrategyState, QcProb
 import { QC_PROBLEM_CATEGORY } from "../storeTypes";
 import type { ParamDescriptor, ParamKind } from "../../wasm/types";
 import type { TessellationConfig } from "../../fieldConfig";
-import { cellTypeKeysOf, shapeKeysOf } from "../../pixi/shapeTemplates";
+import { cellTypeKeysOf, shapeKeysOf } from "../../domain/shapeTemplates";
 import { activeLimitCount, parseNodeShapeLimits } from "../../components/features/nodeShapeLimits";
 import { checkUnavailableReason } from "../../components/features/checkAvailability";
 

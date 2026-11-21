@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig } from "./storeTestHelpers";
 import { n, node, floorsExtra, seedPostEdit, resetPostEditStore } from "./postEditSliceKit";
-import { splitEndpoint } from "../pixi/postEditEndpoint";
+import { splitEndpoint } from "../domain/postEditEndpoint";
 import { noticeCodes } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

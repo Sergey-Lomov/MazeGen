@@ -23,7 +23,7 @@ vi.mock("pixi.js", () => {
 
 const { WallRenderer, randomContrastingWallColor } = await import("../pixi/renderers/WallRenderer");
 const { Container, Graphics } = await import("pixi.js");
-import type { WallEdge, OneWayStyleOverride } from "../pixi/renderers/types";
+import type { WallEdge, OneWayStyleOverride } from "../domain/renderers/types";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });

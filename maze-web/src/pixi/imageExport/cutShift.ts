@@ -1,4 +1,4 @@
-import { DPI_BY_DENSITY, pxToMm } from "./printFit";
+import { DPI_BY_DENSITY, pxToMm } from "../../domain/imageExport/printFit";
 import type { DigitalExportSettings, PrintExportSettings } from "../../store/storeTypes";
 
 /// How a manual cut line's offset is shown to the user (GitHub issue #909): the shift from the automatic line in the unit of

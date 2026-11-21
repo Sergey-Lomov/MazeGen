@@ -1,9 +1,9 @@
 import type { MazeState } from "../../store/storeTypes";
-import { buildMazeWalls, selectFloorScopedMaze } from "./mazeSelectors";
-import { getSeamModel } from "./seams";
+import { buildMazeWalls, selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
+import { getSeamModel } from "../../domain/selectors/seams";
 import { mergedFacePolylines } from "../topologyGeometry";
-import { configAllCells } from "../tessellationCells";
-import { getCellNeighborOffsets } from "../tessellationGeometry";
+import { configAllCells } from "../../domain/tessellationCells";
+import { getCellNeighborOffsets } from "../../domain/tessellationGeometry";
 
 /// The part of the maze state required to identify glued edge runs that are physically
 /// interchangeable in the exported net. It deliberately has no warning or marker-style fields.

@@ -1,6 +1,6 @@
 import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import { VECTOR_FONT_FAMILY, msdfFace, type LabelFont } from "./fontChoice";
+import { VECTOR_FONT_FAMILY, msdfFace, type LabelFont } from "../../domain/renderers/fontChoice";
 import { canvasInkCentreOffset, makeLabelText, usesCanvasText } from "./labelFont";
 import { loadMsdfFamily } from "./msdfLoader";
 

@@ -1,5 +1,5 @@
-import { getCellNeighborOffsets, getTileDiagram } from "./tessellationGeometry";
-import { originCellOf } from "./splitPatternTile";
+import { getCellNeighborOffsets, getTileDiagram } from "../domain/tessellationGeometry";
+import { originCellOf } from "../domain/splitPatternTile";
 import { parseNodeShapeKey } from "./nodeShapeKey";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";

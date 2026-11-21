@@ -1,6 +1,6 @@
 import type { StoreApi } from "zustand";
 import type { MazeStore } from "./storeTypes";
-import { teleportPairConnectorKeys } from "../pixi/renderers/teleportConnectorManual";
+import { teleportPairConnectorKeys } from "../domain/renderers/teleportConnectorManual";
 
 /** Removes paths whose teleport pair is absent from a generated maze. An empty edge list means
  * there is no generated maze to compare against yet, so paths must remain available for project

@@ -1,6 +1,6 @@
 import type { Graphics } from "pixi.js";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "../../domain/renderers/markerShapes";
 import { clipDistance } from "./teleportGeometry";
 
 /** Dimmed while-placing look for a teleport whose first endpoint is fixed: the endpoint marker at

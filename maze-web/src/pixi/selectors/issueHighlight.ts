@@ -1,10 +1,10 @@
 import type { FieldConfig } from "../../fieldConfig";
 import type { MazeState } from "../../store/storeTypes";
 import type { NodeDto } from "../../wasm/types";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
 import type { IssueHighlightData } from "../IssueHighlightOverlay";
 import { oneWayIndicatorSpan } from "../renderers/wallUtils";
-import { selectNodeLevelResolver } from "./mazeSelectors";
+import { selectNodeLevelResolver } from "../../domain/selectors/mazeSelectors";
 import { selectSeamHopContext } from "./seamHop";
 
 /// Everything `IssueHighlightOverlay` needs for the hovered issue (loop edges, undersized region groups): the

@@ -1,13 +1,13 @@
 import { Container, Graphics } from "pixi.js";
-import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
+import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
-import { prefetchCellGeometries } from "../cartesianCache";
-import { tracePath } from "../geometry/pathRenderer";
+import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../../domain/tessellationGeometry";
+import { prefetchCellGeometries } from "../../domain/cartesianCache";
+import { tracePath } from "../../domain/geometry/pathRenderer";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
-import { WALL_THICKNESS } from "../renderConstants";
-import { canvas } from "../colorTokens";
-import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
+import { WALL_THICKNESS } from "../../domain/renderConstants";
+import { canvas } from "../../domain/colorTokens";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
 
 const WALL_STYLES = {
   solid:      { color: DEFAULT_MAZE_RENDER_STYLE.wall.color, cap: DEFAULT_MAZE_RENDER_STYLE.wall.cap, join: DEFAULT_MAZE_RENDER_STYLE.wall.join },

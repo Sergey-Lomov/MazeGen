@@ -1,12 +1,12 @@
 import type { FieldConfig } from "../../fieldConfig";
 import type { WireTopology } from "../../wasm/types";
 import type { CutExportSettings, CutMode } from "../../store/imageExportTypes";
-import { exactCellBounds, getCellVertices } from "../tessellationGeometry";
-import { createFloorNodesSelector } from "../selectors/mazeSelectors";
+import { exactCellBounds, getCellVertices } from "../../domain/tessellationGeometry";
+import { createFloorNodesSelector } from "../../domain/selectors/mazeSelectors";
 import type { MazeStore } from "../../store/storeTypes";
 import { buildCutPlan, type Box, cutLineOf, cutSettingOf, resolveGroupCuts, type CutPlan, type GroupCut, type GroupCutAvailability, type Vec2 } from "./cutLines";
-import type { ContentBoundsBasis } from "./contentBounds";
-import type { ExportMargin } from "./exportMargins";
+import type { ContentBoundsBasis } from "../../domain/imageExport/contentBounds";
+import type { ExportMargin } from "../../domain/imageExport/exportMargins";
 
 /// What the export draws and measures for the active floor: the plain maze, or (when a glue has a
 /// cut line, GitHub issue #859) the cut sheet. The single place that decides it, so the preview, the

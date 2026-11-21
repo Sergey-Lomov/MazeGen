@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { MSDF_FONTS, VECTOR_FONT_FAMILY } from "../pixi/renderers/fontChoice";
+import { MSDF_FONTS, VECTOR_FONT_FAMILY } from "../domain/renderers/fontChoice";
 import { FONT_NOTICES, LICENSE_TEXT_URLS, findFontNotice, fontNoticeId } from "../components/fontLicenses";
 
 // Every baked font must be credited (GitHub issue #982): a font added to the catalog without a notice

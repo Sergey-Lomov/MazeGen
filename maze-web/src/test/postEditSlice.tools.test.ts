@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { n, es, seedPostEdit, resetPostEditStore, key01 } from "./postEditSliceKit";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
-import { compactPostEditCommands } from "../pixi/postEditCompaction";
+import { nodeEndpoint, splitEndpoint } from "../domain/postEditEndpoint";
+import { compactPostEditCommands } from "../domain/postEditCompaction";
 import { computeAnalyticsAsync as computeAnalytics } from "../wasm/mazeService";
 
 vi.mock("../wasm/mazeService", async (importActual) =>

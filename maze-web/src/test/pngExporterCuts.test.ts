@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { warmCartesianCache } from "../pixi/cartesianCache";
+import { warmCartesianCache } from "../domain/cartesianCache";
 import type { WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 import { oneGlue, range } from "./seamFixtures";

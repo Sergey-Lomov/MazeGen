@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { n, es, node, bridgeFace, seedPostEdit, resetPostEditStore } from "./postEditSliceKit";
-import { splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
-import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
+import { splitEndpoint, edgeKey } from "../domain/postEditEndpoint";
+import type { SplitNodeBlueprint } from "../domain/splitBlueprints";
 import { noticeCodes } from "./notificationTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 

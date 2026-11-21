@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildVerticalConnectionMarkers, selectVerticalPassagePairSet, selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
-import { buildNodePositions } from "../pixi/tessellationGeometry";
+import { buildVerticalConnectionMarkers, selectVerticalPassagePairSet, selectNodeLevelResolver } from "../domain/selectors/mazeSelectors";
+import { buildNodePositions } from "../domain/splitNodeGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";

@@ -30,7 +30,7 @@ vi.mock("../pixi/backgroundFieldAutofill", () => ({
   }),
 }));
 
-vi.mock("../pixi/fieldEditUtils", () => ({
+vi.mock("../domain/fieldEditUtils", () => ({
   resolveCells: () => [[0, 0]],
 }));
 

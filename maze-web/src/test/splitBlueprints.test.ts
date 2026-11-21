@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { blueprintsFor, fittingRotation, orientationsOf, blueprintToSplitPattern, tileNodesForBlueprint } from "../pixi/splitBlueprints";
+import { blueprintsFor, fittingRotation, orientationsOf, blueprintToSplitPattern, tileNodesForBlueprint } from "../domain/splitBlueprints";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 

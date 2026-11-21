@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { isPresetLockTool } from "../../store/storeTypes";
-import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
+import type { PresetConnectionTool } from "../../domain/fieldEditUtils";
+import { presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../domain/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../../domain/fieldValidity";
 import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
-import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";

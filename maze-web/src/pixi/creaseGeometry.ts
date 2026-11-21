@@ -1,8 +1,8 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { SegmentDto } from "../wasm/mazeService";
-import { cellAtSpacePoint, getCellGeometry } from "./cartesianCache";
-import { applyTransform, invertTransform } from "./geometry/worldTransform";
-import { displayTransform } from "./tessellationGeometry";
+import { cellAtSpacePoint, getCellGeometry } from "../domain/cartesianCache";
+import { applyTransform, invertTransform } from "../domain/geometry/worldTransform";
+import { displayTransform } from "../domain/tessellationGeometry";
 
 /// Distance (canvas pixels) within which a crease end snaps to a cell corner or a cell center.
 export const CREASE_SNAP_RADIUS_PX = 14;

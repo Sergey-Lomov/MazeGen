@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { TEST_FLOOR_ID } from "./storeTestHelpers";
 import { n, es, node, bridgeFace, seedPostEdit, resetPostEditStore, key01 } from "./postEditSliceKit";
-import { splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { splitEndpoint, edgeKey } from "../domain/postEditEndpoint";
 import { noticeCodes } from "./notificationTestHelpers";
 import { SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
 import { fieldOf } from "./fieldConfigFixtures";

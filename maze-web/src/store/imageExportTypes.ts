@@ -1,9 +1,10 @@
-import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
-import type { MarkerLayoutMode } from "../pixi/selectors/mazeSelectors/markerLayout";
-import type { IndexLabelStyle } from "../pixi/renderers/indexLabel";
-import type { LabelFont } from "../pixi/renderers/fontChoice";
+import type { WaypointOpeningMode } from "../domain/waypointOpeningMode";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode, RandomWallColorMode } from "../domain/renderers/types";
+import type { MarkerLayoutMode } from "../domain/selectors/mazeSelectors/markerLayout";
+import type { IndexLabelStyle } from "../domain/renderers/indexLabel";
+import type { LabelFont } from "../domain/renderers/fontChoice";
 import type { FieldConfig } from "../fieldConfig";
-import type { PrintSizeMode } from "../pixi/geometry/tessellationUi";
+import type { PrintSizeMode } from "../domain/geometry/tessellationUi";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
 
@@ -446,12 +447,12 @@ export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
 
 export interface TeleportSettingsFields {
   /** User-authored connector polylines, keyed by their unordered teleport-node pair. */
-  manualTeleportConnectorPaths?: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>;
+  manualTeleportConnectorPaths?: Record<string, import("../domain/renderers/teleportConnectorManual").ManualTeleportConnectorPath>;
   /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
    *  markers instead of the former flat `teleportLine*`/`teleportEdge*` fields. `gapWidth` is the
    *  floor-colored gap ring around the border (GitHub issue #302), same convention as the waypoint
    *  marker's gap — `0` draws no gap. See `TeleportLineStyle.edgeGapWidth`'s own doc comment
-   *  (`pixi/renderers/types.ts`) for the per-group draw-order rule this relies on. Text fields are
+   *  (`domain/renderers/types.ts`) for the per-group draw-order rule this relies on. Text fields are
    *  never set here yet (no caption UI for the teleport edge marker). */
   teleportMarker: MarkerSettings;
   /** The connector line's own color/width — GitHub issue #293 follow-up renamed from
@@ -553,20 +554,6 @@ export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, P
   // `textColor`/`textFont`/`textSize` come from `TextStyleFields` (all optional here).
   // Unset: `textColor` falls back to `gapColor`, `textFont` to `DEFAULT_LABEL_FONT`,
   // size to `DEFAULT_MARKER_TEXT_SIZE`.
-}
-
-/** What a start/finish "External passage" (GitHub issue #330) does to the field's outer wall:
- *  `"none"` leaves the wall alone, `"opening"` leaves the chosen wall segment out, `"pointer"` keeps
- *  the wall and draws a pointer over it, `"both"` does both. */
-export type WaypointOpeningMode = "none" | "opening" | "pointer" | "both";
-export const WAYPOINT_OPENING_MODES: readonly WaypointOpeningMode[] = ["none", "opening", "pointer", "both"];
-/** Whether the chosen outer wall segment is left out in `mode`. */
-export function openingCutsWall(mode: WaypointOpeningMode): boolean {
-  return mode === "opening" || mode === "both";
-}
-/** Whether the direction pointer is drawn in `mode`. */
-export function openingShowsPointer(mode: WaypointOpeningMode): boolean {
-  return mode === "pointer" || mode === "both";
 }
 
 /** Own size parameters of each direction indicator pattern (GitHub issue #993), in px — shared by the
@@ -850,7 +837,7 @@ export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFi
   wallJoin: CornerStyle;
   wallThickness: number;
   /** One-way indicator drawn on a directed passage's wall segment — shape/color/gap/size/
-   *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
+   *  join/cap, applied via `OneWayStyleOverride` (`domain/renderers/types.ts`) to `WallRenderer`'s
    *  plain wall one-ways only, never a split passage's connector arrow. Always has its own color
    *  (no fallback to `wallColor` — GitHub issue #292). */
   oneWayPattern: OneWayPattern;
@@ -1115,7 +1102,7 @@ export interface ImageExportActions {
   setTeleportConnectorEditSelection: (selected: { key: string; index: number } | null) => void;
   setTeleportConnectorEditHoveredKey: (key: string | null) => void;
   /** Writes the renderer-independent paths to both display modes in one transaction. */
-  setManualTeleportConnectorPaths: (paths: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
+  setManualTeleportConnectorPaths: (paths: Record<string, import("../domain/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildSplitPassages, maxSplitNodeCount, buildSplitJunctionPositions } from "../pixi/selectors/mazeSelectors";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
-import { getCellCenter, getCellVertices, getNeighborData } from "../pixi/tessellationGeometry";
-import { splitSlotColor } from "../pixi/colorUtils";
-import { canvas } from "../pixi/colorTokens";
+import { buildSplitPassages, maxSplitNodeCount, buildSplitJunctionPositions } from "../domain/selectors/mazeSelectors";
+import { nodeEndpoint } from "../domain/postEditEndpoint";
+import { getCellCenter, getCellVertices, getNeighborData } from "../domain/tessellationGeometry";
+import { splitSlotColor } from "../domain/colorUtils";
+import { canvas } from "../domain/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
-import { selectSplitCellRenderer } from "../pixi/splitCellRenderer";
+import { selectSplitCellRenderer } from "../domain/splitCellRenderer";
 import { n, e, squareCfg, cairoCfg, twoWay } from "./mazeSelectorsKit";
 
 vi.mock("pixi.js", async () => (await import("./mazeSelectorsMocks")).pixiMock());

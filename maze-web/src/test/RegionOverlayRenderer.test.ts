@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../pixi/tessellationGeometry", () => ({
+vi.mock("../domain/tessellationGeometry", () => ({
   getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
   getCellVertices: () => [],
   getCellPath: () => [],
@@ -58,7 +58,7 @@ const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
 const { Container, Graphics: FakeGraphics, BitmapText: FakeText } = await import("pixi.js");
 import type { NodeDto } from "../wasm/generated/dto";
 import type { EdgeDto } from "../wasm/generated/dto";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import type { TeleportEdge } from "../domain/renderers/types";
 
 type FakeChild = { calls: { fn: string; args: unknown[] }[]; listeners?: Record<string, (() => void)[]> };
 type FakeCont = { children: FakeChild[] };

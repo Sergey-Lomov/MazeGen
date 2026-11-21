@@ -6,7 +6,7 @@
 
 import { resolveIssue } from "../components/issueRegistry";
 import type { Token } from "./algorithmRegistry";
-import { formatTargetLabel } from "../pixi/targetLabel";
+import { formatTargetLabel } from "../domain/targetLabel";
 import * as m from "~/paraglide/messages";
 
 /** Bubble label — coordinates only, per user decision (narration text around it stays wordless,

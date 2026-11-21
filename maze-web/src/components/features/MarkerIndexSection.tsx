@@ -7,8 +7,8 @@ import { indent, spacing } from "../../styles/theme";
 import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useGate } from "./LinkContext";
-import { TILE_SIZE } from "../../pixi/constants";
-import { MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { TILE_SIZE } from "../../domain/constants";
+import { MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../domain/renderConstants";
 import { TextStyleRows } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 

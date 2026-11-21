@@ -18,7 +18,7 @@ import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, indent } from "../../styles/theme";
 import { notAllowedCursor } from "../../styles/cursors";
 import { Switch } from "../Switch";
-import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
+import { selectPostEditDirty } from "../../domain/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
 interface Props {

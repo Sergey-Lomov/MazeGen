@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildMazeWalls } from "../pixi/selectors/mazeSelectors";
+import { buildMazeWalls } from "../domain/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
 

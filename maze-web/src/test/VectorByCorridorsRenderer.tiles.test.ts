@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildCorridorSegments, shortestCorridorFaceAcrossFloors } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors } from "../domain/selectors/mazeSelectors";
 import type { FieldConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -7,7 +7,7 @@ import { settingsA, settingsB, baseState, stableCfg, tilesOf, tileAt, corridorsO
 
 import { mockStore } from "./vbcMocks";
 
-vi.mock("../pixi/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
+vi.mock("../domain/selectors/mazeSelectors", async () => (await import("./vbcMocks")).mazeSelectorsMock());
 vi.mock("../pixi/renderers/WallRenderer", async () => (await import("./vbcMocks")).wallRendererMock());
 vi.mock("../pixi/renderers/TeleportRenderer", async () => (await import("./vbcMocks")).teleportRendererMock());
 vi.mock("../pixi/renderers/VerticalConnectionRenderer", async () => (await import("./vbcMocks")).verticalConnectionRendererMock());

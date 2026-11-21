@@ -13,16 +13,16 @@ import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildTeleportAvoidanceWaypoints } from "../domain/selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "./renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../domain/renderers/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
-import { canvas } from "./colorTokens";
+import { canvas } from "../domain/colorTokens";
 import { resolveDebugValueColor } from "./debugValueColors";
-import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 

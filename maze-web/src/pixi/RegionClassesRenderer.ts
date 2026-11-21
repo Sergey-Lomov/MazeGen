@@ -2,9 +2,9 @@ import { Container } from "pixi.js";
 import type { NodeDto, RegionClass, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { RegionOverlayRenderer } from "./renderers/RegionOverlayRenderer";
-import { REGION_CLASS_MASK_ALPHA } from "./renderConstants";
-import { canvas } from "./colorTokens";
-import type { TeleportEdge } from "./renderers/types";
+import { REGION_CLASS_MASK_ALPHA } from "../domain/renderConstants";
+import { canvas } from "../domain/colorTokens";
+import type { TeleportEdge } from "../domain/renderers/types";
 
 export interface RegionClassesData {
   nodes: NodeDto[];

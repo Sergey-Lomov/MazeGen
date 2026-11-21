@@ -1,5 +1,5 @@
 import type { Graphics } from "pixi.js";
-import { TILE_SIZE } from "../constants";
+import { TILE_SIZE } from "../../domain/constants";
 
 /** Arm length (grid units) of the coordinate-origin / generation-source cross. Shared so the two
  *  markers stay identical in size and so the `gen_source` tool glyph can mirror it. */
