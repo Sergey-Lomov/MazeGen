@@ -76,6 +76,27 @@ export function printEnteredFromMeasure(config: Pick<FieldConfig, "tessellation"
   return measureMm * sizeModeWorldUnits(config, mode) / cellMeasureWorldUnits(config);
 }
 
+/** The minimum side length the print calculator and the paper layout dialog open with (GitHub issue #1002). */
+export const DEFAULT_PRINT_MIN_SIDE_MM = 8;
+
+/** The size mode the size field opens in: the stored one, or the tessellation's first when it does not offer it. */
+export function resolvePrintSizeMode(config: Pick<FieldConfig, "tessellation">, stored: PrintSizeMode): PrintSizeMode {
+  const modes = TESSELLATION_UI[config.tessellation.kind].editor.sizeModes;
+  return modes.includes(stored) ? stored : modes[0];
+}
+
+/** The value the size field opens with in `mode`: the default minimum side, shown in that mode's measure
+ * (a tessellation without a minimum-side mode opens with the same number in its own mode). */
+export function defaultPrintEnteredSize(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode): number {
+  if (!TESSELLATION_UI[config.tessellation.kind].editor.sizeModes.includes("min_side")) return DEFAULT_PRINT_MIN_SIDE_MM;
+  return roundedEnteredFromMeasure(config, mode, printMeasureFromEntered(config, "min_side", DEFAULT_PRINT_MIN_SIDE_MM));
+}
+
+/** `printEnteredFromMeasure` rounded to hundredths, as the size field shows it. */
+export function roundedEnteredFromMeasure(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode, measureMm: number): number {
+  return Math.round(printEnteredFromMeasure(config, mode, measureMm) * 100) / 100;
+}
+
 /** Physical print-sizing measure represented by a print scale. */
 export function printCellMeasureMm(config: Pick<FieldConfig, "tessellation">, scale: number, dpi: number): number {
   return pxToMm(cellMeasureWorldUnits(config) * scale, dpi);

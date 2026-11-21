@@ -455,6 +455,6 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
 export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
   outputMode: "digital",
   digital: { scale: 4, canvasMode: "margin_cells", marginValue: 1, fixedWidth: 1920, fixedHeight: 1080 },
-  print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: false, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
+  print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, sizeMode: "min_side", scale: 1, scaleAutoFit: false, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
   cuts: { lines: {} },
 };

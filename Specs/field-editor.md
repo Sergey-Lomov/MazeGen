@@ -90,11 +90,11 @@ cell measure in millimeters, and horizontal/vertical print margins. The cell siz
 diameter of the cell's circumscribed circle (GitHub issue #1002), never a side length: for a square
 (also a brick, the curved quadrilateral) it is the diagonal, `cellMeasurePx` in `TESSELLATION_UI`.
 A cell with no single circumcircle (Cairo, radial, Voronoi) keeps a nominal measure. A mode select
-above the size field (labelled "Mode") switches the input between **Cell size** (diameter) and **Minimum side**; the dialog opens in the minimum side mode with 8 mm (`DEFAULT_MIN_SIDE_MM`), whatever the print settings hold (paper and margins are still read from them). Minimum side is the shortest geometric side (`cellSidePx`; for Cairo the short side of the pentagon, the long one is longer);
+above the size field (labelled "Mode") switches the input between **Cell size** (diameter) and **Minimum side**; the dialog opens in the mode stored in `pngExportSettings.print.sizeMode` (first mode of the tessellation when it does not offer the stored one; default `min_side`) with a minimum side of 8 mm (`DEFAULT_MIN_SIDE_MM`) shown in that mode's measure, whatever the print settings hold for the size (paper and margins are still read from them). Confirming writes the chosen mode back to `print.sizeMode`. The input has the height of the other dialog fields (`controlRowHeight`, GitHub issue #1054). Minimum side is the shortest geometric side (`cellSidePx`; for Cairo the short side of the pentagon, the long one is longer);
 the minimum side length is converted to the cell size with `printMeasureFromEntered` (`printFit.ts`)
 before every calculation, so the calculation, the cell sizes section and the applied `print.scale`
 always work with the diameter. Switching the mode keeps the physical size: the field is refilled with
-the same cells' value in the other measure. The mode and the value are local to the dialog and not stored.
+the same cells' value in the other measure. The value is local to the dialog and not stored; the mode is shared with the custom paper layout dialog through `print.sizeMode` (persisted in the project file, default `min_side`, an unknown or missing value loads as the default). It is written atomically with the rest of the sizing by `setPrintFieldSizing` (`PrintFieldSizingInput.sizeMode`; absent leaves the stored mode). The mode labels live in `components/dialogs/sizeModeLabels.ts`, shared by both dialogs.
 The modes a tessellation offers are `TESSELLATION_UI[kind].editor.sizeModes` (`PrintSizeMode`: `cell_size`,
 `min_side`, `ring_thickness`, `average_size`; the first is the default). The "Mode" select is shown only when there are several;
 with one, that mode's name is the label of the size field. A radial field has the single mode `ring_thickness`
@@ -265,7 +265,7 @@ overlay, while remaining in the editor's world coordinate system. It is centered
 origin and follows the editor viewport's pan/zoom. Its paper
 size, orientation, margins, and cell measure are read from the shared `pngExportSettings.print`
 configuration, so changing the layout in this dialog changes the print calculator and PNG Print
-settings as well. The cell measure is derived from `print.scale` and the print DPI. The guide is hidden outside custom mode and is not part of the
+settings as well. The dialog has the same "Mode" select and size field as the print calculator (GitHub issue #1054): the mode comes from `print.sizeMode` and is written back on confirmation. It opens with the same default and minimum as the print calculator (`resolvePrintSizeMode`, `defaultPrintEnteredSize` in `printFit.ts`, `minPrintEnteredSize` in `fieldPrintSizing.ts`: a minimum side of 8 mm, never the size of `print.scale`); the value is shown in that mode's measure and converted to the cell size (diameter) on apply. The cell measure is derived from `print.scale` and the print DPI. The guide is hidden outside custom mode and is not part of the
 generated field or export image.
 
 ### Background image print fitting (GitHub issue #675)
@@ -608,7 +608,9 @@ for print sizing. The two implementations are kept equal by `fieldPrintSizing.te
 extent against the extent of the cells `configAllCells` returns, for every tessellation and preset
 shape) and by `normalize` unit tests in core.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
-cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
+cells and primitive results; point-by-point editing is unchanged. In Custom mode, holding `S`
+temporarily inverts smoothing even while `Ctrl`/`Cmd` constrains a proportional shape; the editor
+prevents the browser's corresponding Save Page shortcut. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results. In Default mode the Smoothing toggle sits above "Calculate for print". Its info dialog is one text for both modes, but the line about holding `S` is shown only in Custom mode (the tooltip's hold hint likewise): the hotkey works only in the custom field editor.
 
 When smoothing excludes cells from a shape preview, the excluded cells remain visible with a

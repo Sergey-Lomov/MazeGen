@@ -342,6 +342,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
             orientation: input.orientation,
             marginHMm: input.marginHMm,
             marginVMm: input.marginVMm,
+            sizeMode: input.sizeMode ?? print.sizeMode,
             scale,
             // A manually requested physical cell size must win over the panel's auto-fit effect.
             scaleAutoFit: false,

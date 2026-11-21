@@ -264,6 +264,15 @@ describe("png export setters", () => {
     expect(print.paperSize).toBe("a4");
     expect(print.scale).toBeGreaterThan(0);
   });
+
+  it("field sizing stores the entered size mode, and leaves it unchanged when absent (GitHub issue #1054)", () => {
+    const input = { paperSize: "a4" as const, customWidthMm: 210, customHeightMm: 297, orientation: "portrait" as const, marginHMm: 10, marginVMm: 10, cellSizeMm: 5 };
+    const config = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+    actions().setPrintFieldSizing({ ...input, sizeMode: "cell_size" }, config);
+    expect(useMazeStore.getState().pngExportSettings.print.sizeMode).toBe("cell_size");
+    actions().setPrintFieldSizing(input, config);
+    expect(useMazeStore.getState().pngExportSettings.print.sizeMode).toBe("cell_size");
+  });
 });
 
 describe("misc UI state setters", () => {

@@ -20,7 +20,8 @@ export interface Linear {
 /// What the size field of the print-sizing dialog takes (GitHub issue #1002): the diameter of a
 /// cell's circumscribed circle, the length of its shortest side, the thickness of a radial ring, or the
 /// average size of the cells of an irregular tessellation (Voronoi).
-export type PrintSizeMode = "cell_size" | "min_side" | "ring_thickness" | "average_size";
+export const PRINT_SIZE_MODES = ["cell_size", "min_side", "ring_thickness", "average_size"] as const;
+export type PrintSizeMode = typeof PRINT_SIZE_MODES[number];
 
 /// Lattice-dependent editor behavior of one tessellation kind.
 export interface EditorUi {

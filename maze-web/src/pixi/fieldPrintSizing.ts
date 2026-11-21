@@ -2,13 +2,26 @@ import { isSwitchedShape, type FieldConfig, type PresetFieldShape } from "../fie
 import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { getFieldPrintSizing } from "../wasm/mazeService";
 import { PAPER_SIZES_MM } from "../domain/imageExport/paperSizes";
-import { printMeasureToCellSideMm } from "../domain/imageExport/printFit";
+import { printEnteredFromMeasure, printMeasureFromEntered, printMeasureToCellSideMm } from "../domain/imageExport/printFit";
 import { compactNetOf } from "../domain/fieldOps";
 import { displayTransform } from "../domain/tessellationGeometry";
-import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { TESSELLATION_UI, type PrintSizeMode } from "../domain/geometry/tessellationUi";
 
 /** Smallest physical cell measure the print sizing dialog accepts. */
 export const MIN_PRINT_CELL_SIZE_MM = 3;
+
+/** Smallest accepted physical side length for a regular printed cell (GitHub issue #1041). */
+const MIN_PRINT_SIDE_MM = 2;
+
+/** The smallest value the size field accepts in `mode`. A regular cell is constrained by its smallest
+ * side, even when the field displays its diameter. Irregular cells do not offer the minimum-side
+ * mode, so they retain the measure minimum. */
+export function minPrintEnteredSize(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode): number {
+  const measureMm = TESSELLATION_UI[config.tessellation.kind].editor.sizeModes.includes("min_side")
+    ? printMeasureFromEntered(config, "min_side", MIN_PRINT_SIDE_MM)
+    : MIN_PRINT_CELL_SIZE_MM;
+  return printEnteredFromMeasure(config, mode, measureMm);
+}
 
 export type { PrintFieldSizingInput } from "../store/imageExportTypes";
 

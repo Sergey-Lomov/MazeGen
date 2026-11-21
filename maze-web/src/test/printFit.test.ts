@@ -5,7 +5,7 @@ import type { PrintExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
 import { TILE_SIZE } from "../domain/constants";
 
-const { cellMeasureWorldUnits, printMeasureFromEntered, printEnteredFromMeasure, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../domain/imageExport/printFit");
+const { cellMeasureWorldUnits, printMeasureFromEntered, printEnteredFromMeasure, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, resolvePrintSizeMode, defaultPrintEnteredSize, DEFAULT_PRINT_MIN_SIDE_MM, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../domain/imageExport/printFit");
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -17,6 +17,7 @@ const baseSettings: PrintExportSettings = {
   customHeightMm: 297,
   orientation: "portrait",
   marginHMm: 10,
+  sizeMode: "min_side",
   marginVMm: 10,
   scale: 1,
   scaleAutoFit: false,
@@ -73,6 +74,23 @@ describe("print cell measure", () => {
     for (const config of [square, hex]) {
       expect(printMeasureToCellSideMm(config, printMeasureFromEntered(config, "min_side", 7))).toBeCloseTo(7);
     }
+  });
+});
+
+describe("print size field defaults (GitHub issue #1054)", () => {
+  const square = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+  const radial = fieldOf("radial", { shape: "circle", radius: 4 });
+
+  it("opens in the stored mode, or in the first mode of a tessellation that does not offer it", () => {
+    expect(resolvePrintSizeMode(square, "cell_size")).toBe("cell_size");
+    expect(resolvePrintSizeMode(square, "min_side")).toBe("min_side");
+    expect(resolvePrintSizeMode(radial, "min_side")).toBe("ring_thickness");
+  });
+
+  it("opens with the default minimum side shown in the mode's measure", () => {
+    expect(defaultPrintEnteredSize(square, "min_side")).toBe(DEFAULT_PRINT_MIN_SIDE_MM);
+    expect(defaultPrintEnteredSize(square, "cell_size")).toBeCloseTo(DEFAULT_PRINT_MIN_SIDE_MM * Math.SQRT2, 2);
+    expect(defaultPrintEnteredSize(radial, "ring_thickness")).toBe(DEFAULT_PRINT_MIN_SIDE_MM);
   });
 });
 
