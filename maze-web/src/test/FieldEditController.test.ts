@@ -143,6 +143,51 @@ describe("FieldEditController smoothing hotkey", () => {
     expect(previewCells.at(-1)).toEqual(smoothed);
   });
 
+  it("refreshes an in-progress polygon preview on press and release without a cursor move", () => {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    const { controller, previewCells } = makeController();
+    click(controller, 45, -45);
+    click(controller, 445, -45);
+    click(controller, 445, -285);
+    const smoothed = previewCells.at(-1)!;
+    const before = previewCells.length;
+
+    key("keydown");
+    expect(previewCells.length).toBeGreaterThan(before);
+    expect(previewCells.at(-1)!.length).toBeGreaterThan(smoothed.length);
+
+    key("keyup");
+    expect(previewCells.at(-1)).toEqual(smoothed);
+  });
+
+  it("refreshes the polygon preview on S while a vertex is being dragged", () => {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    const { controller, previewCells } = makeController();
+    click(controller, 45, -45);
+    click(controller, 445, -45);
+    click(controller, 445, -285);
+    controller.onPointerDown(460, -60, 0);
+    controller.onPointerMove(460, -100);
+    const before = previewCells.length;
+
+    key("keydown");
+    expect(previewCells.length).toBeGreaterThan(before);
+    controller.onPointerUp();
+  });
+
+  it("refreshes an in-progress parallelogram preview on S without a cursor move", () => {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    useMazeStore.getState().setFieldPrimitive("parallelogram");
+    const { controller, previewCells } = makeController();
+    click(controller, 45, -45);
+    click(controller, 445, -45);
+    controller.onPointerMove(445, -285);
+    const before = previewCells.length;
+
+    key("keydown");
+    expect(previewCells.length).toBeGreaterThan(before);
+  });
+
   it("works while Shift is held and leaves the tool unchanged", () => {
     startCircleDrag();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS", shiftKey: true }));

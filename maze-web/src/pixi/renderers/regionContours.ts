@@ -68,29 +68,44 @@ export function buildRegionContours(segments: (ContourSide & { component: number
   return contours;
 }
 
+/** Sides that all wind the same way (each walked along its own cell's vertices) turned so that the
+ * region is on their left, the orientation `buildRegionGeometry` gives its sides and the tracer
+ * relies on at a diagonal touch. The sum of `x0*y1 - x1*y0` over such sides is the cells' total
+ * signed area, so its sign says which hand the region is on; a flipped frame (y negated) reverses
+ * it. */
+export function withRegionOnLeft<T extends ContourSide>(sides: T[]): T[] {
+  const signedArea = sides.reduce((sum, { v0, v1 }) => sum + v0.x * v1.y - v1.x * v0.y, 0);
+  if (signedArea >= 0) return sides;
+  return sides.map((side) => ({ ...side, v0: side.v1, v1: side.v0, polyline: side.polyline && [...side.polyline].reverse() }));
+}
+
 function traceContours(segments: ContourSide[]): { x: number; y: number }[][] {
-  // Keep the boundary as an undirected geometric graph. The old tracer indexed only `v0`, which
-  // happened to work for square cells because every exposed side was oriented consistently. Hex
-  // and triangle cells can expose the same vertex with the opposite segment orientation, so that
-  // tracer stopped at a valid vertex and rendered separate cells. Half-edges make the merge
-  // independent of the tessellation's local vertex winding.
+  // Keep the boundary as a geometric graph of half-edges in both directions. The old tracer
+  // indexed only `v0`, which happened to work for square cells because every exposed side was
+  // oriented consistently. Hex and triangle cells can expose the same vertex with the opposite
+  // segment orientation, so that tracer stopped at a valid vertex and rendered separate cells.
+  // Each half-edge remembers whether it follows its side's own orientation, so the tracer can
+  // prefer that direction where the choice matters (a diagonal touch) and still walk reversed
+  // sides when their orientation is unknown.
   // A side's interior points (an arc's flattening) travel with it, so a curved side keeps its
   // shape in the contour while the turn rule still sees only its end points.
   const edges = segments
     .filter((seg) => pointKey(seg.v0) !== pointKey(seg.v1))
     .map((seg) => ({ ...seg, via: seg.polyline?.slice(1, -1) ?? [], used: false }));
-  const byPoint = new Map<string, { edge: number; to: { x: number; y: number } }[]>();
-  const addHalfEdge = (point: { x: number; y: number }, to: { x: number; y: number }, edge: number) => {
+  const byPoint = new Map<string, { edge: number; to: { x: number; y: number }; forward: boolean }[]>();
+  const addHalfEdge = (point: { x: number; y: number }, to: { x: number; y: number }, edge: number, forward: boolean) => {
     const entries = byPoint.get(pointKey(point)) ?? [];
-    entries.push({ edge, to });
+    entries.push({ edge, to, forward });
     byPoint.set(pointKey(point), entries);
   };
   edges.forEach((edge, i) => {
-    addHalfEdge(edge.v0, edge.v1, i);
-    addHalfEdge(edge.v1, edge.v0, i);
+    addHalfEdge(edge.v0, edge.v1, i, true);
+    addHalfEdge(edge.v1, edge.v0, i, false);
   });
   // The interior points of `edge` in the direction of travel that ends at `end`.
   const viaTowards = (edge: (typeof edges)[number], end: ContourPoint) => pointKey(end) === pointKey(edge.v1) ? edge.via : [...edge.via].reverse();
+  const hasUnusedForwardAt = (point: ContourPoint) => (byPoint.get(pointKey(point)) ?? [])
+    .some(({ edge, forward }) => forward && !edges[edge].used);
 
   const contours: { x: number; y: number }[][] = [];
   for (const first of edges) {
@@ -100,16 +115,26 @@ function traceContours(segments: ContourSide[]): { x: number; y: number }[][] {
     const startKey = pointKey(first.v0);
     let previous = first.v0;
     let current = first.v1;
-    while (pointKey(current) !== startKey) {
-      const candidates = (byPoint.get(pointKey(current)) ?? [])
-        .filter(({ edge }) => !edges[edge].used)
-        .map(({ edge, to: nextPoint }) => {
-          const incoming = { x: current.x - previous.x, y: current.y - previous.y };
-          const outgoing = { x: nextPoint.x - current.x, y: nextPoint.y - current.y };
-          const clockwiseTurn = (Math.atan2(incoming.x * outgoing.y - incoming.y * outgoing.x, incoming.x * outgoing.x + incoming.y * outgoing.y) + Math.PI * 2) % (Math.PI * 2);
-          return { edge, nextPoint, clockwiseTurn };
-        });
-      const chosen = candidates.sort((a, b) => a.clockwiseTurn - b.clockwiseTurn)[0];
+    // Reaching the start vertex ends the loop only when no side leaves it any more: a diagonal
+    // touch visits its vertex twice, and stopping at the first visit would split the contour
+    // depending on which side the trace happened to start from.
+    while (pointKey(current) !== startKey || hasUnusedForwardAt(current)) {
+      const unused = (byPoint.get(pointKey(current)) ?? []).filter(({ edge }) => !edges[edge].used);
+      // A side oriented away from `current` keeps the region on the same hand as the one just
+      // walked; the reversed ones are only a fallback for sides of unknown orientation.
+      const forward = unused.filter((half) => half.forward);
+      const candidates = (forward.length > 0 ? forward : unused).map(({ edge, to: nextPoint }) => {
+        const incoming = { x: current.x - previous.x, y: current.y - previous.y };
+        const outgoing = { x: nextPoint.x - current.x, y: nextPoint.y - current.y };
+        const leftTurn = Math.atan2(incoming.x * outgoing.y - incoming.y * outgoing.x, incoming.x * outgoing.x + incoming.y * outgoing.y);
+        return { edge, nextPoint, leftTurn };
+      });
+      // Several candidates mean cells touching at this vertex only diagonally. The sharpest left
+      // turn follows the cell just walked around its own corner, so the contour touches itself
+      // there instead of crossing, and the free space between the cells stays outside the region
+      // (GitHub issue #1050).
+      const chosen = candidates.reduce<(typeof candidates)[number] | undefined>(
+        (best, candidate) => best === undefined || candidate.leftTurn > best.leftTurn ? candidate : best, undefined);
       if (chosen === undefined) break;
       edges[chosen.edge].used = true;
       contour.push(...viaTowards(edges[chosen.edge], chosen.nextPoint), chosen.nextPoint);

@@ -5,7 +5,7 @@ import type { FieldConfig } from "../fieldConfig";
 import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
 import { controlLineWidth } from "./controlLineWidth";
-import { buildRegionContours, renderRegionContours } from "./renderers/regionContours";
+import { buildRegionContours, renderRegionContours, withRegionOnLeft } from "./renderers/regionContours";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 
 const ADD_COLOR = canvas.fieldEditor.previewAdd;
@@ -102,7 +102,7 @@ export class PrimitivePreviewOverlay {
           const v1 = { x: end.x, y: -end.y };
           return { v0, v1, polyline: [v0, v1], component: geometry.components?.[i] ?? 0 };
         });
-        const contours = buildRegionContours(sides);
+        const contours = buildRegionContours(withRegionOnLeft(sides));
         if (contours.length > 0) {
           renderRegionContours(g, contours, frameColor, SELECTION_FILL_ALPHA, getCellHighlightInset(), "round", this.strokeWidth(FRAME_WIDTH), { dash: DASH_LENGTH, gap: GAP_LENGTH });
         }
