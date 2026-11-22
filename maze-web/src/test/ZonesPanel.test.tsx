@@ -188,7 +188,7 @@ describe("cssColor", () => {
     expect(useMazeStore.getState().zonesGrouping).toEqual({ auto: "floor", manual: "none" });
     const select = screen.getByTestId("zones-grouping") as HTMLSelectElement;
     expect(select.value).toBe("none");
-    expect(Array.from(select.options).map((option) => option.value)).toEqual(["none", "floor"]);
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["none", "floor", "group"]);
   });
 
   it("puts a multi-floor zone in every floor section", () => {

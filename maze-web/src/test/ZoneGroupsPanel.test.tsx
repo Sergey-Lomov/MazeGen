@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
 import { ZoneGroupPickerDialog, ZoneGroupNameDialog } from "../components/features/ZoneGroupDialogs";
 import { ZonesPanel } from "../components/features/ZonesPanel";
 import { ZoneGroupsPanel, ZoneGroupEditPanel } from "../components/features/ZoneGroupsPanel";
@@ -23,7 +23,7 @@ function state() {
 }
 
 describe("zone groups store", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, nextZoneId: 4 }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zoneGroupsListMode: "manual", zones, nextZoneId: 4 }));
 
   it("adds an empty group as a draft and opens it; the list gets it on Done", () => {
     state().addZoneGroup();
@@ -78,7 +78,7 @@ describe("zone groups store", () => {
 
 describe("ZoneGroupsPanel", () => {
   beforeEach(() => useMazeStore.setState({
-    ...zonesInitialState,
+    ...zonesInitialState, zoneGroupsListMode: "manual",
     zones,
     nextZoneId: 4,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }, { id: 2, name: "", zoneIds: [3] }],
@@ -126,7 +126,7 @@ describe("ZoneGroupsPanel cards: floors, zone bubbles and hover", () => {
   const floors = [{ id: "f0", title: "F1" }, { id: "f1", title: "F2" }, { id: "f2", title: "F3" }];
   beforeEach(() => {
     useMazeStore.setState({
-      ...zonesInitialState, floors, activeFloorId: "f0", zones: multi, nextZoneId: 4,
+      ...zonesInitialState, zoneGroupsListMode: "manual", floors, activeFloorId: "f0", zones: multi, nextZoneId: 4,
       zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }], nextZoneGroupId: 2,
     });
     render(<ZoneGroupsPanel onClose={() => {}} />);
@@ -144,24 +144,16 @@ describe("ZoneGroupsPanel cards: floors, zone bubbles and hover", () => {
     expect(bubbles[0]).toHaveStyle({ color: cssColor(brightColor(zoneColors(multi)[0])), background: cssColor(chip.bg) });
   });
 
-  it("hovering the card highlights every zone of the group, a bubble only its zone", () => {
-    const cell = screen.getByTestId("zone-group-cell");
-    fireEvent.mouseEnter(cell);
-    expect(state().hoveredZoneIds).toEqual([1, 2]);
+  it("hovering a group card or its bubbles highlights nothing", () => {
+    fireEvent.mouseEnter(screen.getByTestId("zone-group-cell"));
     fireEvent.mouseEnter(screen.getAllByTestId("zone-group-bubble")[1]);
-    expect(state().hoveredZoneId).toBe(2);
-    // The pointer moves from the bubble back onto the card, not out of it.
-    fireEvent.mouseLeave(screen.getAllByTestId("zone-group-bubble")[1], { relatedTarget: cell });
     expect(state().hoveredZoneId).toBeNull();
-    expect(state().hoveredZoneIds).toEqual([1, 2]);
-    fireEvent.mouseLeave(cell);
-    expect(state().hoveredZoneIds).toEqual([]);
   });
 });
 
 describe("zone group edit draft", () => {
   beforeEach(() => useMazeStore.setState({
-    ...zonesInitialState,
+    ...zonesInitialState, zoneGroupsListMode: "manual",
     zones,
     nextZoneId: 4,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1] }],
@@ -221,7 +213,7 @@ describe("ZoneGroupEditPanel", () => {
   const noop = () => {};
   function open(group: { id: number; name: string; zoneIds: number[] }, isNew = false, zs: Zone[] = zones) {
     useMazeStore.setState({
-      ...zonesInitialState, zones: zs, nextZoneId: 4, zoneGroups: [group], nextZoneGroupId: 2,
+      ...zonesInitialState, zoneGroupsListMode: "manual", zones: zs, nextZoneId: 4, zoneGroups: [group], nextZoneGroupId: 2,
       zoneGroupEditId: group.id, zoneGroupEditIsNew: isNew, zoneGroupEditDraft: group,
     });
     return render(<ZoneGroupEditPanel groupId={group.id} onDone={noop} onCancel={noop} />);
@@ -251,7 +243,24 @@ describe("ZoneGroupEditPanel", () => {
   it("the plus adds a candidate to the group", () => {
     open({ id: 1, name: "", zoneIds: [] }, true);
     fireEvent.click(within(screen.getAllByTestId("zone-cell")[0]).getByRole("button", { name: m["zone_groups.add_zone"]() }));
-    expect(state().zoneGroupEditDraft?.zoneIds).toEqual([1]);
+    // The first candidate is Beta: Alpha is automatic and hidden by default.
+    expect(state().zoneGroupEditDraft?.zoneIds).toEqual([2]);
+  });
+
+  it("the candidates search narrows them by name", async () => {
+    open({ id: 1, name: "", zoneIds: [] }, true);
+    fireEvent.change(screen.getByTestId("zone-group-candidates-search"), { target: { value: "bet" } });
+    await waitFor(() => expect(screen.getAllByTestId("zone-cell")).toHaveLength(1));
+    fireEvent.change(screen.getByTestId("zone-group-candidates-search"), { target: { value: "zzz-no-such-zone" } });
+    await waitFor(() => expect(screen.getByText(m["zone_groups.no_matches"]())).toBeInTheDocument());
+  });
+
+  it("automatic zones are not candidates until the switch is on", () => {
+    open({ id: 1, name: "", zoneIds: [] }, true);
+    const count = () => screen.getAllByTestId("zone-cell").length;
+    expect(count()).toBe(zones.filter((z) => z.kind === "manual").length);
+    fireEvent.click(screen.getByLabelText(m["zone_groups.show_auto"]()));
+    expect(count()).toBe(zones.length);
   });
 
   it("shows the all-added placeholder when no candidate is left", () => {
@@ -281,7 +290,7 @@ describe("zone group cards: counts, floor navigation", () => {
   ];
   const floors = [{ id: "f0", title: "F1" }, { id: "f1", title: "F2" }];
   beforeEach(() => useMazeStore.setState({
-    ...zonesInitialState, floors, activeFloorId: "f0", zones: multi, nextZoneId: 3,
+    ...zonesInitialState, zoneGroupsListMode: "manual", floors, activeFloorId: "f0", zones: multi, nextZoneId: 3,
     zoneGroups: [{ id: 1, name: "Pair", zoneIds: [1, 2] }], nextZoneGroupId: 2,
   }));
 
@@ -303,34 +312,123 @@ describe("zone group cards: counts, floor navigation", () => {
 });
 
 describe("zones list groups line", () => {
-  it("lists the groups of a zone or the placeholder", () => {
-    useMazeStore.setState({
-      ...zonesInitialState, zones: [{ id: 1, name: "A", kind: "manual", cells: [] }, { id: 2, name: "B", kind: "manual", cells: [] }],
-      zoneGroups: [{ id: 1, name: "G1", zoneIds: [1] }, { id: 2, name: "", zoneIds: [1] }], zonesListMode: "manual",
-    });
+  const seed = () => useMazeStore.setState({
+    ...zonesInitialState, zoneGroupsListMode: "manual", zones: [{ id: 1, name: "A", kind: "manual", cells: [] }, { id: 2, name: "B", kind: "manual", cells: [] }],
+    zoneGroups: [{ id: 1, name: "G1", zoneIds: [1] }, { id: 2, name: "", zoneIds: [1] }], zonesListMode: "manual",
+  });
+
+  it("shows the groups of a zone as bubbles, or the placeholder", () => {
+    seed();
     render(<ZonesPanel onClose={() => {}} />);
-    const lines = screen.getAllByTestId("zone-groups-line").map((l) => l.textContent);
-    expect(lines).toEqual([m["zones.groups_info"]({ names: `G1, ${m["zone_groups.default_name"]({ id: 2 })}` }), m["zones.no_groups"]()]);
+    const lines = screen.getAllByTestId("zone-groups-line");
+    expect(within(lines[0]).getAllByTestId("zone-group-bubble").map((b) => b.textContent)).toEqual(["G1", m["zone_groups.default_name"]({ id: 2 })]);
+    expect(lines[1].textContent).toBe(m["zones.no_groups"]());
+  });
+
+  it("a bubble groups the list by groups and opens only that group's section", () => {
+    seed();
+    render(<ZonesPanel onClose={() => {}} />);
+    fireEvent.click(within(screen.getAllByTestId("zone-groups-line")[0]).getAllByTestId("zone-group-bubble")[1]);
+    expect(state().zonesGrouping.manual).toBe("group");
+    expect(state().zonesFocusedGroupId).toBeNull();
+    const sections = screen.getAllByTestId("zone-section");
+    expect(sections.map((s) => s.querySelectorAll("[data-testid='zone-cell']").length)).toEqual([0, 1, 0]);
+  });
+
+  it("a list opened after the request still honours it", () => {
+    seed();
+    useMazeStore.getState().showZonesOfGroup(1);
+    expect(state().zonesPanelOpen).toBe(true);
+    render(<ZonesPanel onClose={() => {}} />);
+    const sections = screen.getAllByTestId("zone-section");
+    expect(sections.map((s) => s.querySelectorAll("[data-testid='zone-cell']").length)).toEqual([1, 0, 0]);
+  });
+
+  it("the request scrolls the open list to the group's section", () => {
+    seed();
+    const scrollIntoView = vi.fn();
+    // Frames run only when flushed, and a cancelled one never runs: the scroll must survive the re-render that clears the request.
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { frames.set(frames.size + 1, cb); return frames.size; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(<ZonesPanel onClose={() => {}} />);
+      act(() => state().showZonesOfGroup(2));
+      act(() => frames.forEach((cb) => cb(0)));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("showZonesOfGroup moves to the list section holding the group's zones, and ignores an unknown group", () => {
+    useMazeStore.setState({
+      ...zonesInitialState, zoneGroupsListMode: "manual", zonesListMode: "manual",
+      zones: [{ id: 1, name: "A", kind: "auto", cells: [] }, { id: 2, name: "B", kind: "manual", cells: [] }],
+      zoneGroups: [{ id: 1, name: "G", zoneIds: [1] }, { id: 2, name: "Both", zoneIds: [1, 2] }, { id: 3, name: "Empty", zoneIds: [] }],
+    });
+    state().showZonesOfGroup(1);
+    expect(state().zonesListMode).toBe("auto");
+    expect(state().zonesGrouping.auto).toBe("group");
+    state().showZonesOfGroup(2);
+    expect(state().zonesListMode).toBe("auto");
+    state().showZonesOfGroup(3);
+    expect(state().zonesListMode).toBe("auto");
+    useMazeStore.setState({ zonesPanelOpen: false, zonesFocusedGroupId: null });
+    state().showZonesOfGroup(99);
+    expect(state().zonesPanelOpen).toBe(false);
+    expect(state().zonesFocusedGroupId).toBeNull();
+  });
+
+  it("clicking a group cell opens the zones list grouped by groups", () => {
+    seed();
+    render(<ZoneGroupsPanel onClose={() => {}} />);
+    fireEvent.click(screen.getAllByTestId("zone-group-cell")[0]);
+    expect(state().zonesFocusedGroupId).toBe(1);
+    expect(state().zonesGrouping.manual).toBe("group");
+    expect(state().zonesPanelOpen).toBe(true);
+  });
+
+  it("deleting the requested group drops the request", () => {
+    seed();
+    useMazeStore.getState().showZonesOfGroup(1);
+    useMazeStore.getState().removeZoneGroup(1);
+    expect(state().zonesFocusedGroupId).toBeNull();
   });
 });
 
 describe("automatic group card (GitHub issue #1037)", () => {
+  const seedMixed = () => useMazeStore.setState({
+    ...zonesInitialState, zoneGroupsListMode: "auto", zones, nextZoneId: 4,
+    zoneGroups: [{ id: autoGroupIdOf("edge"), name: "", zoneIds: [1] }, { id: 1, name: "Own", zoneIds: [2] }], nextZoneGroupId: 2,
+  });
+
   it("shows the localized name and has neither the edit pencil nor the delete trash", () => {
-    useMazeStore.setState({
-      ...zonesInitialState, zones, nextZoneId: 4,
-      zoneGroups: [{ id: autoGroupIdOf("edge"), name: "", zoneIds: [1] }, { id: 1, name: "Own", zoneIds: [2] }], nextZoneGroupId: 2,
-    });
+    seedMixed();
     render(<ZoneGroupsPanel onClose={() => {}} />);
-    const [auto, own] = screen.getAllByTestId("zone-group-cell");
+    const [auto] = screen.getAllByTestId("zone-group-cell");
     expect(within(auto).getByText(m["zone_groups.auto_edge"]())).toBeInTheDocument();
     expect(within(auto).queryByRole("button", { name: m["zone_groups.edit"]() })).toBeNull();
     expect(within(auto).queryByRole("button", { name: m["zone_groups.delete"]() })).toBeNull();
+  });
+
+  it("the switch shows the automatic or the manual groups; Add group is for the manual ones only", () => {
+    seedMixed();
+    render(<ZoneGroupsPanel onClose={() => {}} />);
+    expect(screen.getAllByTestId("zone-group-cell")).toHaveLength(1);
+    expect(screen.queryByText(m["zone_groups.add"]())).toBeNull();
+    fireEvent.click(screen.getByText(m["zone_groups.mode_manual"]({ count: 1 })));
+    const [own] = screen.getAllByTestId("zone-group-cell");
+    expect(screen.getAllByTestId("zone-group-cell")).toHaveLength(1);
     expect(within(own).getByRole("button", { name: m["zone_groups.edit"]() })).toBeInTheDocument();
+    expect(screen.getByText(m["zone_groups.add"]())).toBeInTheDocument();
   });
 });
 
 describe("zone group dialogs", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, nextZoneId: 4, zoneGroups: [], nextZoneGroupId: 1 }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zoneGroupsListMode: "manual", zones, nextZoneId: 4, zoneGroups: [], nextZoneGroupId: 1 }));
 
   it("the picker shows a placeholder without groups, and New group hands over", () => {
     let handed = false;
