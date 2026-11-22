@@ -8,6 +8,7 @@ import { isFieldOpError } from "../../domain/fieldOps";
 import { encodePoint } from "../../domain/tessellationProjection";
 import { overridesWithDraft, zoneFloors, zonesWithDraft } from "../../domain/selectors/zoneSelectors";
 import { combineZoneCells } from "../../domain/selectors/zoneCombine";
+import { isAutoGroupId } from "../../domain/autoZones";
 
 /** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
  *  the values of a new project and of a file without zones. */
@@ -30,6 +31,7 @@ export const zonesTransientUi = {
   hiddenZoneIds: [],
   zonesPanelOpen: false,
   zonesListMode: "auto",
+  zonesGrouping: { auto: "none", manual: "none" },
   hoveredZoneId: null,
   hoveredZoneIds: [],
   zoneEditDraft: null,
@@ -101,6 +103,8 @@ function committingGroupEdit(s: MazeState): Partial<MazeState> {
 
 /** The patch applying `change` to a group: to the draft when that group is being edited, else to the list. */
 function withGroupChange(s: MazeState, groupId: number, change: (group: ZoneGroup) => ZoneGroup): Partial<MazeState> {
+  // Automatic groups follow the automatic zones and are never edited (GitHub issue #1037).
+  if (isAutoGroupId(groupId)) return {};
   if (s.zoneGroupEditDraft?.id === groupId) return { zoneGroupEditDraft: change(s.zoneGroupEditDraft) };
   return { zoneGroups: s.zoneGroups.map((g) => (g.id === groupId ? change(g) : g)) };
 }
@@ -148,7 +152,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     zoneGroupEditIsNew: true,
     nextZoneGroupId: s.nextZoneGroupId + 1,
   })),
-  removeZoneGroup: (id) => set((s) => ({
+  removeZoneGroup: (id) => set((s) => (isAutoGroupId(id) ? {} : {
     zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
     zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
     ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
@@ -156,7 +160,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   // `null` is "Done": the draft is confirmed. Opening another group drops the unconfirmed draft.
   setZoneGroupEditId: (id) => set((s) => {
     if (id === null) return committingGroupEdit(s);
-    if (id === s.zoneGroupEditId) return {};
+    if (id === s.zoneGroupEditId || isAutoGroupId(id)) return {};
     const group = s.zoneGroups.find((g) => g.id === id);
     if (!group) return {};
     return { ...discardingGroupEdit(s), zoneGroupEditId: id, zoneGroupEditDraft: group, zoneGroupEditIsNew: false };
@@ -178,10 +182,16 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     ? { zonesPanelOpen: true }
     : { ...discardingZoneEdit(s), zonesPanelOpen: false, hoveredZoneId: null })),
   setZonesListMode: (mode) => set({ zonesListMode: mode, hoveredZoneId: null }),
+  setZonesGrouping: (mode, grouping) => set((s) => ({ zonesGrouping: { ...s.zonesGrouping, [mode]: grouping }, hoveredZoneId: null })),
   setHoveredZone: (id) => set({ hoveredZoneId: id }),
   setHoveredZones: (ids) => set({ hoveredZoneIds: ids }),
   toggleZoneVisibility: (id) => set((s) => ({
     hiddenZoneIds: s.hiddenZoneIds.includes(id) ? s.hiddenZoneIds.filter((hidden) => hidden !== id) : [...s.hiddenZoneIds, id],
+  })),
+  setZonesVisible: (ids, visible) => set((s) => ({
+    hiddenZoneIds: visible
+      ? s.hiddenZoneIds.filter((id) => !ids.includes(id))
+      : [...s.hiddenZoneIds, ...ids.filter((id, i) => !s.hiddenZoneIds.includes(id) && ids.indexOf(id) === i)],
   })),
   // An unnamed zone shows as "Zone #id" (`zoneDisplayName`).
   // While a new zone is still being edited, adding again changes nothing: the editor stays as it is.
@@ -213,7 +223,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
         zoneEditDraft: zone,
         zoneEditDraftColor: s.zoneColorOverrides[id] ?? null,
         zoneEditIsNew: false,
-        zoneEditDraftGroupIds: s.zoneGroups.filter((g) => g.zoneIds.includes(id)).map((g) => g.id),
+        zoneEditDraftGroupIds: s.zoneGroups.filter((g) => !isAutoGroupId(g.id) && g.zoneIds.includes(id)).map((g) => g.id),
         zoneEditDraftNewGroups: [],
         hoveredZoneId: null,
       };
@@ -223,7 +233,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   },
   commitZoneEdit: () => set((s) => committingZoneEdit(s)),
   addZoneEditGroup: (groupId) => set((s) => (
-    !s.zoneEditDraft || s.zoneEditDraftGroupIds.includes(groupId) || !s.zoneGroups.some((g) => g.id === groupId)
+    !s.zoneEditDraft || isAutoGroupId(groupId) || s.zoneEditDraftGroupIds.includes(groupId) || !s.zoneGroups.some((g) => g.id === groupId)
       ? {}
       : { zoneEditDraftGroupIds: [...s.zoneEditDraftGroupIds, groupId] })),
   removeZoneEditGroup: (groupId) => set((s) => ({ zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== groupId) })),

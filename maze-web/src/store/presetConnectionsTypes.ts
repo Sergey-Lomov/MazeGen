@@ -114,6 +114,8 @@ export interface PresetConnectionsState {
   /** Coordinate cells currently hovered in an Elements row. */
   presetHoveredEntity: PresetEndpoint[] | null;
   presetHoveredEntityMode: PresetEntityHighlightMode;
+  /** Subset of `presetHoveredEntity` that uses the warning canvas palette. */
+  presetHoveredEntityWarningEndpoints: PresetEndpoint[];
   /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
    *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
    *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
@@ -331,7 +333,7 @@ export interface PresetConnectionsActions {
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
   setPresetHoveredLink: (link: PresetHoveredLink | null) => void;
-  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null, mode?: PresetEntityHighlightMode) => void;
+  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null, mode?: PresetEntityHighlightMode, warningEndpoints?: PresetEndpoint[]) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */

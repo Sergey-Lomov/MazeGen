@@ -2,10 +2,9 @@ import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../domain/fieldEditUtils";
-import { presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../domain/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../../domain/fieldValidity";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidPresetEndpointKeys, computeInvalidSplitPoints } from "../../domain/fieldValidity";
 import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
-import type { PresetEndpoint } from "../../domain/presetEndpoint";
+import { presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
@@ -137,17 +136,12 @@ export function PresetConnectionsFeature() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [presetListOpen, setPresetListOpen] = useSidePanelOpen("preset-list", true);
 
-  // Nodes locked both in and out AND with no explicit passage preset are fully isolated. Scoped
-  // to the active floor (GitHub issue #340 follow-up) — mixing keys across floors here previously
-  // parsed a level-suffixed key ("x,y@2") as garbage coordinates via a bare `key.split(",")`, so
-  // this warning (and its hover highlight) only ever worked correctly on floor 0.
+  // Nodes locked both in and out AND with no explicit passage preset are fully isolated. This is a
+  // project-wide problem: changing the active floor must not hide the warning or alter its count.
+  // Endpoint-aware keys keep same-coordinate nodes on distinct floors separate.
   const isolatedNodes = useMemo(() => {
-    const level = activeFloorLevel({ floors, activeFloorId });
-    const lockedNodesOnLevel = mapOnLevel(lockedNodes, level);
-    const autoLockedNodesOnLevel = setOnLevel(autoLockedNodes, level);
-    const presetConnectionsOnActiveLevel = presetConnectionsOnLevel(presetConnections, level);
-    return computeIsolatedNodeKeys(lockedNodesOnLevel, autoLockedNodesOnLevel, presetConnectionsOnActiveLevel);
-  }, [lockedNodes, autoLockedNodes, presetConnections, floors, activeFloorId]);
+    return computeIsolatedNodeKeys(lockedNodes, autoLockedNodes, presetConnections);
+  }, [lockedNodes, autoLockedNodes, presetConnections]);
 
   // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
   // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning (same
@@ -202,7 +196,26 @@ export function PresetConnectionsFeature() {
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
   const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + invalidSplitKeys.size + invalidLockedKeys.size;
   const hasInvalid = invalidCount > 0;
-  const problemCount = isolatedNodes.length + orphanSplitCount;
+  const invalidEndpoints = useMemo(() => {
+    const endpoints: PresetEndpoint[] = [
+      ...Array.from(presetConnections.values()).flatMap(({ from, to }) => [from, to]),
+      ...[presetStart, presetFinish, presetGenSource].filter((endpoint): endpoint is PresetEndpoint => endpoint !== null),
+      ...presetTeleports.flatMap(({ from, to }) => [from, to]),
+      ...presetVerticalPassages.flatMap(({ from, to }) => [from, to]),
+      ...presetElevators.flatMap(({ floors: elevatorFloors }) => elevatorFloors),
+      ...Array.from(lockedNodes.keys()).flatMap((key) => {
+        const endpoint = presetEndpointFromKey(key);
+        return endpoint ? [endpoint] : [];
+      }),
+      ...Object.keys(presetSplitPoints).flatMap((key) => {
+        const endpoint = presetEndpointFromKey(key);
+        return endpoint ? [endpoint] : [];
+      }),
+    ];
+    const invalidEndpointKeys = computeInvalidPresetEndpointKeys(endpoints, resolveFieldAt);
+    return endpoints.filter((endpoint) => invalidEndpointKeys.has(presetEndpointKey(endpoint)));
+  }, [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, resolveFieldAt]);
+  const problemCount = isolatedNodes.length + orphanSplitCount + (hasInvalid ? 1 : 0);
   const problemsExpanded = presetSectionsExpanded["problems"] ?? false;
 
   return (
@@ -229,7 +242,9 @@ export function PresetConnectionsFeature() {
                       : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
                     onMouseEnter={() => setHighlightIsolatedNodes(true)}
                     onMouseLeave={() => setHighlightIsolatedNodes(false)}
-                  />
+                  >
+                    <IsolatedNodeFloorBadges isolatedNodeKeys={isolatedNodes} />
+                  </WarningBubble>
                 )}
                 {orphanSplitCount > 0 && (
                   <WarningBubble
@@ -240,6 +255,15 @@ export function PresetConnectionsFeature() {
                     onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
                   >
                     <OrphanSplitFloorBadges orphanPoints={orphanPoints} />
+                  </WarningBubble>
+                )}
+                {hasInvalid && (
+                  <WarningBubble
+                    message={m["preset.elements_outside_field"]({ count: invalidCount })}
+                    onMouseEnter={() => setHighlightInvalidPresets(true)}
+                    onMouseLeave={() => setHighlightInvalidPresets(false)}
+                  >
+                    <InvalidPresetFloorBadges endpoints={invalidEndpoints} />
                   </WarningBubble>
                 )}
               </Stack>
@@ -408,6 +432,23 @@ export function PresetConnectionsFeature() {
 function OrphanSplitFloorBadges({ orphanPoints }: { orphanPoints: PresetEndpoint[] }) {
   const palette = notificationPalette("warning");
   const levels = Array.from(new Set(orphanPoints.map((ep) => ep.level ?? 0))).sort((a, b) => a - b);
+  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
+}
+
+function IsolatedNodeFloorBadges({ isolatedNodeKeys }: { isolatedNodeKeys: string[] }) {
+  const palette = notificationPalette("warning");
+  const levels = Array.from(new Set(
+    isolatedNodeKeys.flatMap((key) => {
+      const endpoint = presetEndpointFromKey(key);
+      return endpoint ? [endpoint.level ?? 0] : [];
+    }),
+  )).sort((a, b) => a - b);
+  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
+}
+
+function InvalidPresetFloorBadges({ endpoints }: { endpoints: PresetEndpoint[] }) {
+  const palette = notificationPalette("warning");
+  const levels = Array.from(new Set(endpoints.map((endpoint) => endpoint.level ?? 0))).sort((a, b) => a - b);
   return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
 }
 

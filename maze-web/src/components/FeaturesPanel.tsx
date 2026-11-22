@@ -28,7 +28,7 @@ import { problematicRuleCount } from "../store/qcDerivedProblems";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../domain/fieldValidity";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../domain/fieldValidity";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../domain/selectors/mazeSelectors";
 import { countManualZones } from "../domain/selectors/zoneSelectors";
@@ -179,6 +179,8 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
   const presetElevators = useMazeStore((s) => s.presetElevators);
+  const lockedNodes = useMazeStore((s) => s.lockedNodes);
+  const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
 
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
@@ -303,8 +305,16 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     () => computeInvalidEndpoint(presetGenSource, resolveFieldAt),
     [presetGenSource, resolveFieldAt],
   );
+  const presetInvalidLockedKeys = useMemo(
+    () => computeInvalidLockedNodeKeys(lockedNodes, resolveFieldAt),
+    [lockedNodes, resolveFieldAt],
+  );
+  const presetInvalidSplitKeys = useMemo(
+    () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
+    [presetSplitPoints, resolveFieldAt],
+  );
   const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0) + (presetInvalidGenSource ? 1 : 0);
-  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount;
+  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount + presetInvalidLockedKeys.size + presetInvalidSplitKeys.size;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   // Always green once available: zones have no invalid state, even with none defined.
@@ -324,9 +334,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     : fieldBlocking
     ? m["status.configure_field_first"]()
     : presetInvalidCount > 0
-    ? (presetInvalidCount === 1
-        ? m["status.presets_outside_field"]({ count: presetInvalidCount })
-        : m["status.presets_outside_field_plural"]({ count: presetInvalidCount }))
+    ? m["status.problematic_preset_elements"]({ count: presetInvalidCount })
     : undefined;
 
   const analyticsCard = computeAnalyticsCard(

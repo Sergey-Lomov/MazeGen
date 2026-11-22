@@ -4,6 +4,7 @@ import { Button } from "../Button";
 import { Modal } from "../Modal";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, disabled, spacing, typography, ui } from "../../styles/theme";
+import { isAutoGroupId } from "../../domain/autoZones";
 import { GroupCell } from "./ZoneGroupsPanel";
 import * as m from "~/paraglide/messages";
 
@@ -11,7 +12,9 @@ import * as m from "~/paraglide/messages";
  *  hands the group to `onPick` and closes the dialog. Groups in `excludeIds` (the zone already is in them) are left
  *  out. "New group" closes it and hands over to the name dialog. */
 export function ZoneGroupPickerDialog({ excludeIds, onPick, onClose, onNew }: { excludeIds: number[]; onPick: (groupId: number) => void; onClose: () => void; onNew: () => void }) {
-  const groups = useMazeStore((s) => s.zoneGroups);
+  // Automatic groups follow the automatic zones: a manual zone cannot join one.
+  const allGroups = useMazeStore((s) => s.zoneGroups);
+  const groups = allGroups.filter((g) => !isAutoGroupId(g.id));
   const available = groups.filter((g) => !excludeIds.includes(g.id));
 
   return (

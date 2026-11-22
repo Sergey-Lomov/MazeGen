@@ -6,6 +6,7 @@ import { ZoneGroupsPanel, ZoneGroupEditPanel } from "../components/features/Zone
 import { zoneChipColors, zoneColors } from "../domain/selectors/zoneSelectors";
 import { cssColor } from "../components/EntityColorSwatch";
 import { brightColor } from "../domain/colorMath";
+import { autoGroupIdOf } from "../domain/autoZones";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
@@ -313,6 +314,21 @@ describe("zones list groups line", () => {
   });
 });
 
+describe("automatic group card (GitHub issue #1037)", () => {
+  it("shows the localized name and has neither the edit pencil nor the delete trash", () => {
+    useMazeStore.setState({
+      ...zonesInitialState, zones, nextZoneId: 4,
+      zoneGroups: [{ id: autoGroupIdOf("edge"), name: "", zoneIds: [1] }, { id: 1, name: "Own", zoneIds: [2] }], nextZoneGroupId: 2,
+    });
+    render(<ZoneGroupsPanel onClose={() => {}} />);
+    const [auto, own] = screen.getAllByTestId("zone-group-cell");
+    expect(within(auto).getByText(m["zone_groups.auto_edge"]())).toBeInTheDocument();
+    expect(within(auto).queryByRole("button", { name: m["zone_groups.edit"]() })).toBeNull();
+    expect(within(auto).queryByRole("button", { name: m["zone_groups.delete"]() })).toBeNull();
+    expect(within(own).getByRole("button", { name: m["zone_groups.edit"]() })).toBeInTheDocument();
+  });
+});
+
 describe("zone group dialogs", () => {
   beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, nextZoneId: 4, zoneGroups: [], nextZoneGroupId: 1 }));
 
@@ -334,6 +350,13 @@ describe("zone group dialogs", () => {
     fireEvent.click(within(cells[0]).getByText("Free"));
     expect(picked).toEqual([2]);
     expect(closed).toBe(1);
+  });
+
+  it("the picker leaves automatic groups out (a manual zone cannot join one)", () => {
+    useMazeStore.setState({ zoneGroups: [{ id: autoGroupIdOf("edge"), name: "", zoneIds: [] }] });
+    render(<ZoneGroupPickerDialog excludeIds={[]} onPick={() => {}} onClose={() => {}} onNew={() => {}} />);
+    expect(screen.queryAllByTestId("zone-group-cell")).toHaveLength(0);
+    expect(screen.getByText(m["zone_groups.none"]())).toBeInTheDocument();
   });
 
   it("the name dialog hands the trimmed name over, and cancel hands nothing", () => {

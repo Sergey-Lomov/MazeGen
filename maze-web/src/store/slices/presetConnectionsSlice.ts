@@ -54,6 +54,7 @@ export const presetConnectionsTransientUi = {
   presetHoveredLink: null,
   presetHoveredEntity: null,
   presetHoveredEntityMode: "inset" as const,
+  presetHoveredEntityWarningEndpoints: [],
   presetSplitTargetPrompt: null,
   presetEntityDeletePrompt: null,
   presetDragOverride: null,

@@ -70,7 +70,7 @@ describe("CellSizesSection", () => {
 
   it("marks only a too small side with a warning icon", () => {
     render(<CellSizesSection sizes={[type("triangle", { sidesMm: [3] }), type("hexagon", { sidesMm: [8] })]} tessellationKind="square" />);
-    expect(screen.getAllByText("⚠")).toHaveLength(1);
+    expect(screen.getAllByTestId("tooltip-anchor").filter((anchor) => anchor.querySelector("svg.lucide-triangle-alert"))).toHaveLength(1);
   });
 
   it("shows only the explanation when a type is irregular", () => {

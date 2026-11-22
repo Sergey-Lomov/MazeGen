@@ -4,6 +4,8 @@ import { PresetList } from "../components/features/PresetList";
 import { presetEndpoint } from "../domain/presetEndpoint";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { getTooltipAnchor } from "./tooltipTestUtils";
+import { bubbleColors } from "../components/Bubble";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../components/features/ToolGlyph", () => ({
@@ -100,5 +102,26 @@ describe("PresetList filters", () => {
     expect(useMazeStore.getState().presetHoveredLink).toBeNull();
     expect(useMazeStore.getState().presetHoveredEntity).toBeNull();
     expect(screen.queryByTestId("preset-cell")).not.toBeInTheDocument();
+  });
+
+  it("marks an out-of-field coordinate and shows its row warning", () => {
+    useMazeStore.setState({
+      presetTeleports: [{
+        id: 1,
+        from: presetEndpoint([0, 0]),
+        to: presetEndpoint([10, 0]),
+        direction: "two_way",
+      }],
+    });
+    render(<PresetList onClose={() => {}} />);
+
+    expect(getTooltipAnchor(m["preset.element_outside_field"]()).querySelector("svg.lucide-triangle-alert")).toBeInTheDocument();
+    const invalidBubble = screen.getByText("10:0");
+    expect(invalidBubble).toHaveStyle({ background: bubbleColors("warning").bg, color: bubbleColors("warning").text });
+
+    fireEvent.mouseEnter(invalidBubble);
+    expect(useMazeStore.getState().presetHoveredEntityWarningEndpoints).toEqual([presetEndpoint([10, 0])]);
+    fireEvent.mouseLeave(invalidBubble);
+    expect(useMazeStore.getState().presetHoveredEntityWarningEndpoints).toEqual([]);
   });
 });

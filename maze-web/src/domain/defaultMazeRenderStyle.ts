@@ -52,7 +52,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     // edge marker's own default `size` (now a diameter — GitHub issue #681 follow-up), an Arabic
     // digit in a floor-colored knockout, a 3px border (the shared `borderWidth` above).
     // `fillColor`/`borderColor` default to the connector color, matching the pre-#503 locked look.
-    floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "letters", size: DEFAULT_TELEPORT_BADGE_SIZE, sizeAdaptation: 0, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: MARKER_BORDER_WIDTH, textColor: canvas.floor.default, textFont: DEFAULT_LABEL_FONT, textSize: DEFAULT_TELEPORT_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
+    floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: DEFAULT_TELEPORT_BADGE_SIZE, sizeAdaptation: 0, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: MARKER_BORDER_WIDTH, textColor: canvas.floor.default, textFont: DEFAULT_LABEL_FONT, textSize: DEFAULT_TELEPORT_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
   },
   verticalConnections: {
     style: "abstract",

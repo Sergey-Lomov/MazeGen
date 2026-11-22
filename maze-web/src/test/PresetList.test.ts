@@ -123,6 +123,21 @@ describe("buildPresetListCells", () => {
     expect(cells.find((cell) => cell.key === "teleport:1")?.bubbles.map((item) => item.text)).toEqual(["L1 0:0", "L2 2:3"]);
   });
 
+  it("marks only coordinates outside the field as invalid", () => {
+    const input = emptyInput();
+    input.invalidEndpointKeys = new Set(["9,9"]);
+    input.presetTeleports = [{
+      id: 1,
+      from: presetEndpoint([0, 0]),
+      to: presetEndpoint([9, 9]),
+      direction: "two_way",
+    }];
+
+    const cell = buildPresetListCells(input).find((candidate) => candidate.key === "teleport:1");
+
+    expect(cell?.bubbles.map(({ invalid }) => invalid)).toEqual([false, true]);
+  });
+
   it("uses shared split-node labels for original and extra-node bubbles", () => {
     const splitCtx: PresetSplitLabelContext = {
       splitPoints: { "2,2": [7] },
@@ -149,6 +164,20 @@ describe("buildPresetListCells", () => {
       "2:2 (Cor)",
       "2:2 (Brg)",
     ]);
+  });
+
+  it("keeps a split preset's coordinate free of its node suffix", () => {
+    const input = emptyInput();
+    input.splitCtx = {
+      splitPoints: { "2,2": [7] },
+      presetConnections: new Map(),
+      activeSplitNode: {},
+      cfgAt: () => fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+      inFieldCellsAt: () => new Set(),
+    };
+    input.presetSplitPoints = { "2,2": [7] };
+
+    expect(buildPresetListCells(input).find((cell) => cell.key === "split:2,2")?.bubbles[0].text).toBe("2:2");
   });
 
   it("groups split connections into one split entity and follows creation order", () => {

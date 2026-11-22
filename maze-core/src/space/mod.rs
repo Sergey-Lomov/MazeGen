@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
+mod auto_zones;
 pub mod brick;
 pub mod cairo;
 pub mod cell_type;
@@ -95,6 +96,7 @@ pub use truncated_trihexagonal::{
     TruncatedTrihexagonalTessellation,
 };
 pub use voronoi::{VoronoiFace, VoronoiParams, VoronoiPoint, VoronoiTessellation};
+pub use auto_zones::{AutoZone, AutoZoneFloor, AutoZoneKey, compute_auto_zones};
 pub use zone::{Zone, ZoneCell, ZoneId, ZoneIndex, ZoneKind, ZoneSet};
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by

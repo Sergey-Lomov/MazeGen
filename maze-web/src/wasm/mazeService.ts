@@ -407,6 +407,57 @@ export function getZonesOfCells(config: {
   return getWasm().zones_of_cells(config) as number[][];
 }
 
+/** One floor of an automatic-zones request: its field cells, its crease segments in world units and whether its
+ *  topology has folds (only a folded floor has polyhedron faces). */
+export interface AutoZoneFloorWire {
+  cells: [number, number][];
+  creases: [[number, number], [number, number]][];
+  folded: boolean;
+}
+
+/** An automatic zone: its identity key (`maze`, `floor:F`, `type:F:T`, `edge:F`, `face:F:I`, `region:F:I`) and its cells. */
+export interface AutoZoneWire {
+  key: string;
+  cells: ZoneCellWire[];
+}
+
+/** The last `computeAutoZones` request and its answer: asking again for the same field is answered from here. */
+let lastAutoZones: { meta: string; flat: Int32Array; zones: AutoZoneWire[] } | null = null;
+
+const sameInts = (a: Int32Array, b: Int32Array): boolean => a.length === b.length && a.every((value, i) => value === b[i]);
+
+/// Automatic zones of the field (`zones_compute_auto`), in core's order. A request equal to the last one is not sent
+/// to wasm again; the returned zones are then the same objects as last time, so treat them as read-only. Throws naming the floor and the first
+/// invalid cell. The cells cross the wasm boundary as flat `Int32Array`s, in and out: marshalling tens of thousands
+/// of small arrays costs more than the computation itself.
+export function computeAutoZones(config: { tessellation: WasmTessellationConfig; floors: AutoZoneFloorWire[] }): AutoZoneWire[] {
+  const total = config.floors.reduce((sum, floor) => sum + floor.cells.length, 0);
+  const flat = new Int32Array(total * 2);
+  let at = 0;
+  for (const floor of config.floors) {
+    for (const [x, y] of floor.cells) {
+      flat[at++] = x;
+      flat[at++] = y;
+    }
+  }
+  const meta = {
+    tessellation: config.tessellation,
+    floors: config.floors.map((floor) => ({ count: floor.cells.length, creases: floor.creases, folded: floor.folded })),
+  };
+  const metaKey = JSON.stringify(meta);
+  if (lastAutoZones && lastAutoZones.meta === metaKey && sameInts(lastAutoZones.flat, flat)) {
+    return lastAutoZones.zones;
+  }
+  const pairs = getWasm().zones_compute_auto(meta, flat) as [string, Int32Array][];
+  const zones = pairs.map(([key, values]): AutoZoneWire => {
+    const cells: ZoneCellWire[] = new Array(values.length / 3);
+    for (let i = 0; i < cells.length; i++) cells[i] = [values[i * 3], values[i * 3 + 1], values[i * 3 + 2]];
+    return { key, cells };
+  });
+  lastAutoZones = { meta: metaKey, flat, zones };
+  return zones;
+}
+
 /** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
 export type FieldOpError =
   | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" }
