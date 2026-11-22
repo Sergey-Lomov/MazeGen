@@ -56,6 +56,7 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
             "teleport_group_select",
             "one_way_group_select",
             "cross_element_group_select",
+            "cross_element_remove",
             "add_split",
         ],
     },

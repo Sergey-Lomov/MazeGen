@@ -68,7 +68,7 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
   counter (`nextZoneId`) that only grows, so the id of a deleted zone is never reused.
 - Zones are ordered by the lowest floor they touch, ascending (`sortZones`, `store/zoneListSort.ts`; a zone without
   cells last, ties keep the order they were computed or added in). The type of an auto zone is read back from its id.
-- "Grouping" dropdown under the switch (`zonesGrouping`, kept per section: None, By floors, and By types for auto zones only; default None). A grouping
+- "Grouping" dropdown under the switch (`zonesGrouping`, kept per section: None, By floors, By types for auto zones only, and By groups; default None). A grouping
   folds the shown zones into collapsible sections (`groupZones`, `SectionHeader`, "Title (n)"): by floors, one per
   floor in ascending order (titled like the floor; a zone is in the section of every floor it has cells on, zones without cells in a last "No floor" section), by
   types, one per type in alphabetical order. Zones inside a section keep the floor order. Sections start collapsed,
@@ -78,7 +78,9 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
   canvas colour (`EntityColorSwatch`, shared with the glue cards) after the name (`#id` while
   unnamed), "Cells: n" (a fixed label, so no plural forms), and `L{n}` floor badges of the floors the zone occupies
   (`FloorBadgeRow`, standard blue info `Bubble`s, click to go to the floor; only on a multi-floor maze).
-- A third line lists the zone's groups ("Groups: A, B", "No groups" when none).
+- A third line shows the zone's groups as neutral (blue) `Bubble`s, "No groups" when none (GitHub issue #1036). Groups have no colour. A click on a bubble calls `showZonesOfGroup`.
+- Grouping "By groups" (`ZonesGrouping` `group`, offered in both sections): one section per group holding a shown zone, in the groups' order, a zone in every group it is in; zones in no group share a last "No groups" section (`groupZones`, keys `group:<id>`).
+- `showZonesOfGroup(id)` (a group bubble on a zone card, or a click on a group cell in the groups list, which opens the zones list) switches to the list section that holds the group's zones (the current one when it does), sets its grouping to "By groups" and leaves a request (`zonesFocusedGroupId`, transient). The open zones list consumes it (`clearZonesFocusedGroup`; a list opened afterwards still honours it): it collapses every section, expands the group's and scrolls it into view when the list can scroll. Deleting the requested group drops the request.
 - Eye icon (open/closed) in the card's top right corner toggles the zone's visibility on the canvas
   (`hiddenZoneIds`); it applies on top of the two kind toggles. Manual cards also have edit (opens the zone editor) and
   delete (with a confirmation dialog) icon buttons.
@@ -199,22 +201,25 @@ A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.
   spaced by `spacing.elementsGap`. Clicking a bubble goes to the zone's first floor when it has no cell on the
   active one.
   "Add group" at the bottom (`startNewGroup`, `zoneEditorActions.ts`) opens an empty group as a draft: it joins the list on "Done". While a new group is still being edited it adds nothing, but raises its editor over the list again.
-- Hover: a group card highlights all its zones together (`hoveredZoneIds`, drawn like `hoveredZoneId`); a zone's
-  bubble highlights only that zone (`hoveredZoneId` wins over `hoveredZoneIds`). Both clear when the panel closes.
+- Hover: a group card, and its zone bubbles, highlight nothing on the canvas (GitHub issue #1036).
 - The pencil opens `ZoneGroupEditPanel` over the list. Top: the name input. Then two collapsible sections with the
   count in brackets, built of `ZoneCell` (the zones list's cell, exported from `ZonesPanel`):
   "Zones (n)", the group's zones, each with a trash (`onRemove`) and a placeholder when empty; "Candidates (n)", the
   zones outside the group, each with a flat `+` (`onAdd`), with one placeholder when every zone is already in the
-  group and another when no zone exists at all. An existing group opens with Zones expanded and Candidates
+  group and another when no zone exists at all. Under the Candidates header sit a search field (`SearchInput`, by
+  the zone's display name, case-insensitive) and a "Show automatic" switch (off by default, local to the open panel):
+  automatic zones are candidates only while it is on, and the count in the header follows both. A candidate list that
+  the search or the switch emptied shows "No matching zones". An existing group opens with Zones expanded and Candidates
   collapsed, a new one the other way round.
 - Below, a primary "Done" button, disabled with an explaining tooltip while the group has no zones. "Done"
   commits the draft (`commitZoneGroupEdit`). The name, the zones and the candidates act on a working copy
   (`zoneGroupEditDraft`) and `zoneGroups` takes it only then, so the list never shows a half-edited or unconfirmed
   group. The close cross drops the draft (`cancelZoneGroupEdit`): a new group (`zoneGroupEditIsNew`) never reaches
   the list. Closing the groups list, "Add group" again or the pencil of another group drop an unconfirmed draft too.
+- Under the panel header, a switch between the automatic and the manual groups (`zoneGroupsListMode`, transient, default auto, "Auto groups (n)" / "Manual groups (n)", as in the zones list), each with its own empty placeholder. "Add group" is shown in the manual section only.
 - Zone editor, section "Groups" above Intersections: every group the draft zone is in, plus the groups still to be created (name and a trash that
   takes the zone out of it, "No groups" when none) and a `+` at the end of the header. The `+` opens
-  `ZoneGroupPickerDialog`: the groups list as `GroupCell`s (`onPick`: no actions, hover highlight or bubble
+  `ZoneGroupPickerDialog`: the groups list as `GroupCell`s (`onPick`: no actions or bubble
   reactions; a click hands the group over to the draft and closes), without the groups the zone is already in, a placeholder when
   empty, and a "New group" button that closes it and opens `ZoneGroupNameDialog` (a name field, Cancel / OK; OK
   adds the name to the draft's groups to create). Both dialogs are generic (`excludeIds` / `onPick` / `onConfirm`).
@@ -225,7 +230,8 @@ A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.
 - Automatic groups (see "Automatic zones") sit first in the list as plain cards: no pencil or trash, and the zone picker
   dialog leaves them out. Zone and group cards share `CardDetails` (`ZonesPanel.tsx`): the sizes, then the `L{n}` floor
   badges on the same line when they fit, else on their own line, wrapping over several lines when still too narrow.
-  Sizes and the groups line use `ui.text.tertiary`.
+  Sizes use `ui.text.tertiary`.
+- A group card outside the picker is clickable: a click (not one on its pencil, trash or a zone bubble, which stop it) calls `showZonesOfGroup`, opening the zones list grouped by groups on that group's section. A zone bubble on the card goes to the zone's floor.
 
 ## Automatic zones (GitHub issue #1033)
 

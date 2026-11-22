@@ -39,7 +39,7 @@ export function ListCell({
   const detailsActions = actionsPlacement === "details" && actions;
   const hasTitleRow = title !== undefined || !!titleAddon || !!badge || !!titleActions;
   return (
-    <div {...rest} className={`list-cell${className ? ` ${className}` : ""}`} style={{ ...styles.cell, ...style }}>
+    <div {...rest} className={className} style={{ ...styles.cell, ...style }}>
       {current && <span data-testid="list-cell-current" aria-hidden style={styles.currentBar} />}
       {hasTitleRow && (
         <div style={styles.titleRow}>

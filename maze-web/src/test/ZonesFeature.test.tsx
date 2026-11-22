@@ -8,7 +8,7 @@ import * as m from "~/paraglide/messages";
 const panel = (title: string) => document.querySelector<HTMLElement>(`[data-side-panel-title="${title}"]`)!;
 
 describe("ZonesFeature", () => {
-  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones" }));
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones", zoneGroupsListMode: "manual" }));
 
   it("adds a zone from the card: manual list and the zone editor open together", () => {
     render(<ZonesFeature />);

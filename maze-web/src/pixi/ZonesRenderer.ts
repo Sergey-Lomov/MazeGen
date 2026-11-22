@@ -130,7 +130,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
       this.redrawAll(state);
     } else {
       // A list hover moves often, and the combine panel's choice changes on every click: only their own layers are redrawn.
-      if (state.hoveredZoneId !== prev.hoveredZoneId || state.hoveredZoneIds !== prev.hoveredZoneIds) this.redrawHover(state);
+      if (state.hoveredZoneId !== prev.hoveredZoneId) this.redrawHover(state);
       if (state.zoneCombine !== prev.zoneCombine && this.cfg && this.root.visible) this.drawCombinePreview(state, this.cfg);
     }
   }
@@ -214,9 +214,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
     // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
-    // A group card's hover shows its zones together; one zone's own hover wins over it.
     const shownIds = state.hoveredZoneId !== null ? [state.hoveredZoneId]
-      : state.hoveredZoneIds.length > 0 ? state.hoveredZoneIds
       : state.zoneEditDraft ? [state.zoneEditDraft.id] : [];
     const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor));
     this.hoverZone.render({

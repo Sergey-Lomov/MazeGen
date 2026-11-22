@@ -78,7 +78,6 @@ export function SearchInput({
           ariaLabel={m["common.clear_search"]()}
           size="compact"
           withTooltip={false}
-          extraClassName="search-input-clear"
           onMouseDown={(event) => event.preventDefault()}
           onClick={clear}
           // Flat icon buttons normally use negative vertical margins when participating in a row.

@@ -23,6 +23,7 @@ export const zonesProjectState = {
 /** Resting values of the zones UI state: modes, panels, drafts, hover and toggles. Loading a project resets them. */
 export const zonesTransientUi = {
   zoneGroupsPanelOpen: false,
+  zoneGroupsListMode: "auto",
   zoneGroupEditId: null,
   zoneGroupEditDraft: null,
   zoneGroupEditIsNew: false,
@@ -32,8 +33,8 @@ export const zonesTransientUi = {
   zonesPanelOpen: false,
   zonesListMode: "auto",
   zonesGrouping: { auto: "none", manual: "none" },
+  zonesFocusedGroupId: null,
   hoveredZoneId: null,
-  hoveredZoneIds: [],
   zoneEditDraft: null,
   zoneEditDraftColor: null,
   zoneEditIsNew: false,
@@ -79,7 +80,6 @@ function withoutZone(s: MazeState, id: number): Partial<MazeState> {
     ...(s.zoneGroupEditDraft ? { zoneGroupEditDraft: withoutZoneId(s.zoneGroupEditDraft, id) } : {}),
     hiddenZoneIds: s.hiddenZoneIds.filter((hidden) => hidden !== id),
     hoveredZoneId: s.hoveredZoneId === id ? null : s.hoveredZoneId,
-    hoveredZoneIds: s.hoveredZoneIds.includes(id) ? s.hoveredZoneIds.filter((z) => z !== id) : s.hoveredZoneIds,
     ...(s.zoneEditDraft?.id === id ? noZoneEdit : {}),
     ...(s.zoneCombine?.otherId === id ? { zoneCombine: { ...s.zoneCombine, otherId: null } } : {}),
     zoneColorOverrides: withoutKey(s.zoneColorOverrides, id),
@@ -142,7 +142,8 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   ...zonesInitialState,
 
   // Closing the panel is a cancel of an unconfirmed group edit.
-  setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null, hoveredZoneIds: [] })),
+  setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null })),
+  setZoneGroupsListMode: (mode) => set({ zoneGroupsListMode: mode, hoveredZoneId: null }),
   // The new group lives only as the editor's draft until "Done" (`commitZoneGroupEdit`).
   // While a new group is still being edited, adding again changes nothing: the editor stays as it is.
   addZoneGroup: () => set((s) => (s.zoneGroupEditIsNew && s.zoneGroupEditId !== null ? {} : {
@@ -155,6 +156,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   removeZoneGroup: (id) => set((s) => (isAutoGroupId(id) ? {} : {
     zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
     zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
+    ...(s.zonesFocusedGroupId === id ? { zonesFocusedGroupId: null } : {}),
     ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
   })),
   // `null` is "Done": the draft is confirmed. Opening another group drops the unconfirmed draft.
@@ -183,8 +185,21 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     : { ...discardingZoneEdit(s), zonesPanelOpen: false, hoveredZoneId: null })),
   setZonesListMode: (mode) => set({ zonesListMode: mode, hoveredZoneId: null }),
   setZonesGrouping: (mode, grouping) => set((s) => ({ zonesGrouping: { ...s.zonesGrouping, [mode]: grouping }, hoveredZoneId: null })),
+  showZonesOfGroup: (groupId) => set((s) => {
+    const group = s.zoneGroups.find((g) => g.id === groupId);
+    if (!group) return {};
+    const kinds = new Set(s.zones.filter((z) => group.zoneIds.includes(z.id)).map((z) => z.kind));
+    const mode = kinds.has(s.zonesListMode) || kinds.size === 0 ? s.zonesListMode : [...kinds][0];
+    return {
+      zonesFocusedGroupId: groupId,
+      zonesListMode: mode,
+      zonesGrouping: { ...s.zonesGrouping, [mode]: "group" },
+      zonesPanelOpen: true,
+      hoveredZoneId: null,
+    };
+  }),
+  clearZonesFocusedGroup: () => set({ zonesFocusedGroupId: null }),
   setHoveredZone: (id) => set({ hoveredZoneId: id }),
-  setHoveredZones: (ids) => set({ hoveredZoneIds: ids }),
   toggleZoneVisibility: (id) => set((s) => ({
     hiddenZoneIds: s.hiddenZoneIds.includes(id) ? s.hiddenZoneIds.filter((hidden) => hidden !== id) : [...s.hiddenZoneIds, id],
   })),

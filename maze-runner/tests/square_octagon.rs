@@ -47,8 +47,11 @@ fn non_tile_cell_is_rejected() {
 }
 
 /// The fixture plus a `cross_element_cell_type` rule over start/finish forbidding `forbidden`
-/// (GitHub issue #824). The rule has no strategy: the violation must stay reported.
-fn fixture_with_cell_type_rule(forbidden: &[&str]) -> maze_runner::config::GenerateConfig {
+/// (GitHub issue #824), repaired by `strategy` (`null` = no strategy: the violation stays reported).
+fn fixture_with_cell_type_rule_and_strategy(
+    forbidden: &[&str],
+    strategy: serde_json::Value,
+) -> maze_runner::config::GenerateConfig {
     let mut value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(FIXTURE).unwrap()).unwrap();
     let mut params = serde_json::json!({
@@ -70,9 +73,13 @@ fn fixture_with_cell_type_rule(forbidden: &[&str]) -> maze_runner::config::Gener
                 "type_id": "cross_element_cell_type",
                 "params": params,
             }],
-            "strategy": null,
+            "strategy": strategy,
         }));
     serde_json::from_value(value).unwrap()
+}
+
+fn fixture_with_cell_type_rule(forbidden: &[&str]) -> maze_runner::config::GenerateConfig {
+    fixture_with_cell_type_rule_and_strategy(forbidden, serde_json::Value::Null)
 }
 
 fn remaining_kinds(result: &maze_runner::MazeRunResult) -> Vec<&str> {
@@ -104,4 +111,39 @@ fn unknown_cell_type_key_is_a_config_error() {
         panic!("unknown cell type key must be rejected");
     };
     assert!(err.contains("unknown cell type `hexagon`"), "{err}");
+}
+
+/// `cross_element_remove` with its nested per-type strategy resolves through the runner (factory
+/// id, slot id, slot kind) and runs (GitHub issue #1060). Start and finish are never removable,
+/// so the violation survives: the strategy fails instead of erroring.
+#[test]
+fn cross_element_remove_resolves_and_keeps_unremovable_start_finish_violation() {
+    let strategy = serde_json::json!({
+        "id": "cross_element_remove",
+        "params": {},
+        "nested": [
+            { "id": "remove_teleport", "slot_id": "teleport_fix", "params": {} },
+            { "id": "one_way_to_wall", "slot_id": "one_way_fix", "params": {} },
+            { "id": "remove_vertical_passage", "slot_id": "vertical_passage_fix", "params": {} },
+            { "id": "remove_elevator_stop", "slot_id": "elevator_stop_fix", "params": {} },
+            { "id": "remove_split", "slot_id": "split_fix", "params": {} },
+        ],
+    });
+    let config = fixture_with_cell_type_rule_and_strategy(&["octagon", "square"], strategy);
+    let result = maze_runner::run_from_config(0, &config).unwrap();
+    assert_eq!(remaining_kinds(&result), vec!["invalid_cross_element"]);
+}
+
+#[test]
+fn cross_element_remove_rejects_an_unknown_nested_slot() {
+    let strategy = serde_json::json!({
+        "id": "cross_element_remove",
+        "params": {},
+        "nested": [{ "id": "remove_split", "slot_id": "nope", "params": {} }],
+    });
+    let config = fixture_with_cell_type_rule_and_strategy(&["octagon", "square"], strategy);
+    let Err(err) = maze_runner::run_from_config(0, &config) else {
+        panic!("unknown nested slot must be rejected");
+    };
+    assert!(err.contains("no nested slot \"nope\""), "{err}");
 }

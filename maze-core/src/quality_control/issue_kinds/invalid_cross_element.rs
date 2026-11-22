@@ -18,7 +18,7 @@ pub struct CrossElementCellViolation {
 
 /// Produced by `CrossElementCellTypeCheck`: elements of the selected kinds placed on cells of a
 /// forbidden cell type. Unlike `InvalidCrossElementGroupIssue`, each flagged element is invalid on
-/// its own (no pair, no `to_remove`). No repair strategy is registered for this kind.
+/// its own (no pair, no `to_remove`). Repaired by `CrossElementRemoveStrategy`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InvalidCrossElementIssue {
     meta: IssueMeta,
@@ -39,6 +39,19 @@ impl InvalidCrossElementIssue {
         Self {
             meta: IssueMeta::new_from_check(source_check),
             violations,
+            invalid_sources,
+        }
+    }
+
+    /// Removal request for one `element`, built by a group strategy that delegates the removal to
+    /// the nested `INVALID_CROSS_ELEMENT` strategy (GitHub issue #1060). Carries no violations — the
+    /// element is named through `invalid_sources` only, which is all a removal needs.
+    pub fn for_removal(source_check: &str, element: CrossElement) -> Self {
+        let mut invalid_sources = HashMap::new();
+        invalid_sources.insert(element, vec![source_check.to_string()]);
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            violations: Vec::new(),
             invalid_sources,
         }
     }
@@ -90,6 +103,17 @@ mod tests {
             node,
             cell_type: "triangle",
         }
+    }
+
+    #[test]
+    fn for_removal_names_only_the_element_through_invalid_sources() {
+        let issue = InvalidCrossElementIssue::for_removal("r:a", CrossElement::Finish(2));
+        assert!(issue.violations.is_empty());
+        assert_eq!(issue.invalid_sources.len(), 1);
+        assert_eq!(
+            issue.invalid_sources[&CrossElement::Finish(2)],
+            vec!["r:a".to_string()]
+        );
     }
 
     #[test]

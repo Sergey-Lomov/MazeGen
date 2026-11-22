@@ -434,7 +434,7 @@ export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overla
           onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
         />
       )}
-      <div ref={headerRef} className="side-panel-header" data-side-panel-region="header" style={styles.header}>
+      <div ref={headerRef} data-side-panel-region="header" style={styles.header}>
         <div style={styles.headerText}>
           <span style={typography.title}>{title}</span>
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
