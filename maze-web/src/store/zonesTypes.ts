@@ -19,6 +19,8 @@ export interface ZonesState {
   nextZoneGroupId: number;
   /** Whether the zone groups list side panel is open. */
   zoneGroupsPanelOpen: boolean;
+  /** The section of the groups list that is shown: the automatic groups or the manual ones. */
+  zoneGroupsListMode: ZonesListMode;
   /** The group whose zones the group panel lists; `null` while only the groups list shows. */
   zoneGroupEditId: number | null;
   /** Working copy of the group being edited; `zoneGroups` takes it only on "Done" (`commitZoneGroupEdit`), so the
@@ -43,10 +45,11 @@ export interface ZonesState {
   zonesListMode: ZonesListMode;
   /** How each section of the zones list folds its cards into collapsible sections; the two sections group independently. */
   zonesGrouping: Record<ZonesListMode, ZonesGrouping>;
+  /** A request (GitHub issue #1036) for the zones list to group by groups and open the section of this group; the
+   *  open list consumes it (`clearZonesFocusedGroup`), so one opened later still honours it. */
+  zonesFocusedGroupId: number | null;
   /** The zone whose list card is hovered; highlighted on the canvas regardless of its visibility. */
   hoveredZoneId: number | null;
-  /** The zones of the hovered group card (GitHub issue #1035), highlighted together; a `hoveredZoneId` wins. */
-  hoveredZoneIds: number[];
   /** The manual zone whose cells the shape tools edit (GitHub issue #1031); `null` while the list shows. */
   /** Working copy of the zone being edited. The shape tools and the properties write here; `zones` takes it
    *  only on "Done" (`commitZoneEdit`), so a zone list never shows a half-edited or not yet confirmed zone. */
@@ -74,6 +77,7 @@ export interface ZonesState {
 
 export interface ZonesActions {
   setZoneGroupsPanelOpen: (open: boolean) => void;
+  setZoneGroupsListMode: (mode: ZonesListMode) => void;
   /** Opens a new empty unnamed group in the group panel as a draft; it joins the list on "Done"; does nothing while a new group is being edited. */
   addZoneGroup: () => void;
   removeZoneGroup: (id: number) => void;
@@ -92,8 +96,11 @@ export interface ZonesActions {
   setZonesPanelOpen: (open: boolean) => void;
   setZonesListMode: (mode: ZonesListMode) => void;
   setZonesGrouping: (mode: ZonesListMode, grouping: ZonesGrouping) => void;
+  /** Opens the zones list grouped by groups, with only this group's section expanded (see `zonesFocusedGroupId`), on
+   *  the list section that holds the group's zones (the current one when it does). */
+  showZonesOfGroup: (groupId: number) => void;
+  clearZonesFocusedGroup: () => void;
   setHoveredZone: (id: number | null) => void;
-  setHoveredZones: (ids: number[]) => void;
   toggleZoneVisibility: (id: number) => void;
   /** Shows or hides all the given zones at once. */
   setZonesVisible: (ids: number[], visible: boolean) => void;

@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { Zone } from "../../wasm/mazeService";
 import { countZonesOfKind, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../domain/selectors/zoneSelectors";
+import { Bubble } from "../Bubble";
 import { Button } from "../Button";
+import { Tooltip } from "../Tooltip";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
 import { EntityColorSwatch, cssColor } from "../EntityColorSwatch";
@@ -11,11 +13,11 @@ import { FloorBadgeRow } from "../FloorBadgeRow";
 import { ListCell, ListCellAction } from "../ListCell";
 import { SidePanel } from "../SidePanel";
 import { startNewZone } from "./zoneEditorActions";
-import { groupZones, sortZones, type ZonesGrouping } from "../../store/zoneListSort";
+import { groupZones, sortZones, zoneGroupSectionKey, type ZonesGrouping } from "../../store/zoneListSort";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { Inline, Stack } from "../Layout";
-import { typography, disabled, spacing, ui } from "../../styles/theme";
+import { typography, disabled, indent, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 /** Zones list side panel of the zones card (GitHub issue #1030): a switch between the auto and the
@@ -33,13 +35,28 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
   const overrides = useMazeStore((s) => s.zoneColorOverrides);
   const colors = zoneColors(zones, overrides);
   const colorOf = new Map(zones.map((zone, index) => [zone.id, cssColor(colors[index])]));
+  const groups = useMazeStore((s) => s.zoneGroups);
   const shown = sortZones(zones.filter((zone) => zone.kind === mode));
   const grouping = useMazeStore((s) => s.zonesGrouping[mode]);
   const setGroupingOf = useMazeStore((s) => s.setZonesGrouping);
   const floors = useMazeStore((s) => s.floors);
   // Keys of the expanded sections; every grouping change collapses them all.
   const [expanded, setExpanded] = useState<string[]>([]);
-  const sections = groupZones(shown, grouping, floors);
+  const sections = groupZones(shown, grouping, floors, groups);
+  const focusedGroupId = useMazeStore((s) => s.zonesFocusedGroupId);
+  const clearFocusedGroup = useMazeStore((s) => s.clearZonesFocusedGroup);
+  const sectionRefs = useRef(new Map<string, HTMLElement>());
+
+  // A group bubble (or a group cell) asked for its section: only that one opens, and the list scrolls to it.
+  useEffect(() => {
+    if (focusedGroupId === null) return;
+    const key = zoneGroupSectionKey(focusedGroupId);
+    clearFocusedGroup();
+    setExpanded([key]);
+    // No cleanup: clearing the request re-runs this effect at once, and that must not cancel the scroll. A section
+    // that is gone by the next frame has dropped its ref, so the call does nothing.
+    requestAnimationFrame(() => sectionRefs.current.get(key)?.scrollIntoView?.({ block: "start", behavior: "smooth" }));
+  }, [focusedGroupId, clearFocusedGroup]);
   const hiddenIds = useMazeStore((s) => s.hiddenZoneIds);
   const setZonesVisible = useMazeStore((s) => s.setZonesVisible);
   const toggleSection = (key: string) => setExpanded((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
@@ -66,6 +83,7 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
             { value: "none", label: m["zones.group_none"]() },
             { value: "floor", label: m["zones.group_floor"]() },
             ...(mode === "auto" ? [{ value: "type" as const, label: m["zones.group_type"]() }] : []),
+            { value: "group", label: m["zones.group_by_group"]() },
           ]}
           onChange={(next) => { setGroupingOf(mode, next); setExpanded([]); }}
           testId="zones-grouping"
@@ -76,7 +94,11 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
         {grouping === "none"
           ? shown.map((zone) => <ZoneCell key={zone.id} zone={zone} color={colorOf.get(zone.id)!} />)
           : sections.map((section) => (
-            <div key={section.key} data-testid="zone-section">
+            <div
+              key={section.key}
+              data-testid="zone-section"
+              ref={(el) => { if (el) sectionRefs.current.set(section.key, el); else sectionRefs.current.delete(section.key); }}
+            >
               <div style={styles.sectionHeader}>
                 <SectionHeader
                   label={`${section.label} (${section.zones.length})`}
@@ -85,7 +107,11 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
                   actions={<SectionEye ids={section.zones.map((zone) => zone.id)} hiddenIds={hiddenIds} onSet={setZonesVisible} />}
                 />
               </div>
-              {expanded.includes(section.key) && section.zones.map((zone) => <ZoneCell key={zone.id} zone={zone} color={colorOf.get(zone.id)!} />)}
+              {expanded.includes(section.key) && (
+                <div style={styles.sectionBody}>
+                  {section.zones.map((zone) => <ZoneCell key={zone.id} zone={zone} color={colorOf.get(zone.id)!} />)}
+                </div>
+              )}
             </div>
           ))}
       </div>
@@ -137,9 +163,8 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
   const manual = zone.kind === "manual";
   const listActions = !onAdd && !onRemove;
   const groups = useMazeStore((s) => s.zoneGroups);
-  const groupNames = groups.filter((g) => g.zoneIds.includes(zone.id)).map(zoneGroupDisplayName);
-
-
+  const zoneGroups = groups.filter((g) => g.zoneIds.includes(zone.id));
+  const showZonesOfGroup = useMazeStore((s) => s.showZonesOfGroup);
   return (
     <>
       <ListCell
@@ -173,9 +198,19 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
         details={<CardDetails levels={zoneFloors(zone)}><span style={styles.hint}>{m["zones.cells_info"]({ count: zone.cells.length })}</span></CardDetails>}
       >
         {listActions && (
-          <span style={groupNames.length === 0 ? styles.placeholder : styles.hint} data-testid="zone-groups-line">
-            {groupNames.length === 0 ? m["zones.no_groups"]() : m["zones.groups_info"]({ names: groupNames.join(", ") })}
-          </span>
+          zoneGroups.length === 0 ? (
+            <span style={styles.placeholder} data-testid="zone-groups-line">{m["zones.no_groups"]()}</span>
+          ) : (
+            <div style={styles.bubbles} data-testid="zone-groups-line">
+              {zoneGroups.map((group) => (
+                <Tooltip key={group.id} content={m["zones.show_group_zones"]()}>
+                  <Bubble data-testid="zone-group-bubble" interactive onClick={() => showZonesOfGroup(group.id)}>
+                    {zoneGroupDisplayName(group)}
+                  </Bubble>
+                </Tooltip>
+              ))}
+            </div>
+          )
         )}
       </ListCell>
       {confirmingRemove && (
@@ -191,12 +226,15 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
 
 const styles: Record<string, React.CSSProperties> = {
   body: { padding: spacing.groupGap },
+  // The cards of an expanded section sit one level in from its header.
+  sectionBody: { paddingLeft: indent.tree },
   sectionHeader: { padding: `${spacing.groupGap}px`, borderBottom: `1px solid ${ui.border.default}` },
   groupingRow: { padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
   list: { display: "flex", flexDirection: "column", borderTop: `1px solid ${ui.border.default}` },
   empty: { ...disabled(typography.body), textAlign: "center", padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
   placeholder: { ...disabled(typography.body) },
   hint: { ...typography.body, color: ui.text.tertiary },
+  bubbles: { display: "flex", flexWrap: "wrap", gap: spacing.itemGap },
   details: { display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: spacing.itemGap, rowGap: spacing.itemGap, minWidth: 0, flex: 1 },
   sizes: { display: "inline-flex", gap: spacing.itemGap, whiteSpace: "nowrap" },
   badges: { flexShrink: 1, minWidth: 0 },

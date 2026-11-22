@@ -70,4 +70,15 @@ describe("groupZones", () => {
   it("by type: sections in alphabetical order of the type names", () => {
     expect(groupZones(zones, "type", floors).map((s) => s.zones.map((z) => z.name))).toEqual([["edge:0"], ["floor:1"], ["maze"], ["region:1:0"]]);
   });
+
+  it("by group: a section per group in the groups' order, a zone in every group it is in, the rest last", () => {
+    const groups = [
+      { id: 5, name: "B", zoneIds: [zones[1].id, zones[2].id] },
+      { id: 2, name: "A", zoneIds: [zones[2].id] },
+      { id: 9, name: "Empty", zoneIds: [] },
+    ];
+    const sections = groupZones(zones, "group", floors, groups);
+    expect(sections.map((s) => s.key)).toEqual(["group:5", "group:2", "group:none"]);
+    expect(sections.map((s) => s.zones.map((z) => z.name))).toEqual([["edge:0", "floor:1"], ["floor:1"], ["maze", "region:1:0"]]);
+  });
 });
