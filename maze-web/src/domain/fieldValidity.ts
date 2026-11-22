@@ -1,6 +1,6 @@
 import { encodePoint } from "./tessellationProjection";
 import type { Zone } from "../wasm/mazeService";
-import { presetEndpointFromKey, presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpointFromKey, presetEndpoint, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import {
   resolveCells, type ResolveFieldAt,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
@@ -115,6 +115,21 @@ export function computeInvalidEndpoint(
 ): boolean {
   const getFieldSet = fieldSetCache(resolveFieldAt);
   return endpoint != null && !pointInField(getFieldSet, endpoint.point, endpoint.level);
+}
+
+/** Keys of preset endpoints outside their own floor's field. This shares one field-cell cache for
+ * a whole list, so callers that need to mark individual coordinates need not re-resolve a field
+ * for every bubble. */
+export function computeInvalidPresetEndpointKeys(
+  endpoints: Iterable<PresetEndpoint>,
+  resolveFieldAt: ResolveFieldAt,
+): Set<string> {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const invalid = new Set<string>();
+  for (const endpoint of endpoints) {
+    if (!pointInField(getFieldSet, endpoint.point, endpoint.level)) invalid.add(presetEndpointKey(endpoint));
+  }
+  return invalid;
 }
 
 /** Keys of explicitly locked nodes outside their floor's field. */

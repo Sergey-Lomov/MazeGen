@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { canonicalize, edgeKey, computeAutoLockedNodes, applyTool, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, presetTeleportEntryToState, presetConnectionsOnLevel, cycleVerticalPassageDirection, presetVerticalPassageDirectionToDto, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, lockedNodesWithMovedLock } from "../domain/fieldEditUtils";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, moveVerticalPassageEndpoint, moveElevatorEndpoint } from "../domain/fieldValidity";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidPresetEndpointKeys, computeInvalidLockedNodeKeys, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, moveVerticalPassageEndpoint, moveElevatorEndpoint } from "../domain/fieldValidity";
 import { pickEdgeAtPosition } from "../domain/edgeHitTesting";
 import { presetEdgeKey, rotatePresetSplitPoint, rotatePresetSplitPointBreaksNeighborShape, resolvePresetPartnerAt, allNodesAt, presetSplitNodeFaceKinds } from "../domain/presetSplitResolve";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../domain/fieldEditUtils";
@@ -527,6 +527,22 @@ describe("computeInvalidEndpoint", () => {
     expect(computeInvalidEndpoint(presetEndpoint([50, 50]), resolveSquare)).toBe(true);
     expect(computeInvalidEndpoint(presetEndpoint([0, 0]), resolveSquare)).toBe(false);
     expect(computeInvalidEndpoint(null, resolveSquare)).toBe(false);
+  });
+});
+
+describe("computeInvalidPresetEndpointKeys", () => {
+  it("uses each endpoint's own floor when marking coordinate bubbles", () => {
+    const resolveByLevel: ResolveFieldAt = (level) => {
+      if ((level ?? 0) === 0) return { cfg: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) };
+      if (level === 1) return { cfg: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) };
+      return undefined;
+    };
+
+    expect(computeInvalidPresetEndpointKeys([
+      presetEndpoint([1, 1], undefined, 0),
+      presetEndpoint([1, 1], undefined, 1),
+      presetEndpoint([0, 0], undefined, 1),
+    ], resolveByLevel)).toEqual(new Set(["1,1@1"]));
   });
 });
 

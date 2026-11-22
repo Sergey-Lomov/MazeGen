@@ -1,7 +1,6 @@
 import { useColorVisibility } from "../ColorVisibilityContext";
 import type { LinkPath } from "../../store/parameterLinkSchema";
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { CornerStyle, MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode } from "../../domain/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
@@ -29,6 +28,7 @@ import type { FieldConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
 import { distributeOklchHues } from "../../domain/colorMath";
 import { Tooltip } from "../Tooltip";
+import { WarningIcon } from "../WarningIcon";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -210,9 +210,7 @@ function TeleportGroupCell({
           ))}
         </div>
         <div style={styles.groupCellHeader} onMouseEnter={hoverAll}>
-          <Tooltip content={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}><span style={styles.warningIcon}>
-            {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
-          </span></Tooltip>
+          {hasCollision && <WarningIcon title={m["image_export.vector_by_walls.teleport_group_collision"]()} />}
           <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
         </div>
       </div>
@@ -698,5 +696,4 @@ const styles: Record<string, React.CSSProperties> = {
   // Padding lives on the content-sized body, so it keeps the bubble highlight; the empty space to its right is the row itself and counts as the whole card.
   groupCellLinkBody: { padding: `${spacing.itemGap / 4}px 0` },
   groupCellControls: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap },
-  warningIcon: { display: "inline-flex", alignItems: "center", cursor: "default", width: 13 },
 };

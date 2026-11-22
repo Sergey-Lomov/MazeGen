@@ -1,5 +1,5 @@
 import React from "react";
-import { typography } from "../styles/theme";
+import { AlertTriangle } from "lucide-react";
 import * as m from "~/paraglide/messages";
 import { notificationPalette, type NotificationSeverity } from "./EmbeddedNotification";
 import { Tooltip } from "./Tooltip";
@@ -18,15 +18,19 @@ interface Props {
 export function WarningIcon({ title, severity = "warning" }: Props) {
   return (
     <Tooltip content={title ?? m["strategy.experimental_warning"]()}>
-      <span style={{ ...styles.icon, color: notificationPalette(severity).text }}>⚠</span>
+      <span style={{ ...styles.icon, color: notificationPalette(severity).text }}><AlertTriangle size={16} /></span>
     </Tooltip>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   icon: {
-    ...typography.icon,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 16,
+    height: 16,
     flexShrink: 0,
-    lineHeight: 1,
+    lineHeight: 0,
   },
 };

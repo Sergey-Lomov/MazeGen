@@ -5,11 +5,13 @@ import { useMazeStore } from "../../store/mazeStore";
 import { type PresetConnectionEntry, type PresetElevatorEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry } from "../../domain/fieldEditUtils";
 import { canonicalizePresetPair, presetEdgeKey, presetSplitPointKey } from "../../domain/presetSplitResolve";
 import type { PresetPointEntityDescriptor } from "../../domain/pointEntities";
-import { type PresetEndpoint } from "../../domain/presetEndpoint";
+import { presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
 import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
 import { buildCellSet } from "../../domain/selectors/sharedSelectors";
 import { formatTargetLabel } from "../../domain/targetLabel";
+import { computeInvalidPresetEndpointKeys } from "../../domain/fieldValidity";
+import { resolveFieldAtOf } from "../../store/storeHelpers";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeLockKind } from "../../wasm/types";
 import { useLocale } from "../../i18n/useLocale";
@@ -19,6 +21,7 @@ import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { ToolIconButton } from "../ToolIconButton";
 import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
+import { WarningIcon } from "../WarningIcon";
 import { Button } from "../Button";
 import { ListCell, ListCellAction } from "../ListCell";
 import { SettingsListCellAction } from "../SettingsListCellAction";
@@ -53,6 +56,7 @@ export interface PresetListFilters {
 export interface PresetListBubble {
   text: string;
   endpoint: PresetEndpoint;
+  invalid: boolean;
 }
 
 export type PresetListControl =
@@ -89,6 +93,7 @@ export interface PresetListInput {
   presetSplitShapeLabels?: Record<string, string>;
   presetEntityOrder?: string[];
   splitCtx?: PresetSplitLabelContext | null;
+  invalidEndpointKeys?: ReadonlySet<string>;
   multiFloor: boolean;
 }
 
@@ -106,8 +111,9 @@ function bubble(
   endpoint: PresetEndpoint,
   multiFloor: boolean,
   splitCtx: PresetSplitLabelContext | null | undefined,
+  invalidEndpointKeys: ReadonlySet<string> | undefined,
 ): PresetListBubble {
-  return { text: endpointText(endpoint, multiFloor, splitCtx), endpoint };
+  return { text: endpointText(endpoint, multiFloor, splitCtx), endpoint, invalid: invalidEndpointKeys?.has(presetEndpointKey(endpoint)) ?? false };
 }
 
 function edgeTitle(state: PresetConnectionEntry["state"]): string {
@@ -198,7 +204,7 @@ function descriptor(kind: PresetPointEntityDescriptor["kind"], id: string, endpo
  * a title/id row and a coordinate-bubble/action row. */
 export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
   const { multiFloor } = input;
-  const pointBubble = (endpoint: PresetEndpoint) => bubble(endpoint, multiFloor, input.splitCtx);
+  const pointBubble = (endpoint: PresetEndpoint) => bubble(endpoint, multiFloor, input.splitCtx, input.invalidEndpointKeys);
   const cells: PresetListCell[] = [];
   const add = (cell: PresetListCell) => cells.push(cell);
   const splitKeys = new Set(Object.entries(input.presetSplitPoints)
@@ -313,7 +319,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: "split",
       title,
       id: input.presetSplitPointIds?.[key] ?? `s${Object.keys(input.presetSplitPoints).indexOf(key) + 1}`,
-      bubbles: [pointBubble(endpoint)],
+      bubbles: [bubble(endpoint, multiFloor, undefined, input.invalidEndpointKeys)],
       control: { kind: "split", endpoint },
       entityHighlightMode: "outset",
       descriptor: descriptor("split_node", `split:${key}`, endpoint, title),
@@ -361,6 +367,11 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   const activeSplitNode = useMazeStore((s) => s.presetActiveSplitNode);
   const floorFields = useMazeStore((s) => s.floorFields);
   const floors = useMazeStore((s) => s.floors);
+  const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
+  const hexOrientation = useMazeStore((s) => s.hexOrientation);
+  const triOrientation = useMazeStore((s) => s.triOrientation);
   const cyclePresetConnectionDirection = useMazeStore((s) => s.cyclePresetConnectionDirection);
   const cyclePresetTeleportDirection = useMazeStore((s) => s.cyclePresetTeleportDirection);
   const cyclePresetVerticalPassageDirection = useMazeStore((s) => s.cyclePresetVerticalPassageDirection);
@@ -375,6 +386,25 @@ export function PresetList({ onClose }: { onClose: () => void }) {
     () => new Set(PRESET_LIST_TYPES.filter((type) => !PRESET_LIST_TYPES_OFF_BY_DEFAULT_SET.has(type))),
   );
   const [floorFilter, setFloorFilter] = useState<PresetListFloor>("all");
+  const invalidEndpointKeys = useMemo(() => {
+    const endpoints: PresetEndpoint[] = [
+      ...Array.from(presetConnections.values()).flatMap(({ from, to }) => [from, to]),
+      ...[presetStart, presetFinish, presetGenSource].filter((endpoint): endpoint is PresetEndpoint => endpoint !== null),
+      ...presetTeleports.flatMap(({ from, to }) => [from, to]),
+      ...presetVerticalPassages.flatMap(({ from, to }) => [from, to]),
+      ...presetElevators.flatMap(({ floors: endpoints }) => endpoints),
+      ...Array.from(lockedNodes.keys()).flatMap((key) => {
+        const endpoint = presetEndpointFromKey(key);
+        return endpoint ? [endpoint] : [];
+      }),
+      ...Object.keys(presetSplitPoints).flatMap((key) => {
+        const endpoint = presetEndpointFromKey(key);
+        return endpoint ? [endpoint] : [];
+      }),
+    ];
+    const resolveFieldAt = resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives });
+    return computeInvalidPresetEndpointKeys(endpoints, resolveFieldAt);
+  }, [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives]);
   const splitLabelContext = useMemo<PresetSplitLabelContext | null>(() => {
     const fallbackField = floors[0] ? floorFields[floors[0].id] : undefined;
     if (!fallbackField) return null;
@@ -407,8 +437,9 @@ export function PresetList({ onClose }: { onClose: () => void }) {
     presetSplitShapeLabels,
     presetEntityOrder,
     splitCtx: splitLabelContext,
+    invalidEndpointKeys,
     multiFloor: floors.length > 1,
-  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, splitLabelContext, floors.length]);
+  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, splitLabelContext, invalidEndpointKeys, floors.length]);
   const visibleCells = useMemo(
     () => filterPresetListCells(cells, { types: selectedTypes, floor: floorFilter }),
     [cells, selectedTypes, floorFilter],
@@ -503,12 +534,12 @@ export function PresetList({ onClose }: { onClose: () => void }) {
                   setPresetHoveredEntity(null);
                 } else {
                   setPresetHoveredLink(null);
-                  setPresetHoveredEntity(cell.bubbles.map((item) => item.endpoint), cell.entityHighlightMode);
+                  setPresetHoveredEntity(cell.bubbles.map((item) => item.endpoint), cell.entityHighlightMode, cell.bubbles.filter((item) => item.invalid).map((item) => item.endpoint));
                 }
               }}
               onHoverBubble={(bubble) => {
                 setPresetHoveredLink(null);
-                setPresetHoveredEntity([bubble.endpoint], cell.entityHighlightMode);
+                setPresetHoveredEntity([bubble.endpoint], cell.entityHighlightMode, bubble.invalid ? [bubble.endpoint] : []);
               }}
               onLeave={() => { setPresetHoveredLink(null); setPresetHoveredEntity(null); }}
             />)}
@@ -555,6 +586,7 @@ function PresetCell({
       onMouseLeave={onLeave}
       title={cell.title}
       truncateTitle
+      titleAddon={cell.bubbles.some((bubble) => bubble.invalid) && <WarningIcon title={m["preset.element_outside_field"]()} />}
       badge={cell.id !== undefined && <IdBubble id={cell.id} />}
       details={(
         <div style={styles.bubbles}>
@@ -563,6 +595,7 @@ function PresetCell({
               {index > 0 && cell.arrow && <BubbleArrow>{cell.arrow}</BubbleArrow>}
               <Bubble
                 interactive
+                variant={item.invalid ? "warning" : "neutral"}
                 style={styles.bubble}
                 onMouseEnter={() => onHoverBubble(item)}
                 onMouseLeave={onHoverCell}

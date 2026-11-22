@@ -145,6 +145,13 @@ A teleport is **invalid** if either endpoint is outside the current field (`comp
 - are removed by "Clear invalid" alongside invalid edge presets
 - get a dedicated invalid-cell fill at each visible endpoint (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on; point invalidity is never represented by a square or circle outline
 
+The preset list shows a warning icon beside the id of every entry with at least one endpoint outside
+its own floor's field. Its tooltip identifies the outside-field condition. Each coordinate bubble is
+validated independently, so an entry with several coordinates marks only its invalid bubbles.
+The Problems section includes one outside-field warning with the total number of invalid preset
+entities and floor badges for the floors containing invalid endpoints. Hovering it enables the same
+canvas highlight as "Clear invalid".
+
 `presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
 
 ### Unresolvable endpoints
@@ -585,7 +592,7 @@ no connection, teleport, start/finish, or generation-source entry is reported as
 intentional behavior and must not be changed by treating `undefined` as equivalent to an absent
 entry.
 
-The Preset Connections panel always renders its Problems subsection header, even when there are no isolated nodes or orphan split points. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump.
+The Preset Connections panel always renders its Problems subsection header, even when there are no isolated nodes or orphan split points. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump. Isolated-node detection spans every floor, so its warning persists as the active floor changes; in a multi-floor project its badges cover every floor with an isolated node. Its canvas hover highlight remains limited to the active floor, matching the field currently visible.
 
 ### Rendering
 
