@@ -15,7 +15,7 @@ import { groupZones, sortZones, type ZonesGrouping } from "../../store/zoneListS
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { Inline, Stack } from "../Layout";
-import { typography, disabled, muted, spacing, ui } from "../../styles/theme";
+import { typography, disabled, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 /** Zones list side panel of the zones card (GitHub issue #1030): a switch between the auto and the
@@ -112,6 +112,17 @@ function SectionEye({ ids, hiddenIds, onSet }: { ids: number[]; hiddenIds: numbe
   );
 }
 
+/** The details row of a zone or group card: the sizes, then the floor badges on the same line when they fit, else on
+ *  their own line, wrapping over several lines when even that is too narrow. */
+export function CardDetails({ levels, children }: { levels: number[]; children: React.ReactNode }) {
+  return (
+    <div style={styles.details}>
+      <span style={styles.sizes}>{children}</span>
+      <FloorBadgeRow levels={levels} style={styles.badges} />
+    </div>
+  );
+}
+
 /** One zone card. By default it carries the list's actions; `onAdd` leaves a single add icon (a group's
  *  candidates), `onRemove` a single delete icon (a group's zones). */
 export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: string; onAdd?: () => void; onRemove?: () => void }) {
@@ -159,12 +170,7 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
             )}
           </>
         )}
-        details={
-          <>
-            <span style={styles.hint}>{m["zones.cells_info"]({ count: zone.cells.length })}</span>
-            <FloorBadgeRow levels={zoneFloors(zone)} />
-          </>
-        }
+        details={<CardDetails levels={zoneFloors(zone)}><span style={styles.hint}>{m["zones.cells_info"]({ count: zone.cells.length })}</span></CardDetails>}
       >
         {listActions && (
           <span style={groupNames.length === 0 ? styles.placeholder : styles.hint} data-testid="zone-groups-line">
@@ -190,5 +196,8 @@ const styles: Record<string, React.CSSProperties> = {
   list: { display: "flex", flexDirection: "column", borderTop: `1px solid ${ui.border.default}` },
   empty: { ...disabled(typography.body), textAlign: "center", padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
   placeholder: { ...disabled(typography.body) },
-  hint: { ...muted(typography.body) },
+  hint: { ...typography.body, color: ui.text.tertiary },
+  details: { display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: spacing.itemGap, rowGap: spacing.itemGap, minWidth: 0, flex: 1 },
+  sizes: { display: "inline-flex", gap: spacing.itemGap, whiteSpace: "nowrap" },
+  badges: { flexShrink: 1, minWidth: 0 },
 };

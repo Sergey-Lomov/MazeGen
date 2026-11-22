@@ -5,7 +5,7 @@ import { brightColor, colorToRgb, rgbToColor } from "../colorMath";
 import { canvas } from "../colorTokens";
 import { COMPONENT_MASK_ALPHA } from "../renderConstants";
 import type { FloorState } from "../../store/floorsTypes";
-import { autoZoneName } from "../autoZones";
+import { autoGroupName, autoZoneName } from "../autoZones";
 import * as m from "~/paraglide/messages";
 
 type FloorTitles = readonly Pick<FloorState, "title" | "titleCustomized">[];
@@ -119,8 +119,10 @@ export function zoneFloors(zone: Zone): number[] {
   return [...new Set(zone.cells.map(([floor]) => floor))].sort((a, b) => a - b);
 }
 
-/** Display name of a zone group: its name, or "Group #id" while unnamed. */
+/** Display name of a zone group: an automatic group's name built from its id, else its own name, or "Group #id" while unnamed. */
 export function zoneGroupDisplayName(group: { id: number; name: string }): string {
+  const auto = autoGroupName(group);
+  if (auto !== null) return auto;
   return group.name === "" ? m["zone_groups.default_name"]({ id: group.id }) : group.name;
 }
 

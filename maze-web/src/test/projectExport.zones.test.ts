@@ -35,6 +35,16 @@ describe("zones and zone groups (GitHub issue #1048)", () => {
     expect(file.zones?.colorOverrides).toEqual({ [String(autoId)]: 0x00ff00 });
   });
 
+  it("does not save automatic groups (GitHub issue #1037), nor a section holding only them, and drops one on load", () => {
+    const autoGroup = { id: 2 ** 30 + 2 * 2 ** 22, name: "", zoneIds: [2 ** 30 + 2 * 2 ** 22] };
+    expect(serializeProject(makeState({ zoneGroups: [autoGroup] })).zones).toBeUndefined();
+    const state = makeState({ zones: [zone(1)], nextZoneId: 2, zoneGroups: [autoGroup, { id: 1, name: "G", zoneIds: [1] }], nextZoneGroupId: 2 });
+    expect(reparse(state).zones?.groups).toEqual([{ id: 1, name: "G", zoneIds: [1] }]);
+    const raw = toJson(makeState({ zones: [zone(1)], nextZoneId: 2 }));
+    raw.zones.groups = [autoGroup, { id: 1, name: "G", zoneIds: [1] }];
+    expect(parseAndValidate(raw).zones?.groups).toEqual([{ id: 1, name: "G", zoneIds: [1] }]);
+  });
+
   it("round-trips an empty group and an empty zone", () => {
     const state = makeState({ zones: [zone(1, [])], nextZoneId: 2, zoneGroups: [{ id: 1, name: "", zoneIds: [] }], nextZoneGroupId: 2 });
     const file = reparse(state);

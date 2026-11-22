@@ -222,6 +222,10 @@ A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.
   no top separator. The picker dialog has no separators and a full-width "New group" button. The zone editor's
   Intersections bubbles use the same zone colours as the group cards' (`zoneChipColors`).
 - Deleting a zone drops its id from every group and from the group draft (`withoutZone`).
+- Automatic groups (see "Automatic zones") sit first in the list as plain cards: no pencil or trash, and the zone picker
+  dialog leaves them out. Zone and group cards share `CardDetails` (`ZonesPanel.tsx`): the sizes, then the `L{n}` floor
+  badges on the same line when they fit, else on their own line, wrapping over several lines when still too narrow.
+  Sizes and the groups line use `ui.text.tertiary`.
 
 ## Automatic zones (GitHub issue #1033)
 
@@ -273,6 +277,13 @@ Web (`store/autoZones.ts`, `store/autoZoneSync.ts`):
   Only a change of the cells, creases, folds or tessellation of a floor counts: the tool, the operation and the edit
   flags of `floorFields` do not. `computeAutoZones` keeps the last request and its zones and answers an equal request
   without calling wasm (the returned zones are shared, read-only).
+- Automatic groups (GitHub issue #1037), computed with the auto zones by `autoGroupsOf` and written to `zoneGroups`
+  first (manual groups after): "Floors", "Field edges", "Regions", "Faces" (every zone of that kind) and one group per
+  cell type (all zones of that type across floors, named by the type). The whole maze zone has no group. A group exists
+  only while it has a zone to collect, so a tessellation with no cell type zones has no cell type groups. Group ids use
+  the auto id range (`autoGroupIdOf`, `isAutoGroupId`: `2^30 + kind * 2^22 + index`), names are built from the id
+  (`autoGroupName`, a cell type group keeps the type key as `name`). They cannot be deleted or edited (the store actions
+  ignore them, the cards have no pencil or trash), a manual zone cannot join one, and they are neither saved nor loaded.
 - Auto zones are not written to the project file and are dropped on load; group members and colour overrides naming
   an auto id are kept by the validator.
 - A zone's automatic colour is its position among the zones of its kind, so the changing set of auto zones never

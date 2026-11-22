@@ -3,7 +3,8 @@ import type { MazeState } from "./storeTypes";
 import { activeFloorTessellationOf, floorTessellationOf } from "./storeHelpers";
 import { fieldConfigToWasm } from "./slices/generateConfigBuilder";
 import { configAllCells } from "../domain/tessellationCells";
-import { autoZoneIdOf } from "../domain/autoZones";
+import type { ZoneGroup } from "./zonesTypes";
+import { autoGroupIdOf, autoZoneIdOf, autoZoneIndexOf, autoZoneKindOf, isAutoGroupId, type AutoGroupKind } from "../domain/autoZones";
 
 /** The request for `computeAutoZones`, or `null` while there is nothing to send (no floor has a cell). */
 export function buildAutoZonesRequest(state: MazeState): { tessellation: ReturnType<typeof fieldConfigToWasm>; floors: AutoZoneFloorWire[] } | null {
@@ -34,6 +35,42 @@ export function autoZonesFromWire(wire: AutoZoneWire[], typeKeys: readonly strin
     const name = typeIndex === null ? "" : typeKeys[typeIndex] ?? "";
     return [{ id, name, kind: "auto", cells: zone.cells }];
   });
+}
+
+const AUTO_GROUP_ORDER: readonly AutoGroupKind[] = ["floor", "edge", "region", "face", "type"];
+
+/** The automatic groups of `zones` (GitHub issue #1037), in order: floors, field edges, regions, faces, then one per cell
+ *  type. A group exists only while it has a zone to collect, so a tessellation of one cell type (no cell type zones)
+ *  has no cell type groups. A cell type group takes the type's key (the `name` of its zones) as its `name`. */
+export function autoGroupsOf(zones: Zone[]): ZoneGroup[] {
+  const members = new Map<number, ZoneGroup>();
+  const add = (kind: AutoGroupKind, zone: Zone, index = 0, name = "") => {
+    const id = autoGroupIdOf(kind, index);
+    const group = members.get(id);
+    if (group) group.zoneIds.push(zone.id);
+    else members.set(id, { id, name, zoneIds: [zone.id] });
+  };
+  for (const zone of zones) {
+    const kind = autoZoneKindOf(zone.id);
+    if (kind === null || kind === "maze") continue;
+    add(kind, zone, kind === "type" ? autoZoneIndexOf(zone.id) : 0, kind === "type" ? zone.name : "");
+  }
+  // Ids already order kinds by `KIND_CODES` (floor, edge, face, region, type), so the wanted order is a rank by kind, then id.
+  const rank = (group: ZoneGroup) => AUTO_GROUP_ORDER.indexOf(autoZoneKindOf(group.id) as AutoGroupKind);
+  return [...members.values()].sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+}
+
+/** The groups with the automatic ones replaced by `auto`: automatic groups first, manual ones in their order. */
+export function withAutoGroups(groups: ZoneGroup[], auto: ZoneGroup[]): ZoneGroup[] {
+  return [...auto, ...groups.filter((group) => !isAutoGroupId(group.id))];
+}
+
+/** Whether two group lists hold the same automatic groups (id, name and members). */
+export function sameAutoGroups(a: ZoneGroup[], b: ZoneGroup[]): boolean {
+  const autoA = a.filter((group) => isAutoGroupId(group.id));
+  const autoB = b.filter((group) => isAutoGroupId(group.id));
+  return autoA.length === autoB.length && autoA.every((group, i) => group.id === autoB[i].id && group.name === autoB[i].name
+    && group.zoneIds.length === autoB[i].zoneIds.length && group.zoneIds.every((id, k) => id === autoB[i].zoneIds[k]));
 }
 
 /** The zones with the automatic ones replaced by `auto`: automatic zones first, manual ones in their order. */

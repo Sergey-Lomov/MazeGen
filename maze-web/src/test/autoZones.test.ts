@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
-import { autoZoneIdOf, autoZoneKindOf, autoZoneName, floorName } from "../domain/autoZones";
-import { autoZonesFromWire, sameAutoZones, withAutoZones } from "../store/autoZones";
+import { autoGroupIdOf, autoZoneIdOf, autoZoneKindOf, autoZoneName, floorName } from "../domain/autoZones";
+import { autoGroupsOf, autoZonesFromWire, sameAutoGroups, sameAutoZones, withAutoGroups, withAutoZones } from "../store/autoZones";
 import { zoneDisplayName } from "../domain/selectors/zoneSelectors";
 import { zoneTypeLabel } from "../store/zoneListSort";
 import { cellTypeLabel } from "../i18n/cellTypeLabel";
@@ -32,6 +32,45 @@ describe("auto zone ids", () => {
     expect(autoZoneIdOf("edge:256")).toBeNull();
     expect(autoZoneIdOf("region:0:16384")).toBeNull();
     expect(autoZoneKindOf(7)).toBeNull();
+  });
+});
+
+describe("autoGroupsOf", () => {
+  const typed = (key: string, name: string): Zone => ({ ...auto(key), name });
+
+  it("collects zones by kind, in order, and one group per cell type across floors", () => {
+    const zones = [auto("maze"), auto("floor:0"), auto("floor:1"), typed("type:0:1", "b"), typed("type:1:1", "b"), typed("type:0:0", "a"), auto("edge:0"), auto("edge:1"), auto("face:0:0"), auto("region:1:0")];
+    const groups = autoGroupsOf(zones);
+    expect(groups.map((g) => autoZoneKindOf(g.id))).toEqual(["floor", "edge", "region", "face", "type", "type"]);
+    expect(groups[0].zoneIds).toEqual([zones[1].id, zones[2].id]);
+    expect(groups[4]).toMatchObject({ id: autoGroupIdOf("type", 0), name: "a", zoneIds: [zones[5].id] });
+    expect(groups[5]).toMatchObject({ id: autoGroupIdOf("type", 1), name: "b", zoneIds: [zones[3].id, zones[4].id] });
+  });
+
+  it("makes no group without zones to collect, and none for the whole maze zone", () => {
+    expect(autoGroupsOf([auto("maze")])).toEqual([]);
+    expect(autoGroupsOf([auto("maze"), auto("edge:0")]).map((g) => autoZoneKindOf(g.id))).toEqual(["edge"]);
+  });
+
+  it("keeps manual groups after the automatic ones and compares automatic ones only", () => {
+    const groups = autoGroupsOf([auto("edge:0")]);
+    const manualGroup = { id: 3, name: "M", zoneIds: [] };
+    expect(withAutoGroups([manualGroup, ...autoGroupsOf([auto("floor:0")])], groups)).toEqual([...groups, manualGroup]);
+    expect(sameAutoGroups([manualGroup, ...groups], groups)).toBe(true);
+    expect(sameAutoGroups(groups, [])).toBe(false);
+  });
+
+  it("cannot be deleted or edited", () => {
+    const [group] = autoGroupsOf([auto("edge:0")]);
+    useMazeStore.setState({ ...zonesInitialState, zones: [auto("edge:0")], zoneGroups: [group] });
+    const s = useMazeStore.getState();
+    s.removeZoneGroup(group.id);
+    s.setZoneGroupEditId(group.id);
+    s.setZoneGroupName(group.id, "X");
+    s.addZonesToGroup(group.id, [auto("edge:0").id]);
+    s.removeZoneFromGroup(group.id, auto("edge:0").id);
+    expect(useMazeStore.getState().zoneGroups).toEqual([group]);
+    expect(useMazeStore.getState().zoneGroupEditId).toBeNull();
   });
 });
 

@@ -2,7 +2,7 @@ import type { ProjectFileZones } from "./types";
 import type { Zone, ZoneCellWire, ZoneKind } from "../../wasm/mazeService";
 import type { ZoneGroup } from "../zonesTypes";
 import { assertArray, assertNumber, assertObject, assertString } from "./validatePrimitives";
-import { isAutoZoneId } from "../../domain/autoZones";
+import { isAutoGroupId, isAutoZoneId } from "../../domain/autoZones";
 
 const ZONE_KINDS: readonly ZoneKind[] = ["auto", "manual"];
 
@@ -45,14 +45,16 @@ export function validateZones(raw: unknown, path: string): ProjectFileZones {
   }
 
   const groupIds = new Set<number>();
-  const groups = assertArray(obj.groups ?? [], `${path}.groups`).map((g, i): ZoneGroup => {
+  const groups = assertArray(obj.groups ?? [], `${path}.groups`).flatMap((g, i): ZoneGroup[] => {
     const where = `${path}.groups[${i}]`;
     const group = assertObject(g, where);
     const id = assertId(group.id, `${where}.id`);
     if (groupIds.has(id)) throw new Error(`${path}.groups: duplicate group id ${id}`);
     groupIds.add(id);
     const members = assertArray(group.zoneIds, `${where}.zoneIds`).map((z, k) => assertId(z, `${where}.zoneIds[${k}]`));
-    return { id, name: assertString(group.name, `${where}.name`), zoneIds: [...new Set(members)].filter((z) => zoneIds.has(z) || isAutoZoneId(z)) };
+    // Automatic groups are computed, never saved: one in a file is dropped (GitHub issue #1037).
+    if (isAutoGroupId(id)) return [];
+    return [{ id, name: assertString(group.name, `${where}.name`), zoneIds: [...new Set(members)].filter((z) => zoneIds.has(z) || isAutoZoneId(z)) }];
   });
 
   const overridesObj = obj.colorOverrides == null ? {} : assertObject(obj.colorOverrides, `${path}.colorOverrides`);

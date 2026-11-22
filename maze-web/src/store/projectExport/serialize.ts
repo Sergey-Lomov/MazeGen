@@ -1,6 +1,7 @@
 import type { MazeState } from "../mazeStore";
 import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport, type ProjectFileQuality } from "./types";
 import { decodePoint } from "../../domain/tessellationProjection";
+import { isAutoGroupId } from "../../domain/autoZones";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
 
@@ -55,12 +56,12 @@ export function serializeProject(state: MazeState): ProjectFile {
     floorFields,
     floorTopology: state.floorTopology,
     ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
-    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.length > 0
+    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.some((group) => !isAutoGroupId(group.id))
       ? {
           zones: {
             zones: state.zones.filter((zone) => zone.kind !== "auto"),
             nextZoneId: state.nextZoneId,
-            groups: state.zoneGroups,
+            groups: state.zoneGroups.filter((group) => !isAutoGroupId(group.id)),
             nextGroupId: state.nextZoneGroupId,
             colorOverrides: state.zoneColorOverrides,
           },

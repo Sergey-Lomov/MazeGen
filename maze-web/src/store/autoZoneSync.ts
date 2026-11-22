@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import { computeAutoZones, getTessellationCellTypes } from "../wasm/mazeService";
 import type { MazeStore } from "./storeTypes";
-import { autoZonesFromWire, cellTypeIndexOfKey, buildAutoZonesRequest, sameAutoZones, withAutoZones } from "./autoZones";
+import { autoGroupsOf, autoZonesFromWire, cellTypeIndexOfKey, buildAutoZonesRequest, sameAutoGroups, sameAutoZones, withAutoGroups, withAutoZones } from "./autoZones";
 
 /** How long the field must stay unchanged before the automatic zones are recomputed (GitHub issue #1033). */
 export const AUTO_ZONES_DEBOUNCE_MS = 150;
@@ -39,7 +39,8 @@ export function refreshAutoZones(store: StoreApi<MazeStore>): void {
     ? getTessellationCellTypes({ tessellation: request.tessellation, points: [] }).keys
     : [];
   const zones = autoZonesFromWire(wire, typeKeys);
-  if (sameAutoZones(state.zones, zones)) return;
+  const groups = autoGroupsOf(zones);
+  if (sameAutoZones(state.zones, zones) && sameAutoGroups(state.zoneGroups, groups)) return;
   const ids = new Set(zones.map((zone) => zone.id));
   const known = new Set(state.zones.filter((zone) => zone.kind === "auto").map((zone) => zone.id));
   const gone = [...known].filter((id) => !ids.has(id));
@@ -48,6 +49,7 @@ export function refreshAutoZones(store: StoreApi<MazeStore>): void {
   const hiddenZoneIds = [...state.hiddenZoneIds.filter((id) => !gone.includes(id)), ...added.filter((id) => !state.hiddenZoneIds.includes(id))];
   store.setState({
     zones: withAutoZones(state.zones, zones),
+    zoneGroups: withAutoGroups(state.zoneGroups, groups),
     hiddenZoneIds,
     ...(gone.length > 0
       ? {

@@ -6,7 +6,6 @@ import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { zoneChipColors, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../../domain/selectors/zoneSelectors";
 import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { Button } from "../Button";
-import { FloorBadgeRow } from "../FloorBadgeRow";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
 import { cssColor } from "../EntityColorSwatch";
@@ -16,8 +15,9 @@ import { Tooltip } from "../Tooltip";
 import { SidePanel } from "../SidePanel";
 import { Stack } from "../Layout";
 import { TextFieldRow } from "../TextFieldRow";
-import { typography, disabled, muted, spacing, ui } from "../../styles/theme";
-import { ZoneCell } from "./ZonesPanel";
+import { typography, disabled, spacing, ui } from "../../styles/theme";
+import { isAutoGroupId } from "../../domain/autoZones";
+import { CardDetails, ZoneCell } from "./ZonesPanel";
 import { startNewGroup } from "./zoneEditorActions";
 import * as m from "~/paraglide/messages";
 
@@ -80,18 +80,17 @@ export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => 
         title={name}
         truncateTitle
         actionsPlacement="title"
-        actions={onPick ? undefined : (
+        actions={onPick || isAutoGroupId(group.id) ? undefined : (
           <>
             <EditIconButton title={m["zone_groups.edit"]()} onClick={() => setEditing(group.id)} />
             <ListCellAction action="delete" title={m["zone_groups.delete"]()} danger onAction={() => setConfirmingRemove(true)} />
           </>
         )}
         details={
-          <>
+          <CardDetails levels={floors}>
             <span style={styles.hint}>{m["zone_groups.zones_info"]({ count: members.length })}</span>
             <span style={styles.hint}>{m["zone_groups.cells_info"]({ count: cellCount })}</span>
-            <FloorBadgeRow levels={floors} />
-          </>
+          </CardDetails>
         }
       >
         {members.length > 0 && (
@@ -200,5 +199,5 @@ const styles: Record<string, React.CSSProperties> = {
   // No separator above a placeholder: it has nothing to separate.
   listBare: { display: "flex", flexDirection: "column" },
   empty: { ...disabled(typography.body), textAlign: "center", padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
-  hint: { ...muted(typography.body) },
+  hint: { ...typography.body, color: ui.text.tertiary },
 };
