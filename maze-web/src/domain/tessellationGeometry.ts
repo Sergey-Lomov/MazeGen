@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { cellAtSpacePoint, getCellGeometry, getCellOutline, getLightCellGeometry, type CellGeometryEntry, type LightCellGeometry } from "./cartesianCache";
+import { cellAtSpacePoint, getCellGeometry, getLightCellGeometry, type CellGeometryEntry, type LightCellGeometry } from "./cartesianCache";
 import { getCellsInRegion, getRegionEdges, type RegionMode } from "../wasm/mazeService";
 import type { PathCommand } from "../wasm/mazeService";
 import { rotationTransform, splitShapeBinding } from "./splitShape";
@@ -127,26 +127,6 @@ export function getCellPath(x: number, y: number, cfg: FieldConfig): readonly Pa
   let commands = byTransform.get(t);
   if (!commands) {
     commands = geometry.boundary.commands.map((command) => transformCommand(t, command));
-    byTransform.set(t, commands);
-  }
-  return commands;
-}
-
-const outlinePathCache = new WeakMap<readonly PathCommand[], Map<WorldTransform, PathCommand[]>>();
-
-/// Like `getCellPath` for a painter that needs the boundary only: it never loads the cell's faces,
-/// so a viewport full of cells outside the field stays cheap.
-export function getCellOutlinePath(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
-  const world = getCellOutline(x, y, cfg);
-  const t = displayTransform(cfg);
-  let byTransform = outlinePathCache.get(world);
-  if (!byTransform) {
-    byTransform = new Map();
-    outlinePathCache.set(world, byTransform);
-  }
-  let commands = byTransform.get(t);
-  if (!commands) {
-    commands = world.map((command) => transformCommand(t, command));
     byTransform.set(t, commands);
   }
   return commands;
@@ -350,6 +330,33 @@ export function gridEdgesNearDisplayRect(
     edgeChunkCache.delete(oldest);
   }
   return chunks;
+}
+
+/** The grid edges for exactly `cells`, each shared edge once and each edge as its own path.
+ *
+ * This is the field-limited counterpart of `gridEdgesNearDisplayRect`: both delegate edge
+ * ownership to core so a sharp cell corner never becomes a stroked path join. */
+export function gridEdgesForCells(cells: readonly [number, number][], cfg: FieldConfig): readonly PathCommand[] {
+  if (cells.length === 0) return [];
+  const bounds = cellBounds(cells, cfg);
+  // Keep the whole boundary of every scoped cell inside the query rather than depending on the
+  // region predicate's treatment of a polygon that merely touches its own bounding box.
+  const pad = 1;
+  const inverse = invertTransform(displayTransform(cfg));
+  const corner = (x: number, y: number) => applyTransform(inverse, [x, y]);
+  const region = [
+    corner(bounds.minX - pad, bounds.minY - pad),
+    corner(bounds.maxX + pad, bounds.minY - pad),
+    corner(bounds.maxX + pad, bounds.maxY + pad),
+    corner(bounds.minX - pad, bounds.maxY + pad),
+  ];
+  const transform = displayTransform(cfg);
+  return getRegionEdges({
+    tessellation: cfg.tessellation,
+    region,
+    mode: "intersects",
+    scope: [...cells],
+  }).map((command) => transformCommand(transform, command));
 }
 
 /// Offsets of a cell's neighbors and the boundary-vertex indices of each face, one entry per face
