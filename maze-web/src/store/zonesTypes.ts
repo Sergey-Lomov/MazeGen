@@ -12,7 +12,37 @@ export interface ZoneGroup {
   zoneIds: number[];
 }
 
+/** Generation parameters a zone override can set (GitHub issue #1038); the names are the wire keys core reads. */
+export type ZoneOverrideParamKey =
+  | "corridor_chance" | "branching" | "directionality" | "cyclicity"
+  | "one_way_chance" | "teleport_chance" | "teleport_one_way_chance" | "cross_floor_teleport_balance"
+  | "split_chance"
+  | "vertical_chance" | "vertical_passage_elevator_balance" | "one_way_vertical_passage_chance" | "vertical_up_down_balance"
+  | "elevator_span_min" | "elevator_span_max" | "elevator_branching"
+  | "allow_non_consecutive_elevator_floors";
+
+
+/** Generation parameters set inside some zones and groups only (GitHub issue #1038). Where overrides overlap on a
+ *  parameter, the zone with the smaller id wins; the generation feature warns about it. */
+export interface ZoneOverride {
+  id: number;
+  zoneIds: number[];
+  groupIds: number[];
+  /** The parameters this override sets; every other one keeps its global value inside the zones. */
+  params: Partial<Record<ZoneOverrideParamKey, number>>;
+}
+
+/** The zone or group an override applies to. */
+export interface ZoneOverrideTarget {
+  kind: "zone" | "group";
+  id: number;
+}
+
 export interface ZonesState {
+  /** Zone overrides of the generation parameters, in insertion order. */
+  zoneOverrides: ZoneOverride[];
+  /** The id the next added override gets. Only grows. */
+  nextZoneOverrideId: number;
   /** Zone groups of the project, in insertion order. */
   zoneGroups: ZoneGroup[];
   /** The id the next added group gets. Only grows, so an id of a deleted group is never reused. */
@@ -50,6 +80,8 @@ export interface ZonesState {
   zonesFocusedGroupId: number | null;
   /** The zone whose list card is hovered; highlighted on the canvas regardless of its visibility. */
   hoveredZoneId: number | null;
+  /** The group hovered where a group is picked (GitHub issue #1038): all its zones are highlighted in the info blue. */
+  hoveredZoneGroupId: number | null;
   /** The manual zone whose cells the shape tools edit (GitHub issue #1031); `null` while the list shows. */
   /** Working copy of the zone being edited. The shape tools and the properties write here; `zones` takes it
    *  only on "Done" (`commitZoneEdit`), so a zone list never shows a half-edited or not yet confirmed zone. */
@@ -76,6 +108,13 @@ export interface ZonesState {
 }
 
 export interface ZonesActions {
+  /** Appends an override that sets `params` inside one zone or group. */
+  addZoneOverride: (params: ZoneOverride["params"], target: ZoneOverrideTarget) => void;
+  removeZoneOverride: (id: number) => void;
+  /** Points an override at one zone or one group; an id of no zone or group is ignored. */
+  setZoneOverrideTarget: (overrideId: number, target: ZoneOverrideTarget) => void;
+  /** Sets a parameter of an override; `null` takes it out (back to the global value). Span bounds stay ordered. */
+  setZoneOverrideParam: (overrideId: number, key: ZoneOverrideParamKey, value: number | null) => void;
   setZoneGroupsPanelOpen: (open: boolean) => void;
   setZoneGroupsListMode: (mode: ZonesListMode) => void;
   /** Opens a new empty unnamed group in the group panel as a draft; it joins the list on "Done"; does nothing while a new group is being edited. */
@@ -101,6 +140,7 @@ export interface ZonesActions {
   showZonesOfGroup: (groupId: number) => void;
   clearZonesFocusedGroup: () => void;
   setHoveredZone: (id: number | null) => void;
+  setHoveredZoneGroup: (id: number | null) => void;
   toggleZoneVisibility: (id: number) => void;
   /** Shows or hides all the given zones at once. */
   setZonesVisible: (ids: number[], visible: boolean) => void;

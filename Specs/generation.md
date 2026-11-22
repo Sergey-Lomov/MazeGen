@@ -313,3 +313,64 @@ Each algorithm's restart trigger and mechanism differs to fit its own growth mod
 - **`CustomVertexBased`**: see "Restart on total exhaustion" under "Reserve" above — triggers when the reserve scan's linear pass finds no reachable candidate.
 - **`RecursiveBacktracker`**: triggers when the DFS stack unwinds to empty. A random unvisited node (from every node in the field, not just ones that were ever pushed onto the stack) becomes the new stack's sole entry. No event is narrated for the restart root's own visit — same as the original `start`, which also isn't narrated (`RecursiveBacktrackerEvent` has no dedicated "start" event; a node's visit is only narrated when something else chooses it as a candidate).
 - **`WilsonAlgorithm`**: a loop-erased random walk can only stop by reaching an already-visited node — a walk started inside a not-yet-reachable region would run forever if that region happens to have no dead end (every node has at least one neighbor). To make the restart decision without ever risking an unbounded walk, `generate` precomputes field-geometric connected components once up front (BFS over `split_aware_neighbors` plus preset-teleport edges in both directions — the same candidate pool a walk's search phase itself uses), before any walk runs. The main loop then only ever starts a walk from an unvisited node whose component already contains a visited node; when no such candidate exists, every remaining unvisited node belongs to a genuinely separate component, and one is picked at random and seeded directly into `visited` (emitting `WilsonEvent::StartVisited`, the same event the run's actual `start` uses) instead of attempting a walk. This can make `WilsonEvent::StartVisited` appear more than once directly under the root scope — once for the original `start`, and once per additional component restarted into.
+
+---
+
+## Zone parameter overrides (GitHub issue #1038)
+
+`CustomVertexBased` only. An override sets some generation parameters inside chosen zones; everywhere else the global
+values apply. Overridable: `corridor_chance`, `branching`, `directionality`, `cyclicity`, `one_way_chance`,
+`teleport_chance`, `teleport_one_way_chance`, `cross_floor_teleport_balance`, `split_chance`, `vertical_chance`,
+`vertical_passage_elevator_balance`, `one_way_vertical_passage_chance`, `vertical_up_down_balance`,
+`elevator_span_min`/`elevator_span_max` (set together), `elevator_branching`, `allow_non_consecutive_elevator_floors`
+(a switch: stored as 0/1 in the web store, a boolean on the wire). Not overridable: `depth_first` (it picks which
+frontier cell is processed next, not the work done on one cell), the split settings and `cell_type_restrictions`.
+
+**Core** (`maze-core/src/generation/zone_overrides.rs`). `GenerationConfig.zone_overrides` is a `ZoneOverrideTable`
+(`NodeId` to `ParamOverrides`) built by the runner from `ZoneOverrideEntry` values (`zone_id`, `ParamOverrides`, nodes).
+Resolution is per node and per parameter: among the entries that set the parameter on that node, the one with the
+smallest `zone_id` wins (`from_entries` sorts stably by zone id; the first set value per parameter is kept). The span
+bounds are kept ordered (`max >= min`) after merging.
+
+**Where it applies.** One step of the frontier loop uses the parameters resolved for the cell of `src` (the node popped
+from the frontier), including the split attempt of that step. A node minted by a split during the run is not in the
+table; it takes the overrides of the first node at its cell. `handle_empty_frontier` (bridge and teleport before `src`
+is known) uses the global parameters. Overrides replace parameter values only, so the RNG draw sequence is unchanged.
+Growth connections (including vertical passages and elevators to a not yet visited cell on the next floor) are rolled
+with the parameters of `src`'s zone only, so a zone on a later floor, whose cells are mostly visited through a passage
+from below before they are processed, rarely gets new vertical connections from its own `vertical_chance`.
+
+**Wire** (`GenerateConfig.zone_overrides`, `ZoneOverrideDto`, `maze-runner/src/config.rs`). One entry per zone:
+`{ zone_id, cells: [floor, x, y][], params }`, `params` holding the optional snake_case parameter keys above (chances
+clamped to 0..1, spans at least 1). `build_zone_overrides` turns entries into a table against the built field; floors
+out of range and cells not in the field are skipped. The web (`buildZoneOverrideWire`) flattens each override, its own
+zones plus the zones of its groups, into entries and cuts zone cells to the field (`filterZonesToField`); it sends
+nothing for another generator or when no override sets a parameter.
+
+**Web.** `zoneOverrides` (`ZoneOverride`: id, `zoneIds`, `groupIds`, `params`) lives in the zones slice and the project
+file (`Specs/project-file.md`). Deleting a zone or a group removes its id from every override. In the generation
+settings panel each overridable parameter row ends with a flat `ListPlus` icon button (`ZoneOverrideControls`, tooltip "Add zone
+override"). It opens the `ZoneOverrideTargetPanel` side panel with the parameter already known: a Zones / Groups
+switch, a search, a "Show automatic" switch (off by default) and the zone or group cells (`ZoneCell` / `GroupCell` in
+pick mode: the whole cell is the button). Hovering a zone cell lights the zone in its own colour on the canvas
+(`hoveredZoneId`), hovering a group cell lights all the group's zones in the info blue (`hoveredZoneGroupId`,
+`ZonesRenderer`). Picking creates the override (`addZoneOverride(params, target)`) starting from the parameter's
+current global value.
+
+While the parameter has overrides, a flat chevron button (`ZoneOverrideControls`) sits left of the add button at the row's end
+(the expanded state is per parameter, collapsed by default); the buttons sit close to the value. Under the row, `ZoneOverridesSection` lists the overrides of that
+parameter when expanded; no separate section header. A row is narrow: a bubble (a zone in its own colour; a group blue,
+prefixed "Group"), a small number input (height 18, small font; a chance is typed as a percentage; the elevator span
+row has two integer inputs; the "non-consecutive floors" row has a switch of the same height, stored as 0/1, validated as 0 or 1 in the project file) and the shared neutral (grey) `DeleteIconButton` trash, no slider. Hovering the bubble lights the zone, or all zones of the group (info blue), on
+the canvas (`ZoneHoverOverlay` draws it outside the zones card); the target is changed with the edit icon left of the
+trash, which reopens the picker (`setZoneOverrideTarget`). The UI creates
+single-target, single-parameter overrides (the elevator span sets both bounds); a group covers several zones.
+Warnings (`domain/zoneOverrides.ts`): a row with no zone left (`overrideHasNoZones`), and two overrides that set the
+same parameter on a common cell (`zoneOverrideConflicts`; different parameters on overlapping zones are fine). A row
+with no zone left shows a warning "choose" bubble in place of its target; an overlapping row shows a `WarningIcon` after
+its target bubbles. In the generation feature a no-zones bubble and an "overlapping zones" bubble (the whole bubble is
+clickable and carries an info glyph; it opens `ZoneOverrideConflictModal`: an explanation and the list of affected parameters, `zoneOverrideConflictParams`; the short names that repeat across categories, such as "Chance", are prefixed with their category)
+are shown, and the card status turns to warning without details (`computeGenerationCard`). User-facing texts do not say which zone wins.
+Clicking a zone or group bubble shows a floor that holds its cells, unless the active floor already does. Before a maze is
+generated, `GenerationRenderer` draws the field itself (floor fill, inner grid, outer walls) so the hovered zones have a
+backdrop.

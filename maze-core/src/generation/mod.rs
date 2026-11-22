@@ -17,6 +17,9 @@ mod split_shared;
 mod types;
 pub(crate) mod vertex_based;
 pub(crate) mod wilson;
+mod zone_overrides;
+
+pub use zone_overrides::{ParamOverrides, ZoneOverrideEntry, ZoneOverrideTable};
 
 pub use debug_state::DebugGenerationState;
 pub use generation_source::{GenerationSourceMode, pick_start_default, resolve_generation_start};
@@ -106,6 +109,7 @@ fn dispatch<T: Tessellation>(
                 &params,
                 &config.elements,
                 config.element_placement_rules.clone(),
+                config.zone_overrides.clone(),
                 &config.split_generation,
                 preset_state,
                 &mut start_reassignment,
@@ -278,6 +282,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
                 &params,
                 &config.elements,
                 config.element_placement_rules.clone(),
+                config.zone_overrides.clone(),
                 &config.split_generation,
                 preset_state,
                 &mut start_reassignment,

@@ -4,7 +4,8 @@ import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../
 import type { FieldConfig } from "../../fieldConfig";
 import { topologyKey } from "../topologyWire";
 import { presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../domain/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds } from "../../domain/fieldValidity";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, filterZonesToField } from "../../domain/fieldValidity";
+import { buildZoneOverrideWire } from "../../domain/zoneOverrides";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../domain/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../domain/tessellationCells";
 import { postEditTeleportsToDto } from "../../domain/postEditUtils";
@@ -238,6 +239,9 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       const level = levelPart === undefined ? 0 : Number(levelPart);
       return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
     });
+  const zone_overrides = state.initialConfig.method === "custom_vertex_based"
+    ? buildZoneOverrideWire(state.zoneOverrides, filterZonesToField(state.zones, resolveFieldAt), state.zoneGroups)
+    : [];
   const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id), state.smoothPrimitives));
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
@@ -262,6 +266,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     ...(state.presetGenSource && !invalidGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
     ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
     generation_source_mode: state.generationSourceMode,
+    ...(zone_overrides.length > 0 ? { zone_overrides } : {}),
   };
 }
 

@@ -401,6 +401,9 @@ export interface GenerateConfig {
   split_points?: [[number, number], number, number][];
   /** CustomVertexBased-only automatic split-point assignment settings (GitHub issue #222). */
   split_generation?: SplitGenerationConfig;
+  /** Per-zone generation parameter overrides (GitHub issue #1038), custom generator only. Mirrors Rust's
+   * `GenerateConfig.zone_overrides`. */
+  zone_overrides?: import("../domain/zoneOverrides").ZoneOverrideWire[];
   debug_events?: boolean;
   qc_experiment?: boolean;
 }

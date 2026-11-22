@@ -7,6 +7,10 @@ import { SidePanel } from "../SidePanel";
 import { CategoryInfoModal } from "../CategoryInfoModal";
 import { LabelWithInfo } from "../LabelWithInfo";
 import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
+import { ZoneOverrideControls, ZoneOverridesSection } from "../ZoneOverridesSection";
+import type { ZoneOverridePickRequest } from "../ZoneOverridesSection";
+import { ZoneOverrideTargetPanel } from "./ZoneOverrideTargetPanel";
+import type { ZoneOverrideParamKey, ZoneOverrideTarget } from "../../store/zonesTypes";
 import { ElementPlacementSettingsDialog } from "../dialogs/ElementPlacementSettingsDialog";
 import { ToggleRow } from "../ToggleRow";
 import { ElevatorSpanRow } from "../ElevatorSpanRow";
@@ -46,6 +50,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
   const [openInfoCategory, setOpenInfoCategory] = useState<Category | null>(null);
   const [splitSettingsDialogOpen, setSplitSettingsDialogOpen] = useState(false);
   const [elementPlacementDialogOpen, setElementPlacementDialogOpen] = useState(false);
+  const [pickRequest, setPickRequest] = useState<ZoneOverridePickRequest | null>(null);
+  const addZoneOverride = useMazeStore((s) => s.addZoneOverride);
+  const setZoneOverrideTarget = useMazeStore((s) => s.setZoneOverrideTarget);
 
   // Cell-type keys are supplied by the active core tessellation, not inferred from web geometry.
   // This also lets new tessellations expose placement controls without a UI-side key registry.
@@ -63,6 +70,16 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
   }, [fieldConfig, smoothPrimitives]);
 
   const vertexParams = initialConfig as { method: string } & GenerationParams;
+  // Zone overrides (GitHub issue #1038): a "+" ends a parameter's row, its overrides are listed right under it.
+  const [expandedOverrides, setExpandedOverrides] = useState<ReadonlySet<string>>(new Set());
+  const toggleOverrides = (key: string) => setExpandedOverrides((prev) => { const next = new Set(prev); if (!next.delete(key)) next.add(key); return next; });
+  const addButton = (key: ZoneOverrideParamKey, value: number) => <ZoneOverrideControls paramKeys={[key]} globalValues={[value]} expanded={expandedOverrides.has(key)} onToggle={() => toggleOverrides(key)} onRequest={setPickRequest} />;
+  const overrides = (key: ZoneOverrideParamKey) => <ZoneOverridesSection paramKeys={[key]} expanded={expandedOverrides.has(key)} onRequest={setPickRequest} />;
+  const pickTarget = (target: ZoneOverrideTarget) => {
+    if (pickRequest?.overrideId !== undefined) setZoneOverrideTarget(pickRequest.overrideId, target);
+    else if (pickRequest) addZoneOverride(pickRequest.params, target);
+    setPickRequest(null);
+  };
 
   return (
     <SidePanel title={m["generation.vertex_settings_title"]()} stackKey="vertex-based-settings" onClose={onClose}>
@@ -82,10 +99,14 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
         </LabelWithInfo>
         <div style={styles.categoryBody}>
           <ChanceSliderRow label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-          <ChanceSliderRow label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-          <ChanceSliderRow label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-          <ChanceSliderRow label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
-          <ChanceSliderRow label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
+          <ChanceSliderRow label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} resetButton={addButton("corridor_chance", vertexParams.corridor_chance ?? 0.7)} />
+          {overrides("corridor_chance")}
+          <ChanceSliderRow label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} resetButton={addButton("branching", vertexParams.branching ?? 0.5)} />
+          {overrides("branching")}
+          <ChanceSliderRow label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} resetButton={addButton("directionality", vertexParams.directionality ?? 0.0)} />
+          {overrides("directionality")}
+          <ChanceSliderRow label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} resetButton={addButton("cyclicity", vertexParams.cyclicity ?? 0.0)} />
+          {overrides("cyclicity")}
         </div>
       </div>
 
@@ -95,7 +116,8 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
           {m["generation.category.one_way"]()}
         </LabelWithInfo>
         <div style={styles.categoryBody}>
-          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.one_way"]()} ${m["generation.one_way_chance_short"]()}`} label={m["generation.one_way_chance_short"]()} value={elementsConfig.one_way_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_chance", v)} />
+          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.one_way"]()} ${m["generation.one_way_chance_short"]()}`} label={m["generation.one_way_chance_short"]()} value={elementsConfig.one_way_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_chance", v)} resetButton={addButton("one_way_chance", elementsConfig.one_way_chance ?? 0.0)} />
+          {overrides("one_way_chance")}
         </div>
       </div>
 
@@ -105,10 +127,15 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
           {m["generation.category.teleport"]()}
         </LabelWithInfo>
         <div style={styles.categoryBody}>
-          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_chance_short"]()}`} label={m["generation.teleport_chance_short"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
-          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_one_way_chance_short"]()}`} label={m["generation.teleport_one_way_chance_short"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
+          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_chance_short"]()}`} label={m["generation.teleport_chance_short"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} resetButton={addButton("teleport_chance", elementsConfig.teleport_chance ?? 0.0)} />
+          {overrides("teleport_chance")}
+          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_one_way_chance_short"]()}`} label={m["generation.teleport_one_way_chance_short"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} resetButton={addButton("teleport_one_way_chance", elementsConfig.teleport_one_way_chance ?? 0.0)} />
+          {overrides("teleport_one_way_chance")}
           {multiFloor && (
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.cross_floor_teleport_balance_short"]()}`} label={m["generation.cross_floor_teleport_balance_short"]()} value={elementsConfig.cross_floor_teleport_balance ?? 0.0} onChange={(v) => setElementsParam("cross_floor_teleport_balance", v)} />
+            <>
+              <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.cross_floor_teleport_balance_short"]()}`} label={m["generation.cross_floor_teleport_balance_short"]()} value={elementsConfig.cross_floor_teleport_balance ?? 0.0} onChange={(v) => setElementsParam("cross_floor_teleport_balance", v)} resetButton={addButton("cross_floor_teleport_balance", elementsConfig.cross_floor_teleport_balance ?? 0.0)} />
+              {overrides("cross_floor_teleport_balance")}
+            </>
           )}
         </div>
       </div>
@@ -119,7 +146,8 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
           {m["generation.category.split"]()}
         </LabelWithInfo>
         <div style={styles.categoryBody}>
-          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.split"]()} ${m["generation.split_chance_short"]()}`} label={m["generation.split_chance_short"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
+          <ChanceSliderRow preciseAriaLabel={`${m["generation.category.split"]()} ${m["generation.split_chance_short"]()}`} label={m["generation.split_chance_short"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} resetButton={addButton("split_chance", elementsConfig.split_chance ?? 0.0)} />
+          {overrides("split_chance")}
           <Inline gap="groupGap" style={styles.paramRow}>
             <span style={styles.paramLabel}>{m["generation.split_config"]()}</span>
             <Button variant="secondary" layoutStyle={styles.paramButton} onClick={() => setSplitSettingsDialogOpen(true)}>
@@ -136,17 +164,25 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
             {m["generation.category.vertical"]()}
           </LabelWithInfo>
           <div style={styles.categoryBody}>
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_chance_short"]()}`} label={m["generation.vertical_chance_short"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} />
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_passage_elevator_balance_short"]()}`} label={m["generation.vertical_passage_elevator_balance_short"]()} value={elementsConfig.vertical_passage_elevator_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_passage_elevator_balance", v)} />
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.one_way_vertical_passage_chance_short"]()}`} label={m["generation.one_way_vertical_passage_chance_short"]()} value={elementsConfig.one_way_vertical_passage_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_vertical_passage_chance", v)} />
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_up_down_balance_short"]()}`} label={m["generation.vertical_up_down_balance_short"]()} value={elementsConfig.vertical_up_down_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_up_down_balance", v)} />
-            <ElevatorSpanRow min={elementsConfig.elevator_span_min ?? 2} max={elementsConfig.elevator_span_max ?? 2} onMinChange={(v) => setElementsParam("elevator_span_min", v)} onMaxChange={(v) => setElementsParam("elevator_span_max", v)} />
-            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.elevator_branching_short"]()}`} label={m["generation.elevator_branching_short"]()} value={elementsConfig.elevator_branching ?? 0.5} onChange={(v) => setElementsParam("elevator_branching", v)} />
-            <ToggleRow label={m["generation.allow_non_consecutive_elevator_floors_short"]()} checked={elementsConfig.allow_non_consecutive_elevator_floors ?? false} onChange={(v) => setElementsBoolParam("allow_non_consecutive_elevator_floors", v)} />
+            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_chance_short"]()}`} label={m["generation.vertical_chance_short"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} resetButton={addButton("vertical_chance", elementsConfig.vertical_chance ?? 0.0)} />
+            {overrides("vertical_chance")}
+            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_passage_elevator_balance_short"]()}`} label={m["generation.vertical_passage_elevator_balance_short"]()} value={elementsConfig.vertical_passage_elevator_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_passage_elevator_balance", v)} resetButton={addButton("vertical_passage_elevator_balance", elementsConfig.vertical_passage_elevator_balance ?? 0.5)} />
+            {overrides("vertical_passage_elevator_balance")}
+            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.one_way_vertical_passage_chance_short"]()}`} label={m["generation.one_way_vertical_passage_chance_short"]()} value={elementsConfig.one_way_vertical_passage_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_vertical_passage_chance", v)} resetButton={addButton("one_way_vertical_passage_chance", elementsConfig.one_way_vertical_passage_chance ?? 0.0)} />
+            {overrides("one_way_vertical_passage_chance")}
+            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_up_down_balance_short"]()}`} label={m["generation.vertical_up_down_balance_short"]()} value={elementsConfig.vertical_up_down_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_up_down_balance", v)} resetButton={addButton("vertical_up_down_balance", elementsConfig.vertical_up_down_balance ?? 0.5)} />
+            {overrides("vertical_up_down_balance")}
+            <ElevatorSpanRow min={elementsConfig.elevator_span_min ?? 2} max={elementsConfig.elevator_span_max ?? 2} onMinChange={(v) => setElementsParam("elevator_span_min", v)} onMaxChange={(v) => setElementsParam("elevator_span_max", v)} trailing={<ZoneOverrideControls paramKeys={["elevator_span_min", "elevator_span_max"]} globalValues={[elementsConfig.elevator_span_min ?? 2, elementsConfig.elevator_span_max ?? 2]} expanded={expandedOverrides.has("elevator_span_min")} onToggle={() => toggleOverrides("elevator_span_min")} onRequest={setPickRequest} />} />
+            <ZoneOverridesSection paramKeys={["elevator_span_min", "elevator_span_max"]} integer expanded={expandedOverrides.has("elevator_span_min")} onRequest={setPickRequest} />
+            <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.elevator_branching_short"]()}`} label={m["generation.elevator_branching_short"]()} value={elementsConfig.elevator_branching ?? 0.5} onChange={(v) => setElementsParam("elevator_branching", v)} resetButton={addButton("elevator_branching", elementsConfig.elevator_branching ?? 0.5)} />
+            {overrides("elevator_branching")}
+            <ToggleRow label={m["generation.allow_non_consecutive_elevator_floors_short"]()} checked={elementsConfig.allow_non_consecutive_elevator_floors ?? false} onChange={(v) => setElementsBoolParam("allow_non_consecutive_elevator_floors", v)} resetButton={addButton("allow_non_consecutive_elevator_floors", elementsConfig.allow_non_consecutive_elevator_floors ? 1 : 0)} />
+            {overrides("allow_non_consecutive_elevator_floors")}
           </div>
         </div>
       )}
 
+      {pickRequest && <ZoneOverrideTargetPanel onPick={pickTarget} onClose={() => setPickRequest(null)} />}
       {splitSettingsDialogOpen && (
         <SplitSettingsDialog onClose={() => setSplitSettingsDialogOpen(false)} />
       )}

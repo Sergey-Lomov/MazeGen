@@ -5,17 +5,18 @@ pub use crate::config_dto::{
     PresetConnectionDto, PresetConnectionStateDto, PresetElevatorDto, PresetEndpointDto,
     PresetVerticalPassageDto, QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto,
     SplitPatternDto, SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig,
-    TessellationKind, VerticalPassageDirectionDto,
+    TessellationKind, VerticalPassageDirectionDto, ZoneOverrideDto, ZoneOverrideParamsDto,
 };
 use crate::topology_wire::TopologyDto;
 use maze_core::{
     RepairLimits,
     generation::{
         ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams,
-        GenerationSourceMode, LockedNode, NodeLockKind, PresetConnection, PresetConnectionState,
-        PresetElevator, PresetEndpoint, PresetVerticalPassage, TeleportDirection,
-        VerticalPassageDirection,
+        GenerationSourceMode, LockedNode, NodeLockKind, ParamOverrides, PresetConnection,
+        PresetConnectionState, PresetElevator, PresetEndpoint, PresetVerticalPassage,
+        TeleportDirection, VerticalPassageDirection, ZoneOverrideEntry, ZoneOverrideTable,
     },
+    space::{MultiLevelField, Tessellation},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
 };
 use serde::Deserialize;
@@ -81,6 +82,9 @@ pub struct GenerateConfig {
     /// `CustomVertexBased`-only automatic split-point assignment settings (GitHub issue #222).
     #[serde(default)]
     pub split_generation: SplitGenerationConfigDto,
+    /// Per-zone parameter overrides (GitHub issue #1038), `CustomVertexBased` only.
+    #[serde(default)]
+    pub zone_overrides: Vec<ZoneOverrideDto>,
     // Only consumed by `maze-wasm` (whether to build the narration-level debug event tree — see
     // GitHub issue #124) — `maze-runner`'s own native repro tests never read it.
     #[serde(default)]
@@ -143,6 +147,7 @@ impl Default for GenerateConfig {
             generation_source_mode: GenerationSourceModeDto::default(),
             split_points: vec![],
             split_generation: SplitGenerationConfigDto::default(),
+            zone_overrides: vec![],
             debug_events: false,
             qc_experiment: false,
         }
@@ -243,6 +248,62 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         locked_nodes,
         split_points,
         split_generation,
+        zone_overrides: Default::default(),
+    }
+}
+
+/// Resolves the wire zone overrides against the built field (GitHub issue #1038): every node of
+/// every listed cell gets the zone's parameters, merged per node by `ZoneOverrideTable`. Cells
+/// that are not cells of the tessellation or have no node, and floors out of range, are skipped.
+pub fn build_zone_overrides<T: Tessellation>(
+    dtos: &[ZoneOverrideDto],
+    field: &MultiLevelField<T>,
+    from_xy: fn(i32, i32) -> T::CellId,
+) -> ZoneOverrideTable {
+    let levels: Vec<_> = field.levels_ordered().collect();
+    let entries = dtos
+        .iter()
+        .map(|dto| {
+            let mut nodes = Vec::new();
+            for &[floor, x, y] in &dto.cells {
+                let Some(&level) = usize::try_from(floor).ok().and_then(|f| levels.get(f)) else {
+                    continue;
+                };
+                let cell = from_xy(x, y);
+                if field.tessellation().is_valid_cell(cell) {
+                    nodes.extend_from_slice(field.nodes_at(level, cell));
+                }
+            }
+            ZoneOverrideEntry {
+                zone_id: dto.zone_id,
+                overrides: build_param_overrides(&dto.params),
+                nodes,
+            }
+        })
+        .collect();
+    ZoneOverrideTable::from_entries(entries)
+}
+
+fn build_param_overrides(dto: &ZoneOverrideParamsDto) -> ParamOverrides {
+    let unit = |v: Option<f64>| v.map(|v| v.clamp(0.0, 1.0));
+    ParamOverrides {
+        corridor_chance: unit(dto.corridor_chance),
+        branching: unit(dto.branching),
+        directionality: unit(dto.directionality),
+        cyclicity: unit(dto.cyclicity),
+        one_way_chance: unit(dto.one_way_chance),
+        teleport_chance: unit(dto.teleport_chance),
+        teleport_one_way_chance: unit(dto.teleport_one_way_chance),
+        split_chance: unit(dto.split_chance),
+        cross_floor_teleport_balance: unit(dto.cross_floor_teleport_balance),
+        vertical_chance: unit(dto.vertical_chance),
+        vertical_passage_elevator_balance: unit(dto.vertical_passage_elevator_balance),
+        one_way_vertical_passage_chance: unit(dto.one_way_vertical_passage_chance),
+        vertical_up_down_balance: unit(dto.vertical_up_down_balance),
+        elevator_span_min: dto.elevator_span_min.map(|v| v.max(1)),
+        elevator_span_max: dto.elevator_span_max.map(|v| v.max(1)),
+        elevator_branching: unit(dto.elevator_branching),
+        allow_non_consecutive_elevator_floors: dto.allow_non_consecutive_elevator_floors,
     }
 }
 

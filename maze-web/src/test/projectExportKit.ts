@@ -119,6 +119,8 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     nextZoneId: 1,
     zoneGroups: [],
     nextZoneGroupId: 1,
+    zoneOverrides: [],
+    nextZoneOverrideId: 1,
     zoneColorOverrides: {},
     showColorWarnings: true,
     linkIconVisibility: "linked",
