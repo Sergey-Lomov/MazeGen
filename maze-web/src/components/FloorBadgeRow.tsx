@@ -15,11 +15,11 @@ import { Bubble } from "./Bubble";
  *  (`NodeDto.level ?? 0` convention) — this component does no resolution of its own, since each
  *  caller's source data (node ids, orphan points, `crossFloorTargets`) differs. `className` lets a
  *  caller counter a parent's own hover filter (see `IssuesBlock`'s `hoverable-tint-counter` use). */
-export function FloorBadgeRow({ levels, bg, text, className }: { levels: number[]; bg?: string; text?: string; className?: string }) {
+export function FloorBadgeRow({ levels, bg, text, className, style }: { levels: number[]; bg?: string; text?: string; className?: string; style?: React.CSSProperties }) {
   const floors = useMazeStore((s) => s.floors);
   if (floors.length <= 1 || levels.length === 0) return null;
   return (
-    <div className={className} style={styles.row}>
+    <div className={className} style={{ ...styles.row, ...style }}>
       {levels.map((level) => {
         const exists = !!floors[level];
         const go = (e: React.SyntheticEvent) => {

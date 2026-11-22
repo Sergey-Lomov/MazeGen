@@ -44,7 +44,7 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
 
 - Status: `unavailable` until a field is set (same condition as Presets), otherwise always `set`
   (green), even with no zones. Subtitle: number of manual zones.
-- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both default on). The toggles are
+- Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both on; the auto zones are hidden per zone, see below). The toggles are
   transient; zones are saved with the project (`Specs/project-file.md`, "Zones").
 - Two toggles, "Show auto zones" and "Show manual zones".
 - `ZonesRenderer` (feature renderer, visible only while the card is open) draws the active floor's
@@ -66,6 +66,14 @@ A "Zones list" button on the zones card opens the `ZonesPanel` side panel (`zone
   "Manual zones (n)", `n` the number of zones of that kind. The "Add zone" button is on the feature card and
   at the end of the manual list (opens the manual list and the editor of a new empty manual zone over it; the zone is only a draft until "Done"). Ids come from a store
   counter (`nextZoneId`) that only grows, so the id of a deleted zone is never reused.
+- Zones are ordered by the lowest floor they touch, ascending (`sortZones`, `store/zoneListSort.ts`; a zone without
+  cells last, ties keep the order they were computed or added in). The type of an auto zone is read back from its id.
+- "Grouping" dropdown under the switch (`zonesGrouping`, kept per section: None, By floors, and By types for auto zones only; default None). A grouping
+  folds the shown zones into collapsible sections (`groupZones`, `SectionHeader`, "Title (n)"): by floors, one per
+  floor in ascending order (titled like the floor; a zone is in the section of every floor it has cells on, zones without cells in a last "No floor" section), by
+  types, one per type in alphabetical order. Zones inside a section keep the floor order. Sections start collapsed,
+  and every grouping change collapses them all; the expanded set is local to the open panel. A section header has an eye
+  that hides all its zones, or shows them all when any is hidden (`setZonesVisible`).
 - Zone card: a rounded colour square sized to the font (`1em`, thin neutral border) with the zone's
   canvas colour (`EntityColorSwatch`, shared with the glue cards) after the name (`#id` while
   unnamed), "Cells: n" (a fixed label, so no plural forms), and `L{n}` floor badges of the floors the zone occupies
@@ -214,6 +222,81 @@ A group is a named set of zones (`ZoneGroup { id, name, zoneIds }`, `zonesTypes.
   no top separator. The picker dialog has no separators and a full-width "New group" button. The zone editor's
   Intersections bubbles use the same zone colours as the group cards' (`zoneChipColors`).
 - Deleting a zone drops its id from every group and from the group draft (`withoutZone`).
+- Automatic groups (see "Automatic zones") sit first in the list as plain cards: no pencil or trash, and the zone picker
+  dialog leaves them out. Zone and group cards share `CardDetails` (`ZonesPanel.tsx`): the sizes, then the `L{n}` floor
+  badges on the same line when they fit, else on their own line, wrapping over several lines when still too narrow.
+  Sizes and the groups line use `ui.text.tertiary`.
+
+## Automatic zones (GitHub issue #1033)
+
+Zones of kind `Auto` are computed from the field, never drawn or saved. Core: `compute_auto_zones(tessellation, floors)`
+(`maze-core/src/space/auto_zones.rs`); each `AutoZoneFloor` carries the floor's cells, its crease segments (world units)
+and `folded` (the topology has folds). A zone with no cells is not produced. Per-key rules, in output order:
+
+- `Maze`: every cell of every floor.
+- per floor, in order: `Floor(f)` (only on a multi-floor maze), `CellType { f, t }` (one per cell type `t`, its position in
+  `Tessellation::cell_types`, on floor `f`; only when the tessellation has several types, is not irregular
+  (`cells_vary_in_size`) and the floor holds cells of more than one type, since a floor of one type would make the zone
+  equal to the floor; no zone spans floors, and it is built on a single-floor maze too), `FieldEdge(f)`, `Face { f, i }` (only on a folded floor
+  that has more than one face), `Region { f, i }` (only on a floor that has more than one region).
+- `FieldEdge`: cells with a tessellation neighbor outside the field. A face with no neighbor at all (the rim of a
+  finite tessellation) counts as outside. Folds are ignored: the neighbor is geometric.
+- `Region`: components of the floor over tessellation neighbors inside the field; folds and teleports are not links.
+  A floor with one region makes no zone (the floor or the maze is that zone).
+- `Face`: components over tessellation neighbors, not crossing a face whose contact point lies on a crease
+  (`CREASE_EPS` = 1e-6). Seams are polyhedron edges, so folds are not links either. A folded floor with no creases is
+  one face, which makes no zone (the floor is that zone); a floor with no folds has no faces, so a plain multi-floor
+  maze gets no face zones.
+- `i` is the component's position when ordered by its smallest cell.
+
+WASM `zones_compute_auto({ tessellation, floors: [{ count, creases: [[x, y], [x, y]][], folded }] }, cells)`: `cells`
+is every floor's field cells as one flat `Int32Array` (`x0, y0, x1, y1, ...`, floors one after another, `count` cells
+each). It returns `[key, Int32Array][]`, the array holding the zone's cells as `floor, x, y` triples; keys are `maze`,
+`floor:F`, `type:F:T`, `edge:F`, `face:F:I`, `region:F:I`. Cells cross the boundary as flat typed arrays in both directions
+because serde marshalling of tens of thousands of small arrays took more time than the core computation. Errors:
+`floor <n>: invalid cell [x, y]`, and a mismatch between `cells` and the announced counts. `computeAutoZones`
+(`wasm/mazeService.ts`) packs and unpacks, so the store still sees `{ key, cells: [floor, x, y][] }[]`.
+
+Web (`store/autoZones.ts`, `store/autoZoneSync.ts`):
+
+- The id of an automatic zone comes from its key alone (`autoZoneIdOf`): `2^30 + kind * 2^22 + floor * 2^14 + index`
+  (floor below 256, index below 16384), so ids never meet manual ones (`isAutoZoneId`) and survive a recomputation.
+  Groups, colour overrides and visibility that name an auto zone therefore stay valid.
+- An auto zone stores no name (`name` is empty): the key is the id, so `autoZoneName` (`domain/autoZones.ts`) builds the
+  name from it when it is shown (`zoneDisplayName(zone, floors)`), and it follows the language and the floor titles
+  without a recomputation: "Whole maze", the floor ("Floor N" localized, or the title the user gave it: the stored
+  default title is English), "Field edge", "Face n", "Region n", with the floor in brackets on a multi-floor maze.
+  A cell type zone (`type:F:T`; the id holds the index `T` in the index bits, floor 0) is the exception: its `name` keeps
+  the type's key (`autoZonesFromWire` reads it from `getTessellationCellTypes`, asked only when such a zone exists) and
+  `autoZoneName` shows `cellTypeLabel(key)`. `sameAutoZones` therefore compares names too.
+  The id codec (`autoZoneIdOf`, `autoZoneKindOf`, `isAutoZoneId`) lives in the same domain module.
+- Auto zones are hidden by default per zone: `refreshAutoZones` adds the id of every newly appeared auto zone to `hiddenZoneIds`, so the card eyes show the real state and work; `showAutoZones` stays a master switch that starts on.
+- `installAutoZoneSync` recomputes on the main thread 0.15 s after the last change of the floors, field, topology,
+  creases, tessellation or smoothing (`AUTO_ZONES_DEBOUNCE_MS`), and once at start. A result equal to the current one
+  writes nothing; the computation does not fail in normal use (wasm is loaded before the store exists, and the tessellation, floors and fields change in one store update), so an error is not caught. Auto zones sit first in `zones`, manual ones after.
+  Only a change of the cells, creases, folds or tessellation of a floor counts: the tool, the operation and the edit
+  flags of `floorFields` do not. `computeAutoZones` keeps the last request and its zones and answers an equal request
+  without calling wasm (the returned zones are shared, read-only).
+- Automatic groups (GitHub issue #1037), computed with the auto zones by `autoGroupsOf` and written to `zoneGroups`
+  first (manual groups after): "Floors", "Field edges", "Regions", "Faces" (every zone of that kind) and one group per
+  cell type (all zones of that type across floors, named by the type). The whole maze zone has no group. A group exists
+  only while it has a zone to collect, so a tessellation with no cell type zones has no cell type groups. Group ids use
+  the auto id range (`autoGroupIdOf`, `isAutoGroupId`: `2^30 + kind * 2^22 + index`), names are built from the id
+  (`autoGroupName`, a cell type group keeps the type key as `name`). They cannot be deleted or edited (the store actions
+  ignore them, the cards have no pencil or trash), a manual zone cannot join one, and they are neither saved nor loaded.
+- Auto zones are not written to the project file and are dropped on load; group members and colour overrides naming
+  an auto id are kept by the validator.
+- A zone's automatic colour is its position among the zones of its kind, so the changing set of auto zones never
+  recolours manual ones. The auto zones are all known at once, so their palette is fitted to their number
+  (`autoColorAmong`): up to three rounds of eight it is the plain glue palette; beyond that the rounds' lightness step
+  shrinks (the farthest round stays within 30 lightness points of the base, so no zone turns white or black) and their
+  hue shift shrinks (no two rounds share hues). Manual zones keep the plain palette.
+- The list's grouping is kept per section (`zonesGrouping: { auto, manual }`), so the two sections group independently.
+  Auto zones offer none / by floors / by types, manual zones none / by floors; both start at none.
+- Performance: the cells cross the wasm boundary as flat `Int32Array`s (marshalling small arrays cost more than the
+  computation), core hashes cells with a fast non-cryptographic hasher and sorts each floor once. Still on the main
+  thread; measured on a dev-profile wasm, a release build is expected to be several times faster. Further options from
+  the issue: changed cells only, a worker, skipping zones nobody uses.
 
 ## Web mirror
 

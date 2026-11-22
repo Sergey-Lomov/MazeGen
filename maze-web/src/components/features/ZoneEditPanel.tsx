@@ -29,6 +29,7 @@ import * as m from "~/paraglide/messages";
 export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const zone = useMazeStore((s) => editedZoneOf(s));
   const storedZones = useMazeStore((s) => s.zones);
+  const floors = useMazeStore((s) => s.floors);
   const storedOverrides = useMazeStore((s) => s.zoneColorOverrides);
   const draftColor = useMazeStore((s) => s.zoneEditDraftColor);
   const zones = useMemo(() => zonesWithDraft(storedZones, zone), [storedZones, zone]);
@@ -72,7 +73,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
         <Stack gap="itemGap">
         <div style={styles.sectionHeader}>{m["zones.properties"]()}</div>
         <Stack gap="itemGap" style={styles.content}>
-            <TextFieldRow label={m["zones.name"]()} value={zoneDisplayName(zone)} onChange={(name) => setZoneName(name)} inputWidth={160} />
+            <TextFieldRow label={m["zones.name"]()} value={zoneDisplayName(zone, floors)} onChange={(name) => setZoneName(name)} inputWidth={160} />
             <UnregisteredColorRow
               label={m["zones.color"]()}
               color={color}
@@ -138,7 +139,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
               {crossing.map(({ zone: other, floor }) => (
                 <BubbleHoverZone key={`${other.id}-${floor}`} onMouseEnter={() => setHover(other.id)} onMouseLeave={() => setHover(null)}>
                   <Inline gap="itemGap">
-                    <Bubble colors={chipColorsOf(other.id)}>{zoneDisplayName(other)}</Bubble>
+                    <Bubble colors={chipColorsOf(other.id)}>{zoneDisplayName(other, floors)}</Bubble>
                     {multiFloor && <BubbleArrow>-</BubbleArrow>}
                     {multiFloor && <FloorBadgeRow levels={[floor]} />}
                   </Inline>
@@ -158,7 +159,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
       </Stack>
       {confirmingClear && (
         <ConfirmModal
-          message={m["zones.clear_confirm"]({ name: zoneDisplayName(zone) })}
+          message={m["zones.clear_confirm"]({ name: zoneDisplayName(zone, floors) })}
           onConfirm={() => { setConfirmingClear(false); clearCells(); }}
           onCancel={() => setConfirmingClear(false)}
         />

@@ -132,7 +132,7 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
   if (st.openCard === "zones") {
     // Zones never hold a cell outside the field (`filterZonesToField`), so the readout stays bare there.
     if (!cellExistsAt(resolveFieldAtOf(st), [x, y], activeFloorIndex)) return `x:${x}, y:${y}`;
-    return buildZonesCellInspection(st.zones, activeFloorIndex, x, y);
+    return buildZonesCellInspection(st.zones, st.floors, activeFloorIndex, x, y);
   }
 
   if (st.openCard === "preset_connections") {

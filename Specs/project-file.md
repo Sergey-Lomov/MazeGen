@@ -122,7 +122,8 @@ state (toggles, hidden zones, panels, drafts, hover) is transient and reset on l
 On load `validateZones` (`validateZones.ts`) checks the structure only and rejects, naming the path, a bad cell,
 kind or id and a duplicate zone or group id. Cells of floors or points no longer in the field are kept and dropped
 at use (`filterZonesToField`), so they never break loading. Group members naming no zone and colour overrides of
-unknown zones are dropped; empty groups and empty zones stay. A counter never loads at or below an existing id, so
+unknown zones are dropped; empty groups and empty zones stay. Automatic groups (GitHub issue #1037, ids in the auto
+range) are computed, never saved: a section of only them is not written, and one found in a file is dropped. A counter never loads at or below an existing id, so
 ids stay unique and an id of a deleted zone is still not reused.
 
 ## Visual preset (style file)

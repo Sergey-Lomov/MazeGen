@@ -266,11 +266,12 @@ export function distributeHueGroups(base: number, count: number, lightnessOffset
  *  steps off the base (0 is the base itself, negative darker, positive lighter): its lightness shifted by
  *  `position` times `HUE_GROUP_LIGHTNESS_STEP` and its hues by `position` times half a hue step (360 / `size`),
  *  so no two groups share a color. `distributeHueGroups` centres the positions on `base`; a caller that
- *  must keep earlier groups as they are when it adds one picks the positions itself. */
-export function hueGroupColors(base: number, size: number, position: number, lightnessOffset = 0): number[] {
+ *  must keep earlier groups as they are when it adds one picks the positions itself. `steps` overrides the lightness
+ *  step per position and the hue shift per position (degrees), for a caller that fits many groups into a narrower range. */
+export function hueGroupColors(base: number, size: number, position: number, lightnessOffset = 0, steps: { lightness?: number; hue?: number } = {}): number[] {
   const { l, c, h } = colorToOklch(base);
-  const groupL = Math.max(0, Math.min(100, l + lightnessOffset + position * HUE_GROUP_LIGHTNESS_STEP));
-  const hueShift = (position * 360) / size / 2;
+  const groupL = Math.max(0, Math.min(100, l + lightnessOffset + position * (steps.lightness ?? HUE_GROUP_LIGHTNESS_STEP)));
+  const hueShift = position * (steps.hue ?? 360 / size / 2);
   return Array.from({ length: size }, (_, i) => {
     const hue = h + hueShift + (360 * i) / size;
     return oklchToColor({ l: groupL, c: Math.min(c, oklchMaxChroma(groupL, hue)), h: hue });

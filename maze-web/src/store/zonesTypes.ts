@@ -1,5 +1,6 @@
 import type { Zone } from "../wasm/mazeService";
 import type { ZoneCombine, ZoneCombineOp } from "../domain/selectors/zoneCombine";
+import type { ZonesGrouping } from "./zoneListSort";
 
 /** Section of the zones list: the zones of one kind. */
 export type ZonesListMode = "auto" | "manual";
@@ -40,6 +41,8 @@ export interface ZonesState {
   zonesPanelOpen: boolean;
   /** The section of the zones list that is shown. */
   zonesListMode: ZonesListMode;
+  /** How each section of the zones list folds its cards into collapsible sections; the two sections group independently. */
+  zonesGrouping: Record<ZonesListMode, ZonesGrouping>;
   /** The zone whose list card is hovered; highlighted on the canvas regardless of its visibility. */
   hoveredZoneId: number | null;
   /** The zones of the hovered group card (GitHub issue #1035), highlighted together; a `hoveredZoneId` wins. */
@@ -88,9 +91,12 @@ export interface ZonesActions {
   setShowManualZones: (v: boolean) => void;
   setZonesPanelOpen: (open: boolean) => void;
   setZonesListMode: (mode: ZonesListMode) => void;
+  setZonesGrouping: (mode: ZonesListMode, grouping: ZonesGrouping) => void;
   setHoveredZone: (id: number | null) => void;
   setHoveredZones: (ids: number[]) => void;
   toggleZoneVisibility: (id: number) => void;
+  /** Shows or hides all the given zones at once. */
+  setZonesVisible: (ids: number[], visible: boolean) => void;
   /** Appends an empty manual zone named after its id and opens it in the zone editor. */
   addManualZone: () => void;
   removeZone: (id: number) => void;
