@@ -355,6 +355,13 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
               <StageHead id={stageHeadDndId(stage.stageId)}>
               <div style={styles.stageHeader}>
                 {stageHandle}
+                <CollapseButton
+                  collapsed={stage.collapsed}
+                  onToggle={() => toggleStageCollapsed(stage.stageId)}
+                  collapseTitle={m["quality.collapse_stage"]()}
+                  expandTitle={m["quality.expand_stage"]()}
+                  style={styles.collapseBtn}
+                />
                 {isRenamingStage ? (
                   <input
                     style={styles.stageHeaderInput}
@@ -371,25 +378,18 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 ) : (
                   <span style={styles.stageHeaderText}>{stage.name}</span>
                 )}
-              </div>
-              <div style={styles.stageToolbar}>
-                <CollapseButton
-                  collapsed={stage.collapsed}
-                  onToggle={() => toggleStageCollapsed(stage.stageId)}
-                  collapseTitle={m["quality.collapse_stage"]()}
-                  expandTitle={m["quality.expand_stage"]()}
-                  style={styles.collapseBtn}
-                />
-                <AddIconButton title={m["quality.add_new_rule"]()} onClick={() => setNewRuleStep({ stage: "issue", targetStageId: stage.stageId })} />
-                <IconActionButton action="move-up" title={m["quality.move_stage_up"]()} disabled={isFirstStage} onClick={() => moveStage(stage.stageId, "up")} />
-                <IconActionButton action="move-down" title={m["quality.move_stage_down"]()} disabled={isLastStage} onClick={() => moveStage(stage.stageId, "down")} />
-                <EditIconButton title={m["quality.rename_stage"]()} fontSize={16} onClick={() => startRenameStage(stage)} />
-                <Tooltip content={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}><div
-                  style={styles.toggleWrap}
-                >
-                  <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
-                </div></Tooltip>
-                <DeleteIconButton title={m["quality.remove_stage"]()} onClick={() => setRemoveConfirmStageId(stage.stageId)} />
+                <div style={styles.stageToolbar}>
+                  <Tooltip content={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}><div
+                    style={styles.toggleWrap}
+                  >
+                    <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
+                  </div></Tooltip>
+                  <AddIconButton title={m["quality.add_new_rule"]()} onClick={() => setNewRuleStep({ stage: "issue", targetStageId: stage.stageId })} />
+                  <IconActionButton action="move-up" title={m["quality.move_stage_up"]()} disabled={isFirstStage} onClick={() => moveStage(stage.stageId, "up")} />
+                  <IconActionButton action="move-down" title={m["quality.move_stage_down"]()} disabled={isLastStage} onClick={() => moveStage(stage.stageId, "down")} />
+                  <EditIconButton title={m["quality.rename_stage"]()} fontSize={16} onClick={() => startRenameStage(stage)} />
+                  <DeleteIconButton title={m["quality.remove_stage"]()} onClick={() => setRemoveConfirmStageId(stage.stageId)} />
+                </div>
               </div>
               </StageHead>
               {!stage.collapsed && (

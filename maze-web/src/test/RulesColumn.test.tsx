@@ -132,6 +132,21 @@ describe("RulesColumn", () => {
     expect(screen.queryByText("Rule 1")).not.toBeInTheDocument();
   });
 
+  it("keeps the stage title and all stage controls in one header row, with the toggle before the buttons", () => {
+    const stages: QualityStageVM[] = [{ stageId: "stage_1", name: "Stage 1", slots: [], disabled: false, collapsed: false }];
+    render(<RulesColumn stages={stages} selection={null} onSelect={vi.fn()} />);
+    const row = screen.getByText("Stage 1").parentElement as HTMLElement;
+    const stageSwitch = row.querySelector<HTMLElement>("input[type='checkbox']");
+    expect(stageSwitch).not.toBeNull();
+    const buttons = ["Collapse stage", "Add new rule", "Move stage up", "Move stage down", "Rename stage", "Remove stage"]
+      .map((label) => getTooltipControlWithin(row, label));
+    const [collapse, ...toolbarButtons] = buttons;
+    expect(collapse.compareDocumentPosition(screen.getByText("Stage 1")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const button of toolbarButtons) {
+      expect(stageSwitch!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it("shows strategy label when rule has a strategy", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
