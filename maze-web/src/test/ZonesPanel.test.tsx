@@ -9,6 +9,7 @@ import { bubbleColors } from "../components/Bubble";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
 
+
 const floors = [
   { id: "floor_0", title: "Floor 1" },
   { id: "floor_1", title: "Floor 2" },
@@ -163,6 +164,49 @@ describe("cssColor", () => {
     expect(cssColor(0x0000ff)).toBe("#0000ff");
     expect(cssColor(0xabcdef)).toBe("#abcdef");
     expect(cssColor(0)).toBe("#000000");
+  });
+
+  it("folds the zones into collapsed sections when grouped, and collapses them again on a grouping change", () => {
+    setup();
+    const select = screen.getByTestId("zones-grouping");
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "floor" } });
+    const header = `${m["zones.auto_floor"]({ number: "1" })} (1)`;
+    expect(screen.queryByText("Alpha")).toBeNull();
+    fireEvent.click(screen.getByText(header));
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "type" } });
+    expect(screen.queryByText("Alpha")).toBeNull();
+    fireEvent.change(select, { target: { value: "none" } });
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("groups the two sections independently, and offers no grouping by type for manual zones", () => {
+    setup();
+    fireEvent.change(screen.getByTestId("zones-grouping"), { target: { value: "floor" } });
+    fireEvent.click(screen.getByText(m["zones.mode_manual"]({ count: 2 })));
+    expect(useMazeStore.getState().zonesGrouping).toEqual({ auto: "floor", manual: "none" });
+    const select = screen.getByTestId("zones-grouping") as HTMLSelectElement;
+    expect(select.value).toBe("none");
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["none", "floor"]);
+  });
+
+  it("puts a multi-floor zone in every floor section", () => {
+    setup();
+    fireEvent.change(screen.getByTestId("zones-grouping"), { target: { value: "floor" } });
+    expect(screen.getAllByTestId("zone-section")).toHaveLength(3);
+    for (const n of [1, 2, 3]) fireEvent.click(screen.getByText(`${m["zones.auto_floor"]({ number: String(n) })} (1)`));
+    expect(screen.getAllByText("Alpha")).toHaveLength(3);
+  });
+
+  it("a section eye hides all its zones, then shows them all again", () => {
+    setup({ zones: [...zones, { id: 4, name: "Gamma", kind: "auto", cells: [[0, 1, 1]] }], nextZoneId: 5 });
+    fireEvent.change(screen.getByTestId("zones-grouping"), { target: { value: "floor" } });
+    const eyes = screen.getAllByTestId("zone-section-eye");
+    fireEvent.click(eyes[0]);
+    expect(useMazeStore.getState().hiddenZoneIds.sort()).toEqual([1, 4]);
+    fireEvent.click(screen.getAllByTestId("zone-section-eye")[0]);
+    expect(useMazeStore.getState().hiddenZoneIds).toEqual([]);
   });
 });
 

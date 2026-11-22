@@ -112,7 +112,7 @@ export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => 
                     interactive={!onPick}
                     onClick={onPick ? undefined : () => goToZone(zone)}
                   >
-                    {zoneDisplayName(zone)}
+                    {zoneDisplayName(zone, floorIds)}
                   </Bubble>
                 </BubbleHoverZone>
               );

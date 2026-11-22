@@ -12,13 +12,15 @@ const CHEVRON_SIZE = 14;
  *  collapsible settings sections (Analytics, image-export render mode settings panels) at every
  *  nesting level, so the expand/collapse row reads identically everywhere. `disabled` renders it
  *  greyed out and non-interactive (e.g. a vertical-passage sub-group with nothing to configure). */
-export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo }: {
+export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo, actions }: {
   label: React.ReactNode;
   expanded: boolean;
   disabled?: boolean;
   onToggle: () => void;
   /** Optional help for this section. Clicking it does not change the expanded state. */
   onOpenInfo?: () => void;
+  /** Icon buttons at the row's right end; clicking them does not change the expanded state. */
+  actions?: React.ReactNode;
 }) {
   const chevronColor = disabled ? ui.text.disabled : ui.text.tertiary;
   return (
@@ -36,6 +38,11 @@ export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo 
           <InfoIconButton onClick={onOpenInfo} />
         </span>
       )}
+      {actions && (
+        <span style={styles.actionsWrap} onClick={(event) => event.stopPropagation()}>
+          {actions}
+        </span>
+      )}
     </div>
   );
 }
@@ -43,6 +50,7 @@ export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo 
 const styles: Record<string, React.CSSProperties> = {
   // A flex wrapper: a plain span would hold the icon in a line box with the inherited line height, making
   // a header with an info icon taller than one without (GitHub issue #1015).
+  actionsWrap: { display: "flex", alignItems: "center", marginLeft: "auto" },
   infoWrap: { display: "flex", alignItems: "center" },
   sectionHeaderRow: {
     display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,

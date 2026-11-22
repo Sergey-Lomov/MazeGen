@@ -11,6 +11,9 @@ import { FloorBadgeRow } from "../FloorBadgeRow";
 import { ListCell, ListCellAction } from "../ListCell";
 import { SidePanel } from "../SidePanel";
 import { startNewZone } from "./zoneEditorActions";
+import { groupZones, sortZones, type ZonesGrouping } from "../../store/zoneListSort";
+import { SectionHeader } from "../SectionHeader";
+import { SelectRow } from "../SelectRow";
 import { Inline, Stack } from "../Layout";
 import { typography, disabled, muted, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -29,7 +32,17 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
 
   const overrides = useMazeStore((s) => s.zoneColorOverrides);
   const colors = zoneColors(zones, overrides);
-  const shown = zones.flatMap((zone, index) => (zone.kind === mode ? [{ zone, color: cssColor(colors[index]) }] : []));
+  const colorOf = new Map(zones.map((zone, index) => [zone.id, cssColor(colors[index])]));
+  const shown = sortZones(zones.filter((zone) => zone.kind === mode));
+  const grouping = useMazeStore((s) => s.zonesGrouping[mode]);
+  const setGroupingOf = useMazeStore((s) => s.setZonesGrouping);
+  const floors = useMazeStore((s) => s.floors);
+  // Keys of the expanded sections; every grouping change collapses them all.
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const sections = groupZones(shown, grouping, floors);
+  const hiddenIds = useMazeStore((s) => s.hiddenZoneIds);
+  const setZonesVisible = useMazeStore((s) => s.setZonesVisible);
+  const toggleSection = (key: string) => setExpanded((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
 
   return (
     <SidePanel title={m["zones.list_title"]()} stackKey="zones" onClose={onClose}>
@@ -45,9 +58,36 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
           </Button>
         ))}
       </Inline>
+      <Stack gap="itemGap" style={styles.groupingRow}>
+        <SelectRow<ZonesGrouping>
+          label={m["zones.grouping"]()}
+          value={grouping}
+          options={[
+            { value: "none", label: m["zones.group_none"]() },
+            { value: "floor", label: m["zones.group_floor"]() },
+            ...(mode === "auto" ? [{ value: "type" as const, label: m["zones.group_type"]() }] : []),
+          ]}
+          onChange={(next) => { setGroupingOf(mode, next); setExpanded([]); }}
+          testId="zones-grouping"
+        />
+      </Stack>
       <div style={styles.list}>
         {shown.length === 0 && <div style={styles.empty}>{m[mode === "auto" ? "zones.no_auto" : "zones.no_manual"]()}</div>}
-        {shown.map(({ zone, color }) => <ZoneCell key={zone.id} zone={zone} color={color} />)}
+        {grouping === "none"
+          ? shown.map((zone) => <ZoneCell key={zone.id} zone={zone} color={colorOf.get(zone.id)!} />)
+          : sections.map((section) => (
+            <div key={section.key} data-testid="zone-section">
+              <div style={styles.sectionHeader}>
+                <SectionHeader
+                  label={`${section.label} (${section.zones.length})`}
+                  expanded={expanded.includes(section.key)}
+                  onToggle={() => toggleSection(section.key)}
+                  actions={<SectionEye ids={section.zones.map((zone) => zone.id)} hiddenIds={hiddenIds} onSet={setZonesVisible} />}
+                />
+              </div>
+              {expanded.includes(section.key) && section.zones.map((zone) => <ZoneCell key={zone.id} zone={zone} color={colorOf.get(zone.id)!} />)}
+            </div>
+          ))}
       </div>
       {mode === "manual" && (
         <Stack gap="groupGap" style={styles.body}>
@@ -55,6 +95,20 @@ export function ZonesPanel({ onClose }: { onClose: () => void }) {
         </Stack>
       )}
     </SidePanel>
+  );
+}
+
+/** The eye of a section: hides all its zones, or shows them all when any of them is hidden. */
+function SectionEye({ ids, hiddenIds, onSet }: { ids: number[]; hiddenIds: number[]; onSet: (ids: number[], visible: boolean) => void }) {
+  const allVisible = ids.every((id) => !hiddenIds.includes(id));
+  return (
+    <ListCellAction
+      data-testid="zone-section-eye"
+      title={m[allVisible ? "zones.hide_section" : "zones.show_section"]()}
+      onAction={() => onSet(ids, !allVisible)}
+    >
+      {allVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+    </ListCellAction>
   );
 }
 
@@ -67,7 +121,8 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
   const removeZone = useMazeStore((s) => s.removeZone);
   const setEditing = useMazeStore((s) => s.setZoneEditId);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const name = zoneDisplayName(zone);
+  const floors = useMazeStore((s) => s.floors);
+  const name = zoneDisplayName(zone, floors);
   const manual = zone.kind === "manual";
   const listActions = !onAdd && !onRemove;
   const groups = useMazeStore((s) => s.zoneGroups);
@@ -130,6 +185,8 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
 
 const styles: Record<string, React.CSSProperties> = {
   body: { padding: spacing.groupGap },
+  sectionHeader: { padding: `${spacing.groupGap}px`, borderBottom: `1px solid ${ui.border.default}` },
+  groupingRow: { padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
   list: { display: "flex", flexDirection: "column", borderTop: `1px solid ${ui.border.default}` },
   empty: { ...disabled(typography.body), textAlign: "center", padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
   placeholder: { ...disabled(typography.body) },

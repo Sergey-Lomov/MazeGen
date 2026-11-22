@@ -55,10 +55,10 @@ export function serializeProject(state: MazeState): ProjectFile {
     floorFields,
     floorTopology: state.floorTopology,
     ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
-    ...(state.zones.length > 0 || state.zoneGroups.length > 0
+    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.length > 0
       ? {
           zones: {
-            zones: state.zones,
+            zones: state.zones.filter((zone) => zone.kind !== "auto"),
             nextZoneId: state.nextZoneId,
             groups: state.zoneGroups,
             nextGroupId: state.nextZoneGroupId,

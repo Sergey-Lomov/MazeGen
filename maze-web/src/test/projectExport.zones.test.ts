@@ -8,7 +8,7 @@ const zone = (id: number, cells: Zone["cells"] = [[0, 1, 2]], kind: Zone["kind"]
 describe("zones and zone groups (GitHub issue #1048)", () => {
   it("round-trips zones, groups, counters and colour overrides", () => {
     const state = makeState({
-      zones: [zone(1), zone(4, [[0, 0, 0], [1, 3, 3]], "auto")],
+      zones: [zone(1), zone(4, [[0, 0, 0], [1, 3, 3]])],
       nextZoneId: 9,
       zoneGroups: [{ id: 2, name: "G", zoneIds: [4, 1] }],
       nextZoneGroupId: 6,
@@ -18,6 +18,21 @@ describe("zones and zone groups (GitHub issue #1048)", () => {
     expect(file.zones).toEqual({
       zones: state.zones, nextZoneId: 9, groups: state.zoneGroups, nextGroupId: 6, colorOverrides: { "4": 0xff0000 },
     });
+  });
+
+  it("does not save automatic zones but keeps the groups and colours that name them (GitHub issue #1033)", () => {
+    const autoId = 2 ** 30 + 5;
+    const state = makeState({
+      zones: [zone(autoId, [[0, 0, 0]], "auto"), zone(1)],
+      nextZoneId: 2,
+      zoneGroups: [{ id: 1, name: "G", zoneIds: [autoId, 1] }],
+      nextZoneGroupId: 2,
+      zoneColorOverrides: { [autoId]: 0x00ff00 },
+    });
+    const file = reparse(state);
+    expect(file.zones?.zones).toEqual([zone(1)]);
+    expect(file.zones?.groups).toEqual([{ id: 1, name: "G", zoneIds: [autoId, 1] }]);
+    expect(file.zones?.colorOverrides).toEqual({ [String(autoId)]: 0x00ff00 });
   });
 
   it("round-trips an empty group and an empty zone", () => {

@@ -36,6 +36,7 @@ export function ZoneCombinePanel() {
   const close = useMazeStore((s) => s.cancelZoneCombine);
   const setHover = useMazeStore((s) => s.setHoveredZone);
   const multiFloor = useMazeStore((s) => s.floors.length > 1);
+  const floors = useMazeStore((s) => s.floors);
 
   // The hover belongs to the panel: it must not outlive it.
   useEffect(() => () => setHover(null), [setHover]);
@@ -83,7 +84,7 @@ export function ZoneCombinePanel() {
                     onClick={() => setOther(zone.id)}
                     onMouseEnter={() => setHover(zone.id)}
                     onMouseLeave={() => setHover(null)}
-                    title={zoneDisplayName(zone)}
+                    title={zoneDisplayName(zone, floors)}
                     truncateTitle
                     titleAddon={<EntityColorSwatch color={cssColor(colors[all.findIndex((z) => z.id === zone.id)])} />}
                     details={

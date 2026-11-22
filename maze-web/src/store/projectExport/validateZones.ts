@@ -2,6 +2,7 @@ import type { ProjectFileZones } from "./types";
 import type { Zone, ZoneCellWire, ZoneKind } from "../../wasm/mazeService";
 import type { ZoneGroup } from "../zonesTypes";
 import { assertArray, assertNumber, assertObject, assertString } from "./validatePrimitives";
+import { isAutoZoneId } from "../../domain/autoZones";
 
 const ZONE_KINDS: readonly ZoneKind[] = ["auto", "manual"];
 
@@ -32,7 +33,8 @@ function validateZone(v: unknown, path: string): Zone {
 
 /** Zones and zone groups of a project file (GitHub issue #1048). Structure only: a cell that no longer
  *  belongs to the field is kept and dropped at use (`filterZonesToField`). Group members that name no zone
- *  are dropped; an empty group stays. */
+ *  are dropped, except automatic zones, which are not saved but computed again with stable ids (GitHub
+ *  issue #1033); an empty group stays. */
 export function validateZones(raw: unknown, path: string): ProjectFileZones {
   const obj = assertObject(raw, path);
   const zones = assertArray(obj.zones, `${path}.zones`).map((z, i) => validateZone(z, `${path}.zones[${i}]`));
@@ -50,13 +52,13 @@ export function validateZones(raw: unknown, path: string): ProjectFileZones {
     if (groupIds.has(id)) throw new Error(`${path}.groups: duplicate group id ${id}`);
     groupIds.add(id);
     const members = assertArray(group.zoneIds, `${where}.zoneIds`).map((z, k) => assertId(z, `${where}.zoneIds[${k}]`));
-    return { id, name: assertString(group.name, `${where}.name`), zoneIds: [...new Set(members)].filter((z) => zoneIds.has(z)) };
+    return { id, name: assertString(group.name, `${where}.name`), zoneIds: [...new Set(members)].filter((z) => zoneIds.has(z) || isAutoZoneId(z)) };
   });
 
   const overridesObj = obj.colorOverrides == null ? {} : assertObject(obj.colorOverrides, `${path}.colorOverrides`);
   const colorOverrides: Record<string, number> = {};
   for (const [key, value] of Object.entries(overridesObj)) {
-    if (zoneIds.has(Number(key))) colorOverrides[key] = assertNumber(value, `${path}.colorOverrides.${key}`);
+    if (zoneIds.has(Number(key)) || isAutoZoneId(Number(key))) colorOverrides[key] = assertNumber(value, `${path}.colorOverrides.${key}`);
   }
 
   const maxZone = Math.max(-1, ...zoneIds);

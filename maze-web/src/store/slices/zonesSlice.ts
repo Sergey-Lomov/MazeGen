@@ -30,6 +30,7 @@ export const zonesTransientUi = {
   hiddenZoneIds: [],
   zonesPanelOpen: false,
   zonesListMode: "auto",
+  zonesGrouping: { auto: "none", manual: "none" },
   hoveredZoneId: null,
   hoveredZoneIds: [],
   zoneEditDraft: null,
@@ -178,10 +179,16 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     ? { zonesPanelOpen: true }
     : { ...discardingZoneEdit(s), zonesPanelOpen: false, hoveredZoneId: null })),
   setZonesListMode: (mode) => set({ zonesListMode: mode, hoveredZoneId: null }),
+  setZonesGrouping: (mode, grouping) => set((s) => ({ zonesGrouping: { ...s.zonesGrouping, [mode]: grouping }, hoveredZoneId: null })),
   setHoveredZone: (id) => set({ hoveredZoneId: id }),
   setHoveredZones: (ids) => set({ hoveredZoneIds: ids }),
   toggleZoneVisibility: (id) => set((s) => ({
     hiddenZoneIds: s.hiddenZoneIds.includes(id) ? s.hiddenZoneIds.filter((hidden) => hidden !== id) : [...s.hiddenZoneIds, id],
+  })),
+  setZonesVisible: (ids, visible) => set((s) => ({
+    hiddenZoneIds: visible
+      ? s.hiddenZoneIds.filter((id) => !ids.includes(id))
+      : [...s.hiddenZoneIds, ...ids.filter((id, i) => !s.hiddenZoneIds.includes(id) && ids.indexOf(id) === i)],
   })),
   // An unnamed zone shows as "Zone #id" (`zoneDisplayName`).
   // While a new zone is still being edited, adding again changes nothing: the editor stays as it is.

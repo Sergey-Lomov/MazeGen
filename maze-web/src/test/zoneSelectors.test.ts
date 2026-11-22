@@ -34,8 +34,8 @@ describe("zones list", () => {
   it("counts zones per kind and names unnamed ones by id", () => {
     expect(countZonesOfKind(zones, "auto")).toBe(1);
     expect(countZonesOfKind(zones, "manual")).toBe(2);
-    expect(zoneDisplayName(zones[0])).toBe("Auto A");
-    expect(zoneDisplayName(zones[2])).toBe("Zone #3");
+    expect(zoneDisplayName(zones[0], [])).toBe("Auto A");
+    expect(zoneDisplayName(zones[2], [])).toBe("Zone #3");
   });
 
   it("lists the floors a zone occupies, ascending and distinct", () => {
@@ -132,7 +132,7 @@ describe("zoneSelectors", () => {
   });
 
   it("appends zone names to the cell inspection", () => {
-    expect(buildZonesCellInspection(zones, 0, 1, 0)).toBe("x:1, y:0 | Auto A, Manual B");
-    expect(buildZonesCellInspection(zones, 0, 9, 9)).toBe("x:9, y:9");
+    expect(buildZonesCellInspection(zones, [], 0, 1, 0)).toBe("x:1, y:0 | Auto A, Manual B");
+    expect(buildZonesCellInspection(zones, [], 0, 9, 9)).toBe("x:9, y:9");
   });
 });

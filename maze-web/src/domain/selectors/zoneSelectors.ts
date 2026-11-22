@@ -1,10 +1,14 @@
 import type { NodeDto } from "../../wasm/types";
 import type { Zone, ZoneKind } from "../../wasm/mazeService";
-import { glueColor } from "../glueColor";
+import { autoColorAmong, glueColor } from "../glueColor";
 import { brightColor, colorToRgb, rgbToColor } from "../colorMath";
 import { canvas } from "../colorTokens";
 import { COMPONENT_MASK_ALPHA } from "../renderConstants";
+import type { FloorState } from "../../store/floorsTypes";
+import { autoZoneName } from "../autoZones";
 import * as m from "~/paraglide/messages";
+
+type FloorTitles = readonly Pick<FloorState, "title" | "titleCustomized">[];
 
 export interface ZoneRegions {
   /** One synthetic node per distinct cell of a drawn zone on the floor, so the zone is a region. */
@@ -17,9 +21,17 @@ export interface ZoneRegions {
  *  hue spread evenly round the wheel from `AUTO_HUE_BASE_COLOR`. Everything that marks a zone on the
  *  canvas or beside it takes its colour from here, so the zone reads the same everywhere. */
 export function zoneColors(zones: Zone[], overrides: Readonly<Record<number, number>> = {}): number[] {
-  // The palette is fixed (`AUTO_COLOR_COUNT` colours), so a zone's colour depends on its position only: adding
-  // a zone or giving another one its own colour never moves the rest.
-  return zones.map((zone, index) => overrides[zone.id] ?? glueColor(index));
+  // The palette is fixed (`AUTO_COLOR_COUNT` colours), so a zone's colour depends on its position among the zones
+  // of its kind only: adding a zone or giving another one its own colour never moves the rest, and the automatic
+  // zones, which come and go with the field, never recolour the manual ones.
+  // The automatic zones are all known at once, so their palette is fitted to their number (`autoColorAmong`); the
+  // manual ones are open-ended and keep the plain one.
+  const autoCount = zones.filter((zone) => zone.kind === "auto").length;
+  const seen: Record<ZoneKind, number> = { auto: 0, manual: 0 };
+  return zones.map((zone) => {
+    const index = seen[zone.kind]++;
+    return overrides[zone.id] ?? (zone.kind === "auto" ? autoColorAmong(index, autoCount) : glueColor(index));
+  });
 }
 
 /** The zones as the canvas and the editor see them: the draft replaces its zone, or is appended when new. */
@@ -112,9 +124,10 @@ export function zoneGroupDisplayName(group: { id: number; name: string }): strin
   return group.name === "" ? m["zone_groups.default_name"]({ id: group.id }) : group.name;
 }
 
-/** Display name of a zone: its name, or "Zone #id" while unnamed. */
-export function zoneDisplayName(zone: Zone): string {
-  return zone.name === "" ? m["zones.default_name"]({ id: zone.id }) : zone.name;
+/** Display name of a zone: an automatic zone's name built from its key (it follows the language and the floor titles),
+ *  else its own name, or "Zone #id" while unnamed. */
+export function zoneDisplayName(zone: Zone, floors: FloorTitles): string {
+  return autoZoneName(zone, floors) ?? (zone.name === "" ? m["zones.default_name"]({ id: zone.id }) : zone.name);
 }
 
 /** The other zones that share a cell with `zone` on the floor. */
@@ -168,8 +181,8 @@ export function countManualZones(zones: Zone[]): number {
 }
 
 /** Cell inspector text of the zones card: coordinates, then the names of the zones holding the cell. */
-export function buildZonesCellInspection(zones: Zone[], floorIndex: number, x: number, y: number): string {
+export function buildZonesCellInspection(zones: Zone[], floors: FloorTitles, floorIndex: number, x: number, y: number): string {
   const coordLabel = `x:${x}, y:${y}`;
-  const names = zonesOfCell(zones, floorIndex, x, y).map(zoneDisplayName);
+  const names = zonesOfCell(zones, floorIndex, x, y).map((zone) => zoneDisplayName(zone, floors));
   return names.length === 0 ? coordLabel : `${coordLabel} | ${names.join(", ")}`;
 }

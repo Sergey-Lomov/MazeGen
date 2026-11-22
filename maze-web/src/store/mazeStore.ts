@@ -18,6 +18,7 @@ import { createTopologySlice } from "./slices/topologySlice";
 import { createZonesSlice } from "./slices/zonesSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
+import { installAutoZoneSync } from "./autoZoneSync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installTeleportConnectorPathSync, retainLiveTeleportConnectorPaths } from "./teleportConnectorPathSync";
 import { installExportEditStateSync } from "./exportEditStateSync";
@@ -158,7 +159,7 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
       // saved project's own UI state is restored below (GitHub issue #946).
       ...TRANSIENT_UI_STATE,
       // zones and groups are saved with the project (GitHub issue #1048); the reset above only clears their UI
-      zones: file.zones?.zones ?? [],
+      zones: (file.zones?.zones ?? []).filter((zone) => zone.kind !== "auto"),
       nextZoneId: file.zones?.nextZoneId ?? 1,
       zoneGroups: file.zones?.groups ?? [],
       nextZoneGroupId: file.zones?.nextGroupId ?? 1,
@@ -411,6 +412,7 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
 }, a[0], a[1])));
 
 installTopologySync(useMazeStore);
+installAutoZoneSync(useMazeStore);
 installFieldClipboardSync(useMazeStore);
 installExportEditStateSync(useMazeStore);
 installTeleportConnectorPathSync(useMazeStore);
