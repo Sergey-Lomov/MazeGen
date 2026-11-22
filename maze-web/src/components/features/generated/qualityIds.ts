@@ -90,6 +90,7 @@ export const STRATEGY_IDS = [
   "add_split",
   "add_vertical_passage",
   "cross_element_group_select",
+  "cross_element_remove",
   "dead_end_group_select",
   "dead_end_to_passage",
   "dead_end_to_split",

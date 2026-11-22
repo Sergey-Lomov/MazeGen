@@ -30,7 +30,7 @@ import {
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
-import { cellsInDisplayRect, getCellVertices, gridEdgesNearDisplayRect } from "../domain/tessellationGeometry";
+import { cellsInDisplayRect, getCellVertices, gridEdgesForCells, gridEdgesNearDisplayRect } from "../domain/tessellationGeometry";
 
 describe("viewport grid density", () => {
   it("counts the inclusive viewport bounds", () => {
@@ -223,6 +223,32 @@ describe("gridEdgesNearDisplayRect", () => {
       keys.push(ends.join("|"));
     }
     expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("gridEdgesForCells", () => {
+  it("emits each sharp triangle side as an independent path", () => {
+    const cfg = fieldOf("rhombitrihexagonal", { shape: "rect", cols: 3, rows: 3 });
+    const edges = gridEdgesForCells([[4, 0]], cfg);
+
+    expect(edges).toHaveLength(6);
+    for (let index = 0; index < edges.length; index += 2) {
+      expect(edges[index].op).toBe("move_to");
+      expect(edges[index + 1].op).toBe("line_to");
+    }
+  });
+
+  it("emits a shared field edge once", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const edges = gridEdgesForCells([[0, 0], [1, 0]], cfg);
+    const keys: string[] = [];
+    for (let index = 0; index < edges.length; index += 2) {
+      const from = edges[index], to = edges[index + 1];
+      if (from.op !== "move_to" || to.op !== "line_to") throw new Error("a square edge is one move and one line");
+      keys.push([from.to, to.to].map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).sort().join("|"));
+    }
+    expect(keys).toHaveLength(7);
     expect(new Set(keys).size).toBe(keys.length);
   });
 });

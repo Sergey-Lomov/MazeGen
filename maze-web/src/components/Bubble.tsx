@@ -4,7 +4,7 @@ import { muted, radius, spacing, typography, ui } from "../styles/theme";
 /** Coordinate and id labels read better with fixed-width digits than in the app's `system-ui` stack. */
 const BUBBLE_FONT_FAMILY = "Consolas, Menlo, Monaco, monospace";
 
-export type BubbleVariant = "neutral" | "success" | "danger";
+export type BubbleVariant = "neutral" | "success" | "warning" | "danger";
 
 export interface BubbleColors {
   bg: string;
@@ -14,6 +14,7 @@ export interface BubbleColors {
 const VARIANT_COLORS: Record<BubbleVariant, BubbleColors> = {
   neutral: ui.debug.refHighlight,
   success: { bg: ui.bg.success, text: ui.text.success },
+  warning: { bg: ui.bg.warning, text: ui.text.warning },
   danger: { bg: ui.bg.error, text: ui.text.error },
 };
 
@@ -22,7 +23,7 @@ const VARIANT_COLORS: Record<BubbleVariant, BubbleColors> = {
 export const bubbleColors = (variant: BubbleVariant): BubbleColors => VARIANT_COLORS[variant];
 
 export interface BubbleProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "color"> {
-  /** `neutral` references an entity (coordinates), `success` tags an id, `danger` marks a problem. */
+  /** `neutral` references an entity, `success` tags an id, `warning` and `danger` mark attention levels. */
   variant?: BubbleVariant;
   /** Colours outside the three variants (the glue runs' own hues). Wins over `variant`. */
   colors?: BubbleColors;

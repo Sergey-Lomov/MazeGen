@@ -159,13 +159,11 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind, P>(
     )
 }
 
-/// Multi-slot generalization of [`group_select_apply`] — the base engine behind
-/// `CrossElementGroupSelectStrategy` (GitHub issue #376). Same candidate-pass / per-group
+/// Multi-target generalization of [`group_select_apply`] — the base engine behind
+/// `CrossElementGroupSelectStrategy` (GitHub issues #376, #1060). Same candidate-pass / per-group
 /// `to_remove` budget / reverse-index-by-`K::Element`-identity mechanics, but the "which nested
 /// strategy fixes this element and what issue does it get" decision is a single `nested_for`
-/// hook the caller owns end to end — a cross-element group's elements are heterogeneous
-/// (teleport, elevator, split, ...), each fixed by a different nested slot, so there is no one
-/// `NestedStrategyConfig` / one `build_nested_issue` to hand in.
+/// hook the caller owns end to end, and `wholly_protected_auto_resolve` is switchable.
 ///
 /// `nested_for(element, others) -> Option<(&NestedStrategyConfig<T>, &StrategyParams, Box<dyn Issue>)>`:
 /// - `None` means this element cannot be acted on (Start/Finish, a route-protected edge under

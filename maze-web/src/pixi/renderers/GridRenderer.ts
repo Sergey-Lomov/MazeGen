@@ -3,7 +3,7 @@ import type { Container } from "pixi.js";
 import type { Viewport } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../../domain/tessellationProjection";
-import { getCellOutlinePath, gridEdgesNearDisplayRect } from "../../domain/tessellationGeometry";
+import { gridEdgesForCells, gridEdgesNearDisplayRect } from "../../domain/tessellationGeometry";
 import { tracePath } from "../../domain/geometry/pathRenderer";
 import { TILE_SIZE } from "../../domain/constants";
 import { GRID_LINE_ALPHA } from "../../domain/renderConstants";
@@ -195,15 +195,12 @@ export class GridRenderer {
     // Grid strokes live in world space like the cells they outline. Do not compensate for viewport
     // zoom: the grid inside a field and the surrounding viewport grid must scale together.
     this.g.setStrokeStyle({ width: 1, color, alpha: GRID_LINE_ALPHA });
-    const drawCell = (xi: number, yi: number): void => {
-      tracePath(this.g, getCellOutlinePath(xi, yi, cfg), undefined, viewportGridMaxChordAngle(scale));
-    };
     if (cells) {
-      // Export renderers can supply the actual maze cells so the optional grid does not bleed
-      // into the viewport/export margin around an irregular field.
-      profileGrid(this.diagnosticOwner, "trace paths", () => {
-        for (const [xi, yi] of cells) drawCell(xi, yi);
-      });
+      // Export renderers supply the actual maze cells so the optional grid does not bleed into
+      // the viewport/export margin around an irregular field. Core returns each edge separately,
+      // just like the viewport grid, avoiding miter joins at sharp cell corners.
+      const edges = profileGrid(this.diagnosticOwner, "core cell edges", () => gridEdgesForCells(cells, cfg));
+      profileGrid(this.diagnosticOwner, "trace paths", () => tracePath(this.g, edges, undefined, viewportGridMaxChordAngle(scale)));
     } else if (drawn) {
       // Not every lattice coordinate is a cell (Cairo skips some), so ask core which cells the
       // drawn area touches instead of walking the coordinate box. Core answers with the edges of

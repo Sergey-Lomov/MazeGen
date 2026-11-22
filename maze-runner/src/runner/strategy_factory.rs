@@ -5,7 +5,7 @@ use maze_core::{
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
-        CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
+        CrossElementGroupSelectStrategy, CrossElementRemoveStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
         DeadEndToSplitStrategy, DeadEndToTeleportStrategy, DeadEndToVerticalPassageStrategy,
         ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy,
         ErasedRepairStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
@@ -122,6 +122,9 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "add_elevator_height_stop" => Box::new(AddElevatorHeightStopStrategy),
         "add_elevator_stop_for_gap" => Box::new(AddElevatorStopForGapStrategy),
         "cross_element_group_select" => Box::new(CrossElementGroupSelectStrategy {
+            protect_route: rule_params.protect_route,
+        }),
+        "cross_element_remove" => Box::new(CrossElementRemoveStrategy {
             protect_route: rule_params.protect_route,
         }),
         other => return Err(format!("unknown strategy: {other}")),

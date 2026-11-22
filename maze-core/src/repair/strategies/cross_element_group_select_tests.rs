@@ -1,7 +1,10 @@
 use super::*;
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
+use crate::quality_control::SplitTileNodes;
 use crate::quality_control::cross_element::CrossElement;
+use crate::repair::strategies::CrossElementRemoveStrategy;
+use crate::repair::strategies::cross_element_nested::NESTED_SLOTS as REMOVE_SLOTS;
 use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::repair::strategies::{
     OneWayToWallStrategy, RemoveElevatorStopStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
@@ -10,6 +13,7 @@ use crate::repair::strategies::{
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 fn rng() -> crate::random::MazeRng {
@@ -25,21 +29,36 @@ fn nested_config(
     strategy: Box<dyn crate::repair::strategy::ErasedRepairStrategy<SquareTessellation>>,
 ) -> NestedStrategyConfig<SquareTessellation> {
     NestedStrategyConfig {
-        slot: &NESTED_SLOTS[idx],
+        slot: &REMOVE_SLOTS[idx],
         strategy,
         param_overrides: HashMap::new(),
         nested: vec![],
     }
 }
 
+/// The group strategy's single `fix_target` slot, filled with `CrossElementRemoveStrategy` whose
+/// own per-type slots are `inner`.
+fn fix_target(
+    inner: Vec<NestedStrategyConfig<SquareTessellation>>,
+) -> Vec<NestedStrategyConfig<SquareTessellation>> {
+    vec![NestedStrategyConfig {
+        slot: &NESTED_SLOTS[0],
+        strategy: Box::new(CrossElementRemoveStrategy {
+            protect_route: false,
+        }),
+        param_overrides: HashMap::new(),
+        nested: inner,
+    }]
+}
+
 fn all_slots() -> Vec<NestedStrategyConfig<SquareTessellation>> {
-    vec![
+    fix_target(vec![
         nested_config(0, Box::new(RemoveTeleportStrategy)),
         nested_config(1, Box::new(OneWayToWallStrategy)),
         nested_config(2, Box::new(RemoveVerticalPassageStrategy)),
         nested_config(3, Box::new(RemoveElevatorStopStrategy)),
         nested_config(4, Box::new(RemoveSplitStrategy)),
-    ]
+    ])
 }
 
 fn tp_id(a: NodeId, b: NodeId) -> (NodeId, NodeId) {
@@ -295,7 +314,7 @@ fn shared_element_across_two_groups_resolves_both_in_one_call() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let teleport_only = vec![nested_config(0, Box::new(RemoveTeleportStrategy))];
+    let teleport_only = fix_target(vec![nested_config(0, Box::new(RemoveTeleportStrategy))]);
     let (tp_before, sp_before) = (teleport_count(&maze), split_count(&maze, 1));
     let result = apply_and_commit(
         &strat,
@@ -387,7 +406,7 @@ fn elevator_stop_and_split_pair_removes_only_the_one_stop() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let elevator_stop_only = vec![nested_config(3, Box::new(RemoveElevatorStopStrategy))];
+    let elevator_stop_only = fix_target(vec![nested_config(3, Box::new(RemoveElevatorStopStrategy))]);
     let (stops_before, sp_before) = (elevator_stop_count(&maze), split_count(&maze, 2));
     assert_eq!(stops_before, 3);
     let result = apply_and_commit(
@@ -498,7 +517,7 @@ fn protect_route_off_lets_the_route_critical_teleport_be_removed() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let teleport_only = vec![nested_config(0, Box::new(RemoveTeleportStrategy))];
+    let teleport_only = fix_target(vec![nested_config(0, Box::new(RemoveTeleportStrategy))]);
     let tp_before = teleport_count(&maze);
     let result = apply_and_commit(
         &strat,
@@ -525,7 +544,7 @@ fn one_way_and_split_pair_is_fixed_through_the_one_way_slot() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let one_way_only = vec![nested_config(1, Box::new(OneWayToWallStrategy))];
+    let one_way_only = fix_target(vec![nested_config(1, Box::new(OneWayToWallStrategy))]);
     let ow_edge = match &ow {
         CrossElement::OneWay(id) => *id,
         _ => unreachable!(),
@@ -559,7 +578,7 @@ fn missing_slot_for_a_type_makes_that_candidate_unfixable() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let split_only = vec![nested_config(4, Box::new(RemoveSplitStrategy))];
+    let split_only = fix_target(vec![nested_config(4, Box::new(RemoveSplitStrategy))]);
     let sp_before = split_count(&maze, 1);
     let tp_before = teleport_count(&maze);
     let result = apply_and_commit(
@@ -577,4 +596,25 @@ fn missing_slot_for_a_type_makes_that_candidate_unfixable() {
         "split side collapsed since the teleport had no slot"
     );
     assert_eq!(teleport_count(&maze), tp_before, "teleport untouched");
+}
+
+#[test]
+fn missing_fix_target_slot_fails_and_leaves_elements() {
+    let (mut maze, tp, sp) = corridor_teleport_split(6, 1);
+    let issue = issue_with_pair(&tp, &sp);
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Failed));
+    assert_eq!(teleport_count(&maze), 2);
+    assert_eq!(split_count(&maze, 1), 2);
 }

@@ -91,7 +91,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("labelFont", "elevatorBadges.textFont"),
   link("labelFont", "markerIndex.textFont"),
   link("labelFont", "floorLabel.textFont"),
-  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "teleportFloorBadge.labelType", false),
   link("floorLabelType", "elevatorBadges.labelType"),
   link("floorLabelType", "floorLabel.labelType"),
 
@@ -247,7 +247,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("labelFont", "elevatorBadges.textFont"),
   link("labelFont", "markerIndex.textFont"),
   link("labelFont", "floorLabel.textFont"),
-  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "teleportFloorBadge.labelType", false),
   link("floorLabelType", "elevatorBadges.labelType"),
   link("floorLabelType", "floorLabel.labelType"),
 

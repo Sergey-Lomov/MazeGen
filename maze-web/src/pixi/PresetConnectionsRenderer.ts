@@ -37,7 +37,7 @@ import {
   buildLinkHoverHighlight,
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
-import { presetEndpoint, withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
+import { presetEndpoint, presetEndpointKey, withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
 import { layoutEditorMarkersOnHosts } from "./editorMarkerLayout";
 import { canvas } from "../domain/colorTokens";
 import { WALL_THICKNESS } from "../domain/renderConstants";
@@ -114,7 +114,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
    *  highlight. */
   private readonly linkHover: NodeEdgeHighlightRenderer;
   private readonly entityHighlightContainer: Container;
+  private readonly warningEntityHighlightContainer: Container;
   private readonly entityHighlight: RegionHighlightRenderer;
+  private readonly warningEntityHighlight: RegionHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -144,6 +146,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.teleportPreviewContainer = new Container();
     this.linkHoverContainer      = new Container();
     this.entityHighlightContainer = new Container();
+    this.warningEntityHighlightContainer = new Container();
 
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
@@ -170,6 +173,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.teleportPreviewContainer);
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
+    this.root.addChild(this.warningEntityHighlightContainer);
 
     this.grid           = new GridRenderer(this.gridContainer, "preset connections");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
@@ -203,6 +207,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.boundaryHover = new Graphics();
     this.linkHoverContainer.addChild(this.boundaryHover);
     this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
+    this.warningEntityHighlight = new RegionHighlightRenderer(this.warningEntityHighlightContainer);
 
     this.root.visible = false;
 
@@ -317,7 +322,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (state.presetHoveredLink !== prev.presetHoveredLink) {
       this.redrawLinkHover(state);
     }
-    if (state.presetHoveredEntity !== prev.presetHoveredEntity || state.presetHoveredEntityMode !== prev.presetHoveredEntityMode) this.redrawEntityHighlight(state);
+    if (state.presetHoveredEntity !== prev.presetHoveredEntity || state.presetHoveredEntityMode !== prev.presetHoveredEntityMode || state.presetHoveredEntityWarningEndpoints !== prev.presetHoveredEntityWarningEndpoints) this.redrawEntityHighlight(state);
 
     if (
       state.presetConnectionsTool !== prev.presetConnectionsTool
@@ -493,15 +498,22 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private redrawEntityHighlight(state: MazeState): void {
     if (!this.cfg) return;
     const activeLevel = activeFloorLevel(state) ?? 0;
+    const warningKeys = new Set(state.presetHoveredEntityWarningEndpoints.map(presetEndpointKey));
+    const cells = (state.presetHoveredEntity ?? [])
+      .filter((endpoint) => (endpoint.level ?? 0) === activeLevel);
     this.entityHighlight.render({
       // Match post-edit's point-bubble highlight: only the cells on the active floor are drawn.
       // Preset endpoints are intentionally kept as endpoints in the store because their level is
       // needed when a multi-floor bubble is hovered.
       nodes: [], regionGroups: [],
-      cells: (state.presetHoveredEntity ?? [])
-        .filter((endpoint) => (endpoint.level ?? 0) === activeLevel)
-        .map((endpoint) => endpoint.point),
+      cells: cells.filter((endpoint) => !warningKeys.has(presetEndpointKey(endpoint))).map((endpoint) => endpoint.point),
       color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1, cfg: this.cfg, skipPerimeter: true,
+      insetMode: state.presetHoveredEntityMode,
+    });
+    this.warningEntityHighlight.render({
+      nodes: [], regionGroups: [],
+      cells: cells.filter((endpoint) => warningKeys.has(presetEndpointKey(endpoint))).map((endpoint) => endpoint.point),
+      color: canvas.preset.invalid, width: WALL_THICKNESS * 2, alpha: 1, cfg: this.cfg, skipPerimeter: true,
       insetMode: state.presetHoveredEntityMode,
     });
   }
@@ -719,6 +731,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.linkHover.clear();
     this.boundaryHover.clear();
     this.entityHighlight.clear();
+    this.warningEntityHighlight.clear();
     this.teleportPreview.clear();
   }
 
@@ -747,6 +760,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.linkHover.destroy();
     this.boundaryHover.destroy();
     this.entityHighlight.destroy();
+    this.warningEntityHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.backgroundImageContainer.destroy();
@@ -771,6 +785,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
     this.entityHighlightContainer.destroy();
+    this.warningEntityHighlightContainer.destroy();
   }
 }
 

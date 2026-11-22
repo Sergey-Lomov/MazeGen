@@ -2,7 +2,7 @@ use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 use maze_core::{
     quality_control::{
         AREA_MISSING_ELEVATOR_STOPS, EXCESSIVE_ELEVATOR_STOP_GAP, EXCESSIVE_SCC_COUNT,
-        INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END, INVALID_DEAD_END_GROUP, INVALID_ELEVATOR,
+        INVALID_CROSS_ELEMENT, INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END, INVALID_DEAD_END_GROUP, INVALID_ELEVATOR,
         INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
         INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
         INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP,
@@ -17,7 +17,7 @@ use maze_core::{
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
-        CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
+        CrossElementGroupSelectStrategy, CrossElementRemoveStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
         DeadEndToSplitStrategy, DeadEndToTeleportStrategy, DeadEndToVerticalPassageStrategy,
         ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy,
         ExpandRegionPassageStrategy, FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy,
@@ -1731,6 +1731,42 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 maze_core::quality_control::InvalidCrossElementGroupIssue,
             >>::expected_nested(
                 &CrossElementGroupSelectStrategy {
+                    protect_route: true,
+                },
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "cross_element_remove",
+            handles: INVALID_CROSS_ELEMENT.as_str(),
+            params: strategy_params_dto(
+                <CrossElementRemoveStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidCrossElementIssue,
+                >>::params(&CrossElementRemoveStrategy {
+                    protect_route: true,
+                }),
+                &[],
+            ),
+            experimental: <CrossElementRemoveStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidCrossElementIssue,
+            >>::is_experimental(&CrossElementRemoveStrategy {
+                protect_route: true,
+            }),
+            nested_suppressed_params: <CrossElementRemoveStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidCrossElementIssue,
+            >>::nested_suppressed_params(
+                &CrossElementRemoveStrategy {
+                    protect_route: true,
+                },
+            ),
+            nested_slots: nested_slots_dto(<CrossElementRemoveStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidCrossElementIssue,
+            >>::expected_nested(
+                &CrossElementRemoveStrategy {
                     protect_route: true,
                 },
             )),
