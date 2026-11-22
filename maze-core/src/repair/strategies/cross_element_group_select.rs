@@ -1,19 +1,16 @@
 use crate::Maze;
 use crate::generation::PresetState;
-use crate::graph::route_protection::is_edge_on_route;
 use crate::quality_control::cross_element::{
     CrossElement, cross_element_edges, cross_element_preset_locked, cross_element_still_violates,
-    split_tile_nodes_of,
 };
 use crate::quality_control::{
-    CrossElementGroupKind, INVALID_ELEVATOR_STOP, INVALID_ONE_WAY, INVALID_SPLIT_TILE,
-    INVALID_TELEPORT, INVALID_VERTICAL_PASSAGE, InvalidCrossElementGroupIssue,
-    InvalidElevatorStopIssue, InvalidOneWayIssue, InvalidSplitTileIssue, InvalidTeleportIssue,
-    InvalidVerticalPassageIssue, Issue, SplitTileNodes,
+    CrossElementGroupKind, INVALID_CROSS_ELEMENT, InvalidCrossElementGroupIssue,
+    InvalidCrossElementIssue,
 };
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
+use crate::repair::strategies::cross_element_nested::route_blocked;
 use crate::repair::strategies::group_select::{
     PARAM_PRIORITY, PRIORITY_OPTIONS, PRIORITY_PROBLEMATIC, multi_target_group_select_apply,
     order_by_priority,
@@ -23,7 +20,6 @@ use crate::repair::strategy::{
 };
 use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
 
 static PARAMS: &[StrategyParam] = &[StrategyParam {
     id: PARAM_PRIORITY,
@@ -34,63 +30,30 @@ static PARAMS: &[StrategyParam] = &[StrategyParam {
     },
 }];
 
-/// One nested slot per removable cross-element type — see GitHub issue #376. A cross-element pair
-/// is heterogeneous (a teleport near a split tile), so unlike the single-slot
-/// `OneWayGroupSelectStrategy` this strategy resolves a *different* nested strategy per candidate
-/// depending on its type. Start / Finish have no slot: they are never removable.
-pub const SLOT_TELEPORT_FIX: &str = "teleport_fix";
-pub const SLOT_ONE_WAY_FIX: &str = "one_way_fix";
-pub const SLOT_VERTICAL_PASSAGE_FIX: &str = "vertical_passage_fix";
-pub const SLOT_ELEVATOR_STOP_FIX: &str = "elevator_stop_fix";
-pub const SLOT_SPLIT_FIX: &str = "split_fix";
+/// Slot id for the nested strategy this strategy delegates each candidate element's removal to —
+/// `CrossElementRemoveStrategy` by default, which resolves the per-type removal strategy itself.
+pub const SLOT_FIX_TARGET: &str = "fix_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot {
-        slot_id: SLOT_TELEPORT_FIX,
-        kind: INVALID_TELEPORT,
-        min: 1,
-        max: Some(1),
-        dispatch_kind: NestedDispatchKind::Unordered,
-    },
-    NestedSlot {
-        slot_id: SLOT_ONE_WAY_FIX,
-        kind: INVALID_ONE_WAY,
-        min: 1,
-        max: Some(1),
-        dispatch_kind: NestedDispatchKind::Unordered,
-    },
-    NestedSlot {
-        slot_id: SLOT_VERTICAL_PASSAGE_FIX,
-        kind: INVALID_VERTICAL_PASSAGE,
-        min: 1,
-        max: Some(1),
-        dispatch_kind: NestedDispatchKind::Unordered,
-    },
-    NestedSlot {
-        slot_id: SLOT_ELEVATOR_STOP_FIX,
-        kind: INVALID_ELEVATOR_STOP,
-        min: 1,
-        max: Some(1),
-        dispatch_kind: NestedDispatchKind::Unordered,
-    },
-    NestedSlot {
-        slot_id: SLOT_SPLIT_FIX,
-        kind: INVALID_SPLIT_TILE,
-        min: 1,
-        max: Some(1),
-        dispatch_kind: NestedDispatchKind::Unordered,
-    },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_FIX_TARGET,
+    kind: INVALID_CROSS_ELEMENT,
+    min: 1,
+    max: Some(1),
+    dispatch_kind: NestedDispatchKind::Unordered,
+}];
 
 /// Handles `INVALID_CROSS_ELEMENT_GROUP` — see GitHub issue #376. Produced by
 /// `CrossElementGeometricProximityCheck` / `CrossElementGraphProximityCheck`: one group per
 /// too-close unordered pair of logical elements (`to_remove: 1` — removing either breaks the
 /// pair).
 ///
-/// Built on `group_select::multi_target_group_select_apply` (the multi-slot generalization of
-/// `group_select_apply`): its own `nested_for` hook maps each candidate `CrossElement` to the
-/// nested slot that can fix it and a freshly re-resolved synthetic issue, or `None` when the
-/// element cannot be acted on:
+/// Standard group-select shape (GitHub issue #1060): `priority` picks which element of a flagged
+/// group is tried first and the removal itself goes to the single nested `fix_target` strategy
+/// (`CrossElementRemoveStrategy`), which resolves the per-type removal strategy. Built on
+/// `group_select::multi_target_group_select_apply` rather than `group_select_apply` only for its
+/// `wholly_protected_auto_resolve: false` switch. Its `nested_for` hook hands the nested slot a
+/// single-element `InvalidCrossElementIssue::for_removal`, or `None` when the element cannot be
+/// acted on:
 /// - `Start` / `Finish` — never removable, always `None`. A `[Start, Finish]` pair (or any pair
 ///   both of whose elements are unremovable) has no actionable candidate; with
 ///   `wholly_protected_auto_resolve: false` its budget is kept and the strategy reports `Failed`,
@@ -103,77 +66,6 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// override.
 pub struct CrossElementGroupSelectStrategy {
     pub protect_route: bool,
-}
-
-impl CrossElementGroupSelectStrategy {
-    /// Whether `element`'s removal is blocked because one of its underlying edges is on the
-    /// current route and `protect_route` is set. Split / Start / Finish own no edges, so this is
-    /// always `false` for them (Start/Finish are excluded elsewhere, as unremovable).
-    fn route_blocked<T: Tessellation>(&self, maze: &Maze<T>, element: &CrossElement) -> bool {
-        self.protect_route
-            && cross_element_edges(maze, element)
-                .iter()
-                .any(|&e| is_edge_on_route(maze, e))
-    }
-
-    /// The synthetic single-entity issue for `element`, re-resolving the entity from `maze` at
-    /// call time (never a value cached in the `CrossElement`). `None` for `Start`/`Finish` and
-    /// for an element that no longer exists.
-    fn make_nested_issue<T: Tessellation>(
-        maze: &Maze<T>,
-        element: &CrossElement,
-    ) -> Option<Box<dyn Issue>> {
-        if !cross_element_still_violates(maze, element) {
-            return None;
-        }
-        let check = "cross_element_group_select";
-        match element {
-            CrossElement::Teleport(_) => {
-                let edge = *cross_element_edges(maze, element).first()?;
-                Some(Box::new(InvalidTeleportIssue::new_from_check(
-                    check,
-                    vec![edge],
-                )))
-            }
-            CrossElement::OneWay(id) => Some(Box::new(InvalidOneWayIssue::new_from_check(
-                check,
-                vec![*id],
-            ))),
-            CrossElement::VerticalPassage(id) => Some(Box::new(
-                InvalidVerticalPassageIssue::new_from_check(check, vec![*id]),
-            )),
-            CrossElement::ElevatorStop(stop) => {
-                // `cross_element_still_violates` already confirmed the stop is in an elevator with
-                // >= 2 stops; removing just this one stop (not the whole elevator) breaks the pair.
-                Some(Box::new(InvalidElevatorStopIssue::new_from_check(
-                    check,
-                    vec![*stop],
-                )))
-            }
-            CrossElement::Split(tile) => {
-                let nodes = split_tile_nodes_of(maze, &tile.0);
-                if nodes.len() < 2 {
-                    return None;
-                }
-                Some(Box::new(InvalidSplitTileIssue::new_from_check(
-                    check,
-                    vec![SplitTileNodes::new(nodes)],
-                )))
-            }
-            CrossElement::Start(_) | CrossElement::Finish(_) => None,
-        }
-    }
-
-    fn slot_for(element: &CrossElement) -> Option<&'static str> {
-        match element {
-            CrossElement::Teleport(_) => Some(SLOT_TELEPORT_FIX),
-            CrossElement::OneWay(_) => Some(SLOT_ONE_WAY_FIX),
-            CrossElement::VerticalPassage(_) => Some(SLOT_VERTICAL_PASSAGE_FIX),
-            CrossElement::ElevatorStop(_) => Some(SLOT_ELEVATOR_STOP_FIX),
-            CrossElement::Split(_) => Some(SLOT_SPLIT_FIX),
-            CrossElement::Start(_) | CrossElement::Finish(_) => None,
-        }
-    }
 }
 
 impl<T: Tessellation> RepairStrategy<T, InvalidCrossElementGroupIssue>
@@ -200,22 +92,23 @@ impl<T: Tessellation> RepairStrategy<T, InvalidCrossElementGroupIssue>
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        // One entry per filled slot, plus its pre-built params (mirrors `group_select_apply`'s
-        // own `build_params(nested.strategy.params(), ...)`).
-        let mut slots: HashMap<&'static str, (&NestedStrategyConfig<T>, StrategyParams)> =
-            HashMap::new();
-        for n in nested {
-            let built =
-                crate::repair::params::build_params(n.strategy.params(), Some(&n.param_overrides));
-            slots.entry(n.slot.slot_id).or_insert((n, built));
-        }
-
         if issue.groups().is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
+        let Some(fix_target) = nested.iter().find(|n| n.slot.slot_id == SLOT_FIX_TARGET) else {
+            return (RepairResult::Failed, vec![]);
+        };
+        let fix_params = crate::repair::params::build_params(
+            fix_target.strategy.params(),
+            Some(&fix_target.param_overrides),
+        );
 
         let nested_for = |element: &CrossElement, _others: &[&CrossElement]| {
-            if self.route_blocked(maze, element) {
+            // Start / Finish are never removable.
+            if matches!(element, CrossElement::Start(_) | CrossElement::Finish(_)) {
+                return None;
+            }
+            if route_blocked(maze, self.protect_route, element) {
                 return None;
             }
             // A preset-locked element (every underlying edge is a preset connection) must never be
@@ -228,10 +121,16 @@ impl<T: Tessellation> RepairStrategy<T, InvalidCrossElementGroupIssue>
             if cross_element_preset_locked(maze, preset_state, element) {
                 return None;
             }
-            let slot_id = Self::slot_for(element)?;
-            let (cfg, cfg_params) = slots.get(slot_id)?;
-            let synthetic = Self::make_nested_issue(maze, element)?;
-            Some((*cfg, cfg_params, synthetic))
+            // An element an earlier fix in the same pass already removed.
+            if !cross_element_still_violates(maze, element) {
+                return None;
+            }
+            let synthetic: Box<dyn crate::quality_control::Issue> =
+                Box::new(InvalidCrossElementIssue::for_removal(
+                    "cross_element_group_select",
+                    element.clone(),
+                ));
+            Some((fix_target, &fix_params, synthetic))
         };
 
         // Whether `element` (some other still-live candidate, not the one just fixed) is moot

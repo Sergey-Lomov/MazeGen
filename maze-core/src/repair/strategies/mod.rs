@@ -6,6 +6,8 @@ pub mod add_elevator_stop_for_gap;
 pub mod add_split;
 pub mod add_vertical_passage;
 pub mod cross_element_group_select;
+mod cross_element_nested;
+pub mod cross_element_remove;
 mod cycle_cut_set;
 pub mod dead_end_group_select;
 pub mod dead_end_priority;
@@ -96,12 +98,15 @@ pub use add_vertical_passage::{
     AddVerticalPassageStrategy, PARAM_ONE_WAY_BALANCE as ADD_VERTICAL_PASSAGE_PARAM_ONE_WAY_BALANCE,
 };
 pub use cross_element_group_select::{
-    CrossElementGroupSelectStrategy,
-    SLOT_ELEVATOR_STOP_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ELEVATOR_STOP_FIX,
-    SLOT_ONE_WAY_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ONE_WAY_FIX,
-    SLOT_SPLIT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_SPLIT_FIX,
-    SLOT_TELEPORT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_TELEPORT_FIX,
-    SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_VERTICAL_PASSAGE_FIX,
+    CrossElementGroupSelectStrategy, SLOT_FIX_TARGET as CROSS_ELEMENT_GROUP_SELECT_SLOT_FIX_TARGET,
+};
+pub use cross_element_remove::{
+    CrossElementRemoveStrategy,
+    SLOT_ELEVATOR_STOP_FIX as CROSS_ELEMENT_REMOVE_SLOT_ELEVATOR_STOP_FIX,
+    SLOT_ONE_WAY_FIX as CROSS_ELEMENT_REMOVE_SLOT_ONE_WAY_FIX,
+    SLOT_SPLIT_FIX as CROSS_ELEMENT_REMOVE_SLOT_SPLIT_FIX,
+    SLOT_TELEPORT_FIX as CROSS_ELEMENT_REMOVE_SLOT_TELEPORT_FIX,
+    SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_REMOVE_SLOT_VERTICAL_PASSAGE_FIX,
 };
 pub use dead_end_group_select::{
     DeadEndGroupSelectStrategy, SLOT_FIX_TARGET as DEAD_END_GROUP_SELECT_SLOT_FIX_TARGET,

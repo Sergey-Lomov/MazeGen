@@ -14,8 +14,8 @@ use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, Invali
 /// resolving either element of the pair clears it.
 ///
 /// Unlike the single-type group kinds (`OneWayGroupKind`, `SplitGroupKind`, ...), this kind is
-/// **not** repaired through `group_select_apply` — `CrossElementGroupSelectStrategy` has one
-/// nested slot per element type and runs its own `multi_target_group_select_apply` engine. The
+/// **not** repaired through `group_select_apply` — `CrossElementGroupSelectStrategy` runs the
+/// `multi_target_group_select_apply` engine, which keeps a `[Start, Finish]` pair unresolved. The
 /// `NESTED_KIND`/`NESTED_SLOT_ID` consts on `InvalidGroupIssueKind` are vestigial (unread anywhere
 /// in the codebase); they are filled with arbitrary placeholder values here and never consulted.
 #[derive(Debug, Clone, PartialEq)]

@@ -1123,7 +1123,7 @@ A rule-level parameter (GitHub issue #253) is configured once on a `Rule` and sh
 
 **A migrated parameter is forbidden, not merely ignored, in its old per-check/per-strategy `params`.** `build_rule_for!` rejects a check instance whose own `params` still contains a key that `rule_param_applies_to` says that check consumes; `build_strategy_erased` does the same for a strategy's `StrategyConfig.params`. Both return a hard `Err` naming the offending key, rather than silently dropping it — a parameter can't be simultaneously "moved to rule level" and "still readable from its old location".
 
-`protect_route` (GitHub issue #78, migrated to rule-level by #253) was the first rule-level parameter, since joined by `vertical_passage_type` and `split_patterns` (below) — the mechanism itself is generic over any number of parameters, not specific to `protect_route`. `protect_route`'s `applies_to` list: checks `teleport_duplicates_connection`, `teleport_waypoint_distance`, `teleport_geometric_length`, `teleport_graph_distance`, `teleport_super_hub_avoidance`, `teleport_split_intersection`, `teleport_group_proximity`, `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`, `cross_element_geometric_proximity`, `cross_element_graph_proximity`; strategies `region_shrink_split`, `teleport_group_select`, `one_way_group_select`, `cross_element_group_select`, `add_split` (see `repair.md` for the strategy side). Every one of these previously declared `protect_route` as its own struct field populated from a per-instance `params`/`StrategyParam` override — the field itself is unchanged, only where its value comes from.
+`protect_route` (GitHub issue #78, migrated to rule-level by #253) was the first rule-level parameter, since joined by `vertical_passage_type` and `split_patterns` (below) — the mechanism itself is generic over any number of parameters, not specific to `protect_route`. `protect_route`'s `applies_to` list: checks `teleport_duplicates_connection`, `teleport_waypoint_distance`, `teleport_geometric_length`, `teleport_graph_distance`, `teleport_super_hub_avoidance`, `teleport_split_intersection`, `teleport_group_proximity`, `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`, `cross_element_geometric_proximity`, `cross_element_graph_proximity`; strategies `region_shrink_split`, `teleport_group_select`, `one_way_group_select`, `cross_element_group_select`, `cross_element_remove`, `add_split` (see `repair.md` for the strategy side). Every one of these previously declared `protect_route` as its own struct field populated from a per-instance `params`/`StrategyParam` override — the field itself is unchanged, only where its value comes from.
 
 `split_patterns` (GitHub issue #389, `RuleParamKind::PatternList`, default empty) unifies `SplitCountCheck.patterns`, `SplitDensityCheck.patterns`, and `AddSplitStrategy`'s own pattern topology, which previously duplicated the same `Vec<SplitPattern>` independently in three places — see "SplitCountCheck / SplitDensityCheck" above and `repair.md`'s `AddSplitStrategy` section. Unlike `protect_route`/`vertical_passage_type` (scalar kinds with a `const`-expressible default), `PatternList` always defaults to empty — a `Vec`-carrying enum variant can't be a `const`. Its `applies_to` list: checks `split_count`, `split_density`; strategy `add_split`.
 
@@ -2023,7 +2023,7 @@ single-type tessellation fires only if its one type is listed. Fires one
 cell_type }`, with `.with_detail(instance_id, "cell_types", <forbidden keys joined by ", ">)`.
 An unknown key is a config error, not a silent miss: `maze-runner`'s `validate_cell_type_params`
 rejects it (naming the known keys) in `run_repair` / `run_check_only`, because the check factory
-has no tessellation instance. No repair strategy is registered for `invalid_cross_element`.
+has no tessellation instance. Repaired by `CrossElementRemoveStrategy` (see `repair.md`).
 
 ### CrossElementGroupKind / InvalidCrossElementGroupIssue
 
@@ -2034,8 +2034,8 @@ pub struct CrossElementGroupKind;
 impl InvalidGroupIssueKind for CrossElementGroupKind {
     type Element = CrossElement;
     const KIND: IssueKind = INVALID_CROSS_ELEMENT_GROUP;
-    // Placeholders — the multi-slot CrossElementGroupSelectStrategy resolves a nested strategy
-    // per element type itself and never calls the single-slot group_select_apply path that reads
+    // Placeholders — CrossElementGroupSelectStrategy runs multi_target_group_select_apply with its
+    // own `fix_target` slot and never calls the single-slot group_select_apply path that reads
     // these (audit A fallback: reuse InvalidGroupIssue<K> rather than a parallel issue type).
     const NESTED_KIND: IssueKind = INVALID_TELEPORT;
     const NESTED_SLOT_ID: &'static str = "unused";
