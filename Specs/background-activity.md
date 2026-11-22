@@ -27,8 +27,8 @@ small cards in the top-right corner of the canvas, so the user sees what is runn
 - One card per running kind, all of one fixed width (240 px, long names wrap): the process name (fonts name the
   fonts being converted), an info button (`InfoIconButton`) at the right end of the title row opening a modal
   with a detailed description, and an indeterminate activity strip (`loading-progress-indeterminate`) along the
-  bottom edge. The card carries the `activity-card` class, which gives its icon buttons the shared second hover
-  level (`global.css`, same as a SidePanel header), because the card's surface is light.
+  bottom edge. Its icon buttons need no special hover level: the shared translucent hover overlay
+  (`global.css`) lightens the card's surface like any other.
 - The description dialog is independent of the cards: it keeps its text and stays open after its process ends
   and its card goes; the user closes it.
 - A card appears only after its kind has run `INDICATOR_DELAY_MS` (250 ms) and, once shown, stays at least

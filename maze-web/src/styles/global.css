@@ -41,25 +41,12 @@ input[type="number"] {
   margin: 0;
 }
 
+/* The hover fill is a translucent white overlay, so it lightens whatever surface the button sits on
+   (panel, hovered list row, panel header, card, input) by the same perceived step. Controls need
+   no per-surface hover level. */
 .btn-flat-icon:hover:not(:disabled) {
-  background: #2d2d2d;
+  background: rgb(255 255 255 / 10%);
   color: #d0d4d7;
-}
-
-/* Search fields share this flat-icon hit area. Their input background is also #2d2d2d, so the
-   regular hover fill would be invisible; the stronger shared action surface remains 18 px square
-   and the absolutely-positioned control does not affect the field's height. */
-.btn-flat-icon.search-input-clear:hover:not(:disabled) {
-  background: #404040;
-}
-
-/* An action needs a distinct second hover level when its containing list row is already hovered,
-   or when it sits in a SidePanel's lighter header or a background activity card. Both contexts are shared structural surfaces,
-   so controls need no local colour overrides. */
-.list-cell.hoverable:hover .btn-flat-icon:hover:not(:disabled),
-.side-panel-header .btn-flat-icon:hover:not(:disabled),
-.activity-card .btn-flat-icon:hover:not(:disabled) {
-  background: #404040;
 }
 
 .btn-flat-icon-no-hover:hover:not(:disabled) {

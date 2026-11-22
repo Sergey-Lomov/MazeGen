@@ -65,7 +65,7 @@ export function BackgroundActivityStack() {
             {cards.map((entry) => {
               const text = TEXTS[entry.kind](entry.labels);
               return (
-                <div key={entry.kind} role="status" className="activity-card" style={styles.card} data-testid={`background-activity-${entry.kind}`}>
+                <div key={entry.kind} role="status" style={styles.card} data-testid={`background-activity-${entry.kind}`}>
                   <span style={styles.title}>{text.title}</span>
                   <InfoIconButton label={m["activity.info"]()} testId={`background-activity-info-${entry.kind}`} onClick={() => setInfoKind({ kind: entry.kind, text })} />
                   <ActivityStrip />

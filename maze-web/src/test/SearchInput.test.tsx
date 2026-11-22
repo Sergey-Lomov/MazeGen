@@ -27,7 +27,7 @@ describe("SearchInput", () => {
   it("uses the compact 18 px flat-icon hit area without contributing to field height", () => {
     render(<SearchInput value="query" onValueChange={() => {}} placeholder="Search" />);
     const clear = screen.getByRole("button", { name: "Clear search" });
-    expect(clear).toHaveClass("btn-flat-icon", "btn-flat-icon-compact", "search-input-clear");
+    expect(clear).toHaveClass("btn-flat-icon", "btn-flat-icon-compact");
     expect(clear).toHaveStyle({ position: "absolute", right: "3px", top: "50%", margin: "0px" });
     expect(screen.getByPlaceholderText("Search")).toHaveStyle({ display: "block", height: "24px", lineHeight: "16px" });
   });
