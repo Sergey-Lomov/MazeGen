@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
 import { CloseIconButton } from "./CloseIconButton";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 type DialogSizeKey = keyof typeof dialogSize;
 
@@ -81,15 +82,16 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
   }, [id]);
 
   useEffect(() => {
+    return claimEscape(() => {
+      if (openModalStack[openModalStack.length - 1] !== id) return false;
+      onClose();
+      return true;
+    }, escapePriority.modal);
+  }, [id, onClose]);
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (openModalStack[openModalStack.length - 1] !== id) return;
-      if (e.key === "Escape") {
-        // The dialog unmounts synchronously, so a window-level Escape listener of the UI beneath it
-        // (`SidePanel`) would no longer see an open modal: `defaultPrevented` is its signal.
-        e.preventDefault();
-        onClose();
-        return;
-      }
       if (!onConfirm) return;
       if (e.key === "Enter" && isBlurOnEnterTarget(e.target)) return;
       if (e.key === "Enter" && !isNewlineTarget(e.target)) {
@@ -110,7 +112,7 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
     // happens to be focused.
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [id, onClose, onConfirm]);
+  }, [id, onConfirm]);
 
   return createPortal(
     <div style={styles.overlay} onClick={onClose}>

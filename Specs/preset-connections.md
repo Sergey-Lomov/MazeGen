@@ -137,20 +137,23 @@ A press that doesn't move to a different cell is resolved as a click on `pointer
 - count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount`)
 - are excluded from `generate()` (`preset_start`/`preset_finish` omitted from the payload)
 - are cleared (set to `null`) by "Clear invalid" alongside invalid edge presets and teleports
-- get a dedicated invalid-cell fill (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on
+- are highlighted by the shared coordinate warning layer (see "Coordinate warnings") while the Problems bubble or the clear button is hovered
 
 A teleport is **invalid** if either endpoint is outside the current field (`computeInvalidTeleportIds`, same field-resolution logic as `computeInvalidKeys`). Invalid teleports:
 - count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size`)
 - are excluded from `generate()`
 - are removed by "Clear invalid" alongside invalid edge presets
-- get a dedicated invalid-cell fill at each visible endpoint (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on; point invalidity is never represented by a square or circle outline
+- are highlighted at each visible endpoint by the shared coordinate warning layer while hovered; point invalidity is never represented by a square or circle outline
 
 The preset list shows a warning icon beside the id of every entry with at least one endpoint outside
 its own floor's field. Its tooltip identifies the outside-field condition. Each coordinate bubble is
 validated independently, so an entry with several coordinates marks only its invalid bubbles.
 The Problems section includes one outside-field warning with the total number of invalid preset
 entities and floor badges for the floors containing invalid endpoints. Hovering it enables the same
-canvas highlight as "Clear invalid".
+canvas highlight as "Clear invalid". The total counts what the preset list shows (`listedInvalidConnections`,
+`listedInvalidSplitKeys` in `domain/fieldValidity.ts`): one row per user-authored connection (a split tile's face
+records and derived entries are not rows) and per split point with slots. The Features panel status
+(`status.problematic_preset_elements`) uses the same helpers, so the two numbers agree.
 
 `presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
 
@@ -263,7 +266,7 @@ Editing an existing elevator: right-click any of its floor endpoints removes the
 
 ### Validity
 
-A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — the Rust side (`build_preset_state`) connects nothing for an elevator with fewer than two floors, and rejects an elevator endpoint that does not resolve (see "Unresolvable endpoints" below). Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
+A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — the Rust side (`build_preset_state`) connects nothing for an elevator with fewer than two floors, and rejects an elevator endpoint that does not resolve (see "Unresolvable endpoints" below). Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and are highlighted by the shared coordinate warning layer while their warning is hovered.
 
 ### Rendering
 
@@ -332,7 +335,7 @@ A preset connection is **invalid** if either of its endpoint cells is outside th
 
 Since the cell-iteration loop in `buildPresetWallGroups` only visits cells inside the field, invalid presets with an endpoint entirely outside the field (never reached by that loop) are rendered in a second pass directly from the connection map, so they remain visible instead of silently disappearing. Invalid `wall`/`one_way` presets from this pass go into the same `preset` list as normal walls. Invalid `passage` presets go into a separate `invalidPassages` list, rendered on `invalidPassagesLayer` (see Rendering section).
 
-The separate `highlightInvalidPresets` overlay (yellow, `INVALID_COLOR`) is the only explicit visual marker for invalid presets — it's an opt-in highlight layer, not the base rendering of the preset itself.
+Invalid presets have no persistent marker beyond their base rendering; the only explicit marker is the hover highlight of the shared coordinate warning layer (see "Coordinate warnings").
 
 `computeInvalidKeysFromCells` takes pre-resolved `[number, number][]` cells and skips `resolveCells`; used by the renderer which caches cells.
 
@@ -358,8 +361,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes, keyed by `PresetEndpointKey`: `"x,y"` for the original node, `"x,y:slot"` for a split slot, with optional `@level` |
 | `autoLock` | `boolean` | Whether auto-lock is enabled |
 | `autoLockedNodes` | `Set<string>` | Nodes auto-locked because all their interior edges are preset |
-| `highlightInvalidPresets` | `boolean` | Whether to draw the invalid highlight overlay |
-| `highlightIsolatedNodes` | `boolean` | Whether to highlight nodes locked both-in-and-out with no passage |
+| `hoveredCoordinateWarning` | `CoordinateWarning \| null` | Warning (severity + coordinate targets) whose cells are highlighted on the canvas; shared by every coordinate warning, see "Coordinate warnings" |
 | `showPresetOrigin` | `boolean` | Whether to show the coordinate origin crosshair |
 | `presetTeleports` | `PresetTeleportEntry[]` | Preset teleport links — see "Preset teleports" |
 | `presetTeleportPendingFrom` | `PresetEndpoint \| null` | First-click origin of an in-progress teleport placement, own floor included |
@@ -379,7 +381,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 
 The "Reset all" action is confirmed with a compact alert whose title is "Reset all" and whose body is omitted. Its Cancel/OK footer has no divider, matching the post-edit reset confirmation layout.
 
-`highlightInvalidPresets` and `highlightIsolatedNodes` reset to `false` whenever `setPresetConnectionsOpen(false)` is called.
+`hoveredCoordinateWarning` resets to `null` whenever the open card changes away from `preset_connections`.
 
 ## Tools
 
@@ -429,7 +431,7 @@ Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as 
 
 For a declared split point (see "Split nodes" below), auto-lock checks **every one of its nodes** (the original node plus each declared slot), not just the original's own edges — `computeAutoLockedNodes` takes an extra `presetSplitPoints` parameter for this. A split point auto-locks only once every one of its nodes has every interior face decided; then an exact key is emitted for each node, so generation locks all split nodes. One node with an undecided/missing face on any side keeps the whole split unlocked.
 
-Both sets are merged when rendering (`buildLocks`) and when checking for isolated nodes (`buildIsolatedCellHighlights`).
+Both sets are merged when rendering (`buildLocks`) and when checking for isolated nodes (`computeIsolatedNodeKeys`).
 
 **Isolated node**: a node locked `"both"` (manually or via auto-lock) with no non-wall preset on any of that exact node's edges. Split slots are checked by their full endpoint identity, not merely by the shared point coordinates. The UI uses this same exact-node check for both the Problems warning and the cell highlight, and highlights such cells.
 
@@ -461,19 +463,16 @@ Layers (bottom to top):
 8. **markersLayer** — start/finish markers built by `buildPresetMarkers` from `DEFAULT_MAZE_RENDER_STYLE.startMarker`/`finishMarker`: circle, round corners, radius `0.16 * TILE_SIZE`, 3px matching-color border, and a 3px `canvas.floor.default` gap. Ordinary endpoints use their tile centers; endpoints on declared split slots use the same split-shape-aware anchor calculation as generated markers (GitHub issue #447).
 9. **originLayer** — origin crosshair (when `showPresetOrigin = true`)
 10. **genSourceLayer** — blue cross marker at `presetGenSource` cell
-11. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset
-12. **invalidHLLayer** — thick highlight when `highlightInvalidPresets = true`
-13. **invalidPointHLLayer** — field-cell fill for invalid point entities (teleport/vertical/elevator endpoints, start/finish/gen-source, locks, and split points), when `highlightInvalidPresets = true`
-14. **hoverLayer** — highlighted edge under cursor
-15. **teleportPreviewLayer** — in-progress teleport placement preview (semi-transparent line + marker)
+11. **hoverLayer** — highlighted edge under cursor
+12. **teleportPreviewLayer** — in-progress teleport placement preview (semi-transparent line + marker)
 
 **Exterior edges** (one endpoint outside field) are drawn as solid walls. **Interior edges** (both endpoints inside field) are drawn according to their preset state.
 
 **Cell cache** (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt only when `fieldConfig`, `fieldPoints`, or `fieldEditMode` changes. All redraw calls use the cache. `getCachedCells()` and `getCachedCellSet()` expose the cache to the controller.
 
-**`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
+**`redrawOrigin`** is called separately when `showPresetOrigin` changes, without redrawing all other layers. Same for `redrawGenSource` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
 
-`PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`fieldConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
+`PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`fieldConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource toggles, teleport preview clear on tool change).
 
 **Pointer cleanup and modal ownership.** `PresetConnectionsController.clearHover()` clears edge hover, cell hover, and teleport preview together. While a preset split-target/entity-delete picker or a pending vertical-passage/elevator placement is open, pointerdown is ignored and pointermove clears both hover targets without dispatching canvas mutations. The controller keeps the active-floor teleport hit-test scoped to entries whose `from` endpoint belongs to that floor; cross-floor entries are edited from their owning floor.
 
@@ -568,7 +567,7 @@ The shared, endpoint-type-agnostic slot-list bookkeeping (`addSlot`/`removeSlot`
 If its target panel is already open beneath another `SidePanel`, the same tool brings the existing
 panel to the front instead of closing or remounting it.
 
-Hovering a link bubble sets `presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null`, highlighting that specific connection on the canvas via `PresetConnectionsRenderer`'s `linkHover` layer (`buildLinkHoverHighlight`, `pixi/selectors/presetSelectors.ts`) — same `NodeEdgeHighlightRenderer` primitive post-edit's own `postEditHoveredLink` uses (GitHub issue #237). Unlike post-edit's variant (which resolves through `NodeDto`/`NodeId` to each node's real hub point when the point is split), the preset variant deliberately draws from each endpoint's plain cell center regardless of `slotId` — presets have no confirmed-snapshot node list to resolve a hub position against, and the highlight only needs to say "these two cells", not distinguish which of a split point's several nodes.
+Hovering a link bubble sets `presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint; highlightStyle?; color?; more? } | null` (`color` overrides the frame color; `more` frames further connections on the active floor together with this one, used by the outside-field warning), highlighting that specific connection on the canvas via `PresetConnectionsRenderer`'s `linkHover` layer (`buildLinkHoverHighlight`, `pixi/selectors/presetSelectors.ts`) — same `NodeEdgeHighlightRenderer` primitive post-edit's own `postEditHoveredLink` uses (GitHub issue #237). Unlike post-edit's variant (which resolves through `NodeDto`/`NodeId` to each node's real hub point when the point is split), the preset variant deliberately draws from each endpoint's plain cell center regardless of `slotId` — presets have no confirmed-snapshot node list to resolve a hub position against, and the highlight only needs to say "these two cells", not distinguish which of a split point's several nodes.
 
 Removing one slot of a split point (`removePresetSplitNode`, used by the "Manage split nodes" panel) is rejected if that slot is currently assigned as `presetStart`/`presetFinish`/`presetGenSource` (same "reassign first" guard post-edit's `removeSplitNode` uses for start/finish); otherwise it strips every `presetConnections`/`presetTeleports` entry referencing that node. `applyPresetSplitBlueprint` has the same `presetGenSource` guard.
 
@@ -800,7 +799,7 @@ These per-node marker lines are built by `buildPresetNodeMarkerLines`, itself a 
 | `resetPresetConnections()` | Same as above, plus `presetTeleports`/`presetVerticalPassages`/`presetElevators` cleared and their id counters reset to `1` |
 | Field cells added/removed | Connections stay; invalidity recomputed from field |
 | Card opens | Renderer subscribes, cell cache built |
-| Card closes | Renderer clears graphics; `highlightInvalidPresets` and `highlightIsolatedNodes` reset to `false` |
+| Card closes | Renderer clears graphics; `hoveredCoordinateWarning` resets to `null` |
 | Generate | Invalid connections filtered out, valid ones sent to WASM |
 | `defaultEdgeState` changes | All `source:"default"` entries removed and repopulated; auto-lock recomputed |
 
@@ -808,3 +807,7 @@ When an existing teleport endpoint is dragged to another cell, its current floor
 floor 0 remains represented by an omitted `level` (the canonical in-memory form), while non-zero
 floors keep their numeric level. Moving to a different cell drops any split-node slot attached to
 the old cell.
+
+## Coordinate warnings
+
+The Problems bubbles (isolated nodes, orphan split nodes, invalid presets), the "Clear invalid" button and the invalid-coordinate bubbles of the preset list are coordinate warnings: each declares only `targets` (`PresetEndpoint[]`, cell + optional split slot + floor) and a severity (`warning`). `CoordinateWarningBubble` and `useCoordinateWarningHover` derive the floor badges, the bubble colors and the hover state (`hoveredCoordinateWarning`) from them; `PresetConnectionsRenderer` draws the targets of the active floor with its own `CoordinateWarningHighlight` instance (see `Specs/coordinate-warnings.md`); it holds no warning-specific highlight layers.

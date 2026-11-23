@@ -3,6 +3,8 @@ import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { ZoneEditPanel } from "../components/features/ZoneEditPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
+import { autoZoneIdOf } from "../domain/autoZones";
+import { zoneDisplayName } from "../domain/selectors/zoneSelectors";
 import type { Zone } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
 
@@ -40,9 +42,20 @@ describe("ZoneEditPanel", () => {
     expect(useMazeStore.getState().zoneEditDraft?.cells).toEqual([]);
   });
 
-  it("hides the Intersections section when nothing intersects", () => {
+  it("keeps the Intersections section, with its switch, when nothing intersects", () => {
     setup(3);
-    expect(screen.queryByText(m["zones.intersections_title"]())).toBeNull();
+    expect(screen.getByText(m["zones.intersections_title"]())).toBeInTheDocument();
+    expect(screen.getByLabelText(m["zones.intersections_show_auto"]())).not.toBeChecked();
+  });
+
+  it("lists intersections with automatic zones only while the switch is on", () => {
+    const auto: Zone = { id: autoZoneIdOf("maze")!, name: "", kind: "auto", cells: [[0, 0, 0]] };
+    useMazeStore.setState({ ...zonesInitialState, openCard: "zones", zones: [...zones, auto], nextZoneId: 4, zoneEditDraft: zones[0], activeFloorId: useMazeStore.getState().floors[0].id });
+    render(<ZoneEditPanel onDone={() => {}} onCancel={() => {}} />);
+    const autoName = zoneDisplayName(auto, useMazeStore.getState().floors);
+    expect(screen.queryByText(autoName)).toBeNull();
+    fireEvent.click(screen.getByLabelText(m["zones.intersections_show_auto"]()));
+    expect(screen.getByText(autoName)).toBeInTheDocument();
   });
 
   it("hovering an intersection bubble highlights that zone instead of the edited one", () => {

@@ -9,6 +9,7 @@ import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "../domain/colorTokens";
 import { isTypingTarget } from "./domUtils";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 interface SceneInteractionDeps {
   app: Application;
@@ -36,6 +37,7 @@ export class SceneInteraction {
   defaultPan: PanState;
   private onWheel: (e: WheelEvent) => void = () => {};
   private canvasOnlyNavigation = false;
+  private releaseEscape: () => void = () => {};
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
@@ -44,22 +46,21 @@ export class SceneInteraction {
       this.setConnectorPreview(true);
       return;
     }
-    if (isTeleportConnectorEditActive(state) && (e.code === "Escape" || e.code === "Delete")) {
+    if (isTeleportConnectorEditActive(state) && e.code === "Delete") {
       e.preventDefault();
       const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
-      if (e.code === "Escape") controller?.escape?.(); else controller?.deleteSelected?.();
+      controller?.deleteSelected?.();
       return;
     }
     if (isFloorLabelDragActive(state)
-      && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
+      && (e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
-      if (e.code === "Escape") state.cancelFloorLabelDrag();
-      else state.finishFloorLabelDrag();
+      state.finishFloorLabelDrag();
       this.deps.getController(state)?.cancelPointerGesture();
       return;
     }
     if (backgroundImageEditMode(state) !== null
-      && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
+      && (e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
       exitBackgroundImageMode(state);
       this.deps.getController(state)?.cancelPointerGesture();
@@ -69,6 +70,25 @@ export class SceneInteraction {
       e.preventDefault();
       this.deps.onResetZoom();
     }
+  };
+
+  private onEscape = () => {
+    const state = useMazeStore.getState();
+    if (isTeleportConnectorEditActive(state)) {
+      (this.deps.getController(state) as { escape?: () => void } | null)?.escape?.();
+      return true;
+    }
+    if (isFloorLabelDragActive(state)) {
+      state.cancelFloorLabelDrag();
+      this.deps.getController(state)?.cancelPointerGesture();
+      return true;
+    }
+    if (backgroundImageEditMode(state) !== null) {
+      exitBackgroundImageMode(state);
+      this.deps.getController(state)?.cancelPointerGesture();
+      return true;
+    }
+    return false;
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -278,6 +298,7 @@ export class SceneInteraction {
 
     window.addEventListener("blur", this.onBlur);
     window.addEventListener("keydown", this.onKeyDown);
+    this.releaseEscape = claimEscape(this.onEscape, escapePriority.transient);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("pointerdown", this.onWindowPointerDown, true);
     app.canvas.addEventListener("pointerleave", this.onPointerLeave);
@@ -301,6 +322,7 @@ export class SceneInteraction {
   destroy(): void {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("keydown", this.onKeyDown);
+    this.releaseEscape();
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("pointerdown", this.onWindowPointerDown, true);
     this.deps.app.canvas.removeEventListener("pointerleave", this.onPointerLeave);

@@ -75,7 +75,7 @@ tessellation instance. Rejected:
 A node with no `Passage`/`OneWay` face at all (only `Wall`/`Unspecified`, or none declared) is
 **not** rejected here (GitHub issue #238) — it mints a permanently disconnected split node, same as
 any other unreachable-node case, left for QC to catch (or not) like other reachability issues
-instead of aborting the whole generation. The pattern editor's own diagnostics strip (see below)
+instead of aborting the whole generation. The pattern editor's node warning icons (see below)
 surfaces this case client-side before generation ever runs.
 
 ## Adaptation candidates (`split_adaptation_candidates`)
@@ -167,34 +167,37 @@ longer exposes any UI for setting it (GitHub issue #237 — the per-face sibling
 confusing, and siblings aren't meant to link to each other directly via UI authoring); a follow-up
 issue tracks removing the field itself from both sides.
 
-### Diagnostics (warnings strip)
+**Confirmation:** the editor keeps a local draft. Closing it through the close control, Escape, or
+the backdrop discards changes; the fixed Confirm action (and the modal confirmation shortcut)
+applies the complete template, including one with no authored connections. This differs from the
+right-panel editors, whose edits stay live so their result can be inspected on the canvas.
 
-Shown inline above the tile+card layout (not a dismissible `SidePanel` strip, since this dialog
-stays a plain `Modal`) whenever any of the following fire, deduplicated per node
-(`pixi/splitNodeDiagnostics.ts`):
+**Modern editor layout:** edge modes use the preset editor's icon-only `ToolIconButton`/`ToolGlyph`
+pair in a vertical column to the left of the tile. Nodes are shown in an indented `ListCell` section with a header add action: the active node
+uses the shared green current-item bar, each title is followed by its `EntityColorSwatch`, and the
+details row reports passage, wall, and one-way counts, treating absent face entries as walls.
+Every node has a delete action; deleting the last node is disabled with an explanatory tooltip. The
+footer contains only Confirm. Tooltips show the same tool shortcuts as the preset editor, and those
+shortcuts select the pattern editor's active tool: Wall `W`, Passage `P`, One-way `Alt+P`.
 
-- **`patternEmptyNodeDiagnostics`** — a node with no `SplitPatternFace` entries at all (the sparse
-  pattern-editor-only case; post-edit/preset panels never have a genuinely empty `TileFaceNode.faces`,
-  see `splitNodeDiagnostics`'s own doc comment).
-- **`splitNodeDiagnostics`** (shared with post-edit/preset, see `Specs/post-edit.md`) — dead node
-  (every non-boundary face is `wall`) or unreachable node (no connection at all). Called with
-  `skipIndices` = the set of nodes already flagged empty by `patternEmptyNodeDiagnostics`, so an
-  empty node (which reads as "every face is wall" once defaulted) doesn't also fire the dead-node
-  message for the same node.
-- **`patternSiblingDiagnostics`** — a face's `sibling_target` pointing at a node index that no
-  longer exists (can happen after `resizePatternNodes` shrinks `node_count` without rewriting other
-  nodes' `sibling_target`s — unlike `removePatternNode`, which does fix them up on a single,
-  reference-safe removal).
+### Diagnostics (node warning icons)
+
+The editor has no shared warnings section. A node's `ListCell` shows a `WarningIcon` after its
+colour swatch whenever that node has a diagnostic; its tooltip lists the applicable concise
+messages. The conditions are evaluated per node:
+
+- every non-boundary face is `wall`, or there is no connection at all. An absent pattern face is a
+  wall, so it deliberately has no separate "undefined face" warning;
+- a face's `sibling_target` points at a node index that no longer exists (can happen after
+  `resizePatternNodes` shrinks `node_count` without rewriting other nodes' `sibling_target`s —
+  unlike `removePatternNode`, which does fix them up on a single, reference-safe removal).
 
 Purely informational — never blocks saving/closing the editor.
 
-### Discarding empty patterns on close (`SplitSettingsDialog.handleCloseEditor`)
+### Closing a newly added pattern (`SplitSettingsDialog.handleCloseEditor`)
 
-Closing the pattern editor on a pattern left with no faces defined on any node (every
-`node.faces.length === 0`) silently drops it from `splitPatterns` instead of keeping a dead entry —
-core would otherwise treat it as an all-wall split (every face defaults to `Wall` when absent, see
-`tileFaceKindOf`), a pattern that can never be intentional (it can never mint a reachable node) and
-was never touched by the user.
+Closing the editor discards edits. A newly added pattern is removed when it is closed without
+confirmation; an existing pattern, including one with no authored faces, remains unchanged.
 
 ## `SplitSettingsDialog` (settings modal)
 

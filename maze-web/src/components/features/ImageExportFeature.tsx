@@ -16,7 +16,7 @@ import { FileNameModal, timestampedBaseName } from "../FileNameModal";
 import { readJsonFile } from "../jsonFile";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
-import { downloadVisualPresetFile, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError, VISUAL_PRESET_FILE_EXTENSION } from "../../store/projectExport";
+import { downloadVisualPresetFile, saveJsonInPlace, serializeVisualPreset, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError, VISUAL_PRESET_FILE_EXTENSION } from "../../store/projectExport";
 import * as m from "~/paraglide/messages";
 
 const VISUAL_PRESET_LOAD_SOURCE = "visual_preset_load";
@@ -57,6 +57,11 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
 
   function handleExportClick(format: ExportFormatId) {
     if (format === "png") setPendingDownload({ kind: "png", defaultBaseName: timestampedBaseName("maze-export"), extension: ".png" });
+  }
+
+  function saveStyleInPlace(fileName: string) {
+    setPendingDownload(null);
+    void saveJsonInPlace("style", serializeVisualPreset(useMazeStore.getState()), fileName, VISUAL_PRESET_FILE_EXTENSION);
   }
 
   async function confirmDownload(fileName: string) {
@@ -154,6 +159,8 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
         <FileNameModal
           defaultBaseName={pendingDownload.defaultBaseName}
           extension={pendingDownload.extension}
+          rememberKey={pendingDownload.kind}
+          onSaveInPlace={pendingDownload.kind === "style" ? saveStyleInPlace : undefined}
           onConfirm={confirmDownload}
           onCancel={() => setPendingDownload(null)}
         />

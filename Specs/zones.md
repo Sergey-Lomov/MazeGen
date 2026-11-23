@@ -122,9 +122,11 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
 - The panel is split into plain (not collapsible) sections, content indented by `indent.tree`. Properties: the zone name input (`setZoneName(name)`, on the draft only; shows the default
   name of an unnamed zone) and the colour row with a counter-clockwise-arrow reset `FlatIconButton` (tooltip "Automatic color";
   disabled with the second tooltip line "Already applied" while the colour is automatic). Editing: Modes, Tools,
-  smoothing and "Show other zones". Intersections: shown only while the zone shares cells with others, one line
-  per zone and floor of the overlap (a `Bubble` with the zone name; when the edited zone spans several floors,
-  then ` - ` and an `L{n}` floor badge, so a zone overlapping on two floors has two lines); hovering a line highlights that zone and the edited one stops being highlighted
+  smoothing and "Show other zones". Intersections: always shown, even with no overlap, so its switch stays reachable. The switch "Show automatic zones"
+  (`zones.intersections_show_auto`, off by default, local to the open panel) decides whether automatic zones are listed
+  (`zoneIntersections` `includeAuto`). Then one line per zone and floor of the overlap (a `Bubble` with the zone name; when the edited zone spans several floors,
+  then ` - ` and an `L{n}` floor badge, so a zone overlapping on two floors has two lines); the hover area of a line is the bubble
+  with its floor badge, not the full row width, and keeps its vertical padding so adjacent lines touch; hovering a line highlights that zone and the edited one stops being highlighted
   (`hoveredZoneId` wins over the edited zone). An explicit colour
   (`zoneColorOverrides`, by zone id, the editor's `setZoneColor(color)` writes `zoneEditDraftColor`, `null` is automatic; "Done" moves it here) always wins over the
   automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours shared with the

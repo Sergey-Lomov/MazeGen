@@ -1,4 +1,5 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { NotificationSeverity } from "../domain/notificationSeverity";
 import type { PostEditEndpoint, PostEditHoveredEntity } from "../domain/postEditEndpoint";
 import type { SplitNodeBlueprint } from "../domain/splitBlueprints";
 import type { PostEditCommand } from "./postEditCommandTypes";
@@ -30,6 +31,8 @@ export interface IssueHighlightEdge {
   from: number;
   to: number;
   asWall: boolean;
+  /** Severity of the hovered issue: picks the highlight color (`canvas.coordinateWarning`). Default "warning". */
+  severity?: NotificationSeverity;
 }
 
 export interface AnalyticsOverlayState {
@@ -46,14 +49,6 @@ export interface AnalyticsOverlayState {
   /** Base-graph edges of the issue currently hovered in IssuesBlock, each carrying its own
    *  line-vs-wall draw mode — see `IssueHighlightEdge`. */
   hoveredIssueLoopEdges: IssueHighlightEdge[] | null;
-  /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
-   * node ids — kept as separate groups (not one flat list) so adjacent-in-id-space but disjoint
-   * regions don't merge into one shared outline. The renderer derives each region's perimeter
-   * client-side from its node set. `isSplit` (GitHub issue #619) picks the outward "split" inset
-   * instead of the normal inward one — set explicitly by `IssuesBlock.tsx` from the payload kind
-   * that produced the group, never guessed from the group's own geometry (a multi-cell split tile
-   * has no duplicate node/cell to detect that way). */
-  hoveredIssueRegionGroups: { nodes: number[]; isSplit: boolean }[] | null;
   /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
   analyticsSectionsExpanded: Record<string, boolean>;
   /** Whether to show issue bubbles whose every flagged element is preset-locked (GitHub issue
@@ -75,7 +70,6 @@ export interface AnalyticsOverlayActions {
   setShowRegionClassesOverlay: (v: boolean) => void;
   setRegionClassLegendOpen: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: IssueHighlightEdge[] | null) => void;
-  setHoveredIssueRegionGroups: (groups: { nodes: number[]; isSplit: boolean }[] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowFullyPresetLockedIssues: (v: boolean) => void;
 }

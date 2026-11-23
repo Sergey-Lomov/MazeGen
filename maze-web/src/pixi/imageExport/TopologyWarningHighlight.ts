@@ -10,7 +10,8 @@ import { resolveActiveCutPlan } from "./exportContent";
 import { resolveEffectiveEndpoints } from "./exportStyleBuilders";
 import type { ExportMargin } from "../../domain/imageExport/exportMargins";
 import type { CutPlan } from "./cutLines";
-import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../../domain/renderConstants";
+import { canvas } from "../../domain/colorTokens";
+import { POLYGON_HIGHLIGHT_RADIUS } from "../../domain/renderConstants";
 
 /// What the highlight is drawn from: it redraws only when one of these changes.
 function highlightInputs(st: MazeStore): readonly unknown[] {
@@ -69,10 +70,10 @@ export class TopologyWarningHighlight implements ViewportListener {
     const plan = resolveActiveCutPlan(st, this.getMargin);
     if (warning.polygons?.length) {
       for (const polygon of warning.polygons.flatMap((shape) => drawnCopies(shape, plan))) this.polygons.roundShape(polygon.map(([x, y]) => ({ x, y })), POLYGON_HIGHLIGHT_RADIUS).closePath();
-      this.polygons.fill({ color: WARNING_HIGHLIGHT_COLOR, alpha: 0.25 });
-      this.polygons.stroke({ width: 3, color: WARNING_HIGHLIGHT_COLOR, join: "round", cap: "round" });
+      this.polygons.fill({ color: canvas.coordinateWarning.warning, alpha: 0.25 });
+      this.polygons.stroke({ width: 3, color: canvas.coordinateWarning.warning, join: "round", cap: "round" });
     }
-    if (warning.bands?.length) this.bands.render(warning.bands.flatMap((polyline) => drawnCopies(polyline, plan)).map((polyline) => ({ polyline, color: WARNING_HIGHLIGHT_COLOR })));
+    if (warning.bands?.length) this.bands.render(warning.bands.flatMap((polyline) => drawnCopies(polyline, plan)).map((polyline) => ({ polyline, color: canvas.coordinateWarning.warning })));
   }
 
   destroy(): void {

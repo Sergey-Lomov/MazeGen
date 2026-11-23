@@ -6,6 +6,7 @@ import { type PresetConnectionEntry, type PresetElevatorEntry, type PresetTelepo
 import { canonicalizePresetPair, presetEdgeKey, presetSplitPointKey } from "../../domain/presetSplitResolve";
 import type { PresetPointEntityDescriptor } from "../../domain/pointEntities";
 import { presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
+import type { CoordinateWarning } from "../../domain/coordinateWarning";
 import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
 import { buildCellSet } from "../../domain/selectors/sharedSelectors";
@@ -22,6 +23,7 @@ import { SelectRow } from "../SelectRow";
 import { ToolIconButton } from "../ToolIconButton";
 import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
 import { WarningIcon } from "../WarningIcon";
+import { coordinateBubbleVariant } from "../CoordinateWarningBubble";
 import { Button } from "../Button";
 import { ListCell, ListCellAction } from "../ListCell";
 import { SettingsListCellAction } from "../SettingsListCellAction";
@@ -57,6 +59,15 @@ export interface PresetListBubble {
   text: string;
   endpoint: PresetEndpoint;
   invalid: boolean;
+}
+
+/** An endpoint outside its floor's field is a coordinate warning of this severity. */
+const PRESET_INVALID_SEVERITY: CoordinateWarning["severity"] = "warning";
+
+/** The coordinate warning of a cell's invalid bubbles; `null` when none is invalid. */
+function invalidBubbleWarning(bubbles: PresetListBubble[]): CoordinateWarning | null {
+  const targets = bubbles.filter((item) => item.invalid).map((item) => item.endpoint);
+  return targets.length > 0 ? { severity: PRESET_INVALID_SEVERITY, targets } : null;
 }
 
 export type PresetListControl =
@@ -379,6 +390,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   const removePresetPointEntity = useMazeStore((s) => s.removePresetPointEntity);
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
   const setPresetHoveredEntity = useMazeStore((s) => s.setPresetHoveredEntity);
+  const setHoveredCoordinateWarning = useMazeStore((s) => s.setHoveredCoordinateWarning);
   const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const filterDefinitions = useMemo(() => presetListFilterDefinitions(), [locale]);
@@ -532,16 +544,20 @@ export function PresetList({ onClose }: { onClose: () => void }) {
                 if (cell.link) {
                   setPresetHoveredLink({ ...cell.link, highlightStyle: cell.linkHighlightStyle });
                   setPresetHoveredEntity(null);
+                  setHoveredCoordinateWarning(null);
                 } else {
                   setPresetHoveredLink(null);
-                  setPresetHoveredEntity(cell.bubbles.map((item) => item.endpoint), cell.entityHighlightMode, cell.bubbles.filter((item) => item.invalid).map((item) => item.endpoint));
+                  // Targets outside the field are a coordinate warning (the shared severity-colored highlight).
+                  setPresetHoveredEntity(cell.bubbles.filter((item) => !item.invalid).map((item) => item.endpoint), cell.entityHighlightMode);
+                  setHoveredCoordinateWarning(invalidBubbleWarning(cell.bubbles));
                 }
               }}
               onHoverBubble={(bubble) => {
                 setPresetHoveredLink(null);
-                setPresetHoveredEntity([bubble.endpoint], cell.entityHighlightMode, bubble.invalid ? [bubble.endpoint] : []);
+                setPresetHoveredEntity(bubble.invalid ? null : [bubble.endpoint], cell.entityHighlightMode);
+                setHoveredCoordinateWarning(bubble.invalid ? { severity: PRESET_INVALID_SEVERITY, targets: [bubble.endpoint] } : null);
               }}
-              onLeave={() => { setPresetHoveredLink(null); setPresetHoveredEntity(null); }}
+              onLeave={() => { setPresetHoveredLink(null); setPresetHoveredEntity(null); setHoveredCoordinateWarning(null); }}
             />)}
           </div>
         )}
@@ -595,7 +611,7 @@ function PresetCell({
               {index > 0 && cell.arrow && <BubbleArrow>{cell.arrow}</BubbleArrow>}
               <Bubble
                 interactive
-                variant={item.invalid ? "warning" : "neutral"}
+                variant={item.invalid ? coordinateBubbleVariant(PRESET_INVALID_SEVERITY) : "neutral"}
                 style={styles.bubble}
                 onMouseEnter={() => onHoverBubble(item)}
                 onMouseLeave={onHoverCell}

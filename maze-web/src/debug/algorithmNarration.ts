@@ -509,10 +509,10 @@ export const QC_STRATEGY_SCOPE_RE = /^strategy (.+)$/;
 /** Structural highlight data an `issue` token carries, when the underlying `IssuePayload` (see
  *  `eventTape.ts`) resolved to one — both fields `null` for the majority of issue kinds with no
  *  structural edge/node data (mirrors `IssuePayload::None`). `cycle`/`region` are independent, not
- *  mutually exclusive (mirrors Analytics' own two independent store fields,
- *  `hoveredIssueLoopEdges`/`hoveredIssueRegionGroups` in `postEditFullTypes.ts`) -- an
+ *  mutually exclusive (mirrors Analytics' own two independent hover states:
+ *  `hoveredIssueLoopEdges` in `postEditFullTypes.ts` and the shared coordinate warning) -- an
  *  `InvalidCrossElementGroup` pair mixing a one-way member (wall) with a split/region member needs
- *  both drawn at once, same as `IssueBubble`'s own `highlightEdges`/`highlightRegionGroups` split.
+ *  both drawn at once, same as `IssueBubble`'s own `highlightEdges`/`coordinateWarning` split.
  *  `region`'s `groups` carries one group of node ids per flagged element (tile/region/passage/etc)
  *  rather than one flat node list — two different flagged elements must never merge into one
  *  contour just because they're both part of the same issue token, even when they happen to sit

@@ -424,20 +424,6 @@ export function computeIsolatedNodeKeys(
   });
 }
 
-export function buildIsolatedCellHighlights(
-  lockedNodes: Map<string, NodeLockKind>,
-  autoLockedNodes: Set<string>,
-  connections: Map<string, PresetConnectionEntry>,
-): [number, number][] {
-  const result: [number, number][] = [];
-  for (const key of computeIsolatedNodeKeys(lockedNodes, autoLockedNodes, connections)) {
-    const endpoint = presetEndpointFromKey(key);
-    if (!endpoint) continue;
-    result.push(endpoint.point);
-  }
-  return result;
-}
-
 /** Every declared split node (`presetSplitPoints`) referenced by nothing — GitHub issue #231, split
  *  out from `PresetConnectionsFeature`'s own `orphanSplitCount` so the same "is this slot referenced"
  *  logic drives both the warning's count/floor badges and its hover highlight (GitHub issue #420).
@@ -471,62 +457,6 @@ export function computeOrphanSplitPoints(
         || (presetFinish != null && presetEndpointIsSplit(presetFinish, target))
         || (presetGenSource != null && presetEndpointIsSplit(presetGenSource, target));
       if (!referenced) result.push(presetEndpoint([x, y], slotId, level));
-    }
-  }
-  return result;
-}
-
-/** Active-floor cells for the orphan-split-node warning's hover highlight (GitHub issue #420) —
- *  `orphanPoints` spans every floor (see `computeOrphanSplitPoints`), filtered here to just `level`,
- *  same "only the active floor lights up" convention `buildIsolatedCellHighlights` follows. Dedups
- *  by point — several orphaned slots at the same point highlight as one cell, not a stacked fill. */
-export function buildOrphanSplitCellHighlights(
-  orphanPoints: PresetEndpoint[],
-  level: number | undefined,
-): [number, number][] {
-  const seen = new Set<string>();
-  const result: [number, number][] = [];
-  for (const ep of orphanPoints) {
-    if ((ep.level ?? 0) !== (level ?? 0)) continue;
-    const key = `${ep.point[0]},${ep.point[1]}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(ep.point);
-  }
-  return result;
-}
-
-export function buildInvalidEdgeHighlights(
-  invalidKeys: Set<string>,
-  connections: Map<string, PresetConnectionEntry>,
-  cfg: FieldConfig,
-): EdgeHL[] {
-  const result: EdgeHL[] = [];
-  for (const key of invalidKeys) {
-    const entry = connections.get(key);
-    if (!entry) continue;
-    const segs = logicalEdgeSegments(entry.from.point, entry.to.point, cfg);
-    if (segs.length > 0) {
-      for (const seg of segs) {
-        result.push({
-          from: [seg.v0.x, seg.v0.y] as [number, number],
-          to: [seg.v1.x, seg.v1.y] as [number, number],
-          path: seg.path,
-          color: canvas.preset.invalid,
-          alpha: 0.9,
-          width: WALL_THICKNESS * 2.5,
-        });
-      }
-    } else {
-      const cA = getCellCenter(entry.from.point[0], entry.from.point[1], cfg);
-      const cB = getCellCenter(entry.to.point[0], entry.to.point[1], cfg);
-      result.push({
-        from: [cA.x, cA.y],
-        to: [cB.x, cB.y],
-        color: canvas.preset.invalid,
-        alpha: 0.9,
-        width: WALL_THICKNESS * 2.5,
-      });
     }
   }
   return result;

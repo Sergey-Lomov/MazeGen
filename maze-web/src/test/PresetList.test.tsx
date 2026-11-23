@@ -120,8 +120,9 @@ describe("PresetList filters", () => {
     expect(invalidBubble).toHaveStyle({ background: bubbleColors("warning").bg, color: bubbleColors("warning").text });
 
     fireEvent.mouseEnter(invalidBubble);
-    expect(useMazeStore.getState().presetHoveredEntityWarningEndpoints).toEqual([presetEndpoint([10, 0])]);
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toEqual({ severity: "warning", targets: [presetEndpoint([10, 0])] });
+    expect(useMazeStore.getState().presetHoveredEntity).toBeNull();
     fireEvent.mouseLeave(invalidBubble);
-    expect(useMazeStore.getState().presetHoveredEntityWarningEndpoints).toEqual([]);
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
   });
 });

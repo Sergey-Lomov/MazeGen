@@ -21,6 +21,7 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJ
 import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
+import { CoordinateWarningHighlight } from "./CoordinateWarningHighlight";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildHoveredEntityHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "../domain/selectors/mazeSelectors";
 import { postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto, pruneRemovedSplitNodes } from "../domain/postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
@@ -63,6 +64,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly linkHoverContainer: Container;
   private readonly entityHighlightContainer: Container;
   private readonly issueHighlightContainer: Container;
+  private readonly coordinateWarningContainer: Container;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
 
   private readonly grid: GridRenderer;
   private readonly seamLayer: SeamArrowLayer;
@@ -98,7 +101,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   /** Highlights a hovered `IssueBubble`'s flagged cells/edges/regions in the post-edit canvas —
    *  own instance, not shared with `AnalyticsRenderer`'s (feature-renderer ownership rule,
    *  `maze-web/CLAUDE.md`). `IssuesBlock`/`IssueBubble` drive both from the same store fields
-   *  (`hoveredIssueLoopEdges`/`hoveredIssueRegionGroups`), so no post-edit-specific wiring needed
+   *  (`hoveredIssueLoopEdges` and the shared coordinate warning), so no post-edit-specific wiring needed
    *  beyond owning this instance and re-rendering it on the same triggers as everything else. */
   private readonly issueHighlight: IssueHighlightOverlay;
 
@@ -159,6 +162,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.entityHighlightContainer = new Container();
     this.root.addChild(this.entityHighlightContainer);
     this.issueHighlightContainer = new Container();
+    // Below the issue edges, like the region highlight that was part of the issue highlight overlay.
+    this.coordinateWarningContainer = new Container();
+    this.root.addChild(this.coordinateWarningContainer);
     this.root.addChild(this.issueHighlightContainer);
 
     this.grid        = new GridRenderer(this.gridContainer, "post edit");
@@ -189,6 +195,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.linkHoverContainer.addChild(this.boundaryHover);
     this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
     this.issueHighlight = new IssueHighlightOverlay(this.issueHighlightContainer);
+    this.coordinateWarning = new CoordinateWarningHighlight(this.coordinateWarningContainer, (state) => this.isCardOpen(state));
 
     this.root.visible = false;
 
@@ -298,14 +305,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     if (
       state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
-      state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups ||
       state.nodes !== prev.nodes ||
       state.activeFloorId !== prev.activeFloorId
     ) {
       // `redrawAll` above may already have drawn it for the new graph/floor; a hovered-issue change
       // always needs a fresh draw.
-      const hoveredIssueChanged = state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges
-        || state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups;
+      const hoveredIssueChanged = state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges;
       if (hoveredIssueChanged || (this.cfg && this.drawnLayers.issueHighlight !== this.sceneBase(state, this.cfg))) {
         this.redrawIssueHighlight(state);
       }
@@ -780,6 +785,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.boundaryHover.destroy();
     this.entityHighlight.destroy();
     this.issueHighlight.destroy();
+    this.coordinateWarning.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.backgroundImageContainer.destroy();
@@ -797,6 +803,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.linkHoverContainer.destroy();
     this.entityHighlightContainer.destroy();
     this.issueHighlightContainer.destroy();
+    this.coordinateWarningContainer.destroy();
   }
 }
 

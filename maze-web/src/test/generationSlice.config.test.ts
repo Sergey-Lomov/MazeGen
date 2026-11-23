@@ -117,20 +117,19 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().randomSeed).toBe(true);
   });
 
-  it("setOpenCard switches card and clears preset highlights when leaving preset_connections", () => {
-    useMazeStore.setState({ openCard: "preset_connections", highlightInvalidPresets: true, highlightIsolatedNodes: true, highlightOrphanSplitNodes: true });
+  it("setOpenCard switches card and clears the coordinate warning hover when leaving preset_connections", () => {
+    useMazeStore.setState({ openCard: "preset_connections", hoveredCoordinateWarning: { severity: "warning", targets: [presetEndpoint([1, 2])] } });
     useMazeStore.getState().setOpenCard("generation");
     const s = useMazeStore.getState();
     expect(s.openCard).toBe("generation");
-    expect(s.highlightInvalidPresets).toBe(false);
-    expect(s.highlightIsolatedNodes).toBe(false);
-    expect(s.highlightOrphanSplitNodes).toBe(false);
+    expect(s.hoveredCoordinateWarning).toBeNull();
   });
 
-  it("setOpenCard keeps highlights when not leaving preset_connections", () => {
-    useMazeStore.setState({ openCard: "generation", highlightInvalidPresets: true });
+  it("setOpenCard keeps the coordinate warning hover when not leaving preset_connections", () => {
+    const warning = { severity: "warning" as const, targets: [presetEndpoint([1, 2])] };
+    useMazeStore.setState({ openCard: "generation", hoveredCoordinateWarning: warning });
     useMazeStore.getState().setOpenCard("quality");
-    expect(useMazeStore.getState().highlightInvalidPresets).toBe(true);
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBe(warning);
   });
 
   it("setDebugMode(false) clears debugStale", () => {

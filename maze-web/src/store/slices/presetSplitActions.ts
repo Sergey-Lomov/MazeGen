@@ -193,7 +193,7 @@ export const createPresetSplitActions = (set: CreatorSet, get: CreatorGet): Pick
 
   setPresetFocusedPoint: (point) => set({ presetFocusedPoint: point }),
   setPresetHoveredLink: (link) => set({ presetHoveredLink: link }),
-  setPresetHoveredEntity: (endpoints, mode = "inset", warningEndpoints = []) => set({ presetHoveredEntity: endpoints, presetHoveredEntityMode: mode, presetHoveredEntityWarningEndpoints: warningEndpoints }),
+  setPresetHoveredEntity: (endpoints, mode = "inset") => set({ presetHoveredEntity: endpoints, presetHoveredEntityMode: mode }),
 
   rotatePresetSplitPoint: (point, direction) => set((state) => {
     const field = activeFloorField(state);

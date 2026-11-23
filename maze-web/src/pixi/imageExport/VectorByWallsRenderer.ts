@@ -1,3 +1,4 @@
+import { CoordinateWarningHighlight } from "../CoordinateWarningHighlight";
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
@@ -25,7 +26,7 @@ import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/Ma
 import { SeamCopyRenderer } from "../renderers/SeamCopyRenderer";
 import { buildSeamCopySources } from "./seamCopySources";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
-import { computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
+import { computeVectorByWallsWarningsAcrossFloors, BOUNDARY_WARNING_IDS } from "../selectors/exportWarnings";
 import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -42,7 +43,7 @@ import { buildTeleportGroups } from "../../domain/selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { POLYGON_HIGHLIGHT_RADIUS, WALL_THICKNESS, WARNING_HIGHLIGHT_COLOR } from "../../domain/renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WALL_THICKNESS } from "../../domain/renderConstants";
 import { roundedContourCorners } from "./roundedContour";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
@@ -51,11 +52,6 @@ import {
 } from "./exportStyleBuilders";
 
 
-/** Warnings about a one-way passage itself: highlighted as the passage's shared boundary (walls) or
- *  its two cells (corridors) rather than as plain cell regions. */
-const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
-  "one_way_low_contrast_corridor", "one_way_arrows_overflow_corridor", "teleport_connector_covers_one_way",
-]);
 
 export { trimMaskPolygons } from "./seamTrim";
 
@@ -112,51 +108,35 @@ export class ExportWarningHighlight<TSettings> {
       for (const { floorIndex: shapeFloor, polygon } of warning.floorPolygons) {
         if (shapeFloor === floorIndex) roundedContour(this.shapes, polygon, POLYGON_HIGHLIGHT_RADIUS);
       }
-      this.shapes.fill({ color: WARNING_HIGHLIGHT_COLOR, alpha: 0.25 });
-      this.shapes.stroke({ width: 3, color: WARNING_HIGHLIGHT_COLOR, join: "round", cap: "round" });
+      this.shapes.fill({ color: canvas.coordinateWarning.warning, alpha: 0.25 });
+      this.shapes.stroke({ width: 3, color: canvas.coordinateWarning.warning, join: "round", cap: "round" });
     }
-    if (!warning || (warning.nodes.length === 0 && (!warning.cells || warning.cells.length === 0))) {
+    // Flagged nodes and cells are drawn by the shared coordinate warning layer (`ExportWarningBubble`
+    // sets `hoveredCoordinateWarning`); only the shared boundary of a one-way passage stays here.
+    const isBoundaryWarning = warning != null && BOUNDARY_WARNING_IDS.has(warning.id);
+    if (!warning || !isBoundaryWarning || warning.edges.length === 0) {
       this.highlight.clear();
       return;
     }
 
-    const isSplitWarning = warning.id.includes("split");
-
-    // Several split nodes can occupy one tile. Split warnings use one region group for all their
-    // affected tiles, so adjacent tiles can merge into one contour just like ordinary regions.
-    const nodesByTile = new Map<string, number[]>();
-    for (const id of warning.nodes) {
-      const node = nodes.find((candidate) => candidate.id === id);
-      if (!node) continue;
-      const key = `${node.x},${node.y}`;
-      const group = nodesByTile.get(key) ?? [];
-      group.push(id);
-      nodesByTile.set(key, group);
-    }
-    const tileGroups = Array.from(nodesByTile.values());
-    const isBoundaryWarning = BOUNDARY_WARNING_IDS.has(warning.id);
-    const renderBoundaryAsRegion = isBoundaryWarning && boundaryWarningsAsRegions;
+    const renderBoundaryAsRegion = boundaryWarningsAsRegions;
     const boundaryRegionGroups = renderBoundaryAsRegion
       ? warning.edges.map(([from, to]) => [from, to])
       : undefined;
     this.highlight.render({
       nodes,
-      regionGroups: isBoundaryWarning && !renderBoundaryAsRegion ? [] : isSplitWarning
-        ? [Array.from(new Set(tileGroups.flat()))]
-        : boundaryRegionGroups ?? tileGroups,
-      cells: (warning.cells ?? [])
-        .filter((cell) => (nodes[0]?.level ?? 0) === cell.floorIndex)
-        .map((cell) => [cell.x, cell.y]),
-      color: WARNING_HIGHLIGHT_COLOR,
+      regionGroups: boundaryRegionGroups ?? [],
+      cells: [],
+      color: canvas.coordinateWarning.warning,
       width: 0,
       alpha: 0,
       cfg,
       skipPerimeter: true,
       inset,
-      insetMode: isSplitWarning ? "outset" : "inset",
+      insetMode: "inset",
       cornerStyle: ((settings as unknown as Record<string, unknown>).join ??
         (settings as unknown as Record<string, unknown>).wallJoin) === "round" ? "round" : "sharp",
-      boundaryEdges: isBoundaryWarning && !renderBoundaryAsRegion ? warning.edges : undefined,
+      boundaryEdges: !renderBoundaryAsRegion ? warning.edges : undefined,
       boundaryWidth,
     });
   }
@@ -346,6 +326,7 @@ export class VectorByWallsRenderer {
   private readonly markerIndexBodyContainer: Container;
   private readonly floorLabelContainer: Container;
   private readonly warningHighlightContainer: Container;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
   /** Optional grid overlay inside the filled maze cells, below walls and markers. */
   private readonly innerGridContainer: Container;
   private readonly innerGrid: GridRenderer;
@@ -455,6 +436,10 @@ export class VectorByWallsRenderer {
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
     this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer);
+    // Inside the warning highlight container (shown with the renderer): above the boundary highlight, below the connector shapes.
+    const coordinateWarningContainer = new Container();
+    this.warningHighlightContainer.addChildAt(coordinateWarningContainer, 1);
+    this.coordinateWarning = new CoordinateWarningHighlight(coordinateWarningContainer, (state) => state.openCard === "image_export");
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -898,6 +883,7 @@ export class VectorByWallsRenderer {
     this.markerIndex.destroy();
     this.seamCopies.destroy();
     this.floorLabel.destroy();
+    this.coordinateWarning.destroy();
     this.warningHighlight.destroy();
     this.trimMask.destroy();
     this.mazeContent.destroy();

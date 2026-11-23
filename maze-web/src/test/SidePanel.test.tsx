@@ -4,6 +4,7 @@ import { act, render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { SidePanel } from "../components/SidePanel";
 import { raiseSidePanel } from "../components/sidePanelStack";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 // GitHub issue #629: independently-toggled features (e.g. `DebugPanel` and
 // `VertexBasedSettingsPanel`, or the post-edit "Changes" and "Manage split nodes" panels) may each
@@ -215,6 +216,24 @@ describe("SidePanel Escape-to-close (GitHub issue #631)", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(onClosePanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets an active transient cancellation consume Escape before closing the panel (#1067)", () => {
+    const onClose = vi.fn();
+    const cancelResize = vi.fn();
+    render(<SidePanel title="Zone" onClose={onClose}>content</SidePanel>);
+    const release = claimEscape(() => {
+      cancelResize();
+      release();
+      return true;
+    }, escapePriority.transient);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(cancelResize).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

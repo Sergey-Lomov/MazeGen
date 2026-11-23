@@ -1,9 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { IssueBubble, IssuesBlock } from "../components/IssuesBlock";
 import { useMazeStore } from "../store/mazeStore";
+import { presetEndpoint } from "../domain/presetEndpoint";
 import type { IssueDto } from "../wasm/types";
 import { invalidLoopIssue, regionNeedsExpansionIssue, excessiveSccCountIssue, missingEndpointsIssue } from "./issuesBlockFixtures";
+
+beforeEach(() => {
+  useMazeStore.setState({ nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((id) => ({ id, x: id, y: 0, i: 0, level: 0 })), hoveredCoordinateWarning: null });
+});
 
 describe("IssuesBlock", () => {
   const setShowFullyPresetLockedIssues = (show: boolean) => {
@@ -33,11 +38,11 @@ describe("IssuesBlock", () => {
     expect(bubbles.length).toBe(2);
 
     fireEvent.mouseEnter(bubbles[0]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toMatchObject([{ from: 1, to: 2, asWall: false }]);
     fireEvent.mouseLeave(bubbles[0]);
 
     fireEvent.mouseEnter(bubbles[1]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toMatchObject([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubbles[1]);
   });
 
@@ -53,8 +58,8 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("One-way validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 5, to: 6, asWall: true }]);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toMatchObject([{ from: 5, to: 6, asWall: true }]);
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
     fireEvent.mouseLeave(bubble);
   });
 
@@ -81,7 +86,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Loop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toMatchObject([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
     setShowFullyPresetLockedIssues(true);
@@ -102,9 +107,9 @@ describe("IssuesBlock", () => {
     const bubble = screen.getByText("Region expansion");
     expect(bubble).toBeInTheDocument();
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [1, 2], isSplit: false }, { nodes: [5, 6], isSplit: false }]);
+    expect(useMazeStore.getState().hoveredCoordinateWarning?.targets).toEqual([presetEndpoint([1, 0], undefined, 0), presetEndpoint([2, 0], undefined, 0), presetEndpoint([5, 0], undefined, 0), presetEndpoint([6, 0], undefined, 0)]);
     fireEvent.mouseLeave(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
 
     setShowFullyPresetLockedIssues(true);
   });
@@ -309,7 +314,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Split tile validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [8], isSplit: true }]);
+    expect(useMazeStore.getState().hoveredCoordinateWarning?.targets).toEqual([presetEndpoint([8, 0], undefined, 0)]);
     fireEvent.mouseLeave(bubble);
 
     setShowFullyPresetLockedIssues(true);
@@ -338,7 +343,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Split-tile traversal route validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toMatchObject([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
     setShowFullyPresetLockedIssues(true);

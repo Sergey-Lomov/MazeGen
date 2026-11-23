@@ -4,6 +4,7 @@ import { getColorSampler, type PixelRegion } from "../pixi/colorSampleBridge";
 import { colorToHex } from "./colorFormat";
 import { ui, radius, typography } from "../styles/theme";
 import type React from "react";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 const LOUPE_SIZE = 96;
 const LOUPE_ZOOM = 12;
@@ -79,20 +80,18 @@ export function ColorEyedropperOverlay({ onPick, onCancel }: Props) {
       else onCancel();
     }
 
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-    }
-
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("click", handleClick, true);
-    // Capture phase so this fires (and sets `defaultPrevented`) before `SidePanel`'s own bubble-
-    // phase Escape listener (GitHub issue #631), regardless of which mounted first — sampling mode
-    // must cancel on its own without also closing the still-open `ColorPickerPanel` behind it.
-    window.addEventListener("keydown", handleKeyDown, true);
+    // Sampling is above the color picker in the Escape responder order, so cancelling it leaves
+    // the picker open for the next key press.
+    const releaseEscape = claimEscape(() => {
+      onCancel();
+      return true;
+    }, escapePriority.modal);
     return () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("click", handleClick, true);
-      window.removeEventListener("keydown", handleKeyDown, true);
+      releaseEscape();
     };
   }, [onPick, onCancel]);
 
