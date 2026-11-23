@@ -2288,6 +2288,8 @@
   "status.cell_empty": "empty",
   "status.cell_node": "Node {number}",
   "status.cell_split_point": "Split tile",
+  "language.title": "Language",
+  "language.tooltip": "Language: {language}",
   "project.save": "Save project",
   "project.load": "Load project",
   "project.load_error": "Failed to load project",

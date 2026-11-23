@@ -2279,6 +2279,8 @@
   "status.cell_empty": "пусто",
   "status.cell_node": "Узел {number}",
   "status.cell_split_point": "Разделённый тайл",
+  "language.title": "Язык",
+  "language.tooltip": "Язык: {language}",
   "project.save": "Сохранить проект",
   "project.load": "Загрузить проект",
   "project.load_error": "Ошибка загрузки проекта",
