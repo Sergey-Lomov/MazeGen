@@ -132,14 +132,14 @@ export function zoneDisplayName(zone: Zone, floors: FloorTitles): string {
   return autoZoneName(zone, floors) ?? (zone.name === "" ? m["zones.default_name"]({ id: zone.id }) : zone.name);
 }
 
-/** The other zones that share a cell with `zone` on the floor. */
-export function zoneIntersections(zones: Zone[], zone: Zone): { zone: Zone; floor: number }[] {
+/** The other zones that share a cell with `zone` on the floor; automatic zones only with `includeAuto` (they are noise by default). */
+export function zoneIntersections(zones: Zone[], zone: Zone, includeAuto = false): { zone: Zone; floor: number }[] {
   const own = new Set<string>();
   for (const [floor, x, y] of zone.cells) own.add(`${floor},${x},${y}`);
   if (own.size === 0) return [];
   const result: { zone: Zone; floor: number }[] = [];
   for (const other of zones) {
-    if (other.id === zone.id) continue;
+    if (other.id === zone.id || (!includeAuto && other.kind === "auto")) continue;
     const shared = new Set<number>();
     for (const [floor, x, y] of other.cells) if (own.has(`${floor},${x},${y}`)) shared.add(floor);
     for (const floor of [...shared].sort((a, b) => a - b)) result.push({ zone: other, floor });

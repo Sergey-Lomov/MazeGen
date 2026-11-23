@@ -1983,6 +1983,7 @@
   "zones.size": "Size: {count} cell",
   "zones.size_plural": "Size: {count} cells",
   "zones.intersections_title": "Intersections",
+  "zones.intersections_show_auto": "Show automatic zones",
   "zones.properties": "Properties",
   "zones.editing": "Editing",
   "zones.color_reset_applied": "Already applied",
