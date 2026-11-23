@@ -195,16 +195,6 @@ pub enum IssuePayloadDto {
     InvalidDeadEnd {
         nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
     },
-    /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` for
-    /// a floor-scoped deficit (`RepairArea::Level`, the index being the floor's `levels_ordered()`
-    /// position — matches `NodeDto.level`), or `None` for a whole-maze deficit
-    /// (`RepairArea::WholeMaze`) with no specific floor to highlight — same "no per-element
-    /// highlight" precedent as `ExcessiveSccCount` above. Shared wire variant for
-    /// `missing_vertical_passages`/`missing_teleports`/`missing_elevators`/
-    /// `area_missing_elevator_stops` — see `maze_core`'s `IssuePayload::AreaDeficit`.
-    AreaDeficit {
-        areas: HashMap<String, Vec<Option<u32>>>,
-    },
     /// Keyed by source check id — each entry is one flagged elevator's stop-count deficit: its live
     /// edge fan, the requested stop count, and available floor candidates as node ids. See GitHub
     /// issue #402. `missing_elevator_height`/`excessive_elevator_stop_gap` reuse `InvalidElevator`
@@ -282,4 +272,8 @@ pub struct IssueDto {
     /// e.g. `{"max_loop_length": {"max_loop_length": "100"}}`. Values are never assembled
     /// messages — the web UI looks them up by key via its own i18n templates per check id.
     pub details: HashMap<String, HashMap<String, String>>,
+    /// Id of the zone scope the issue was found in (GitHub issue #1039): `zone:<id>` or
+    /// `group:<id>`, as sent in `QcRuleConfig.zone_scopes`. Absent for a rule seeing the whole map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_id: Option<String>,
 }

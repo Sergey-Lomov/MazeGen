@@ -43,10 +43,10 @@ static PARAMS: [StrategyParam; 2] = [RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM
 /// is exhausted.
 ///
 /// Unlike `PriorityRegionMergeStrategy`/`WeightedRegionMergeStrategy`, `MissingLoopsIssue` isn't
-/// a batch of independently-addressable items — its `missing: Vec<(RepairArea, u32)>` deficit list
+/// a batch of independently-addressable items — its `missing` deficit
 /// is still one issue, not a per-item batch — so there is nothing to split per-item here: the
 /// incoming issue is passed through to `dispatch_priority` **unchanged**, one dispatch per
-/// `apply()` call. The chosen nested strategy is responsible for honoring every `RepairArea` entry
+/// `apply()` call. The chosen nested strategy is responsible for honoring the whole deficit
 /// itself (see `MissingLoopsRandomStrategy`).
 ///
 /// **Owns the standard add parameters for its nested strategies** (GitHub issue #486). Rather
@@ -79,7 +79,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -89,7 +89,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
         }
 
         // Resolve the dispatcher-owned add params once and pass them down verbatim as string
-        // overrides — each nested strategy re-reads them (per-area, for `reserve_percent`) exactly
+        // overrides — each nested strategy re-reads them (for `reserve_percent`) exactly
         // as if a caller had set them directly. `src_mode` is not injected; it stays per-nested.
         let mut inherited: HashMap<String, String> = HashMap::new();
         if let Some(StrategyParamValue::Float(v)) = params.get(PARAM_RESERVE_PERCENT) {
@@ -150,12 +150,7 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingLoopsIssue {
-        let entries = if missing == 0 {
-            vec![]
-        } else {
-            vec![(crate::quality_control::RepairArea::WholeMaze, missing)]
-        };
-        MissingLoopsIssue::new_from_check("test", entries)
+        MissingLoopsIssue::new_from_check("test", missing)
     }
 
     fn nested_with(

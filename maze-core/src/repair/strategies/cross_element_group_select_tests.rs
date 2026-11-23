@@ -406,7 +406,8 @@ fn elevator_stop_and_split_pair_removes_only_the_one_stop() {
     let strat = CrossElementGroupSelectStrategy {
         protect_route: false,
     };
-    let elevator_stop_only = fix_target(vec![nested_config(3, Box::new(RemoveElevatorStopStrategy))]);
+    let elevator_stop_only =
+        fix_target(vec![nested_config(3, Box::new(RemoveElevatorStopStrategy))]);
     let (stops_before, sp_before) = (elevator_stop_count(&maze), split_count(&maze, 2));
     assert_eq!(stops_before, 3);
     let result = apply_and_commit(

@@ -134,8 +134,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeIssue> for SplitNodeConnectionCou
         let counts = ConnectionCounts::build(maze);
 
         let invalid: Vec<NodeId> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .flat_map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
             .filter(|&node| {
                 let count = counts.count(node, self.direction);

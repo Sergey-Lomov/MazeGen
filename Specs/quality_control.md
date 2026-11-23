@@ -41,13 +41,13 @@ pub enum IssueKind {
 
 `InvalidSplitRoute` — see GitHub issue #277, part of epic #246. Flags a whole traversal *route* (an ordered sequence of edges), not a single node, a single connection, or an unordered group: a graph path shorter than a configured minimum detour connecting two nodes of the same split tile, suggesting the split doesn't meaningfully separate its own paths. Distinct from `InvalidSplitNodeConnectionGroup` (an earlier design iteration of the same check carried only the path's two endpoint edges as a proximity-style pair; superseded because a repair strategy needs the *whole* path to be able to cut any edge along the way, not just the two ends). Carries `InvalidSplitRouteIssue { routes: Vec<Vec<SplitRouteEdge>>, invalid_sources, .. }` where `SplitRouteEdge = (EdgeId, bool)` — the `bool` marks an edge incident to the split tile the route was found for (`from`/`to` resolves to that tile's own point). `routes`' order is significant (a route is a path, not a set) and, unlike every cycle/group `Issue` type, entries are deduplicated by *exact* sequence identity on merge, never by edge-set — two different routes sharing edges (or the same edges in a different order) are kept as distinct entries. Produced by `SplitNodeConnectionTraversalDistanceCheck`. Repaired by `SplitRouteCutStrategy`.
 
-`MissingVerticalPassages` mirrors `MissingLoops`'s role, but for a deficit in the count of `EdgeKind::VerticalPassage` edges (floor-to-floor connections — see `Specs/floors.md`) instead of loops — see GitHub issue #343. Currently produced by `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`. Carries `MissingVerticalPassagesIssue { missing: Vec<(RepairArea, u32)> }` — the same per-area deficit list shape `MissingTeleportsIssue`/`MissingLoopsIssue`/`MissingSplitTilesIssue` use (GitHub issue #369's `FloorScope::PerFloor` support), not a bare scalar. Repaired by `AddVerticalPassageStrategy` (see `repair.md`).
+`MissingVerticalPassages` mirrors `MissingLoops`'s role, but for a deficit in the count of `EdgeKind::VerticalPassage` edges (floor-to-floor connections — see `Specs/floors.md`) instead of loops — see GitHub issue #343. Currently produced by `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`. Carries `MissingVerticalPassagesIssue { missing: u32 }`, the same scalar deficit shape as `MissingTeleportsIssue`/`MissingLoopsIssue`/`MissingSplitTilesIssue`. Repaired by `AddVerticalPassageStrategy` (see `repair.md`).
 
 `InvalidVerticalPassage` mirrors `InvalidTeleport`'s role, but for a single `VerticalPassage` edge flagged invalid instead of a teleport — see GitHub issue #343. Unlike every other per-edge `Invalid*` kind, no top-level check produces it directly: it exists purely as the mandatory nested-strategy target `VerticalPassageGroupSelectStrategy` (below) delegates each candidate edge's removal to, via a single-edge `InvalidVerticalPassageIssue` synthesized fresh per candidate — same "no check of its own, purely a delegation target" role `InvalidSplitNodeConnectionGroup`'s nested kind (`InvalidSplitNodeConnection`) plays for `SplitNodeConnectionGroupSelectStrategy`. Carries `InvalidVerticalPassageIssue { invalid: Vec<EdgeId>, invalid_sources, .. }` — same flat `EdgeId`-list shape as `InvalidTeleportIssue`, a vertical passage is a single edge, not a cycle, so there is no `all`/index-into-`all` indirection. Repaired by `RemoveVerticalPassageStrategy`.
 
 `InvalidVerticalPassageGroup` mirrors `InvalidOneWayGroup`'s role, but for `VerticalPassage` edges instead of one-ways — see GitHub issue #343. Where `InvalidVerticalPassage` flags a single vertical-passage edge invalid on its own, `InvalidVerticalPassageGroup` flags an aggregate condition over two or more of them, none of which is individually invalid. Produced by four checks sharing the same issue shape: `MaxVerticalPassageCountCheck`/`MaxVerticalPassageRatioCheck` (maze-wide/per-floor excess count/ratio) and `VerticalPassageGroupGeometricProximityCheck`/`VerticalPassageGroupGraphProximityCheck` (proximity pairs, Euclidean vs. topological distance — kept as two distinct check types rather than one dual-metric check, same rationale as `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`). Carries `InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<VerticalPassageGroupKind>` shape (`Element = EdgeId`), mirrors `InvalidOneWayGroupIssue` exactly. Repaired by `VerticalPassageGroupSelectStrategy`, which delegates each candidate edge's removal to a nested `INVALID_VERTICAL_PASSAGE` strategy (`RemoveVerticalPassageStrategy`).
 
-`MissingElevators` mirrors `MissingVerticalPassages`'s role, but for a deficit in the overall count of elevators (`elevator_core::elevator_groups` — a fully-connected two-way stop fan built by `AddElevatorStrategy`, see `repair.md`) instead of vertical-passage edges — see GitHub issue #401, part of epic #344. Whole-maze scope only: an elevator inherently spans several floors, so there is no single "checked floor" to attribute a deficit to (same rationale `MinElevatorCountCheck`'s own doc comment gives, shared with `MaxElevatorCountCheck`). Currently produced by `MinElevatorCountCheck` (absolute count below a configured minimum) and `MinElevatorDensityCheck` (count per 100 field cells below a configured minimum, cross-multiplied the same way `MinVerticalPassageRatioCheck`/`MinTeleportRatioCheck` avoid floor-rounding false negatives). Carries `MissingElevatorsIssue { missing: Vec<(RepairArea, u32)> }` — same per-area deficit list shape as `MissingVerticalPassagesIssue`, though in practice `missing` only ever carries a single `RepairArea::WholeMaze` entry since both source checks are whole-maze scope only. Repaired by `AddElevatorStrategy` (see `repair.md`).
+`MissingElevators` mirrors `MissingVerticalPassages`'s role, but for a deficit in the overall count of elevators (`elevator_core::elevator_groups` — a fully-connected two-way stop fan built by `AddElevatorStrategy`, see `repair.md`) instead of vertical-passage edges — see GitHub issue #401, part of epic #344. Whole-maze scope only: an elevator inherently spans several floors, so there is no single "checked floor" to attribute a deficit to (same rationale `MinElevatorCountCheck`'s own doc comment gives, shared with `MaxElevatorCountCheck`). Currently produced by `MinElevatorCountCheck` (absolute count below a configured minimum) and `MinElevatorDensityCheck` (count per 100 field cells below a configured minimum, cross-multiplied the same way `MinVerticalPassageRatioCheck`/`MinTeleportRatioCheck` avoid floor-rounding false negatives). Carries `MissingElevatorsIssue { missing: u32 }`, the same scalar deficit shape as `MissingVerticalPassagesIssue`. Repaired by `AddElevatorStrategy` (see `repair.md`).
 
 ### SplitNodeConnectionTraversalDistanceCheck
 
@@ -515,23 +515,6 @@ pub enum Comparison { Lt, Gt, Le, Ge, Eq }
 - **Merge** when both directions validate one entity and both name the *same* corrective action (4.2 checks) — e.g. `LoopLengthCheck`'s `Lt`/`Gt` both mean "this cycle is invalid, cut it", so `min_loop_length`/`max_loop_length` merged into one `loop_length` check type. `TeleportGeometricLengthCheck` and `TeleportWaypointDistanceCheck`'s `comparison` param follow the same rule.
 - **Do not merge** when the two directions name *different* corrective actions — a deficit (4.1, "add more") vs. a surplus (4.3, "remove the excess") are semantically different problems even when they're a min/max pair on the same metric, so they keep separate `IssueKind`s, separate check types, and separate repair strategies. `MinRegionSizeCheck`/`MaxRegionSizeCheck` (and their `*_ratio` counterparts) are the standing example: `min_region_size` flags `REGION_NEEDS_EXPANSION` (grow the region), `max_region_size` flags `REGION_NEEDS_SHRINK` (shrink it) — see `REGION_NEEDS_SHRINK`'s doc comment. Count-vs-count pairs (`min_loops_count`/`max_loops_count`, `min_region_count`'s balance) follow the same non-merge rule for the same reason — `min_loops_count` flags `MISSING_LOOPS` (add more), `max_loops_count` flags `INVALID_LOOP_GROUP` (break the excess).
 
-### Floor scope (`FloorScope`)
-
-```rust
-pub enum FloorScope { WholeMaze, PerFloor }
-```
-
-`FloorScope` (`quality_control::floor_scope`, GitHub issue #369) — shared check-level param exposed by every count/density-style QC check *except* region-based checks (`min_region_size`, `min_region_ratio`, `max_region_size`, `max_region_ratio`, `min_region_count` — region membership is already floor-scoped by construction) and `scc_count`. Controls whether the check's threshold is evaluated once over the whole maze or independently per floor:
-
-- `WholeMaze` — the pre-#369 behavior: the check counts/measures across every floor combined and compares once against the threshold.
-- `PerFloor` — the check groups its entities by floor (via `floors_of_edge`/`floors_of_edges`/`floors_of_node`, `floor_group.rs`) and evaluates the threshold independently on each floor's own field-cell count (`MultiLevelField::cell_count` per level). An entity spanning multiple floors (an edge or node touching more than one level) counts toward **every** floor it touches — not split fractionally, not attributed to a single "owning" floor. Split tiles are the one exception in practice: a split tile always belongs to exactly one floor, so grouping it is a plain bucketing operation rather than a multi-floor membership case.
-
-For deficit checks (`min_*`), a per-floor deficit is computed for each floor independently and the results are **summed** into one issue (`MissingLoopsIssue`, `MissingOneWaysIssue`, `MissingTeleportsIssue`, `MissingSplitTilesIssue`) — this is deliberately not routed through `IssueMerge::merge`, whose cross-check semantics (take the `max()` of two different checks' numbers) would be wrong for summing one check's own per-floor numbers. The web issue bubble reads the `AreaDeficit` floor indices and shows a navigable floor badge for each failed floor; whole-maze entries have no floor badge. Since this payload identifies only an area, not a concrete entity, hovering its warning never highlights an entire floor. `MissingLoopsIssue`, `MissingOneWaysIssue`, `MissingSplitTilesIssue`, `MissingVerticalPassagesIssue`, `MissingTeleportsIssue`, `MissingElevatorsIssue`, and `AreaMissingElevatorStopsIssue` emit this payload; the latter two can only name the whole maze when no individual floor is attributable.
-
-For surplus/group checks (`max_*`) whose issue type carries a per-group `to_remove: u32` (`max_split_count`, `max_split_density`, `max_dead_end_count`, `max_dead_end_density`, `max_one_way_count`, `max_one_way_ratio` — all `InvalidGroupIssue<K>`-based), each over-budget floor gets its **own independent** `(group, to_remove)` tuple — `InvalidGroupIssue<K>::groups: Vec<(Vec<Element>, u32)>` natively supports several groups per issue, so there is no need to merge every over-budget floor's entities into one group with a single blended excess count. Split tiles and dead-end nodes belong to exactly one floor each, so their per-floor groups are disjoint; one-way edges can span floors, so the same edge may legitimately appear in more than one floor's group when it touches several over-budget floors at once. `max_loops_count`/`max_loop_density` are structurally different (`InvalidLoopGroupIssue` is boolean-shaped — `invalid`/`valid` cycle lists, no `to_remove` scalar) and need no analogous per-floor split: under `PerFloor` they simply flag every cycle touching any over-budget floor as invalid directly.
-
-`as_str()`/`from_str()` round-trip through `"whole_maze"`/`"per_floor"`. **Default varies by check family**: every count-style check (`min_loops_count`, `max_loops_count`, `min_teleport_count`, `min_one_way_count`, `max_one_way_count`, `split_count`, `max_split_count`, `max_dead_end_count`) defaults to `WholeMaze` (reproduces pre-#369 behavior exactly). Every density-style check (`min_loop_density`, `max_loop_density`, `min_teleport_ratio`, `min_one_way_ratio`, `max_one_way_ratio`, `split_density`, `max_split_density`, `max_dead_end_density`) defaults to `PerFloor` — a density is a per-100-cells share, and per-floor coverage is the more meaningful reading of that share on a multi-floor maze than one number blended across floors of possibly very different sizes. Each check's own `*_DEFAULT_FLOOR_SCOPE` const carries this default through to `checks_catalog.rs`'s `floor_scope_param(default)` (wasm) and `check_factory.rs`'s `parse_floor_scope(param, default)` (maze-runner).
-
 ### MinLoopsCountCheck / MinLoopDensityCheck
 
 ```rust
@@ -539,7 +522,6 @@ pub const MIN_LOOPS_DEFAULT: u32 = 1;
 
 pub struct MinLoopsCountCheck {
     pub min_loops: u32,
-    pub floor_scope: FloorScope,
 }
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
@@ -548,7 +530,6 @@ pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
 pub struct MinLoopDensityCheck {
     pub min_density: u32,
     pub avg_loop_length_estimate: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -656,7 +637,6 @@ pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 
 pub struct MaxLoopDensityCheck {
     pub max_density: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -675,7 +655,6 @@ pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
 
 pub struct MaxLoopsCountCheck {
     pub max_loops_count: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1150,13 +1129,11 @@ pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
 pub struct MinTeleportCountCheck {
     pub instance_id: String,
     pub min_teleports: u32,
-    pub floor_scope: FloorScope,
 }
 
 pub struct MinTeleportRatioCheck {
     pub instance_id: String,
     pub min_teleport_ratio: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1263,13 +1240,11 @@ pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
 pub struct MinOneWayCountCheck {
     pub instance_id: String,
     pub min_one_ways: u32,
-    pub floor_scope: FloorScope,
 }
 
 pub struct MinOneWayRatioCheck {
     pub instance_id: String,
     pub min_ratio: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1292,13 +1267,11 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
 pub struct MaxOneWayCountCheck {
     pub instance_id: String,
     pub max_one_ways: u32,
-    pub floor_scope: FloorScope,
 }
 
 pub struct MaxOneWayRatioCheck {
     pub instance_id: String,
     pub max_ratio: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1308,7 +1281,7 @@ One-way detection is the same single-direction `Basic`-edge filter every other o
 
 Unlike `MinOneWayCountCheck`/`MinOneWayRatioCheck` (which report a numeric deficit in `MissingOneWaysIssue`), both checks here report every one-way edge in the maze as a single group in `InvalidOneWayGroupIssue.groups`, paired with the excess count as `to_remove` (GitHub issue #202 follow-up — see `OneWayGroup`'s doc comment above): the strategy, not the check, decides *which* edges within the group are the ones actually fixed, but the check itself says *how many*. For `MaxOneWayCountCheck`, `to_remove = count - max_one_ways`. For `MaxOneWayRatioCheck`, `to_remove = count - target_count`, where `target_count` is `max_ratio * field_cells / 100` **rounded to the nearest integer** (`(max_ratio * field_cells + 50) / 100` in integer arithmetic, `saturating_sub` guarding the rare small-field case where rounding pushes `target_count` above `count`) — round-to-nearest, not floor/ceil, so a fractional target (e.g. 4.3) resolves to the closest whole edge count (4) rather than always truncating down (GitHub issue #202 follow-up review: an earlier floor-based version under-reported `to_remove` by one whenever the fraction rounded up). `OneWayGroupSelectStrategy` (registered against `INVALID_ONE_WAY_GROUP`) already handles groups of any size and already applies its own `protect_route` exclusion when picking a candidate — neither check carries a `protect_route` param of its own, same as `OneWayGroupSuperHubCheck`.
 
-Under `FloorScope::WholeMaze` (`max_one_way_count`'s default), if the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on. Under `FloorScope::PerFloor` (`max_one_way_ratio`'s default, GitHub issue #369 follow-up), each over-budget floor gets its **own** `(edges, to_remove)` tuple in `groups`, `to_remove` computed against that floor's own count/cell-count rather than blended across floors — unlike a split tile, a one-way edge can span floors, so the same edge may appear in more than one floor's group when it touches several over-budget floors at once.
+If the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on. A single group covers every one-way edge visible to the rule's scope.
 
 `OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
 
@@ -1405,13 +1378,11 @@ pub const MAX_SPLIT_DENSITY_DEFAULT: u32 = 30;
 pub struct MaxSplitCountCheck {
     pub instance_id: String,
     pub max_split_count: u32,
-    pub floor_scope: FloorScope,
 }
 
 pub struct MaxSplitDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1419,13 +1390,13 @@ See GitHub issue #249, part of epic #246. Flag a field-wide excess of split *til
 
 `MaxSplitCountCheck`: fires when the raw tile count exceeds `max_split_count`; `to_remove = count - max_split_count` directly (a tile-count excess, not converted from any node-count notion). `MaxSplitDensityCheck`: fires when `density_per_100(tile_count, field_cells)` exceeds `max_density` (same rounding helper `MaxLoopDensityCheck` uses — round-half-up, not floor); `to_remove` is the fewest tiles that would bring density back to `max_density`, found by scanning `(0..=tile_count).rev()` for the largest count whose density is still at or below the max (density is monotonic increasing in count).
 
-Under `FloorScope::WholeMaze` (`max_split_count`'s default), both fire `InvalidSplitTileGroupIssue::new_from_check(instance_id, vec![(tiles, to_remove)])` — one group covering every split tile on the field — with `.with_detail(instance_id, "max_split_count"/"max_density", ...)` chained on. Under `FloorScope::PerFloor` (`max_split_density`'s default, GitHub issue #369 follow-up), each over-budget floor gets its **own** `(tiles, to_remove)` tuple in `groups` — a split tile belongs to exactly one floor, so the per-floor tile sets are disjoint and each floor's own excess is reported against its own tiles, not blended with any other over-budget floor's excess.
+Both fire `InvalidSplitTileGroupIssue::new_from_check(instance_id, vec![(tiles, to_remove)])` with one group covering every split tile visible to the rule's scope, with `.with_detail(instance_id, "max_split_count"/"max_density", ...)` chained on.
 
 ### MaxDeadEndCountCheck / MaxDeadEndDensityCheck
 
 `max_dead_end_count` and `max_dead_end_density` emit `InvalidDeadEndGroupIssue`. A dead end is a node with exactly one distinct outgoing neighbor, provided that neighbor has a reverse edge back to the node. Incoming-only connections do not change this classification. The checks highlight every qualifying node in an over-budget scope, rather than selecting a subset for removal. `DeadEndGroupSelectStrategy` selects candidates against each group budget and delegates each to an `InvalidDeadEndIssue` nested repair; `DeadEndToPassageStrategy` and `DeadEndToTeleportStrategy` are supplied single-node repairs. See `repair.md`.
 
-`MaxDeadEndCountCheck` reports `count - max_dead_end_count`. `MaxDeadEndDensityCheck` measures dead ends per 100 field cells; when it exceeds the configured maximum, its excess is the number of nodes above `floor(max_dead_end_density * field_cells / 100)`, ensuring the warning cannot disappear through rounding. Both use `FloorScope`: whole-maze produces one group, while per-floor emits one independent group for each over-budget floor. Count defaults to `WholeMaze`; density defaults to `PerFloor`.
+`MaxDeadEndCountCheck` reports `count - max_dead_end_count`. `MaxDeadEndDensityCheck` measures dead ends per 100 field cells; when it exceeds the configured maximum, its excess is the number of nodes above `floor(max_dead_end_density * field_cells / 100)`, ensuring the warning cannot disappear through rounding. Both emit one group covering every dead end visible to the rule's scope.
 
 ### NodeShapeLimitsCheck
 
@@ -1468,7 +1439,6 @@ pub struct SplitCountCheck {
     pub instance_id: String,
     pub min_count: u32,
     pub patterns: Vec<SplitPattern>,
-    pub floor_scope: FloorScope,
 }
 
 pub const SPLIT_DENSITY_DEFAULT: u32 = 10;
@@ -1477,7 +1447,6 @@ pub struct SplitDensityCheck {
     pub instance_id: String,
     pub min_density: u32,
     pub patterns: Vec<SplitPattern>,
-    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1607,37 +1576,29 @@ See GitHub issue #343's follow-up. Used by all 6 vertical-passage checks below (
 
 ```rust
 pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT: u32 = 1;
-pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
-pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING: bool = false;
 
 pub struct MinVerticalPassageCountCheck {
     pub instance_id: String,
     pub min_vertical_passages: u32,
-    pub floor_scope: FloorScope,
     pub passage_type: VerticalPassageType,
-    pub count_incoming: bool,
 }
 
 pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT: f64 = 10.0;
-pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
-pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
 
 pub struct MinVerticalPassageRatioCheck {
     pub instance_id: String,
     pub min_vertical_passage_ratio: f64,
-    pub floor_scope: FloorScope,
     pub passage_type: VerticalPassageType,
-    pub count_incoming: bool,
 }
 ```
 
 See GitHub issue #343 and its follow-up. Two separate check types flagging `MISSING_VERTICAL_PASSAGES`, mirroring `MinLoopsCountCheck`/`MinLoopDensityCheck`'s absolute-count-vs-field-share split above — an absolute count and a per-100-cells share are different metrics, not a `Comparison`-mergeable min/max pair.
 
-Both count via the shared `vertical_passage_count_core::count_logical_vertical_passages`/`logical_vertical_passages_per_floor`, which count **logical passages**, not edges: a two-way `VerticalPassage` is stored as two directed `Edge`s (one each way) but counts as exactly one `LogicalVerticalPassage`, fixing an earlier double-count bug where `All`-direction counting saw both directions of the same passage. `passage_type: VerticalPassageType` (`Any` | `TwoWay` | `OneWay` | `OneWayDown` | `OneWayUp`) selects which logical passages are considered — see `VerticalPassageType`'s own doc comment. Unlike the max checks and the two proximity checks below, `passage_type` here is **not** a per-instance wasm param — `check_factory` sources it from the rule-level `RuleParams::vertical_passage_type` (see `PARAM_VERTICAL_PASSAGE_TYPE`), so every check on the same rule shares one value. `count_incoming: bool` (default `false`) only affects `PerFloor` scope: for a one-way passage, it always counts toward the floor it originates from; with `count_incoming` set, it additionally counts toward the floor it leads to. `count_incoming` is ignored under `WholeMaze` (there is no single "checked floor" to be incoming toward). A two-way/`Any` passage always counts toward both floors it touches, regardless of `count_incoming`.
+Both count via the shared `vertical_passage_count_core::count_logical_vertical_passages`/`logical_vertical_passages_per_floor`, which count **logical passages**, not edges: a two-way `VerticalPassage` is stored as two directed `Edge`s (one each way) but counts as exactly one `LogicalVerticalPassage`, fixing an earlier double-count bug where `All`-direction counting saw both directions of the same passage. `passage_type: VerticalPassageType` (`Any` | `TwoWay` | `OneWay` | `OneWayDown` | `OneWayUp`) selects which logical passages are considered — see `VerticalPassageType`'s own doc comment. Unlike the max checks and the two proximity checks below, `passage_type` here is **not** a per-instance wasm param — `check_factory` sources it from the rule-level `RuleParams::vertical_passage_type` (see `PARAM_VERTICAL_PASSAGE_TYPE`), so every check on the same rule shares one value.
 
-`MinVerticalPassageCountCheck` (`check_type_id() == "min_vertical_passage_count"`) — under `floor_scope: WholeMaze`, `missing = min_vertical_passages.saturating_sub(count)`. Under `PerFloor`, each floor's own deficit is computed independently and every deficient floor becomes its own `(RepairArea::Level(level), missing)` entry.
+`MinVerticalPassageCountCheck` (`check_type_id() == "min_vertical_passage_count"`) — `missing = min_vertical_passages.saturating_sub(count)`; silent when `missing == 0`.
 
 `MinVerticalPassageRatioCheck` (`check_type_id() == "min_vertical_passage_ratio"`) — mirrors `MinTeleportRatioCheck`: a count expressed per 100 field cells, cross-multiplied (`count * 100 >= min_ratio * field_cells`) to avoid a floor-rounded ratio producing a false negative; `required = round(min_ratio * field_cells / 100)`, `missing = required.saturating_sub(count)`.
 
@@ -1647,37 +1608,29 @@ Either way, `missing` entries with `0` are dropped; if the resulting list is emp
 
 ```rust
 pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT: u32 = 1_000;
-pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
-pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING: bool = false;
 
 pub struct MaxVerticalPassageCountCheck {
     pub instance_id: String,
     pub max_vertical_passages: u32,
-    pub floor_scope: FloorScope,
     pub passage_type: VerticalPassageType,
-    pub count_incoming: bool,
 }
 
 pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT: f64 = 100.0;
-pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
-pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
 
 pub struct MaxVerticalPassageRatioCheck {
     pub instance_id: String,
     pub max_ratio: f64,
-    pub floor_scope: FloorScope,
     pub passage_type: VerticalPassageType,
-    pub count_incoming: bool,
 }
 ```
 
-See GitHub issue #343 and its follow-up. Mirrors `MaxOneWayCountCheck`/`MaxOneWayRatioCheck`'s shape: the flagged logical passages (each reported by its own canonical `EdgeId` — see `LogicalVerticalPassage`'s doc comment) are reported as a single group (or one group per over-budget floor under `PerFloor`) paired with the excess count as `to_remove` — the strategy, not the check, decides which passages within the group are actually removed (`VerticalPassageGroupSelectStrategy`). Both flag `INVALID_VERTICAL_PASSAGE_GROUP`, never `INVALID_VERTICAL_PASSAGE` directly — a count/ratio excess is a group-level condition over the whole matching passage set, not any one passage's own fault. Same `passage_type`/`count_incoming` semantics as the Min checks above — both the threshold count and the `to_remove` budget are expressed in logical-passage units, so a two-way passage's canonical edge counts, and can be selected for removal, exactly once.
+See GitHub issue #343 and its follow-up. Mirrors `MaxOneWayCountCheck`/`MaxOneWayRatioCheck`'s shape: the flagged logical passages (each reported by its own canonical `EdgeId` — see `LogicalVerticalPassage`'s doc comment) are reported as a single group paired with the excess count as `to_remove` — the strategy, not the check, decides which passages within the group are actually removed (`VerticalPassageGroupSelectStrategy`). Both flag `INVALID_VERTICAL_PASSAGE_GROUP`, never `INVALID_VERTICAL_PASSAGE` directly — a count/ratio excess is a group-level condition over the whole matching passage set, not any one passage's own fault. Same `passage_type`/`count_incoming` semantics as the Min checks above — both the threshold count and the `to_remove` budget are expressed in logical-passage units, so a two-way passage's canonical edge counts, and can be selected for removal, exactly once.
 
-`MaxVerticalPassageCountCheck` (`check_type_id() == "max_vertical_passage_count"`) — under `WholeMaze`, if `count <= max_vertical_passages` the check is silent; otherwise the entire matching passage set becomes one group with `to_remove = count - max_vertical_passages`. Under `PerFloor`, every floor whose own touching-passage count exceeds `max_vertical_passages` becomes its own group (that floor's own touching passages, `to_remove` = that floor's own excess) — a passage spanning two over-budget floors (two-way, or one-way with `count_incoming`) can legitimately appear in more than one group.
+`MaxVerticalPassageCountCheck` (`check_type_id() == "max_vertical_passage_count"`) — if `count <= max_vertical_passages` the check is silent; otherwise the entire matching passage set becomes one group with `to_remove = count - max_vertical_passages`.
 
-`MaxVerticalPassageRatioCheck` (`check_type_id() == "max_vertical_passage_ratio"`) — mirrors `MaxOneWayRatioCheck`: "passages per 100 field cells", cross-multiplied excess gate (`count * 100 > max_ratio * field_cells`), `target_count = round(max_ratio * field_cells / 100)`, `to_remove = count.saturating_sub(target_count)`. Same `WholeMaze`/`PerFloor` group shape as the count check above.
+`MaxVerticalPassageRatioCheck` (`check_type_id() == "max_vertical_passage_ratio"`) — mirrors `MaxOneWayRatioCheck`: "passages per 100 field cells", cross-multiplied excess gate (`count * 100 > max_ratio * field_cells`), `target_count = round(max_ratio * field_cells / 100)`, `to_remove = count.saturating_sub(target_count)`. Same single-group shape as the count check above.
 
 Either way, fires `InvalidVerticalPassageGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "max_vertical_passages" | "max_ratio", threshold.to_string())` chained on (detail key matches the check's own threshold field name). Repaired by `VerticalPassageGroupSelectStrategy` (see `repair.md`).
 
@@ -1805,7 +1758,7 @@ pub struct MaxElevatorDensityCheck {
 }
 ```
 
-See GitHub issue #398, part of epic #344. Both checks validate the elevator group as a whole rather than any single elevator — **whole-maze scope only, no `FloorScope`/per-floor model**, unlike nearly every other max-count/max-density check in the crate: an elevator inherently spans several floors, so there is no single "checked floor" to attribute it to. Mirrors `MaxSplitCountCheck`/`MaxSplitDensityCheck`'s identical rationale (a field-wide/aggregate decision — which elevators to actually remove is `ElevatorGroupSelectStrategy`'s job, not the check's), applied to `ElevatorNodes` as the "whole entity is the unit" element (like split tiles) rather than an `EdgeId`-based group (like vertical passages/one-ways/teleports).
+See GitHub issue #398, part of epic #344. Both checks validate the elevator group as a whole rather than any single elevator — **no per-floor model**: an elevator inherently spans several floors, so there is no single "checked floor" to attribute it to. Mirrors `MaxSplitCountCheck`/`MaxSplitDensityCheck`'s identical rationale (a field-wide/aggregate decision — which elevators to actually remove is `ElevatorGroupSelectStrategy`'s job, not the check's), applied to `ElevatorNodes` as the "whole entity is the unit" element (like split tiles) rather than an `EdgeId`-based group (like vertical passages/one-ways/teleports).
 
 **`MaxElevatorCountCheck`** (`check_type_id() == "max_elevator_count"`) — collects every `elevator_groups(maze)` entry; if `count <= max_elevator_count` the check is silent, otherwise all of them become one group with `to_remove = count - max_elevator_count`.
 
@@ -1848,13 +1801,13 @@ pub struct MinElevatorDensityCheck {
 }
 ```
 
-See GitHub issue #401, part of epic #344. Mirror `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`'s whole-maze-only scope and rationale exactly (no `FloorScope` — an elevator spans several floors, so there is no single floor to attribute a deficit to), but flag `MISSING_ELEVATORS` for a deficit instead of `INVALID_ELEVATOR_GROUP` for an excess — `MissingElevatorsIssue`'s per-area `missing: Vec<(RepairArea, u32)>` list, not `ElevatorNodes`-based groups, since a deficit has no existing elevators to name, only a count still needed.
+See GitHub issue #401, part of epic #344. Mirror `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`'s no-per-floor rationale exactly (an elevator spans several floors, so there is no single floor to attribute a deficit to), but flag `MISSING_ELEVATORS` for a deficit instead of `INVALID_ELEVATOR_GROUP` for an excess — `MissingElevatorsIssue`'s single `missing: u32` count, not `ElevatorNodes`-based groups, since a deficit has no existing elevators to name, only a count still needed.
 
 **`MinElevatorCountCheck`** (`check_type_id() == "min_elevator_count"`) — `count = elevator_groups(maze).len()`; if `count >= min_elevators` the check is silent, otherwise `missing = min_elevators.saturating_sub(count)`.
 
 **`MinElevatorDensityCheck`** (`check_type_id() == "min_elevator_density"`) — "elevators per 100 field cells", cross-multiplied comparison (`count * 100 >= min_density * field_cells`) to avoid a floor-rounded ratio producing a false negative, mirroring `MinVerticalPassageRatioCheck`/`MinTeleportRatioCheck`. Silent if `field_cells == 0` or the density already clears the minimum; otherwise `required = round(min_density * field_cells / 100.0)`, `missing = required.saturating_sub(count)`.
 
-Either way, `missing == 0` means silent; otherwise fires `MissingElevatorsIssue::new_from_check(instance_id, vec![(RepairArea::WholeMaze, missing)])` with `.with_detail(instance_id, "missing", missing.to_string())` chained on. Repaired by `AddElevatorStrategy` (see `repair.md`).
+Either way, `missing == 0` means silent; otherwise fires `MissingElevatorsIssue::new_from_check(instance_id, missing)` with `.with_detail(instance_id, "missing", missing.to_string())` chained on. Repaired by `AddElevatorStrategy` (see `repair.md`).
 
 ### MaxElevatorStopsCheck / MaxElevatorStopsPerFloorCheck
 
@@ -1872,9 +1825,9 @@ pub struct MaxElevatorStopsPerFloorCheck {
 
 See GitHub issue #399, part of epic #344. Both checks validate a **stop-level** granularity, distinct from `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`'s whole-elevator-level: they flag individual stop nodes of an otherwise-fine elevator for removal, shrinking it, rather than removing a whole elevator. `Element = NodeId` (a single stop), not `ElevatorNodes`.
 
-**`MaxElevatorStopsCheck`** (`check_type_id() == "max_elevator_stops"`) — per-elevator scope. Scans every `elevator_groups(maze)` entry independently; an elevator whose own stop count exceeds `max_elevator_stops` becomes its own group (all of its stops, sorted), paired with `to_remove = count - max_elevator_stops`. Several over-budget elevators each contribute their own group to the same issue (sorted by stop-node set for determinism) — mirrors `MaxVerticalPassageCountCheck`'s `FloorScope::PerFloor` shape in spirit (one group per over-budget unit), except the unit here is "one elevator", not "one floor".
+**`MaxElevatorStopsCheck`** (`check_type_id() == "max_elevator_stops"`) — per-elevator scope. Scans every `elevator_groups(maze)` entry independently; an elevator whose own stop count exceeds `max_elevator_stops` becomes its own group (all of its stops, sorted), paired with `to_remove = count - max_elevator_stops`. Several over-budget elevators each contribute their own group to the same issue (sorted by stop-node set for determinism) (one group per over-budget floor), except the unit here is "one elevator", not "one floor".
 
-**`MaxElevatorStopsPerFloorCheck`** (`check_type_id() == "max_elevator_stops_per_floor"`) — per-floor scope, always (no `WholeMaze` variant — a floor-level count is the only shape that makes sense for this check). Any elevator stop on a floor counts toward that floor's tally, from any elevator — an elevator contributes at most one stop per floor it touches, by construction (`elevator_core`'s stop set never puts two of the same elevator's stops on one floor). Groups every over-budget floor's stops into its own group (sorted by `LevelId` for determinism), `to_remove = count - max_elevator_stops_per_floor`.
+**`MaxElevatorStopsPerFloorCheck`** (`check_type_id() == "max_elevator_stops_per_floor"`) — per-floor count, always (a floor-level count is the only shape that makes sense for this check). Any elevator stop on a floor counts toward that floor's tally, from any elevator — an elevator contributes at most one stop per floor it touches, by construction (`elevator_core`'s stop set never puts two of the same elevator's stops on one floor). Groups every over-budget floor's stops into its own group (sorted by `LevelId` for determinism), `to_remove = count - max_elevator_stops_per_floor`.
 
 Either way, fires `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "max_elevator_stops" | "max_elevator_stops_per_floor", threshold.to_string())` chained on. Repaired by `ElevatorStopGroupSelectStrategy` (see `repair.md`) — which stops within an over-budget group are actually removed is the strategy's job, not either check's.
 
@@ -2062,6 +2015,70 @@ element is an enum over element kinds rather than a single `EdgeId` / `NodeId` /
 reverse-index — not business semantics. `INVALID_CROSS_ELEMENT_GROUP` has no matching
 single-element `INVALID_CROSS_ELEMENT` kind: it is only ever an aggregate pair condition.
 
+## Zone scope (GitHub issue #1039)
+
+A rule can be bound to zone scopes (`Rule::with_scopes`, `ScopeCells`, `quality_control/scope.rs`). `None` keeps the
+old behaviour: the rule sees the whole map. `Some(scopes)` runs the rule once per scope, in order; `Some([])` runs it
+never (it sees nothing). A scope is an id plus field cells `(LevelId, CellId)` (cells, not nodes: a split tile adds and
+removes nodes while the cell stays), so the inner nodes are recomputed from the field on every run. Scopes with the same
+id are one scope, the first wins. Scopes are independent and may overlap; agreement between them comes from the stage's
+own fixpoint, no logic of its own.
+
+**Scope mask (`graph::ScopeMask`, `Graph::build_scope_mask`, `Maze::with_scope`).** Nodes fall in three classes:
+*inner* (on a scope cell, split nodes included), *boundary* (outside, but the far end of a visible edge) and
+invisible. An edge is visible when at least one end is inner. While a mask is raised, the enumerating accessors
+(`nodes`, `node_count`, `edges`, `outgoing_neighbors`, `incoming_neighbors`, `outgoing_edges`, `edge_between`) show only
+inner nodes and visible edges. Lookup by id (`edge`) and every mutator ignore it (a mutator under a mask is a bug and
+asserts). A boundary node is a leaf: an inner node has its boundary neighbours, the boundary node has none, so no
+traversal (reachability, SCC, cycles, regions, distances) passes through it, while a link leaving the scope is still seen.
+`Graph::boundary_nodes()` lists them, `Graph::is_inner(node)` is `true` for everything without a mask.
+
+- The mask lives in the `Graph` (interior mutability, not part of its data: a clone starts without one) and is raised
+  only around reads: the checks and `strategy.apply`. `apply_commands` runs outside it on the full graph. Raising it does
+  not change `Graph::version()`.
+- `Graph::cache_key() = (version, mask id)`; `MazeAnalysis` caches (nav graph, regions, reachability, route) key on it,
+  so a result computed under one scope is never served to another scope or to the full graph.
+- Density and ratio checks normalise per field cell with `Maze::scoped_cell_count()` (the scope's distinct cells; the
+  whole field without a mask). Candidate pools a strategy draws from the field instead of the graph filter with
+  `Maze::in_scope_cell`.
+- **Landmarks lie on the whole maze.** `MazeAnalysis::route_info`, `region_classes`, `distance_from_start/finish` and
+  `reachable_from_start/to_finish` lift the mask for their computation (`Graph::unscoped`), so a start or finish outside
+  the zone still gives distances and a route. The whole maze's nav graph has its own cache slot, so lifting the mask does
+  not evict the scoped one. A check that reads distances while walking loops of the scoped nav graph takes them re-keyed
+  (`distance_from_start_in`, `distance_from_finish_in`): a junction of the scoped nav graph is one of the whole maze's too,
+  because every edge of an inner node is visible. `WaypointDistances` builds its nav graph unscoped for the same reason.
+- `scc_count` stays scopable: it counts the components of the subgraph the scope sees.
+- `Maze::scoped_split_cells()` and `Maze::scoped_node_ids()` are the field listings cut to the scope; checks and
+  strategies never enumerate split cells or nodes from the field directly.
+- `Maze::draft()` drops the mask: a draft is a full copy for what-if mutation. Strategies must not rely on a mask
+  surviving into a draft; they only apply commands to it.
+
+**Per-scope run.** `Rule::check_and_repair_typed` loops over the scopes, each inside an event scope `"scope <id>"`.
+One round per scope: checks under the mask, strategy under the mask, commands applied outside it with the anchor rule
+(`apply_commands_scoped`, `Specs/repair.md`). Every issue found is stamped with its scope id (`IssueMeta::scope`), the
+report path carries it to `IssueDto.scope_id`. Outcome folding: no issue anywhere is `NoIssue`; issues but no strategy
+is `NoStrategy`; otherwise `Repaired`, with a result of `Failed` only when every dispatched scope failed, so one scope
+that could still repair keeps the rule off the stage's blacklist. The QC deadline is checked between scopes.
+
+**Audit of checks and strategies.**
+
+| Class | Meaning | Members |
+|---|---|---|
+| (a) | works through the mask alone | graph-walking checks: loops, dead ends, teleports, one-ways, split tiles and nodes (enumerated with `Maze::scoped_split_cells`, which cuts `field.split_cells()` to the scope), elevators, vertical passages, proximity |
+| (b) | needs `scoped_cell_count` | the 16 density and ratio checks (`max_dead_end_density`, `max_elevator_density`, `max_loop_density`, `max_one_way_ratio`, `max_region_ratio`, `max_split_density`, `max_teleport_density`, `max_vertical_passage_ratio`, `min_elevator_density`, `min_elevator_stops_per_area_density`, `min_loop_density`, `min_one_way_ratio`, `min_region_ratio`, `min_teleport_ratio`, `min_vertical_passage_ratio`, `split_density`) |
+| (c) | about the whole maze, a scope cannot narrow it | `missing_endpoints`, `unreachable_finish` and the region checks (`min_region_count`, `min_region_size`, `min_region_ratio`, `max_region_size`, `max_region_ratio`: regions are classified relative to the route). Listed in `ZONE_SCOPE_UNSUPPORTED` (`maze-wasm/src/checks_catalog.rs`), sent to the web as `CheckDescriptor.zone_scope_unsupported`; the UI disables the zone button of a rule holding one. Each is alone in its issue kind, so no rule mixes them with scopable checks |
+| (d) | the start or the finish is a landmark | `loop_distance_from_start/finish`, `teleport_waypoint_distance`, `one_way_waypoint_distance`, `split_distance_from_waypoint`, and `protect_route`: the scope filters the candidates, the distances and the route come from the whole maze (below) |
+
+Strategies: the anchor guard in `apply_commands_scoped` is the safety net for all of them. `missing_teleports`,
+`missing_loops_teleport` and `add_elevator` draw entry candidates from the field and filter them with `is_inner`;
+`add_vertical_passage`, `missing_loops_random`, `missing_loops_vertical` and `missing_one_ways_shared` use
+`Maze::scoped_node_ids`. Other candidate pools (neighbours by geometry, the exit of `dead_end_to_teleport`, which may lie
+outside because its source is inner) are not audited one by one; a strategy that proposes commands outside its scope is
+declined by the guard and ends in `Failed`. Follow-up ticket.
+
+**Known limits.** Two rules (or scopes) that undo each other end by the repair iteration limit with the remaining
+issues kept, as for any two rules; a repeated-state detector is a follow-up.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -2077,6 +2094,7 @@ struct IssueDto {
     source_checks: Vec<String>,                          // Issue::source_checks() — opaque composite instance ids
     source_check_types: HashMap<String, String>,         // source_checks entry -> check type id
     details: HashMap<String, HashMap<String, String>>,   // Issue::details()
+    scope_id: Option<String>,                            // zone scope the issue was found in (GitHub issue #1039); absent for a rule without a scope
 }
 
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -2300,8 +2318,18 @@ pub struct QcRuleConfig {
     pub id: String,                        // opaque rule id, assigned by the web client
     pub checks: Vec<CheckInstanceConfig>,  // check instances, must share one IssueKind
     pub strategy: Option<StrategyConfig>,  // None = "no_fix"
+    pub zone_scopes: Option<Vec<ZoneScopeDto>>, // GitHub issue #1039, see "Zone scope"
+}
+
+pub struct ZoneScopeDto {
+    pub id: String,                        // "zone:<id>" (zone, or one zone of an iteration group) or "group:<id>" (union)
+    pub cells: Vec<[i32; 3]>,              // [floor, x, y]; cells outside the field or without a node are skipped
 }
 ```
+
+`zone_scopes` is `#[serde(default)]`: `None` (absent) is the whole map, `Some([])` a rule that sees nothing. A scope
+left with no cell stays in the list and the rule skips it. `maze_runner::runner::bind_zone_scopes` resolves the wire
+cells against the built field and binds them to the rules by id, right after `build_qc_and_repair`.
 
 One user-defined QC rule: a non-empty set of active check **instances** producing the same
 `IssueKind`, sharing one repair strategy (or none — `strategy: None`, the rule's issues still
@@ -2326,14 +2354,14 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 |----|------------|--------|-----------------|
 | `missing_endpoints` | `missing_endpoints` | — | yes |
 | `unreachable_finish` | `unreachable_finish` | — | yes |
-| `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `min_loop_density` | `missing_loops` | `min_density: Float(default=30.0, min=0.0, max=100.0)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_loop_density` | `missing_loops` | `min_density: Float(default=30.0, min=0.0, max=100.0)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)` | no |
 | `loop_length` | `invalid_loop` | `length: Integer(default=10, min=1, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |
 | `loop_distance_from_start` | `invalid_loop` | `min_distance_from_start: Integer(default=0, min=0, max=100_000)` | no |
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
-| `max_loop_density` | `invalid_loop_group` | `max_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
-| `max_loops_count` | `invalid_loop_group` | `max_loops_count: Integer(default=20, min=0, max=100_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `max_loop_density` | `invalid_loop_group` | `max_density: Float(default=30.0, min=0.0, max=100.0)` | no |
+| `max_loops_count` | `invalid_loop_group` | `max_loops_count: Integer(default=20, min=0, max=100_000)` | no |
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Float(default=25.0, min=0.0, max=100.0)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
@@ -2347,35 +2375,35 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
 | `teleport_split_intersection` | `invalid_teleport` | `edge_split: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
-| `min_teleport_count` | `missing_teleports` | `min_teleports: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `min_teleport_ratio` | `missing_teleports` | `min_teleport_ratio: Float(default=10.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `min_teleport_count` | `missing_teleports` | `min_teleports: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_teleport_ratio` | `missing_teleports` | `min_teleport_ratio: Float(default=10.0, min=0.0, max=100.0)` | no |
 | `one_way_waypoint_distance` | `invalid_one_way` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` (rule-level `protect_route`) | yes |
-| `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Float(default=10.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Float(default=10.0, min=0.0, max=100.0)` | no |
 | `one_way_group_geometric_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | yes |
 | `one_way_group_graph_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)` (rule-level `protect_route`) | yes |
 | `one_way_group_super_hub` | `invalid_one_way_group` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)` | no |
-| `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |
+| `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)` | no |
 | `split_distance_from_waypoint` | `invalid_split_tile` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` | no |
 | `split_pattern_shape` | `invalid_split_tile` | `patterns: PatternList(with_weights=false)` (own param, not rule-level `split_patterns`) | no |
-| `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `max_split_density` | `invalid_split_tile_group` | `max_split_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
-| `max_dead_end_count` | `invalid_dead_end_group` | `max_dead_end_count: Integer(default=20, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `max_dead_end_density` | `invalid_dead_end_group` | `max_dead_end_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)` | no |
+| `max_split_density` | `invalid_split_tile_group` | `max_split_density: Float(default=30.0, min=0.0, max=100.0)` | no |
+| `max_dead_end_count` | `invalid_dead_end_group` | `max_dead_end_count: Integer(default=20, min=0, max=1_000_000)` | no |
+| `max_dead_end_density` | `invalid_dead_end_group` | `max_dead_end_density: Float(default=30.0, min=0.0, max=100.0)` | no |
 | `node_shape_limits` | `violated_node_shape_limits` | `limits: NodeShapeLimits(default={})` | no |
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
-| `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `split_density` | `missing_split_tiles` | `split_density: Float(default=10.0, min=0.0, max=100.0)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)` | no |
+| `split_density` | `missing_split_tiles` | `split_density: Float(default=10.0, min=0.0, max=100.0)`, `patterns: PatternList(with_weights=false)` | no |
 | `split_node_connection_count` | `invalid_split_node` | `count: Integer(default=2, min=0, max=1_000_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `direction: Enum(options=[incoming,outgoing,bidirectional,any], default=any)` | no |
 | `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `max_split_tile_node_count` | `invalid_split_node_group` | `max: Integer(default=3, min=0, max=1_000_000)` | no |
-| `min_vertical_passage_count` | `missing_vertical_passages` | `min_vertical_passages: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)`, `count_incoming: Bool(default=false)` | no |
-| `min_vertical_passage_ratio` | `missing_vertical_passages` | `min_vertical_passage_ratio: Float(default=10.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `count_incoming: Bool(default=false)` | no |
-| `max_vertical_passage_count` | `invalid_vertical_passage_group` | `max_vertical_passages: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
-| `max_vertical_passage_ratio` | `invalid_vertical_passage_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
+| `min_vertical_passage_count` | `missing_vertical_passages` | `min_vertical_passages: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_vertical_passage_ratio` | `missing_vertical_passages` | `min_vertical_passage_ratio: Float(default=10.0, min=0.0, max=100.0)` | no |
+| `max_vertical_passage_count` | `invalid_vertical_passage_group` | `max_vertical_passages: Integer(default=1_000, min=0, max=1_000_000)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)` | no |
+| `max_vertical_passage_ratio` | `invalid_vertical_passage_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)` | no |
 | `vertical_passage_group_geometric_proximity` | `invalid_vertical_passage_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `vertical_passage_group_graph_proximity` | `invalid_vertical_passage_group` | `distance: Integer(default=0, min=0, max=100_000)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)` | no |
 | `elevator_stop_count` | `invalid_elevator` | `count: Integer(default=2, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
@@ -2481,7 +2509,7 @@ one-way / split / elevator-stop per-type proximity checks, but **not** of the ve
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has multiple instances (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration. `min_vertical_passage_count`/`min_vertical_passage_ratio`/`vertical_passage_group_geometric_proximity`/`vertical_passage_group_graph_proximity` (GitHub issue #343) likewise allow multiple instances — same rationale as their teleport/one-way counterparts (distinct `floor_scope`/`direction`/`distance` combinations are legitimate simultaneous configurations); `max_vertical_passage_count`/`max_vertical_passage_ratio` also permit multiple instances.
+`teleport_waypoint_distance` has multiple instances (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration. `min_vertical_passage_count`/`min_vertical_passage_ratio`/`vertical_passage_group_geometric_proximity`/`vertical_passage_group_graph_proximity` (GitHub issue #343) likewise allow multiple instances — same rationale as their teleport/one-way counterparts (distinct `direction`/`distance` combinations are legitimate simultaneous configurations); `max_vertical_passage_count`/`max_vertical_passage_ratio` also permit multiple instances.
 
 ## Architectural Contract
 

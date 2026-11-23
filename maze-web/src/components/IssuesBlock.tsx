@@ -83,12 +83,6 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // Per-check description override (GitHub issue #257's teleport_split_intersection, whose
   // behavior diverges from invalid_teleport's generic wording) — same rationale as `label` above.
   const description = resolveIssueSourceDescription(issue.kind, typeId, details);
-  // `area_deficit` names floor-level deficits without identifying a concrete element. Its indices
-  // are used exclusively for floor badges: hovering a whole-floor warning must not blanket the
-  // canvas with every cell of that floor.
-  const areaDeficitEntries = sourceCheck != null && issue.payload.kind === "area_deficit"
-    ? issue.payload.areas[sourceCheck] ?? null
-    : null;
   const palette = notificationPalette(severity);
 
   // GitHub issue #245: this bubble's own source-check slice of the payload, reduced to just the
@@ -299,7 +293,6 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           * exactly as dark/light regardless of the parent bubble's hover state. */}
         <IssueFloorBadges
           nodeIds={touchedNodeIds}
-          areaLevels={areaDeficitEntries?.filter((level): level is number => level !== null) ?? []}
           bg={darken(palette.text, 0.2)}
           text={palette.bg}
           className={description ? "hoverable-tint-counter" : undefined}
@@ -331,10 +324,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
 /// the same convention `selectNodeLevelResolver`/`navigateToFloor` already use), not floor ids --
 /// sorted ascending so the row always reads bottom-to-top regardless of `nodeIds`' own order.
 /// Renders nothing on a single-floor maze, same as every other cross-floor indicator in the app.
-/// `areaLevels` supplies the directly named floors of an `area_deficit` payload. This is required
-/// for per-floor minimum checks: their deficit has no individual node or edge, but its badges must
-/// still identify every floor that failed. A whole-maze entry remains unbadged.
-function IssueFloorBadges({ nodeIds, areaLevels, bg, text, className }: { nodeIds: number[]; areaLevels: number[]; bg: string; text: string; className?: string }) {
+function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[]; bg: string; text: string; className?: string }) {
   const nodes = useMazeStore((s) => s.nodes);
   // Memoized on `nodes` identity, not rebuilt per render -- `nodes` only changes on
   // generate/reset/load, while this component can re-render far more often (any store update
@@ -343,7 +333,6 @@ function IssueFloorBadges({ nodeIds, areaLevels, bg, text, className }: { nodeId
   const resolveNodeLevel = useMemo(() => selectNodeLevelResolver(nodes), [nodes]);
   const levels = Array.from(new Set([
     ...nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined),
-    ...areaLevels,
   ])).sort((a, b) => a - b);
   return <FloorBadgeRow levels={levels} bg={bg} text={text} className={className} />;
 }

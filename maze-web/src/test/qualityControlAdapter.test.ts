@@ -324,14 +324,6 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "excessive_scc_count", target: null });
   });
 
-  it("CheckRan with an AreaDeficit payload resolves to a null highlight target (no structural highlight data)", () => {
-    const tokens = adapterFor("quality_control").narrationTokensFor({
-      kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "area_deficit", payload: { kind: "AreaDeficit", areas: new Map([["check1", [0]]]) }, details: new Map() },
-    });
-    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "area_deficit", target: null });
-  });
-
   it("CheckRan with an InvalidElevatorStop payload carries one region highlight group per flagged stop, never merged", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",

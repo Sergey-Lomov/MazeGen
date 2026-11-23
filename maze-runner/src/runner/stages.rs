@@ -1,5 +1,7 @@
 use super::prepare::Prepared;
-use super::{build_qc_and_repair, preset_endpoint_dto_to_core, validate_cell_type_params};
+use super::{
+    bind_zone_scopes, build_qc_and_repair, preset_endpoint_dto_to_core, validate_cell_type_params,
+};
 use crate::config::{GenerateConfig, build_repair_limits};
 use maze_core::{
     GenerationTiming, Maze,
@@ -165,7 +167,10 @@ pub fn run_repair<T: Tessellation + 'static>(
     qc_log: Option<&mut EventLog<QcEvent>>,
 ) -> Result<Repaired<T>, String> {
     validate_cell_type_params(config, seeded.field.tessellation())?;
-    let qc_engine = build_qc_and_repair::<T>(config)?;
+    let mut qc_engine = build_qc_and_repair::<T>(config)?;
+    bind_zone_scopes(&mut qc_engine, config, &seeded.field, |x, y| {
+        Some((seeded.cell_from_xy)(x, y))
+    });
     let limits = build_repair_limits(config)?;
     // Recorded on `PresetState` so the issue-payload resolver can flag a pinned `start`/`finish`
     // element `preset_locked` (GitHub issue #376 follow-up).
@@ -210,7 +215,10 @@ pub fn run_check_only<T: Tessellation + 'static>(
     config: &GenerateConfig,
 ) -> Result<Checked<T>, String> {
     validate_cell_type_params(config, seeded.field.tessellation())?;
-    let qc_engine = build_qc_and_repair::<T>(config)?;
+    let mut qc_engine = build_qc_and_repair::<T>(config)?;
+    bind_zone_scopes(&mut qc_engine, config, &seeded.field, |x, y| {
+        Some((seeded.cell_from_xy)(x, y))
+    });
     let (pinned_start, pinned_finish) = pinned_endpoints(seeded, config)?;
     let mut maze = Maze::new(seeded.field.clone(), seeded.graph.clone());
     maze.meta.start = pinned_start;

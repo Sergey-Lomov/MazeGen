@@ -559,8 +559,6 @@ export function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePay
       return { kind: "invalidElevatorStop", groups: [...payload.nodes.values()].flat().map(normalizeRegionGroup) };
     case "InvalidDeadEnd":
       return { kind: "invalidDeadEnd", groups: [...payload.nodes.values()].flat().map(normalizeRegionGroup) };
-    case "AreaDeficit":
-      return { kind: "areaDeficit" };
     case "MissingElevatorStopCount":
       // `available` candidate floor nodes are intentionally dropped here — only the elevator's real
       // fan edges participate in the highlight (GitHub issue #402).

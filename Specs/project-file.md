@@ -129,6 +129,10 @@ Generation parameter overrides (GitHub issue #1038, `Specs/generation.md`) are s
 overrides). `validateZones` rejects an unknown parameter key and a duplicate override id, and drops zone and group
 ids that name nothing (automatic ids are kept).
 
+Quality rule zone scopes (GitHub issue #1039, `Specs/quality-feature.md`) are saved with the rule as
+`quality.rules[].zoneScope` (one zone or group by `kind` and `id`, a group with `mode` `union` or `iteration`), written
+only when set; absent loads as the whole map, a missing group `mode` as `union`. They are not part of a quality preset.
+
 On load `validateZones` (`validateZones.ts`) checks the structure only and rejects, naming the path, a bad cell,
 kind or id and a duplicate zone or group id. Cells of floors or points no longer in the field are kept and dropped
 at use (`filterZonesToField`), so they never break loading. Group members naming no zone and colour overrides of
@@ -183,6 +187,8 @@ Quality card's top-right corner (`QualityFeature.tsx`).
   `validateQuality` (`validateSections.ts`).
 - Extension: `QUALITY_PRESET_FILE_EXTENSION = ".mazequality"`, with the same iOS/iPadOS `accept`
   exception as project files (`qualityPresetFileAccept`) and the same neutral download MIME type.
+- Zone scopes of rules (`zoneScope`, GitHub issue #1039) are left out on save and stripped on load: zone ids belong to
+  the project the preset is applied to.
 - Load replaces the whole quality configuration (rules, stages, strategy params, repair limits);
   maze content, generation parameters, visual style and every other setting stay untouched.
   `nextLocalCheckId` is recomputed (`rulesFromFile`, shared with `loadProject`).

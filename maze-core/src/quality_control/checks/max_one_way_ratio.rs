@@ -1,20 +1,17 @@
 use crate::Maze;
 use crate::ids::EdgeId;
+use crate::quality_control::InvalidOneWayGroupIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edge_ids;
-use crate::quality_control::floor_group::{floor_point_count, floors_of_edge};
-use crate::quality_control::{FloorScope, InvalidOneWayGroupIssue};
-use crate::space::{LevelId, Tessellation};
+use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MAX_ONE_WAY_RATIO_DEFAULT: f64 = 100.0;
-pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags an excess against the share of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) relative to the field's size — see GitHub issue #202, part of the one-way
 /// management epic (#92). Symmetric counterpart to `MinOneWayRatioCheck` (issue #201): same
-/// "one-ways per 100 field cells" normalization (via `maze.field.cell_count()`, not a share of
+/// "one-ways per 100 field cells" normalization (via `maze.scoped_cell_count()`, not a share of
 /// the total edge count), just the excess side of the threshold rather than the deficit side.
 /// Mirrors `MaxOneWayCountCheck`'s "single group, whole one-way edge set" reporting shape:
 /// `to_remove` (GitHub issue #202 follow-up) is `count - target_count`, where `target_count` is
@@ -33,7 +30,6 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 pub struct MaxOneWayRatioCheck {
     pub instance_id: String,
     pub max_ratio: f64,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck {
@@ -54,63 +50,15 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
         let one_ways: Vec<EdgeId> = one_way_edge_ids(maze);
         let max_ratio = self.max_ratio;
 
-        // Under `PerFloor` the whole group is reported (and `to_remove` computed against the
-        // worst-over-budget floor) if any floor exceeds max_ratio -- a one-way crossing floors
-        // counts toward every floor it touches (GitHub issue #369).
-        let (group, to_remove) = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let field_cells = maze.field.cell_count() as u64;
-                if field_cells == 0 {
-                    return;
-                }
-                let count = one_ways.len() as u64;
-                match Self::to_remove_for(count, field_cells, max_ratio) {
-                    0 => return,
-                    n => (one_ways, n),
-                }
-            }
-            FloorScope::PerFloor => {
-                let mut per_floor_count: HashMap<LevelId, u64> =
-                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                let one_way_floors: Vec<_> = one_ways
-                    .iter()
-                    .map(|&id| floors_of_edge(&maze.field, &maze.graph, id))
-                    .collect();
-                for floors in &one_way_floors {
-                    for &level in floors {
-                        *per_floor_count.entry(level).or_insert(0) += 1;
-                    }
-                }
-                let mut over_budget: HashMap<LevelId, u32> = HashMap::new();
-                for (&level, &count) in &per_floor_count {
-                    let field_cells = floor_point_count(&maze.field, level) as u64;
-                    let n = Self::to_remove_for(count, field_cells, max_ratio);
-                    if n > 0 {
-                        over_budget.insert(level, n);
-                    }
-                }
-                if over_budget.is_empty() {
-                    return;
-                }
-                // A one-way edge can span multiple floors and thus belong to more than one
-                // over-budget floor's group at once -- each over-budget floor gets its own
-                // independent group with its own excess count, rather than one merged group with
-                // a single (e.g. max) excess, so a repair strategy resolving one floor's excess
-                // doesn't silently satisfy a different floor's quota (or leave it unresolved).
-                let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
-                for (&level, &to_remove) in &over_budget {
-                    let flagged: Vec<EdgeId> = one_ways
-                        .iter()
-                        .zip(&one_way_floors)
-                        .filter(|(_, floors)| floors.contains(&level))
-                        .map(|(&id, _)| id)
-                        .collect();
-                    groups.push((flagged, to_remove));
-                }
-                let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
-                    .with_detail(&self.instance_id, "max_ratio", self.max_ratio.to_string());
-                issues.push(issue);
+        let (group, to_remove) = {
+            let field_cells = maze.scoped_cell_count() as u64;
+            if field_cells == 0 {
                 return;
+            }
+            let count = one_ways.len() as u64;
+            match Self::to_remove_for(count, field_cells, max_ratio) {
+                0 => return,
+                n => (one_ways, n),
             }
         };
 
@@ -122,9 +70,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
 }
 
 impl MaxOneWayRatioCheck {
-    /// Excess one-way count for one region (whole maze or one floor) given its own one-way count
-    /// and cell count — shared by both `floor_scope` branches so the cross-multiplied gate and
-    /// round-to-nearest `target_count` logic stay identical either way.
+    /// Excess one-way count for one region given its own one-way count
+    /// and cell count.
     fn to_remove_for(count: u64, field_cells: u64, max_ratio: f64) -> u32 {
         if field_cells == 0 || count as f64 * 100.0 <= max_ratio * field_cells as f64 {
             return 0;

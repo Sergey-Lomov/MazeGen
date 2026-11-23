@@ -8,7 +8,10 @@ import type {
   MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
 } from "../storeTypes";
-import { ruleHasSendableChecks, sendableChecks } from "../storeTypes";
+import { sendableChecks } from "../storeTypes";
+import { buildZoneScopesWire } from "../../domain/qcZoneScope";
+import { ruleIsSendable } from "../qcDerivedProblems";
+import { filterZonesToField } from "../../domain/fieldValidity";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
 import { replayPostEditCommands } from "../../domain/postEditReplay";
@@ -18,7 +21,7 @@ import { postEditEntitiesForPurpose, type EntityToolPurpose } from "../../domain
 import type { PostEditPointEntityDescriptor } from "../../domain/postEditPointEntities";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
-import { relevantRuleParams, activeFloorLevel, floorTessellationOf } from "../storeHelpers";
+import { relevantRuleParams, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
 import { configAllCells } from "../../domain/tessellationCells";
 import { toWasmEndpoint, commitPostEditVerticalPassage, dispatchPostEditElevatorPlacement, appendPostEditCommand, replacePostEditCommands, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters, removePostEditSplitSlots, postEditDragOverridesEqual } from "./postEditSliceHelpers";
 import { buildMultiFloorPointNodeMap, buildPostEditBaseline, buildPostEditPointEntitiesAt, resolveNodeIdToEndpoint, buildPostEditResetLifelinesAt } from "./postEditBaselineBuilders";
@@ -452,8 +455,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // no rule-level param was forwarded at all here, so e.g. disabling "protect start/finish" had
     // no effect on post-edit's `teleport_duplicates_connection` check — it silently kept resolving
     // to its default (`true`) every time.
+    const fieldZones = filterZonesToField(state.zones, resolveFieldAtOf(state));
     const ruleGroups = state.rules
-      .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id) && ruleHasSendableChecks(g))
+      .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id) && ruleIsSendable(g, state.zones, state.zoneGroups))
       .map((g) => {
         const activeChecks = sendableChecks(g);
         const activeCheckTypeIds = activeChecks.map((c) => c.typeId);
@@ -465,10 +469,12 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         // this path never dispatches repair, but the wasm side still reads `strategy` directly to
         // compute the route score from the project's actual weights instead of defaults.
         const strategy = ruleStrategyToConfig(state, g);
+        const zone_scopes = buildZoneScopesWire(g, fieldZones, state.zoneGroups);
         return {
           checks: activeChecks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })),
           params,
           ...(strategy ? { strategy } : {}),
+          ...(zone_scopes ? { zone_scopes } : {}),
         };
       })
       .filter((g) => g.checks.length > 0);

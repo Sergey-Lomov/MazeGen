@@ -9,7 +9,7 @@ import { LabelWithInfo } from "../LabelWithInfo";
 import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
 import { ZoneOverrideControls, ZoneOverridesSection } from "../ZoneOverridesSection";
 import type { ZoneOverridePickRequest } from "../ZoneOverridesSection";
-import { ZoneOverrideTargetPanel } from "./ZoneOverrideTargetPanel";
+import { ZoneTargetPanel } from "./ZoneTargetPanel";
 import type { ZoneOverrideParamKey, ZoneOverrideTarget } from "../../store/zonesTypes";
 import { ElementPlacementSettingsDialog } from "../dialogs/ElementPlacementSettingsDialog";
 import { ToggleRow } from "../ToggleRow";
@@ -182,7 +182,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
         </div>
       )}
 
-      {pickRequest && <ZoneOverrideTargetPanel onPick={pickTarget} onClose={() => setPickRequest(null)} />}
+      {pickRequest && <ZoneTargetPanel title={m["generation.zone_override_pick_title"]()} stackKey="zone-override-target" onPick={pickTarget} onClose={() => setPickRequest(null)} />}
       {splitSettingsDialogOpen && (
         <SplitSettingsDialog onClose={() => setSplitSettingsDialogOpen(false)} />
       )}

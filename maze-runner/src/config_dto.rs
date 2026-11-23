@@ -40,6 +40,21 @@ pub struct QcRuleConfig {
     /// layer: a migrated parameter has no per-check/per-strategy equivalent anymore.
     #[serde(default)]
     pub params: HashMap<String, String>,
+    /// Zone scopes the rule is bound to (GitHub issue #1039). `None`: the rule sees the whole map;
+    /// `Some`: it runs once per scope and sees only that scope (`Some(vec![])`: nothing).
+    #[serde(default)]
+    pub zone_scopes: Option<Vec<ZoneScopeDto>>,
+}
+
+/// One zone scope of a QC rule (GitHub issue #1039): `id` names it in issues and the event log
+/// (`zone:<id>`, or `group:<id>` for a group taken as one zone), `cells` are `[floor, x, y]`, `floor`
+/// the index in `level_fields`. A cell outside the tessellation, the field or the floor range is
+/// ignored.
+#[derive(Deserialize)]
+pub struct ZoneScopeDto {
+    pub id: String,
+    #[serde(default)]
+    pub cells: Vec<[i32; 3]>,
 }
 
 /// A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and issue #65.

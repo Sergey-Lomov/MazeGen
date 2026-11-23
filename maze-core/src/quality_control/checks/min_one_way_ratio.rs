@@ -1,20 +1,17 @@
 use crate::Maze;
+use crate::quality_control::MissingOneWaysIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edge_ids;
-use crate::quality_control::floor_group::{floor_point_count, floors_of_edge};
-use crate::quality_control::{FloorScope, MissingOneWaysIssue, RepairArea};
-use crate::space::{LevelId, Tessellation};
+use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MIN_ONE_WAY_RATIO_DEFAULT: f64 = 10.0;
-pub const MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags a deficit against the share of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) relative to the field's size — see GitHub issue #201, part of the one-way
 /// management epic (#92). Mirrors `MinLoopDensityCheck`'s role for loops: **not** a share of the
 /// total edge count, but a count of one-way edges expressed per 100 field cells (via
-/// `maze.field.cell_count()`) — same normalization `MinLoopDensityCheck`/`MaxLoopDensityCheck` use
+/// `maze.scoped_cell_count()`) — same normalization `MinLoopDensityCheck`/`MaxLoopDensityCheck` use
 /// for their own density metric, so this check's threshold means "one-ways per 100 cells", not
 /// "percent of all passages".
 ///
@@ -27,7 +24,6 @@ pub const MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 pub struct MinOneWayRatioCheck {
     pub instance_id: String,
     pub min_ratio: f64,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
@@ -45,58 +41,24 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
         let one_ways = one_way_edge_ids(maze);
         let min_ratio = self.min_ratio;
 
-        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let field_cells = maze.field.cell_count() as u64;
-                let missing = Self::missing_for(one_ways.len() as u64, field_cells, min_ratio);
-                if missing == 0 {
-                    vec![]
-                } else {
-                    vec![(RepairArea::WholeMaze, missing)]
-                }
-            }
-            FloorScope::PerFloor => {
-                let mut per_floor_count: HashMap<LevelId, u64> =
-                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                for &id in &one_ways {
-                    for level in floors_of_edge(&maze.field, &maze.graph, id) {
-                        *per_floor_count.entry(level).or_insert(0) += 1;
-                    }
-                }
-                let mut missing: Vec<(RepairArea, u32)> = per_floor_count
-                    .into_iter()
-                    .filter_map(|(level, count)| {
-                        let missing = Self::missing_for(
-                            count,
-                            floor_point_count(&maze.field, level) as u64,
-                            min_ratio,
-                        );
-                        (missing > 0).then_some((RepairArea::Level(level), missing))
-                    })
-                    .collect();
-                // `HashMap` iteration order is randomized per run -- sort by level so repair
-                // strategies that loop over `issue.missing` consume RNG in a deterministic order.
-                missing.sort_by_key(|&(area, _)| area);
-                missing
-            }
-        };
-        if missing.is_empty() {
+        let field_cells = maze.scoped_cell_count() as u64;
+        let missing = Self::missing_for(one_ways.len() as u64, field_cells, min_ratio);
+        if missing == 0 {
             return;
         }
-        let total: u32 = missing.iter().map(|(_, m)| m).sum();
+
         let issue = MissingOneWaysIssue::new_from_check(&self.instance_id, missing).with_detail(
             &self.instance_id,
             "missing",
-            total.to_string(),
+            missing.to_string(),
         );
         issues.push(issue);
     }
 }
 
 impl MinOneWayRatioCheck {
-    /// Deficit one-way count for one region (whole maze or one floor) given its own one-way count
-    /// and cell count — shared by both `floor_scope` branches so the cross-multiplied-comparison
-    /// rounding logic stays identical either way.
+    /// Deficit one-way count for one region given its own one-way count
+    /// and cell count.
     fn missing_for(count: u64, field_cells: u64, min_ratio: f64) -> u32 {
         if field_cells == 0 || count as f64 * 100.0 >= min_ratio * field_cells as f64 {
             return 0;
@@ -145,7 +107,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 10.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -159,12 +120,11 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 30.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
+        assert_eq!(issues[0].missing, 2);
         assert_eq!(
             issues[0]
                 .details()
@@ -182,7 +142,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 13.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -199,14 +158,12 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 17.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(
-            issues[0].missing,
-            vec![(RepairArea::WholeMaze, 1)],
+            issues[0].missing, 1,
             "round(1.7) = 2, not ceil to 2 via truncation-then-up"
         );
     }
@@ -239,7 +196,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 9.9,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -251,7 +207,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 10.1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -261,8 +216,7 @@ mod tests {
             "10 per 100 cells must fall short of a fractional minimum of 10.1"
         );
         assert_eq!(
-            issues[0].missing,
-            vec![(RepairArea::WholeMaze, 1)],
+            issues[0].missing, 1,
             "required=round(10.1*1000/100)=101, missing=1"
         );
     }
@@ -284,7 +238,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 50.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -318,7 +271,6 @@ mod tests {
         let check = MinOneWayRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_ratio: 30.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -327,53 +279,6 @@ mod tests {
             1,
             "29.9% must not silently pass a 30% minimum via floor rounding"
         );
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)]);
-    }
-
-    /// Bottom floor: 10 cells, 1 one-way (10%). Top floor: 10 cells, 0 one-ways (0%).
-    fn maze_with_one_ways_on_two_floors() -> Maze<SquareTessellation> {
-        use crate::space::Field;
-        let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), std::iter::empty());
-        let bottom = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
-        );
-        let top = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
-        );
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
-        g.add_edge(pb(0), pb(1), EdgeKind::Basic);
-        let _ = top;
-        Maze::new(mf, g)
-    }
-
-    #[test]
-    fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
-        let maze = maze_with_one_ways_on_two_floors();
-        let check = MinOneWayRatioCheck {
-            instance_id: TEST_ID.to_string(),
-            min_ratio: 20.0,
-            floor_scope: FloorScope::PerFloor,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1);
-        let mut missing = issues[0].missing.clone();
-        missing.sort_by_key(|&(_, amount)| amount);
-        assert_eq!(
-            missing.len(),
-            2,
-            "each deficient floor gets its own RepairArea::Level entry"
-        );
-        assert_eq!(
-            missing[0].1, 1,
-            "bottom floor: 10%, needs 1 more to reach round(20*10/100)=2"
-        );
-        assert_eq!(missing[1].1, 2, "top floor: 0%, needs 2 more");
+        assert_eq!(issues[0].missing, 1);
     }
 }

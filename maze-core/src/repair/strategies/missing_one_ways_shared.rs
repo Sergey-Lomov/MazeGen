@@ -1,7 +1,6 @@
 use super::dead_end_priority::apply_src_mode;
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::quality_control::RepairArea;
 use crate::space::Tessellation;
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
@@ -31,19 +30,11 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     target: u32,
-    area: RepairArea,
     src_mode: &str,
     max_failed_attempts: usize,
     mut try_pair: impl FnMut(NodeId, NodeId, &mut dyn RngCore) -> bool,
 ) -> u32 {
-    let eligible: Vec<NodeId> = maze
-        .field
-        .all_node_ids()
-        .filter(|&n| match area {
-            RepairArea::WholeMaze => true,
-            RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-        })
-        .collect();
+    let eligible: Vec<NodeId> = maze.scoped_node_ids().collect();
     let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
     let mut found: u32 = 0;
     // A popped `src` that connects nothing counts against the budget (running total, not a streak).
@@ -138,7 +129,6 @@ mod tests {
             &maze,
             &mut rng,
             1,
-            RepairArea::WholeMaze,
             super::super::dead_end_priority::SRC_MODE_RANDOM,
             usize::MAX,
             |src, dst, _rng| {

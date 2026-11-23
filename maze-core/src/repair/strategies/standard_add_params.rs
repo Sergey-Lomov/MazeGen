@@ -29,7 +29,6 @@
 //! is *not* suppressed — it controls geometry inside a single strategy, which the dispatcher has no
 //! say over.
 
-use crate::quality_control::RepairArea;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use std::collections::HashMap;
 
@@ -117,20 +116,6 @@ pub fn reserve_target(params: &StrategyParams, missing: u32) -> u32 {
         .and_then(|v| v.as_float())
         .unwrap_or(RESERVE_PERCENT_DEFAULT);
     ((missing as f64 * (1.0 + reserve / 100.0)).ceil() as u32).max(1)
-}
-
-/// Applies `reserve_percent` to every entry of a deficit issue's `missing` list — each count is
-/// scaled the same way `reserve_target` scales one, so a strategy that feeds `missing` straight
-/// into `RemainingDeficits` gets the reserve boost per area without touching the deficit
-/// bookkeeping itself. An empty input, or the default 0% reserve, returns the list unchanged.
-pub fn reserve_scaled_missing(
-    params: &StrategyParams,
-    missing: &[(RepairArea, u32)],
-) -> Vec<(RepairArea, u32)> {
-    missing
-        .iter()
-        .map(|&(area, count)| (area, reserve_target(params, count)))
-        .collect()
 }
 
 /// The dispatcher-owned add params (`reserve_percent`, `attempts_limit`) resolved to string

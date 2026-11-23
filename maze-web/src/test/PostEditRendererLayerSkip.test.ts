@@ -9,6 +9,7 @@ import { SplitJunctionRenderer } from "../pixi/renderers/SplitJunctionRenderer";
 import { TeleportRenderer } from "../pixi/renderers/TeleportRenderer";
 import { WaypointsRenderer } from "../pixi/renderers/WaypointsRenderer";
 import { CellFillRenderer } from "../pixi/renderers/CellFillRenderer";
+import { SPLIT_PANEL_TARGET_FRAME } from "../pixi/cellHighlightGeometry";
 import { EdgeHighlightRenderer } from "../pixi/renderers/EdgeHighlightRenderer";
 import { IssueHighlightOverlay } from "../pixi/IssueHighlightOverlay";
 import { canvas } from "../domain/colorTokens";
@@ -138,6 +139,24 @@ describe("PostEditRenderer layer skipping (GitHub issue #739)", () => {
     fills.mockClear();
     renderer.updateCellHover([1, 0], true);
     expect(fills).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws the split editor target as an external violet frame above the maze grid", () => {
+    const fills = vi.spyOn(CellFillRenderer.prototype, "render");
+
+    useMazeStore.getState().setPostEditFocusedPoint([2, 0]);
+
+    expect(fills).toHaveBeenCalledWith(expect.objectContaining({
+      cells: [[2, 0]],
+      color: canvas.fieldEditor.panelTarget,
+      alpha: 0,
+      ...SPLIT_PANEL_TARGET_FRAME,
+    }), expect.anything());
+
+    const root = (renderer as unknown as { root: Container }).root;
+    const target = (renderer as unknown as { splitPanelTargetContainer: Container }).splitPanelTargetContainer;
+    const walls = (renderer as unknown as { wallsContainer: Container }).wallsContainer;
+    expect(root.getChildIndex(target)).toBeGreaterThan(root.getChildIndex(walls));
   });
 
   it("redraws walls and closed cells when the tessellation config object changes", () => {

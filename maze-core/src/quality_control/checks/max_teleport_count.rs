@@ -1,18 +1,14 @@
-use super::teleport_count_core::{
-    distinct_teleport_representatives, distinct_teleport_representatives_per_floor,
-};
+use super::teleport_count_core::distinct_teleport_representatives;
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::quality_control::check::Check;
 use crate::quality_control::{
-    FloorScope, InvalidTeleportGroupIssue, TeleportDirectionFilter, TeleportFloorKindFilter,
+    InvalidTeleportGroupIssue, TeleportDirectionFilter, TeleportFloorKindFilter,
 };
-use crate::space::{LevelId, Tessellation};
+use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MAX_TELEPORT_COUNT_DEFAULT: u32 = 20;
-pub const MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 pub const MAX_TELEPORT_COUNT_DEFAULT_DIRECTION: TeleportDirectionFilter =
     TeleportDirectionFilter::Any;
 pub const MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND: TeleportFloorKindFilter =
@@ -25,17 +21,9 @@ pub const MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND: TeleportFloorKindFilter =
 /// to actually remove is `TeleportGroupSelectStrategy`'s job, not this check's. One group of
 /// representative edge ids (one per distinct portal), `to_remove` equal to the excess portal count
 /// over the maximum.
-///
-/// `floor_scope` (mirrors `MinTeleportCountCheck`'s own): under `PerFloor`, `max_teleports` is
-/// evaluated independently per floor (a teleport crossing floors counts toward both) and each
-/// over-budget floor's own portals/excess form their own independent group — same rationale as
-/// `MaxSplitDensityCheck`'s `PerFloor` branch: collapsing every over-budget floor into one group
-/// with a single `to_remove` would let the repair strategy resolve a smaller floor's excess by
-/// removing portals that actually belong to a different, larger floor's own quota.
 pub struct MaxTeleportCountCheck {
     pub instance_id: String,
     pub max_teleports: u32,
-    pub floor_scope: FloorScope,
     pub direction: TeleportDirectionFilter,
     pub floor_kind: TeleportFloorKindFilter,
 }
@@ -55,43 +43,14 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for MaxTeleportCountCh
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let groups: Vec<(Vec<EdgeId>, u32)> = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let representatives =
-                    distinct_teleport_representatives(maze, self.direction, self.floor_kind);
-                let count = representatives.len() as u32;
-                if count <= self.max_teleports {
-                    return;
-                }
-                vec![(representatives, count - self.max_teleports)]
+        let groups: Vec<(Vec<EdgeId>, u32)> = {
+            let representatives =
+                distinct_teleport_representatives(maze, self.direction, self.floor_kind);
+            let count = representatives.len() as u32;
+            if count <= self.max_teleports {
+                return;
             }
-            FloorScope::PerFloor => {
-                let mut per_floor: HashMap<LevelId, Vec<EdgeId>> =
-                    distinct_teleport_representatives_per_floor(
-                        maze,
-                        self.direction,
-                        self.floor_kind,
-                    );
-                let mut over_budget: Vec<(LevelId, u32)> = per_floor
-                    .iter()
-                    .filter_map(|(&level, ids)| {
-                        let count = ids.len() as u32;
-                        (count > self.max_teleports).then(|| (level, count - self.max_teleports))
-                    })
-                    .collect();
-                if over_budget.is_empty() {
-                    return;
-                }
-                // `HashMap` iteration order is randomized per run -- sort by level so repair
-                // strategies that loop over `issue.groups` consume RNG in a deterministic order.
-                over_budget.sort_by_key(|&(level, _)| level);
-                over_budget
-                    .into_iter()
-                    .filter_map(|(level, to_remove)| {
-                        per_floor.remove(&level).map(|ids| (ids, to_remove))
-                    })
-                    .collect()
-            }
+            vec![(representatives, count - self.max_teleports)]
         };
 
         let mut issue = InvalidTeleportGroupIssue::new_from_check(&self.instance_id, groups)
@@ -100,13 +59,6 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for MaxTeleportCountCh
                 "max_teleport_count",
                 self.max_teleports.to_string(),
             );
-        if self.floor_scope != FloorScope::WholeMaze {
-            issue = issue.with_detail(
-                &self.instance_id,
-                "floor_scope",
-                self.floor_scope.as_str().to_string(),
-            );
-        }
         if self.direction != TeleportDirectionFilter::Any {
             issue = issue.with_detail(
                 &self.instance_id,
@@ -130,7 +82,7 @@ mod tests {
     use super::*;
     use crate::graph::EdgeKind;
     use crate::quality_control::Issue;
-    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
     use std::sync::Arc;
@@ -167,7 +119,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 1,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Any,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -199,7 +150,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 2,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Any,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -214,7 +164,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 0,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Any,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -241,7 +190,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 0,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Any,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -252,64 +200,6 @@ mod tests {
             issues[0].groups[0].1, 1,
             "A<->B is one logical portal, not two"
         );
-    }
-
-    /// Bottom floor: 2 teleports. Top floor: 1 teleport.
-    fn maze_with_teleports_on_two_floors() -> Maze<SquareTessellation> {
-        let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), std::iter::empty());
-        let bottom = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
-        );
-        let top = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
-        );
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
-        let pt = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
-        g.add_edge(pb(0), pb(1), EdgeKind::Teleport);
-        g.add_edge(pb(2), pb(3), EdgeKind::Teleport);
-        g.add_edge(pt(0), pt(1), EdgeKind::Teleport);
-        Maze::new(mf, g)
-    }
-
-    #[test]
-    fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
-        let maze = maze_with_teleports_on_two_floors();
-        let check = MaxTeleportCountCheck {
-            instance_id: TEST_ID.to_string(),
-            max_teleports: 1,
-            floor_scope: FloorScope::PerFloor,
-            direction: TeleportDirectionFilter::Any,
-            floor_kind: TeleportFloorKindFilter::Any,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1);
-        let mut groups = issues[0].groups.clone();
-        groups.sort_by_key(|(g, _)| g.len());
-        assert_eq!(groups.len(), 1, "only the bottom floor is over budget");
-        assert_eq!(groups[0].0.len(), 2, "bottom floor's own teleports only");
-        assert_eq!(groups[0].1, 1, "bottom floor's own to_remove");
-    }
-
-    #[test]
-    fn per_floor_silent_when_every_floor_at_or_below_max() {
-        let maze = maze_with_teleports_on_two_floors();
-        let check = MaxTeleportCountCheck {
-            instance_id: TEST_ID.to_string(),
-            max_teleports: 2,
-            floor_scope: FloorScope::PerFloor,
-            direction: TeleportDirectionFilter::Any,
-            floor_kind: TeleportFloorKindFilter::Any,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty());
     }
 
     #[test]
@@ -331,7 +221,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 0,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Bidirectional,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -351,7 +240,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 1,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Unidirectional,
             floor_kind: TeleportFloorKindFilter::SameFloor,
         };
@@ -375,7 +263,6 @@ mod tests {
         let check = MaxTeleportCountCheck {
             instance_id: TEST_ID.to_string(),
             max_teleports: 1,
-            floor_scope: FloorScope::WholeMaze,
             direction: TeleportDirectionFilter::Any,
             floor_kind: TeleportFloorKindFilter::Any,
         };
@@ -385,26 +272,5 @@ mod tests {
         let details = issues[0].details().get(TEST_ID).unwrap();
         assert!(details.get("teleport_direction").is_none());
         assert!(details.get("teleport_floor_kind").is_none());
-        assert!(
-            details.get("floor_scope").is_none(),
-            "WholeMaze is the default -- must not be recorded"
-        );
-    }
-
-    #[test]
-    fn per_floor_scope_is_recorded_as_a_detail() {
-        let maze = maze_with_teleports_on_two_floors();
-        let check = MaxTeleportCountCheck {
-            instance_id: TEST_ID.to_string(),
-            max_teleports: 1,
-            floor_scope: FloorScope::PerFloor,
-            direction: TeleportDirectionFilter::Any,
-            floor_kind: TeleportFloorKindFilter::Any,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1);
-        let details = issues[0].details().get(TEST_ID).unwrap();
-        assert_eq!(details.get("floor_scope"), Some(&"per_floor".to_string()));
     }
 }

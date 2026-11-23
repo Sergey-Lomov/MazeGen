@@ -44,8 +44,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
         _requirement: (),
     ) {
         let tiles: Vec<(T::CellId, Vec<NodeId>)> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .map(|(level, point)| (point, maze.field.nodes_at(level, point).to_vec()))
             .collect();
         if tiles.len() < 2 {

@@ -34,7 +34,6 @@ fn silent_when_count_meets_maximum() {
     let check = MaxOneWayCountCheck {
         instance_id: TEST_ID.to_string(),
         max_one_ways: 2,
-        floor_scope: FloorScope::WholeMaze,
     };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -47,7 +46,6 @@ fn fires_with_all_one_ways_as_single_group_when_above_maximum() {
     let check = MaxOneWayCountCheck {
         instance_id: TEST_ID.to_string(),
         max_one_ways: 1,
-        floor_scope: FloorScope::WholeMaze,
     };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -92,7 +90,6 @@ fn does_not_count_bidirectional_passage_as_one_way() {
     let check = MaxOneWayCountCheck {
         instance_id: TEST_ID.to_string(),
         max_one_ways: 0,
-        floor_scope: FloorScope::WholeMaze,
     };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -118,7 +115,6 @@ fn does_not_count_a_teleport_edge() {
     let check = MaxOneWayCountCheck {
         instance_id: TEST_ID.to_string(),
         max_one_ways: 0,
-        floor_scope: FloorScope::WholeMaze,
     };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -145,7 +141,6 @@ fn flags_a_basic_one_way_paired_with_a_parallel_reverse_teleport() {
     let check = MaxOneWayCountCheck {
         instance_id: TEST_ID.to_string(),
         max_one_ways: 0,
-        floor_scope: FloorScope::WholeMaze,
     };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -153,61 +148,5 @@ fn flags_a_basic_one_way_paired_with_a_parallel_reverse_teleport() {
         issues.len(),
         1,
         "the parallel reverse Teleport must not mask the Basic one-way"
-    );
-}
-
-/// Bottom floor: 3 one-ways (0->1, 1->2, 2->3). Top floor: 2 one-ways (0->1, 1->2).
-fn maze_with_one_ways_on_two_floors() -> Maze<SquareTessellation> {
-    use crate::space::Field;
-    let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), std::iter::empty());
-    let bottom = mf.add_level(
-        Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
-    );
-    let top = mf.add_level(
-        Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
-    );
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
-    let pt = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
-    g.add_edge(pb(0), pb(1), EdgeKind::Basic);
-    g.add_edge(pb(1), pb(2), EdgeKind::Basic);
-    g.add_edge(pb(2), pb(3), EdgeKind::Basic);
-    g.add_edge(pt(0), pt(1), EdgeKind::Basic);
-    g.add_edge(pt(1), pt(2), EdgeKind::Basic);
-    Maze::new(mf, g)
-}
-
-#[test]
-fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_excess() {
-    let maze = maze_with_one_ways_on_two_floors();
-    let check = MaxOneWayCountCheck {
-        instance_id: TEST_ID.to_string(),
-        max_one_ways: 1,
-        floor_scope: FloorScope::PerFloor,
-    };
-    let mut issues = Vec::new();
-    check.repair_check(&maze, &mut issues, &mut rng(), ());
-    assert_eq!(issues.len(), 1);
-    let mut groups = issues[0].groups.clone();
-    groups.sort_by_key(|(g, _)| g.len());
-    assert_eq!(
-        groups.len(),
-        2,
-        "each over-budget floor must get its own independent group"
-    );
-    assert_eq!(groups[0].0.len(), 2, "top floor's own one-ways only");
-    assert_eq!(
-        groups[0].1, 1,
-        "top floor's own excess (2 - 1), not the max across floors"
-    );
-    assert_eq!(groups[1].0.len(), 3, "bottom floor's own one-ways only");
-    assert_eq!(
-        groups[1].1, 2,
-        "bottom floor's own excess (3 - 1), not the max across floors"
     );
 }

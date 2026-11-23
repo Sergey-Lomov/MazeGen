@@ -798,6 +798,7 @@ mod build_qc_and_repair_tests {
     fn empty_rule_is_rejected() {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![],
                 strategy: None,
@@ -813,6 +814,7 @@ mod build_qc_and_repair_tests {
     fn duplicate_local_id_within_one_rule_is_rejected() {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![
                     check("a", "missing_endpoints"),
@@ -834,6 +836,7 @@ mod build_qc_and_repair_tests {
     fn mixed_kind_rule_is_rejected() {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![
                     check("a", "missing_endpoints"),
@@ -858,6 +861,7 @@ mod build_qc_and_repair_tests {
 
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
                 strategy: Some(StrategyConfig {
@@ -881,6 +885,7 @@ mod build_qc_and_repair_tests {
     fn single_rule_with_no_strategy_succeeds() {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
                 strategy: None,
@@ -899,6 +904,7 @@ mod build_qc_and_repair_tests {
         let config = GenerateConfig {
             stages: one_stage(vec![
                 QcRuleConfig {
+                    zone_scopes: None,
                     id: "r1".to_string(),
                     checks: vec![check("a", "missing_endpoints")],
                     strategy: Some(StrategyConfig {
@@ -910,6 +916,7 @@ mod build_qc_and_repair_tests {
                     params: HashMap::new(),
                 },
                 QcRuleConfig {
+                    zone_scopes: None,
                     id: "r2".to_string(),
                     checks: vec![check("b", "unreachable_finish")],
                     strategy: None,
@@ -927,6 +934,7 @@ mod build_qc_and_repair_tests {
         let config = GenerateConfig {
             stages: one_stage(vec![
                 QcRuleConfig {
+                    zone_scopes: None,
                     id: "r_trap".to_string(),
                     checks: vec![CheckInstanceConfig {
                         local_id: "a".to_string(),
@@ -940,6 +948,7 @@ mod build_qc_and_repair_tests {
                     params: HashMap::new(),
                 },
                 QcRuleConfig {
+                    zone_scopes: None,
                     id: "r_alt".to_string(),
                     checks: vec![CheckInstanceConfig {
                         local_id: "b".to_string(),
@@ -963,6 +972,7 @@ mod build_qc_and_repair_tests {
         use std::collections::HashMap;
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
+                zone_scopes: None,
                 id: "r1".to_string(),
                 checks: vec![
                     CheckInstanceConfig {
@@ -1003,6 +1013,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_1".to_string(),
                     name: "Stage 1".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
                         strategy: None,
@@ -1013,6 +1024,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_1".to_string(),
                     name: "Stage 1 (dup)".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r2".to_string(),
                         checks: vec![check("b", "unreachable_finish")],
                         strategy: None,
@@ -1037,6 +1049,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_1".to_string(),
                     name: "Stage 1".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
                         strategy: None,
@@ -1047,6 +1060,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_2".to_string(),
                     name: "Stage 2".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r1".to_string(),
                         checks: vec![check("b", "unreachable_finish")],
                         strategy: None,
@@ -1074,6 +1088,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_1".to_string(),
                     name: "Stage 1".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
                         strategy: Some(StrategyConfig {
@@ -1089,6 +1104,7 @@ mod build_qc_and_repair_tests {
                     id: "stage_2".to_string(),
                     name: "Stage 2".to_string(),
                     rules: vec![QcRuleConfig {
+                        zone_scopes: None,
                         id: "r2".to_string(),
                         checks: vec![check("b", "unreachable_finish")],
                         strategy: None,

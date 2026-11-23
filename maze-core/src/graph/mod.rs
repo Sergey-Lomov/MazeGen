@@ -15,7 +15,10 @@ pub mod split_topology;
 pub mod stats;
 
 use crate::ids::{EdgeId, NodeId};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
@@ -43,6 +46,55 @@ pub struct Edge {
     pub kind: EdgeKind,
 }
 
+/// Read-only window onto a part of the graph (GitHub issue #1039, `Specs/quality_control.md`).
+///
+/// Nodes fall in three classes: *inner* (the scope's own nodes), *boundary* (outside the scope but
+/// the far end of a visible edge) and invisible. An edge is visible when at least one end is inner.
+/// While a mask is raised on a `Graph`, the enumerating accessors (`nodes`, `node_count`, `edges`,
+/// `outgoing_neighbors`, `incoming_neighbors`, `outgoing_edges`, `edge_between`) show only inner
+/// nodes and visible edges; lookup by id (`edge`) and every mutator ignore it. A boundary node is
+/// a leaf: the neighbour accessors give an inner node its boundary neighbours but give the boundary
+/// node none, so no traversal passes through it.
+#[derive(Debug)]
+pub struct ScopeMask {
+    id: u64,
+    inner: HashSet<NodeId>,
+    /// Positions of the inner nodes in `Graph::nodes`, ascending.
+    node_positions: Vec<usize>,
+    /// Visible edges, ascending by id.
+    edge_ids: Vec<EdgeId>,
+    boundary: Vec<NodeId>,
+}
+
+impl ScopeMask {
+    pub fn is_inner(&self, node: NodeId) -> bool {
+        self.inner.contains(&node)
+    }
+
+    pub fn inner_count(&self) -> usize {
+        self.node_positions.len()
+    }
+
+    fn sees(&self, edge: &Edge) -> bool {
+        self.inner.contains(&edge.from) || self.inner.contains(&edge.to)
+    }
+}
+
+/// Source of `ScopeMask::id`. Ids only tell masks apart for cache keys, so their values never
+/// reach any output.
+static NEXT_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
+
+/// The mask slot of a `Graph`. A clone starts without a mask: a mask is a temporary window onto
+/// one graph value, not part of its data.
+#[derive(Debug, Default)]
+struct ScopeSlot(RefCell<Option<Arc<ScopeMask>>>);
+
+impl Clone for ScopeSlot {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Graph {
     nodes: Vec<Node>,
@@ -50,6 +102,7 @@ pub struct Graph {
     outgoing: HashMap<NodeId, Vec<EdgeId>>,
     incoming: HashMap<NodeId, Vec<EdgeId>>,
     version: u64,
+    scope: ScopeSlot,
 }
 
 impl Graph {
@@ -60,7 +113,107 @@ impl Graph {
             outgoing: HashMap::new(),
             incoming: HashMap::new(),
             version: 0,
+            scope: ScopeSlot::default(),
         }
+    }
+
+    fn mask(&self) -> Option<Arc<ScopeMask>> {
+        self.scope.0.borrow().clone()
+    }
+
+    fn debug_assert_unmasked(&self, op: &str) {
+        debug_assert!(
+            self.scope.0.borrow().is_none(),
+            "{op}: a graph mutator ran under a raised scope mask"
+        );
+    }
+
+    /// Builds the mask for the scope whose own nodes are `inner` (ids absent from the graph are
+    /// ignored). One pass over `nodes` for the positions, the rest is proportional to the scope.
+    pub fn build_scope_mask(&self, inner: HashSet<NodeId>) -> Arc<ScopeMask> {
+        let node_positions: Vec<usize> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| inner.contains(&n.id))
+            .map(|(i, _)| i)
+            .collect();
+        let inner: HashSet<NodeId> = node_positions.iter().map(|&i| self.nodes[i].id).collect();
+        let mut edge_ids: Vec<EdgeId> = Vec::new();
+        for node in &inner {
+            for map in [&self.outgoing, &self.incoming] {
+                if let Some(ids) = map.get(node) {
+                    edge_ids.extend(ids.iter().copied());
+                }
+            }
+        }
+        edge_ids.sort_unstable();
+        edge_ids.dedup();
+        let mut boundary: Vec<NodeId> = edge_ids
+            .iter()
+            .filter_map(|&id| self.edges[id].as_ref())
+            .flat_map(|e| [e.from, e.to])
+            .filter(|n| !inner.contains(n))
+            .collect();
+        boundary.sort_unstable();
+        boundary.dedup();
+        Arc::new(ScopeMask {
+            id: NEXT_SCOPE_ID.fetch_add(1, Ordering::Relaxed),
+            inner,
+            node_positions,
+            edge_ids,
+            boundary,
+        })
+    }
+
+    /// Raises `mask` (or lowers the current one with `None`) and returns the mask it replaced.
+    /// Does not change `version`.
+    pub(crate) fn replace_scope(&self, mask: Option<Arc<ScopeMask>>) -> Option<Arc<ScopeMask>> {
+        self.scope.0.replace(mask)
+    }
+
+    /// Runs `f` with the scope mask lifted and restores it afterwards, also on panic. For results
+    /// that are about the whole maze whatever scope is raised: distances and routes from the
+    /// start and the finish, which a zone only filters the candidates of, never the landmarks.
+    pub fn unscoped<R>(&self, f: impl FnOnce() -> R) -> R {
+        struct Restore<'a>(&'a Graph, Option<Arc<ScopeMask>>);
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.0.replace_scope(self.1.take());
+            }
+        }
+        let previous = self.replace_scope(None);
+        let _restore = Restore(self, previous);
+        f()
+    }
+
+    /// The key analysis caches use: `version` plus the id of the raised mask (0 without one), so a
+    /// result computed under one scope is never served to another scope or to the full graph.
+    pub fn cache_key(&self) -> (u64, u64) {
+        (self.version, self.mask().map_or(0, |m| m.id))
+    }
+
+    /// Whether a scope mask is raised.
+    pub fn scope_active(&self) -> bool {
+        self.scope.0.borrow().is_some()
+    }
+
+    /// Whether `node` is an own node of the raised scope; always `true` without a mask.
+    pub fn is_inner(&self, node: NodeId) -> bool {
+        self.scope
+            .0
+            .borrow()
+            .as_ref()
+            .is_none_or(|m| m.is_inner(node))
+    }
+
+    /// Nodes outside the raised scope that are the far end of a visible edge; empty without a mask.
+    pub fn boundary_nodes(&self) -> Vec<NodeId> {
+        self.mask().map_or_else(Vec::new, |m| m.boundary.clone())
+    }
+
+    fn edge_visible(mask: &Option<Arc<ScopeMask>>, edge: &Edge) -> bool {
+        mask.as_ref().is_none_or(|m| m.sees(edge))
     }
 
     /// Bumped on every edge insertion/removal that actually changes the edge set. Lets cache
@@ -72,6 +225,7 @@ impl Graph {
     }
 
     pub fn add_node(&mut self, id: NodeId) {
+        self.debug_assert_unmasked("add_node");
         self.nodes.push(Node { id });
         self.outgoing.insert(id, Vec::new());
         self.incoming.insert(id, Vec::new());
@@ -81,6 +235,7 @@ impl Graph {
     /// the graph. Bumps `version` even when the node had no edges — unlike an addition, a removal
     /// can make cached node-set data (e.g. SCC components) wrong.
     pub(crate) fn remove_node(&mut self, id: NodeId) {
+        self.debug_assert_unmasked("remove_node");
         let Some(outgoing) = self.outgoing.remove(&id) else {
             return;
         };
@@ -93,6 +248,7 @@ impl Graph {
     }
 
     pub(crate) fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
+        self.debug_assert_unmasked("add_edge");
         debug_assert!(
             self.outgoing.contains_key(&from),
             "add_edge: node {from} not in graph"
@@ -174,6 +330,7 @@ impl Graph {
     }
 
     pub(crate) fn remove_edge(&mut self, id: EdgeId) {
+        self.debug_assert_unmasked("remove_edge");
         if let Some(edge) = self.edges[id].take() {
             self.outgoing
                 .entry(edge.from)
@@ -186,11 +343,7 @@ impl Graph {
     }
 
     pub fn outgoing_neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        self.outgoing
-            .get(&node)
-            .into_iter()
-            .flat_map(|ids| ids.iter())
-            .filter_map(move |&eid| self.edges[eid].as_ref().map(|e| e.to))
+        self.outgoing_edges(node).map(|e| e.to)
     }
 
     /// Like `outgoing_neighbors`, but yields the full `Edge` (kind included) rather than just the
@@ -198,16 +351,22 @@ impl Graph {
     /// `Teleport` pair between the same nodes yields two distinct entries. Used where the specific
     /// edge's `kind` matters, not just which nodes are connected (GitHub issue #197).
     pub(crate) fn outgoing_edges(&self, node: NodeId) -> impl Iterator<Item = &Edge> + '_ {
+        // Under a mask only an inner node has adjacency (every edge of it is visible); a boundary
+        // node is a leaf, so no walk ever passes through one.
+        let open = self.is_inner(node);
         self.outgoing
             .get(&node)
+            .filter(move |_| open)
             .into_iter()
             .flat_map(|ids| ids.iter())
             .filter_map(move |&eid| self.edges[eid].as_ref())
     }
 
     pub fn incoming_neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        let open = self.is_inner(node);
         self.incoming
             .get(&node)
+            .filter(move |_| open)
             .into_iter()
             .flat_map(|ids| ids.iter())
             .filter_map(move |&eid| self.edges[eid].as_ref().map(|e| e.from))
@@ -223,10 +382,15 @@ impl Graph {
     /// specific kind must filter `edges()` themselves; the private `edge_between_kind` is used
     /// internally by `add_edge` for that purpose.
     pub fn edge_between(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {
+        let mask = self.mask();
         self.outgoing
             .get(&from)?
             .iter()
-            .find(|&&eid| self.edges[eid].as_ref().is_some_and(|e| e.to == to))
+            .find(|&&eid| {
+                self.edges[eid]
+                    .as_ref()
+                    .is_some_and(|e| e.to == to && Self::edge_visible(&mask, e))
+            })
             .copied()
     }
 
@@ -288,6 +452,7 @@ impl Graph {
         origin: NodeId,
         step: impl Fn(&Self, NodeId) -> Vec<NodeId>,
     ) -> Vec<NodeId> {
+        let mask = self.mask();
         let mut visited: HashSet<NodeId> = HashSet::new();
         let mut queue = VecDeque::new();
         if self.outgoing.contains_key(&origin) {
@@ -295,6 +460,10 @@ impl Graph {
             queue.push_back(origin);
         }
         while let Some(current) = queue.pop_front() {
+            // A boundary node is a terminal: it is reached, but the walk does not continue past it.
+            if mask.as_ref().is_some_and(|m| !m.is_inner(current)) {
+                continue;
+            }
             for neighbor in step(self, current) {
                 if visited.insert(neighbor) {
                     queue.push_back(neighbor);
@@ -307,15 +476,25 @@ impl Graph {
     }
 
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.mask().map_or(self.nodes.len(), |m| m.inner_count())
     }
 
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
-        self.nodes.iter()
+        let mask = self.mask();
+        let len = mask.as_ref().map_or(self.nodes.len(), |m| m.inner_count());
+        (0..len).map(move |i| match &mask {
+            Some(m) => &self.nodes[m.node_positions[i]],
+            None => &self.nodes[i],
+        })
     }
 
     pub fn edges(&self) -> impl Iterator<Item = &Edge> {
-        self.edges.iter().filter_map(|e| e.as_ref())
+        let mask = self.mask();
+        let len = mask.as_ref().map_or(self.edges.len(), |m| m.edge_ids.len());
+        (0..len).filter_map(move |i| {
+            let id = mask.as_ref().map_or(i, |m| m.edge_ids[i]);
+            self.edges[id].as_ref()
+        })
     }
 
     /// Every distinct `Elevator` group, as a connected component of `Elevator`-kind edges — never

@@ -60,15 +60,6 @@ export function createFloorNodesSelector(): (nodes: NodeDto[], floors: { id: str
 }
 
 
-/** Every maze node id on floor `levelIndex` (`NodeDto.level ?? 0`, same 0-based `levels_ordered()`
- *  convention as `selectNodeLevelResolver`/`selectFloorScopedMaze`) — the reverse of
- *  `selectNodeLevelResolver`'s node->floor lookup, used for "highlight this whole floor" (a
- *  floor-scoped deficit issue, `IssuePayloadDto::AreaDeficit`, has no specific node/edge of its own
- *  to highlight, only the floor as a whole). */
-export function selectNodeIdsForLevel(nodes: NodeDto[], levelIndex: number): number[] {
-  return nodes.filter((n) => (n.level ?? 0) === levelIndex).map((n) => n.id);
-}
-
 // --- Loss-detection predicates ---
 // When adding a new feature that produces user data (not analytics/read-only),
 // add a predicate here and wire it into the relevant confirmation dialogs.

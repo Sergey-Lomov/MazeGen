@@ -25,12 +25,7 @@ fn maze_grid(side: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingLoopsIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingLoopsIssue::new_from_check("min_loops_count", entries)
+    MissingLoopsIssue::new_from_check("min_loops_count", missing)
 }
 
 #[test]
@@ -467,113 +462,6 @@ fn src_mode_dead_end_priority_only_picks_dead_ends_as_src() {
             "every new edge must touch one of the two dead-end nodes as its src"
         );
     }
-}
-
-#[test]
-fn apply_restricts_candidates_to_the_named_level() {
-    // Two 4x4 levels. The issue reports a deficit only on level_b, so every added edge must
-    // land there, even though level_a's nodes are just as available in the field overall.
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_a = mf.single_level_id();
-    let level_b = mf.add_level(field_b);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-    let issue =
-        MissingLoopsIssue::new_from_check("min_loops_count", vec![(RepairArea::Level(level_b), 2)]);
-    let mut rng = MazeRng::seed_from_u64(42);
-    let result = apply_and_commit(
-        &MissingLoopsRandomStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &no_params(),
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert!(
-        maze.graph.edges().count() > 0,
-        "at least one connection must have been added"
-    );
-    for edge in maze.graph.edges() {
-        assert_eq!(
-            maze.field.level_of(edge.from),
-            Some(level_b),
-            "every added edge must be on the reported level"
-        );
-        assert_eq!(
-            maze.field.level_of(edge.to),
-            Some(level_b),
-            "every added edge must be on the reported level"
-        );
-    }
-    let _ = level_a;
-}
-
-#[test]
-fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-    // Merging a PerFloor check ("3 per floor") with a WholeMaze check ("12 whole-maze") on the
-    // same 3-floor rule must not add 3+3+3+12 = 21 connections -- the whole-maze entry is the
-    // *same* requirement as the three per-floor entries, not an independent one, so satisfying
-    // every per-floor entry (9 total) must leave only 3 more needed to reach 12 whole-maze.
-    let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(Arc::default(), []);
-    let level_a = mf
-        .add_level(crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap());
-    let level_b = mf
-        .add_level(crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap());
-    let level_c = mf
-        .add_level(crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap());
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-    let issue = MissingLoopsIssue::new_from_check(
-        "min_loops_count",
-        vec![
-            (RepairArea::Level(level_a), 3),
-            (RepairArea::Level(level_b), 3),
-            (RepairArea::Level(level_c), 3),
-            (RepairArea::WholeMaze, 12),
-        ],
-    );
-    let mut overrides = HashMap::new();
-    overrides.insert("reserve_percent".to_string(), "0".to_string());
-    let params =
-        build_params(
-            <MissingLoopsRandomStrategy as RepairStrategy<
-                SquareTessellation,
-                MissingLoopsIssue,
-            >>::params(&MissingLoopsRandomStrategy),
-            Some(&overrides),
-        );
-    let mut rng = MazeRng::seed_from_u64(42);
-    let result = apply_and_commit(
-        &MissingLoopsRandomStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    // 12 connections total, each bidirectional => 24 edges, not 21*2 = 42.
-    assert_eq!(
-        maze.graph.edges().count(),
-        24,
-        "whole-maze entry must be satisfied by the per-floor work already done, not stacked on top of it"
-    );
 }
 
 #[test]

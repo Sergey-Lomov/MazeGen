@@ -47,7 +47,6 @@ pub mod random_endpoints;
 pub mod reduce_scc_count;
 mod region_merge_core;
 pub mod region_shrink_split;
-mod remaining_deficits;
 pub mod remove_elevator;
 pub mod remove_elevator_stop;
 pub mod remove_split;

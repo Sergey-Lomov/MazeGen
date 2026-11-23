@@ -2,7 +2,6 @@ use super::*;
 use crate::IdGenerator;
 use crate::graph::Graph;
 use crate::meta::MazeMeta;
-use crate::quality_control::RepairArea;
 use crate::random::MazeRng;
 use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
@@ -10,12 +9,7 @@ use rand::SeedableRng;
 use std::sync::Arc;
 
 fn missing_issue(missing: u32) -> MissingOneWaysIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingOneWaysIssue::new_from_check("min_one_way_count", entries)
+    MissingOneWaysIssue::new_from_check("min_one_way_count", missing)
 }
 
 fn maze_grid(side: usize) -> Maze<SquareTessellation> {
@@ -306,135 +300,6 @@ fn apply_does_not_downgrade_a_preset_protected_passage() {
         maze.graph.edges().count(),
         2,
         "a fully preset-protected passage must survive untouched"
-    );
-}
-
-#[test]
-fn apply_restricts_candidates_to_the_named_level() {
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_a = mf.single_level_id();
-    let level_b = mf.add_level(field_b);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    for level in [level_a, level_b] {
-        for y in 0..4 {
-            for x in 0..4 {
-                let here = mf.node_at(level, SquarePoint { x, y }).unwrap();
-                if x + 1 < 4 {
-                    let right = mf.node_at(level, SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < 4 {
-                    let up = mf.node_at(level, SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let edges_before = maze.graph.edges().count();
-
-    let issue = MissingOneWaysIssue::new_from_check(
-        "min_one_way_count",
-        vec![(RepairArea::Level(level_b), 2)],
-    );
-    let mut rng = MazeRng::seed_from_u64(42);
-    let result = apply_and_commit_default(
-        &MissingOneWaysFromPassageStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &PresetState::empty(),
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert!(
-        maze.graph.edges().count() < edges_before,
-        "some passage must have been downgraded"
-    );
-
-    let removed_pairs: Vec<_> = maze
-        .graph
-        .edges()
-        .filter(|e| e.kind == EdgeKind::Basic)
-        .filter(|e| {
-            maze.graph
-                .edge_between_kind(e.to, e.from, &EdgeKind::Basic)
-                .is_none()
-        })
-        .collect();
-    assert!(!removed_pairs.is_empty());
-    for edge in removed_pairs {
-        assert_eq!(
-            maze.field.level_of(edge.from),
-            Some(level_b),
-            "only level_b passages must be downgraded"
-        );
-    }
-}
-
-#[test]
-fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-    // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
-    // stack — 1 per floor on 3 floors + 3 whole-maze must downgrade 3 passages total, not 6.
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_c = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_a = mf.single_level_id();
-    let level_b = mf.add_level(field_b);
-    let level_c = mf.add_level(field_c);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    for level in [level_a, level_b, level_c] {
-        for y in 0..4 {
-            for x in 0..4 {
-                let here = mf.node_at(level, SquarePoint { x, y }).unwrap();
-                if x + 1 < 4 {
-                    let right = mf.node_at(level, SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < 4 {
-                    let up = mf.node_at(level, SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let edges_before = maze.graph.edges().count();
-
-    let issue = MissingOneWaysIssue::new_from_check(
-        "min_one_way_count",
-        vec![
-            (RepairArea::Level(level_a), 1),
-            (RepairArea::Level(level_b), 1),
-            (RepairArea::Level(level_c), 1),
-            (RepairArea::WholeMaze, 3),
-        ],
-    );
-    let mut rng = MazeRng::seed_from_u64(11);
-    let result = apply_and_commit_default(
-        &MissingOneWaysFromPassageStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &PresetState::empty(),
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert_eq!(
-        maze.graph.edges().count(),
-        edges_before - 3,
-        "3 passages downgraded total, not 6"
     );
 }
 

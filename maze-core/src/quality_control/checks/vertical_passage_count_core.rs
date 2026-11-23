@@ -2,8 +2,8 @@ use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::ids::{EdgeId, NodeId};
 use crate::quality_control::VerticalPassageType;
-use crate::space::{LevelId, Tessellation};
-use std::collections::{HashMap, HashSet};
+use crate::space::Tessellation;
+use std::collections::HashSet;
 
 /// A single logical vertical passage between two adjacent-floor nodes — one or two
 /// `EdgeKind::VerticalPassage` edges (one-way: one edge; two-way: both directions) collapsed into
@@ -14,8 +14,6 @@ use std::collections::{HashMap, HashSet};
 /// built from these never lists both directions of the same passage as separate candidates.
 struct LogicalVerticalPassage {
     canonical_edge: EdgeId,
-    low_level: LevelId,
-    high_level: LevelId,
     low_to_high: Option<EdgeId>,
     high_to_low: Option<EdgeId>,
 }
@@ -53,12 +51,6 @@ fn logical_vertical_passages<T: Tessellation>(maze: &Maze<T>) -> Vec<LogicalVert
         if !seen.insert(key) {
             continue;
         }
-        let (Some(low_level), Some(high_level)) = (
-            maze.field.level_of(low_node),
-            maze.field.level_of(high_node),
-        ) else {
-            continue;
-        };
         let low_to_high = maze.graph.edge_between(low_node, high_node);
         let high_to_low = maze.graph.edge_between(high_node, low_node);
         let canonical_edge = if ascending {
@@ -68,8 +60,6 @@ fn logical_vertical_passages<T: Tessellation>(maze: &Maze<T>) -> Vec<LogicalVert
         };
         passages.push(LogicalVerticalPassage {
             canonical_edge,
-            low_level,
-            high_level,
             low_to_high,
             high_to_low,
         });
@@ -105,8 +95,7 @@ fn concrete_type(passage: &LogicalVerticalPassage) -> VerticalPassageType {
 }
 
 /// Logical vertical passages matching `passage_type`, maze-wide — see `VerticalPassageType`'s doc
-/// comment. `count_incoming` is not consulted here: it only affects `PerFloor` scope (there is no
-/// single "checked floor" maze-wide) — see `logical_vertical_passages_per_floor`.
+/// comment.
 pub fn logical_vertical_passages_matching<T: Tessellation>(
     maze: &Maze<T>,
     passage_type: VerticalPassageType,
@@ -192,8 +181,7 @@ pub fn vertical_passage_proximity_candidates<T: Tessellation>(
             continue;
         }
 
-        // One-way: `from` is low_node for an up passage, high_node for a down passage (mirrors
-        // logical_vertical_passages_per_floor's own from/to derivation).
+        // One-way: `from` is low_node for an up passage, high_node for a down passage.
         let (from_node, to_node) = if passage.low_to_high.is_some() {
             (low_node, high_node)
         } else {
@@ -220,79 +208,6 @@ pub fn count_logical_vertical_passages<T: Tessellation>(
     passage_type: VerticalPassageType,
 ) -> u32 {
     logical_vertical_passages_matching(maze, passage_type).len() as u32
-}
-
-/// Per-floor logical vertical passage counts, keyed by canonical `EdgeId` per floor — see
-/// `VerticalPassageType`'s doc comment and GitHub issue #369's per-floor convention. `TwoWay`/`Any`
-/// passages count toward both floors they touch, same as before. A one-way passage
-/// (`OneWay`/`OneWayDown`/`OneWayUp`) counts toward its own `from` floor always, and additionally
-/// toward its `to` floor when `count_incoming` is set — "проверяемый этаж" from the user's own
-/// spec: without `count_incoming`, only the floor the one-way edge originates from sees it;
-/// with it, the destination floor sees it too.
-///
-/// A floor that can never be a matching passage's `from` under `passage_type` — the bottom floor for
-/// `OneWayDown` (nothing below to descend to), the top floor for `OneWayUp` (nothing above to ascend
-/// to) — is omitted from the result entirely rather than seeded with an empty `Vec`, so a min/max
-/// check never flags a deficit/excess a maze could not possibly satisfy there. That floor is still a
-/// legitimate `to` when `count_incoming` is set (it can receive a passage originating one floor up/
-/// down), so it's only omitted when `count_incoming` is false — with it, the floor stays in the map
-/// and is populated the same as any other.
-pub fn logical_vertical_passages_per_floor<T: Tessellation>(
-    maze: &Maze<T>,
-    passage_type: VerticalPassageType,
-    count_incoming: bool,
-) -> HashMap<LevelId, Vec<EdgeId>> {
-    let levels: Vec<LevelId> = maze.field.levels_ordered().collect();
-    let impossible_from_floor = if count_incoming {
-        None
-    } else {
-        match passage_type {
-            VerticalPassageType::OneWayDown => levels.first().copied(),
-            VerticalPassageType::OneWayUp => levels.last().copied(),
-            _ => None,
-        }
-    };
-
-    let mut per_floor: HashMap<LevelId, Vec<EdgeId>> = levels
-        .into_iter()
-        .filter(|l| Some(*l) != impossible_from_floor)
-        .map(|l| (l, Vec::new()))
-        .collect();
-
-    for passage in logical_vertical_passages(maze)
-        .into_iter()
-        .filter(|p| matches_type(p, passage_type))
-    {
-        if passage.is_two_way() {
-            per_floor
-                .entry(passage.low_level)
-                .or_default()
-                .push(passage.canonical_edge);
-            per_floor
-                .entry(passage.high_level)
-                .or_default()
-                .push(passage.canonical_edge);
-            continue;
-        }
-        // One-way: `from` is low_level for an up passage, high_level for a down passage.
-        let (from_level, to_level) = if passage.low_to_high.is_some() {
-            (passage.low_level, passage.high_level)
-        } else {
-            (passage.high_level, passage.low_level)
-        };
-        per_floor
-            .entry(from_level)
-            .or_default()
-            .push(passage.canonical_edge);
-        if count_incoming {
-            per_floor
-                .entry(to_level)
-                .or_default()
-                .push(passage.canonical_edge);
-        }
-    }
-
-    per_floor
 }
 
 #[cfg(test)]
@@ -403,108 +318,6 @@ mod tests {
         assert!(
             matching[0] == up || matching[0] == down,
             "canonical edge must be one of the passage's own two directed edges"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_without_incoming_only_counts_the_from_floor() {
-        let (mut maze, b0, t0, _b1) = two_floor_maze();
-        maze.graph.add_edge(b0, t0, EdgeKind::VerticalPassage);
-        let bottom = maze.field.level_of(b0).unwrap();
-        let top = maze.field.level_of(t0).unwrap();
-        let per_floor = logical_vertical_passages_per_floor(&maze, VerticalPassageType::Any, false);
-        assert_eq!(
-            per_floor[&bottom].len(),
-            1,
-            "the from floor (bottom, since the edge goes up) must see the passage"
-        );
-        assert_eq!(
-            per_floor[&top].len(),
-            0,
-            "without count_incoming, the to floor must not see a one-way passage"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_with_incoming_counts_both_floors() {
-        let (mut maze, b0, t0, _b1) = two_floor_maze();
-        maze.graph.add_edge(b0, t0, EdgeKind::VerticalPassage);
-        let bottom = maze.field.level_of(b0).unwrap();
-        let top = maze.field.level_of(t0).unwrap();
-        let per_floor = logical_vertical_passages_per_floor(&maze, VerticalPassageType::Any, true);
-        assert_eq!(per_floor[&bottom].len(), 1);
-        assert_eq!(
-            per_floor[&top].len(),
-            1,
-            "with count_incoming, the to floor must also see the one-way passage"
-        );
-    }
-
-    #[test]
-    fn per_floor_two_way_counts_both_floors_regardless_of_incoming() {
-        let (mut maze, b0, t0, _b1) = two_floor_maze();
-        maze.graph.add_edge(b0, t0, EdgeKind::VerticalPassage);
-        maze.graph.add_edge(t0, b0, EdgeKind::VerticalPassage);
-        let bottom = maze.field.level_of(b0).unwrap();
-        let top = maze.field.level_of(t0).unwrap();
-        let per_floor = logical_vertical_passages_per_floor(&maze, VerticalPassageType::Any, false);
-        assert_eq!(per_floor[&bottom].len(), 1);
-        assert_eq!(
-            per_floor[&top].len(),
-            1,
-            "a two-way passage counts toward both floors even without count_incoming"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_down_excludes_the_bottom_floor_without_count_incoming() {
-        let (maze, b0, _t0, _b1) = two_floor_maze();
-        let bottom = maze.field.level_of(b0).unwrap();
-        let per_floor =
-            logical_vertical_passages_per_floor(&maze, VerticalPassageType::OneWayDown, false);
-        assert!(
-            !per_floor.contains_key(&bottom),
-            "the bottom floor can never be a from for OneWayDown, so it must be omitted rather than seeded empty"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_up_excludes_the_top_floor_without_count_incoming() {
-        let (maze, _b0, t0, _b1) = two_floor_maze();
-        let top = maze.field.level_of(t0).unwrap();
-        let per_floor =
-            logical_vertical_passages_per_floor(&maze, VerticalPassageType::OneWayUp, false);
-        assert!(
-            !per_floor.contains_key(&top),
-            "the top floor can never be a from for OneWayUp, so it must be omitted rather than seeded empty"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_down_keeps_the_bottom_floor_with_count_incoming() {
-        let (mut maze, b0, t0, _b1) = two_floor_maze();
-        maze.graph.add_edge(t0, b0, EdgeKind::VerticalPassage);
-        let bottom = maze.field.level_of(b0).unwrap();
-        let per_floor =
-            logical_vertical_passages_per_floor(&maze, VerticalPassageType::OneWayDown, true);
-        assert_eq!(
-            per_floor[&bottom].len(),
-            1,
-            "with count_incoming, the bottom floor is a legitimate to and must be populated"
-        );
-    }
-
-    #[test]
-    fn per_floor_one_way_up_keeps_the_top_floor_with_count_incoming() {
-        let (mut maze, b0, t0, _b1) = two_floor_maze();
-        maze.graph.add_edge(b0, t0, EdgeKind::VerticalPassage);
-        let top = maze.field.level_of(t0).unwrap();
-        let per_floor =
-            logical_vertical_passages_per_floor(&maze, VerticalPassageType::OneWayUp, true);
-        assert_eq!(
-            per_floor[&top].len(),
-            1,
-            "with count_incoming, the top floor is a legitimate to and must be populated"
         );
     }
 }

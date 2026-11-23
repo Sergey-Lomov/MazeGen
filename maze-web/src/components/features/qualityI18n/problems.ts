@@ -6,6 +6,11 @@ export function resolveNoChecksProblemText(): string {
   return m["quality.problem_no_checks"]();
 }
 
+/** Text of a rule bound to zones that no longer exist (derived, never stored as a `QcProblem`). */
+export function resolveNoZonesProblemText(): string {
+  return m["quality.problem_no_zones"]();
+}
+
 /** Text of a node-shape-limits check with no limits set (derived, never stored as a `QcProblem`). */
 export function resolveLimitsEmptyProblemText(): string {
   return m["quality.problem_limits_empty"]();

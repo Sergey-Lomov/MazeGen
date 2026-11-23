@@ -74,9 +74,9 @@ export const canvas = {
     previewRemove: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.remove),
     previewSelect: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.select),
     hover: hexToNumber(base.canvasHover),
-    // Manage split nodes panel target (GitHub issue #606): a transparent fill with a yellow frame
-    // distinguishes the edited cell from the cursor hover while using the same full-cell geometry.
-    panelTarget: hexToNumber(base.warning),
+    // Manage split nodes panel target (GitHub issue #1078): reuse the bright violet that marks
+    // run A in the topology glue editor, distinct from the orange second split node.
+    panelTarget: hexToNumber(base.topologyRunA),
     activeCell: hexToNumber(base.textDisabled),
     // Reset tool's hover highlight (GitHub issue #327) — red instead of the ordinary hover color,
     // matching `ui.text.error`/the DOM-side "toggle-danger" button variant, so a destructive tool

@@ -205,20 +205,6 @@ pub enum IssuePayload {
     InvalidDeadEnd {
         nodes: HashMap<String, Vec<IssueRegionPayload>>,
     },
-    /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` if
-    /// the deficit is scoped to a specific floor (`RepairArea::Level`, the index being the floor's
-    /// `levels_ordered()` position, same convention `NodeDto.level`/`level_index_of` already use
-    /// at the wire boundary), or `None` for a whole-maze deficit (`RepairArea::WholeMaze`, e.g.
-    /// `MissingElevatorsIssue`'s only scope) which has no specific floor to highlight — same
-    /// "no per-element highlight" precedent as `ExcessiveSccCount` above. Shared wire variant for
-    /// `missing_vertical_passages`/`missing_teleports`/`missing_elevators`/
-    /// `area_missing_elevator_stops` — all four carry a `Vec<(RepairArea, u32)>` deficit list of
-    /// identical shape, and none of them track which specific check flagged which entry (unlike
-    /// e.g. `InvalidLoopIssue`'s `invalid_sources`), so every entry is attributed uniformly to
-    /// every one of the issue's `source_checks()`. Mirrors `IssuePayloadDto::AreaDeficit`.
-    AreaDeficit {
-        areas: HashMap<String, Vec<Option<u32>>>,
-    },
     /// Keyed by source check id — each entry is one flagged elevator's stop-count deficit: the
     /// elevator's currently-live fan of `EdgeKind::Elevator` edges (same shape as
     /// `InvalidElevator`'s `edges`, re-resolved against `graph` the same way), how many stops are

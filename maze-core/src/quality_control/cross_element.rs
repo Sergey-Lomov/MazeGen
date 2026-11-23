@@ -281,7 +281,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
     }
 
     if set.split {
-        for (level, point) in maze.field.split_cells() {
+        for (level, point) in maze.scoped_split_cells() {
             let nodes = maze.field.nodes_at(level, point);
             let element = CrossElement::Split(SplitTileNodes::new(nodes.to_vec()));
             // One occurrence per node of the tile. They all share the same point/level, so the

@@ -13,8 +13,7 @@ pub const MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT: u32 = 3;
 /// the floor counts, from any elevator (an elevator contributes one stop per floor it touches, by
 /// construction — `elevator_core`'s `stops` never puts two of the same elevator's stops on one
 /// floor). Groups every over-budget floor's stops into its own group, paired with
-/// `to_remove = count - max_elevator_stops_per_floor` — mirrors
-/// `MaxVerticalPassageCountCheck`'s `FloorScope::PerFloor` shape, sorted by `LevelId` for
+/// `to_remove = count - max_elevator_stops_per_floor`, sorted by `LevelId` for
 /// determinism. Which stops on an over-budget floor are actually removed is
 /// `ElevatorStopGroupSelectStrategy`'s job, not this check's.
 pub struct MaxElevatorStopsPerFloorCheck {

@@ -2,15 +2,13 @@ use crate::Maze;
 use crate::graph::cycles::resolve_to_edge_ids;
 use crate::ids::EdgeId;
 use crate::quality_control::check::Check;
-use crate::quality_control::floor_group::floors_of_edges;
 use crate::quality_control::issue_kinds::canonical_cycle_key;
-use crate::quality_control::{FloorScope, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
-use crate::space::{LevelId, Tessellation};
+use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::space::Tessellation;
 use rand::RngCore;
 use std::collections::HashMap;
 
 pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
-pub const MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags every basis loop invalid when the field has more independent loops than
 /// `max_loops_count` allows — a group-level decision (see `MaxLoopDensityCheck`'s identical
@@ -30,7 +28,6 @@ pub const MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaz
 pub struct MaxLoopsCountCheck {
     pub instance_id: String,
     pub max_loops_count: u32,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
@@ -55,42 +52,11 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let all = resolve_to_edge_ids(&nav, &analytics.pure_cycle_basis, &maze.graph);
 
-        // Under `PerFloor` a cycle is flagged if *its own floor* is over budget — a cycle
-        // spanning more than one floor counts toward, and can be flagged by, every floor it
-        // touches (GitHub issue #369).
-        let flagged: Vec<Vec<EdgeId>> = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                if (analytics.cycle_count as u32) <= self.max_loops_count {
-                    return;
-                }
-                all
+        let flagged: Vec<Vec<EdgeId>> = {
+            if (analytics.cycle_count as u32) <= self.max_loops_count {
+                return;
             }
-            FloorScope::PerFloor => {
-                let mut per_floor_count: HashMap<LevelId, u32> =
-                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                let cycle_floors: Vec<_> = all
-                    .iter()
-                    .map(|cycle| floors_of_edges(&maze.field, &maze.graph, cycle))
-                    .collect();
-                for floors in &cycle_floors {
-                    for &level in floors {
-                        *per_floor_count.entry(level).or_insert(0) += 1;
-                    }
-                }
-                let over_budget: std::collections::HashSet<LevelId> = per_floor_count
-                    .into_iter()
-                    .filter(|&(_, count)| count > self.max_loops_count)
-                    .map(|(level, _)| level)
-                    .collect();
-                if over_budget.is_empty() {
-                    return;
-                }
-                all.into_iter()
-                    .zip(cycle_floors)
-                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
-                    .map(|(cycle, _)| cycle)
-                    .collect()
-            }
+            all
         };
         if flagged.is_empty() {
             return;
@@ -164,7 +130,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -196,7 +161,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 2,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -250,7 +214,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 2,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -271,7 +234,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -297,7 +259,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -337,7 +298,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -386,7 +346,6 @@ mod tests {
         let check = MaxLoopsCountCheck {
             instance_id: TEST_ID.to_string(),
             max_loops_count: 0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(
@@ -398,59 +357,6 @@ mod tests {
         assert!(
             issues.is_empty(),
             "overflow must skip silently, not surface a partial/incorrect issue"
-        );
-    }
-
-    /// Bottom floor: 2 independent triangles (over a max of 1). Top floor: 1 triangle (at max).
-    fn maze_with_triangles_on_two_floors() -> Maze<SquareTessellation> {
-        use crate::space::{Field, SquarePoint};
-        let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), std::iter::empty());
-        let bottom = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
-        );
-        let top = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
-        );
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
-        let pt = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
-        g.add_edge(pb(0), pb(1), EdgeKind::Basic);
-        g.add_edge(pb(1), pb(2), EdgeKind::Basic);
-        g.add_edge(pb(2), pb(0), EdgeKind::Basic);
-        g.add_edge(pb(3), pb(4), EdgeKind::Basic);
-        g.add_edge(pb(4), pb(5), EdgeKind::Basic);
-        g.add_edge(pb(5), pb(3), EdgeKind::Basic);
-        g.add_edge(pt(0), pt(1), EdgeKind::Basic);
-        g.add_edge(pt(1), pt(2), EdgeKind::Basic);
-        g.add_edge(pt(2), pt(0), EdgeKind::Basic);
-        Maze::new(mf, g)
-    }
-
-    #[test]
-    fn per_floor_flags_only_cycles_on_the_over_budget_floor() {
-        let maze = maze_with_triangles_on_two_floors();
-        let check = MaxLoopsCountCheck {
-            instance_id: TEST_ID.to_string(),
-            max_loops_count: 1,
-            floor_scope: FloorScope::PerFloor,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(
-            &maze,
-            &mut issues,
-            &mut rng(),
-            InvalidLoopGroupRequirement::all(),
-        );
-        assert_eq!(issues.len(), 1);
-        assert_eq!(
-            issues[0].invalid.len(),
-            2,
-            "only the bottom floor's 2 triangles are flagged, top floor's single triangle is left alone (at max)"
         );
     }
 }

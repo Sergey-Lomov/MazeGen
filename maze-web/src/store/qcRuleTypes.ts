@@ -118,7 +118,19 @@ export interface QcRuleState {
    * (`buildGenerateConfig`). Set by `qcForTessellation`, cleared by the user's edit of the owning
    * param (`needs_reconfiguration`) or by removing the owner (`cannot_apply`). */
   problems?: QcProblem[];
+  /** Zones and zone groups the rule is bound to (GitHub issue #1039): it sees only their cells and the
+   *  links leaving them. Absent: the whole map. A target naming a zone or group that was deleted since leaves
+   *  the rule without zones (a warning, derived by `zoneScopeHasNoZones`; such a rule is not sent to core). */
+  zoneScope?: QcZoneScopeTarget;
 }
+
+/** What a rule's zone scope names: a zone, or a group taken as one big zone (`union`) or zone by zone
+ *  (`iteration`, each zone runs the rule on its own). */
+export type QcZoneScopeTarget =
+  | { kind: "zone"; id: number }
+  | { kind: "group"; id: number; mode: QcZoneScopeMode };
+
+export type QcZoneScopeMode = "union" | "iteration";
 
 /** `needs_reconfiguration` — the user can fix it by editing the rule's settings;
  *  `cannot_apply` — the rule can no longer work, the only option is to delete it. */

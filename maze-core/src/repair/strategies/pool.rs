@@ -11,7 +11,7 @@ use rand::RngCore;
 ///
 /// **Consumption only, no retry budget.** `attempts_limit` accounting stays with each strategy's
 /// own loop (their semantics differ: `AddElevatorStrategy` resets a per-slot attempt count,
-/// `AddSplitStrategy`/`AddVerticalPassageStrategy` run one running total per area) — folding it in
+/// `AddSplitStrategy`/`AddVerticalPassageStrategy` run one running total) — folding it in
 /// here would force one semantics onto every caller. A candidate that fails its attempt is simply
 /// never returned again (`take` already removed it), same as the strategies' own prior inline
 /// handling.

@@ -1,5 +1,4 @@
 use super::dead_end_priority::apply_src_mode;
-use super::remaining_deficits::RemainingDeficits;
 use super::split_core::{
     RequiredConnection, pick_weighted_pattern, plan_pattern_split, plan_unconstrained_split,
 };
@@ -8,7 +7,7 @@ use crate::Maze;
 use crate::generation::{PresetState, SplitGenerationConfig};
 use crate::graph::route_protection::is_node_on_route;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingLoopsIssue, RepairArea};
+use crate::quality_control::MissingLoopsIssue;
 use crate::repair::command::{MutationCommand, SplitNodeEdgeDirection};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -92,7 +91,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -108,100 +107,86 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
         let mut split_points: HashSet<NodeId> = HashSet::new();
         let mut total_added = 0u32;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
-                continue;
-            }
-            let target = reserve_target(params, missing);
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
 
-            let eligible: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&node| {
-                    crate::generation::split_is_eligible(&maze.field, preset_state, node)
-                })
-                .filter(|&node| !protect_route || !is_node_on_route(maze, node))
-                .filter(|&node| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(node) == Some(level),
-                })
-                .collect();
-            let mut pool = apply_src_mode(maze, eligible, src_mode, rng);
+        let eligible: Vec<NodeId> = maze
+            .field
+            .all_node_ids()
+            .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
+            .filter(|&node| !protect_route || !is_node_on_route(maze, node))
+            .collect();
+        let mut pool = apply_src_mode(maze, eligible, src_mode, rng);
 
-            let mut added = 0u32;
-            let mut failed_attempts = 0u32;
+        let mut added = 0u32;
+        let mut failed_attempts = 0u32;
 
-            while added < target && failed_attempts < max_attempts && !pool.is_empty() {
-                // Pop from the end, not a random index — `apply_src_mode` orders the pool so
-                // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
-                // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
-                // ordering. `src` always leaves the pool after this iteration regardless of outcome
-                // (see the unconditional `swap_remove` below), so popping it up front changes nothing
-                // about which candidates get tried, only the order.
-                let src = pool
-                    .pop()
-                    .expect("pool.is_empty() already checked by the while condition");
+        while added < target && failed_attempts < max_attempts && !pool.is_empty() {
+            // Pop from the end, not a random index — `apply_src_mode` orders the pool so
+            // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
+            // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
+            // ordering. `src` always leaves the pool after this iteration regardless of outcome
+            // (see the unconditional `swap_remove` below), so popping it up front changes nothing
+            // about which candidates get tried, only the order.
+            let src = pool
+                .pop()
+                .expect("pool.is_empty() already checked by the while condition");
 
-                let mut neighbors = maze.field.neighbors(src);
-                let mut planned = false;
+            let mut neighbors = maze.field.neighbors(src);
+            let mut planned = false;
 
-                while !neighbors.is_empty() {
-                    let n_pick = rng.random_range(0..neighbors.len());
-                    let dst = neighbors.swap_remove(n_pick);
+            while !neighbors.is_empty() {
+                let n_pick = rng.random_range(0..neighbors.len());
+                let dst = neighbors.swap_remove(n_pick);
 
-                    let already_connected = maze.graph.edge_between(src, dst).is_some()
-                        || maze.graph.edge_between(dst, src).is_some()
-                        || attempted_pairs.contains(&(src, dst));
-                    // `dst` is a `SplitNodeEdge::target` in the command about to be proposed for
-                    // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
-                    // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
-                    // this same `apply()` call, that node no longer exists by the time commands are
-                    // applied (`replace_point_nodes_feasible` requires `field.cell_of(edge.target)`
-                    // to still resolve) — the whole command would be silently declined. Skip any `dst`
-                    // whose point is already split-committed this call, rather than propose a command
-                    // guaranteed to be rejected.
-                    let dst_already_split = maze
-                        .field
-                        .level_of(dst)
-                        .zip(maze.field.cell_of(dst))
-                        .is_some_and(|(l, p)| {
-                            maze.field
-                                .nodes_at(l, p)
-                                .iter()
-                                .any(|n| split_points.contains(n))
-                        });
-                    if already_connected || dst_already_split {
-                        continue;
-                    }
-                    attempted_pairs.insert((src, dst));
-
-                    let required = RequiredConnection {
-                        neighbor: dst,
-                        direction: SplitNodeEdgeDirection::Passage,
-                    };
-                    if let Some(nodes) = self.plan_split(maze, src, &required, &split_points, rng) {
-                        commands.push(MutationCommand::ReplacePointNodes { at: src, nodes });
-                        split_points.insert(src);
-                        added += 1;
-                        deficits.consume(&[area, RepairArea::WholeMaze]);
-                        planned = true;
-                        break;
-                    }
+                let already_connected = maze.graph.edge_between(src, dst).is_some()
+                    || maze.graph.edge_between(dst, src).is_some()
+                    || attempted_pairs.contains(&(src, dst));
+                // `dst` is a `SplitNodeEdge::target` in the command about to be proposed for
+                // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
+                // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
+                // this same `apply()` call, that node no longer exists by the time commands are
+                // applied (`replace_point_nodes_feasible` requires `field.cell_of(edge.target)`
+                // to still resolve) — the whole command would be silently declined. Skip any `dst`
+                // whose point is already split-committed this call, rather than propose a command
+                // guaranteed to be rejected.
+                let dst_already_split = maze
+                    .field
+                    .level_of(dst)
+                    .zip(maze.field.cell_of(dst))
+                    .is_some_and(|(l, p)| {
+                        maze.field
+                            .nodes_at(l, p)
+                            .iter()
+                            .any(|n| split_points.contains(n))
+                    });
+                if already_connected || dst_already_split {
+                    continue;
                 }
+                attempted_pairs.insert((src, dst));
 
-                if !planned {
-                    failed_attempts += 1;
+                let required = RequiredConnection {
+                    neighbor: dst,
+                    direction: SplitNodeEdgeDirection::Passage,
+                };
+                if let Some(nodes) = self.plan_split(maze, src, &required, &split_points, rng) {
+                    commands.push(MutationCommand::ReplacePointNodes { at: src, nodes });
+                    split_points.insert(src);
+                    added += 1;
+                    planned = true;
+                    break;
                 }
-                // Either way `src` already left the pool via the `pop()` above — it's no longer
-                // split-eligible once a successful command applies, and every one of its neighbors
-                // was already tried this visit either way, mirroring `AddSplitStrategy`'s own
-                // per-point once-only bookkeeping.
             }
-            total_added += added;
+
+            if !planned {
+                failed_attempts += 1;
+            }
+            // Either way `src` already left the pool via the `pop()` above — it's no longer
+            // split-eligible once a successful command applies, and every one of its neighbors
+            // was already tried this visit either way, mirroring `AddSplitStrategy`'s own
+            // per-point once-only bookkeeping.
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);

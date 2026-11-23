@@ -1,7 +1,6 @@
 use super::super::issue_kinds::{
     CrossElementCellViolation, ElevatorNodes, SplitRouteEdge, SplitTileNodes, canonical_cycle_key,
 };
-use super::super::repair_area::RepairArea;
 use super::types::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
@@ -684,39 +683,6 @@ pub(super) fn resolve_dead_end_group_map(
         }
     }
     (!out.is_empty()).then_some(IssuePayload::InvalidDeadEnd { nodes: out })
-}
-
-/// Resolves a deficit issue's `missing: Vec<(RepairArea, u32)>` (shared shape of
-/// `MissingVerticalPassagesIssue`/`MissingTeleportsIssue`/`MissingElevatorsIssue`/
-/// `AreaMissingElevatorStopsIssue`) into the `AreaDeficit` wire shape — `RepairArea::Level` becomes
-/// `Some(index)` via `levels_ordered()` position (same convention `NodeDto.level` uses), and
-/// `RepairArea::WholeMaze` becomes `None` (nothing to highlight). None of these four issue types
-/// track which specific check flagged which entry (unlike `InvalidLoopIssue`'s `invalid_sources`),
-/// so the full area list is attributed uniformly to every one of `source_checks`. The `u32` count
-/// half of each pair carries no highlight meaning and is dropped here.
-pub(super) fn resolve_area_deficit_map<T: Tessellation>(
-    missing: &[(RepairArea, u32)],
-    source_checks: &[String],
-    field: &MultiLevelField<T>,
-) -> HashMap<String, Vec<Option<u32>>> {
-    let mut out: HashMap<String, Vec<Option<u32>>> = HashMap::new();
-    if missing.is_empty() || source_checks.is_empty() {
-        return out;
-    }
-    let areas: Vec<Option<u32>> = missing
-        .iter()
-        .map(|&(area, _count)| match area {
-            RepairArea::WholeMaze => None,
-            RepairArea::Level(level) => field
-                .levels_ordered()
-                .position(|l| l == level)
-                .and_then(|idx| u32::try_from(idx).ok()),
-        })
-        .collect();
-    for check in source_checks {
-        out.insert(check.clone(), areas.clone());
-    }
-    out
 }
 
 /// Resolves every flagged elevator stop-count-deficit entry (GitHub issue #402) into one

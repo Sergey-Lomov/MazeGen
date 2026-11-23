@@ -106,12 +106,12 @@ describe("problematicRuleCount (GitHub issue #1044)", () => {
   const rules = [{ id: "a", ...empty }, { id: "b", ...empty }, { id: "c", ...empty, ruleDisabled: true }];
 
   it("counts problematic rules and skips disabled ones", () => {
-    expect(problematicRuleCount(rules, [], [])).toBe(2);
+    expect(problematicRuleCount(rules, [], [], [], [])).toBe(2);
   });
 
   it("skips every rule of a disabled stage", () => {
     const stages = [{ ruleIds: ["a"], disabled: true }, { ruleIds: ["b"], disabled: false }];
-    expect(problematicRuleCount(rules, stages, [])).toBe(1);
+    expect(problematicRuleCount(rules, stages, [], [], [])).toBe(1);
   });
 });
 
@@ -133,6 +133,6 @@ describe("emptyLimitsCheckIds (GitHub issue #1044)", () => {
 
   it("makes the rule count as problematic", () => {
     const rules = [{ id: "a", checks: [limitsCheck(0, "{}")] }, { id: "b", checks: [limitsCheck(0, set)] }];
-    expect(problematicRuleCount(rules, [], descriptors)).toBe(1);
+    expect(problematicRuleCount(rules, [], descriptors, [], [])).toBe(1);
   });
 });

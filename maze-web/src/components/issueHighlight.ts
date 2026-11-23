@@ -51,8 +51,8 @@ export interface NormalizedCrossElementEntry<Id> {
  *  adapter (`normalizeIssuePayload` in `IssuesBlock.tsx`/`algorithmRegistry.ts`) maps its wire
  *  shape into this one before calling `resolveIssueHighlight`. Only the variants that carry
  *  structural highlight data need a case in `resolveIssueHighlight`; `none`/`excessiveSccCount`/
- *  `areaDeficit` all resolve to "no highlight" by construction (mirrors `IssuePayload::None` /
- *  `ExcessiveSccCount` / `AreaDeficit` having no edge/node payload). */
+ *  all resolve to "no highlight" by construction (mirrors `IssuePayload::None` /
+ *  `ExcessiveSccCount` having no edge/node payload). */
 export type NormalizedIssuePayload<Id> =
   | { kind: "none" }
   | { kind: "invalidLoop"; groups: NormalizedEdgeGroup<Id>[] }
@@ -66,7 +66,6 @@ export type NormalizedIssuePayload<Id> =
   | { kind: "invalidElevator"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidElevatorStop"; groups: NormalizedRegionGroup<Id>[] }
   | { kind: "invalidDeadEnd"; groups: NormalizedRegionGroup<Id>[] }
-  | { kind: "areaDeficit" }
   | { kind: "missingElevatorStopCount"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidCrossElementGroup"; entries: NormalizedCrossElementEntry<Id>[] }
   | { kind: "indeterminateDistance"; pairs: [Id, Id][] }
@@ -104,9 +103,8 @@ export function resolveIssueHighlight<Id>(payload: NormalizedIssuePayload<Id>): 
   switch (payload.kind) {
     case "none":
     case "excessiveSccCount":
-    case "areaDeficit":
       // No structural highlight data — these issues never point at specific edges/regions on the
-      // canvas (mirrors `IssuePayload::ExcessiveSccCount`/`AreaDeficit`'s doc comments).
+      // canvas (mirrors `IssuePayload::ExcessiveSccCount`'s doc comment).
       return { cycle: null, region: null };
 
     case "invalidLoop": {

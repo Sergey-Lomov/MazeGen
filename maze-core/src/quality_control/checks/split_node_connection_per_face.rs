@@ -43,7 +43,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
         _requirement: (),
     ) {
         let split_points: Vec<(crate::space::LevelId, T::CellId)> =
-            maze.field.split_cells().collect();
+            maze.scoped_split_cells().collect();
         if split_points.is_empty() {
             return;
         }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import { ZoneOverrideTargetPanel } from "../components/features/ZoneOverrideTargetPanel";
+import { ZoneTargetPanel, ZoneTargetPicker } from "../components/features/ZoneTargetPanel";
 import { ZoneOverrideControls, ZoneOverridesSection } from "../components/ZoneOverridesSection";
 import { ZoneOverrideConflictModal } from "../components/features/ZoneOverrideConflictModal";
 import { ZONE_OVERRIDE_PARAM_KEYS } from "../domain/zoneOverrides";
@@ -21,11 +21,11 @@ describe("zone override target panel (GitHub issue #1038)", () => {
 
   it("lists manual zones only until automatic ones are shown, filters by search and picks a zone", async () => {
     const onPick = vi.fn();
-    render(<ZoneOverrideTargetPanel onPick={onPick} onClose={() => {}} />);
+    render(<ZoneTargetPanel title="Pick" onPick={onPick} onClose={() => {}} />);
     expect(screen.getAllByTestId("zone-cell")).toHaveLength(2);
-    fireEvent.click(screen.getByLabelText(m["generation.zone_override_show_auto"]()));
+    fireEvent.click(screen.getByLabelText(m["zones.target_show_auto"]()));
     expect(screen.getAllByTestId("zone-cell")).toHaveLength(3);
-    fireEvent.change(screen.getByPlaceholderText(m["generation.zone_override_search"]()), { target: { value: "gam" } });
+    fireEvent.change(screen.getByPlaceholderText(m["zones.target_search"]()), { target: { value: "gam" } });
     await waitFor(() => expect(screen.getAllByTestId("zone-cell")).toHaveLength(1));
     fireEvent.click(screen.getByTestId("zone-cell"));
     expect(onPick).toHaveBeenCalledWith({ kind: "zone", id: 3 });
@@ -33,8 +33,8 @@ describe("zone override target panel (GitHub issue #1038)", () => {
 
   it("lights the group's zones while a group cell is hovered and picks the group", () => {
     const onPick = vi.fn();
-    render(<ZoneOverrideTargetPanel onPick={onPick} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: m["generation.zone_override_mode_groups"]() }));
+    render(<ZoneTargetPanel title="Pick" onPick={onPick} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: m["zones.target_mode_groups"]() }));
     const cell = screen.getByTestId("zone-group-cell");
     fireEvent.mouseEnter(cell);
     expect(state().hoveredZoneGroupId).toBe(7);
@@ -42,6 +42,16 @@ describe("zone override target panel (GitHub issue #1038)", () => {
     expect(state().hoveredZoneGroupId).toBeNull();
     fireEvent.click(cell);
     expect(onPick).toHaveBeenCalledWith({ kind: "group", id: 7 });
+  });
+
+  it("picker: picks a group with the chosen mode and lists automatic zones at once when asked (GitHub issue #1039)", () => {
+    const onPick = vi.fn();
+    render(<ZoneTargetPicker onPick={onPick} groupModes showAutoByDefault />);
+    expect(screen.getAllByTestId("zone-cell")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: m["zones.target_mode_groups"]() }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "iteration" } });
+    fireEvent.click(screen.getByTestId("zone-group-cell"));
+    expect(onPick).toHaveBeenCalledWith({ kind: "group", id: 7 }, "iteration");
   });
 });
 
@@ -82,7 +92,7 @@ describe("zone overrides section", () => {
     fireEvent.mouseLeave(zoneTarget);
     fireEvent.mouseEnter(groupTarget);
     expect(state().hoveredZoneGroupId).toBe(7);
-    expect(groupTarget.textContent).toContain(m["generation.zone_override_group_prefix"]());
+    expect(groupTarget.textContent).toContain(m["zones.group_prefix"]());
   });
 
   it("shows a switch for an on/off parameter and stores it as 0 or 1", () => {
@@ -144,5 +154,17 @@ describe("zone override bubble click", () => {
     act(() => useMazeStore.setState({ activeFloorId: "f1" }));
     fireEvent.click(screen.getByTestId("zone-override-target"));
     expect(setActiveFloorId).not.toHaveBeenCalled();
+  });
+});
+
+describe("group mode info (GitHub issue #1039)", () => {
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, zones, zoneGroups: [{ id: 7, name: "Team", zoneIds: [2, 3] }] }));
+
+  it("explains both modes in an info dialog", () => {
+    render(<ZoneTargetPicker onPick={() => {}} groupModes />);
+    fireEvent.click(screen.getByRole("button", { name: m["zones.target_mode_groups"]() }));
+    fireEvent.click(screen.getByLabelText(/info/i));
+    expect(screen.getByText(m["zones.target_group_union_info"]())).toBeTruthy();
+    expect(screen.getByText(m["zones.target_group_iteration_info"]())).toBeTruthy();
   });
 });

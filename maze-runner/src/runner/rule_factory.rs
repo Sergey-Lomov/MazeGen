@@ -1,9 +1,9 @@
 use super::check_factory::parse_cell_type_keys;
 use super::qc_kind_registry::build_rule;
-use crate::config::GenerateConfig;
+use crate::config::{GenerateConfig, build_zone_scopes};
 use maze_core::{
     quality_control::{QualityControlEngine, RuleTrait, Stage},
-    space::{Tessellation, cell_type_by_key},
+    space::{MultiLevelField, Tessellation, cell_type_by_key},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -42,6 +42,35 @@ pub fn build_qc_and_repair<T: Tessellation + 'static>(
     // longer a separate "all rules" list a strategy-bearing rule could fail to appear in.
 
     Ok(QualityControlEngine::new(stages))
+}
+
+/// Binds every rule with `zone_scopes` to its scopes (GitHub issue #1039). Needs the built field to
+/// resolve the cells, which `build_qc_and_repair` does not have, so callers run it separately, right
+/// after it. A rule without `zone_scopes` keeps seeing the whole map.
+pub fn bind_zone_scopes<T: Tessellation + 'static>(
+    engine: &mut QualityControlEngine<T>,
+    config: &GenerateConfig,
+    field: &MultiLevelField<T>,
+    from_xy: impl Fn(i32, i32) -> Option<T::CellId>,
+) {
+    let scoped: HashMap<&str, _> = config
+        .stages
+        .iter()
+        .flat_map(|stage| &stage.rules)
+        .filter_map(|rule| Some((rule.id.as_str(), rule.zone_scopes.as_deref()?)))
+        .collect();
+    if scoped.is_empty() {
+        return;
+    }
+    for rule in engine
+        .stages_mut()
+        .iter_mut()
+        .flat_map(|stage| stage.rules_mut())
+    {
+        if let Some(dtos) = scoped.get(rule.id()) {
+            rule.bind_scopes(build_zone_scopes(dtos, field, &from_xy));
+        }
+    }
 }
 
 /// Rejects a `forbid_cell_type_<key>` param whose key the built tessellation instance does not have (GitHub

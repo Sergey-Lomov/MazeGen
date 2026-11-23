@@ -1,4 +1,5 @@
 use super::event::QcEvent;
+use super::scope::ScopeCells;
 use crate::Maze;
 use crate::event_log::ScopeGuard;
 use crate::generation::PresetState;
@@ -44,6 +45,22 @@ pub fn apply_commands<T: Tessellation>(
     maze: &mut Maze<T>,
     preset_state: &PresetState,
     commands: Vec<MutationCommand>,
+    event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+    debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
+) -> ApplyOutcome {
+    apply_commands_scoped(maze, preset_state, commands, None, event_log, debug_state)
+}
+
+/// `apply_commands` for a rule bound to a zone scope (GitHub issue #1039): a command that is not
+/// anchored in `scope` (`ScopeCells::allows`) is declined like any command that no longer holds,
+/// an atomic group as a whole. A backstop behind the strategies' own candidate filtering, not the
+/// way a strategy is meant to stay in its scope. Runs on the full graph, never under a mask: the
+/// anchor is checked against the scope's cells.
+pub fn apply_commands_scoped<T: Tessellation>(
+    maze: &mut Maze<T>,
+    preset_state: &PresetState,
+    commands: Vec<MutationCommand>,
+    scope: Option<&ScopeCells<T>>,
     mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
 ) -> ApplyOutcome {
@@ -54,12 +71,20 @@ pub fn apply_commands<T: Tessellation>(
         // its members' own events) only when every member holds, otherwise declined as a whole.
         if let MutationCommand::Atomic { commands: members } = &cmd {
             let mut rehearsal = maze.draft();
-            let dry = apply_commands(&mut rehearsal, preset_state, members.clone(), None, None);
+            let dry = apply_commands_scoped(
+                &mut rehearsal,
+                preset_state,
+                members.clone(),
+                scope,
+                None,
+                None,
+            );
             if dry.applied == dry.proposed {
-                apply_commands(
+                apply_commands_scoped(
                     maze,
                     preset_state,
                     members.clone(),
+                    scope,
                     event_log.as_deref_mut(),
                     debug_state.as_deref_mut(),
                 );
@@ -138,7 +163,8 @@ pub fn apply_commands<T: Tessellation>(
         // leg was genuinely there and got removed too, not just assumed from the command shape.
         let mut reverse_removed = false;
         let mut replaced_nodes: Option<Vec<NodeId>> = None;
-        let ok = if !endpoints_live {
+        let in_scope = scope.is_none_or(|s| s.allows(maze, &cmd));
+        let ok = if !endpoints_live || !in_scope {
             false
         } else {
             match cmd {

@@ -271,8 +271,9 @@ also do not receive a highlight perimeter.
 `PresetConnectionsRenderer` contains these highlight layers:
 
 - `cellHover`: cell-tool cursor, style 1.1;
-- `splitPanelTarget`: the cell currently edited by the Preset split nodes panel, using full-cell
-  geometry with no inset, a transparent fill, and yellow frame; it follows `presetFocusedPoint`
+- `splitPanelTarget`: the cell currently edited by the Preset split nodes panel, using a thin,
+  transparent-fill violet external frame (`-getCellHighlightInset()`) above the grid; its external
+  geometry keeps it clear of walls and split geometry. It follows `presetFocusedPoint`
   and clears when the panel closes (GitHub issue #606);
 - `hover`: wall/edge cursor, edge or boundary highlight;
 - `linkHover`: panel link bubble, style 1.7;
@@ -297,7 +298,8 @@ rather than staying fixed on the origin cell or being cleared until the drag end
 
 - `cellHover`: cell-tool cursor, style 1.1;
 - `splitPanelTarget`: the cell currently edited by the Manage split nodes panel, using the same
-  full-cell geometry with no inset, a transparent fill, and yellow frame; it follows `postEditFocusedPoint`
+  thin, transparent-fill violet external frame (`-getCellHighlightInset()`) above the grid; its
+  external geometry keeps it clear of walls and split geometry. It follows `postEditFocusedPoint`
   and clears when the panel closes (GitHub issue #606);
 - `hover`: cursor edge/wall highlight;
 - `linkHover`: same-floor link bubble, style 1.7;
