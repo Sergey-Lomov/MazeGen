@@ -16,7 +16,7 @@ import { brightColor } from "../domain/colorMath";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { previewZoneCombine } from "../domain/selectors/zoneCombine";
 import { FIELD_EDITOR_PREVIEW_COLORS } from "../domain/colorTokens";
-import { hexToNumber } from "../styles/palette";
+import { base, hexToNumber } from "../styles/palette";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -130,7 +130,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
       this.redrawAll(state);
     } else {
       // A list hover moves often, and the combine panel's choice changes on every click: only their own layers are redrawn.
-      if (state.hoveredZoneId !== prev.hoveredZoneId) this.redrawHover(state);
+      if (state.hoveredZoneId !== prev.hoveredZoneId || state.hoveredZoneGroupId !== prev.hoveredZoneGroupId) this.redrawHover(state);
       if (state.zoneCombine !== prev.zoneCombine && this.cfg && this.root.visible) this.drawCombinePreview(state, this.cfg);
     }
   }
@@ -214,9 +214,12 @@ export class ZonesRenderer extends BaseFieldRenderer {
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
     // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
-    const shownIds = state.hoveredZoneId !== null ? [state.hoveredZoneId]
+    // A hovered group (GitHub issue #1038) lights all its zones in the info blue, whatever their own colours.
+    const hoveredGroup = state.hoveredZoneGroupId === null ? undefined : state.zoneGroups.find((g) => g.id === state.hoveredZoneGroupId);
+    const shownIds = hoveredGroup ? hoveredGroup.zoneIds
+      : state.hoveredZoneId !== null ? [state.hoveredZoneId]
       : state.zoneEditDraft ? [state.zoneEditDraft.id] : [];
-    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor));
+    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor), hoveredGroup ? hexToNumber(base.info) : undefined);
     this.hoverZone.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],
@@ -257,5 +260,54 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.floorContainer.destroy();
     this.fieldGridContainer.destroy();
     this.gridContainer.destroy();
+  }
+}
+
+/** The zone and group list hover (GitHub issue #1038) outside the zones card, where `ZonesRenderer` is hidden: the
+ *  generation settings name zones and groups in their value rows and light them on the canvas while hovered. Inside the
+ *  zones card the hover is `ZonesRenderer`'s own layer, so this one stays empty there. */
+export class ZoneHoverOverlay {
+  private readonly region: RegionHighlightRenderer;
+  private readonly unsubscribe: () => void;
+
+  constructor(private readonly container: Container) {
+    this.region = new RegionHighlightRenderer(container);
+    this.unsubscribe = useMazeStore.subscribe((state, prev) => {
+      if (
+        state.hoveredZoneId !== prev.hoveredZoneId ||
+        state.hoveredZoneGroupId !== prev.hoveredZoneGroupId ||
+        state.openCard !== prev.openCard ||
+        state.zones !== prev.zones ||
+        state.activeFloorId !== prev.activeFloorId
+      ) this.redraw(state);
+    });
+  }
+
+  private redraw(state: MazeState): void {
+    const cfg = state.floorFields[state.activeFloorId]?.fieldConfig;
+    if (!cfg) return;
+    const group = state.hoveredZoneGroupId === null ? undefined : state.zoneGroups.find((g) => g.id === state.hoveredZoneGroupId);
+    const ids = state.openCard === "zones" ? [] : group ? group.zoneIds : state.hoveredZoneId !== null ? [state.hoveredZoneId] : [];
+    const hover = ids.length === 0
+      ? null
+      : buildZonesHoverRegion(filterZonesToField(state.zones, resolveFieldAtOf(state)), ids, activeFloorIndex(state), state.zoneColorOverrides, group ? hexToNumber(base.info) : undefined);
+    this.region.render({
+      nodes: hover?.nodes ?? [],
+      regionGroups: [],
+      groups: (hover?.groups ?? []).map((g) => ({ ...g, fillAlpha: HOVER_FILL_ALPHA, borderColor: brightColor(g.color) })),
+      color: 0,
+      width: 0,
+      alpha: 0,
+      cfg,
+      skipPerimeter: true,
+      borderWidth: HOVER_BORDER_WIDTH,
+      inset: regionInset(HOVER_BORDER_WIDTH),
+    });
+  }
+
+  destroy(): void {
+    this.unsubscribe();
+    this.region.destroy();
+    this.container.destroy();
   }
 }

@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, MazeState, ZonesState, ZonesActions } from "../storeTypes";
 import type { ZoneCellWire } from "../../wasm/mazeService";
-import type { ZoneGroup } from "../zonesTypes";
+import type { ZoneGroup, ZoneOverride, ZoneOverrideTarget } from "../zonesTypes";
+import { overrideWithoutGroup, overrideWithoutZone } from "../../domain/zoneOverrides";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { activeFieldCellKeys, activeFloorIndexOf, editedZoneOf, zonePointsOnFloor } from "../fieldEditTarget";
 import { isFieldOpError } from "../../domain/fieldOps";
@@ -18,6 +19,8 @@ export const zonesProjectState = {
   zoneGroups: [],
   nextZoneGroupId: 1,
   zoneColorOverrides: {},
+  zoneOverrides: [],
+  nextZoneOverrideId: 1,
 } satisfies Partial<ZonesState>;
 
 /** Resting values of the zones UI state: modes, panels, drafts, hover and toggles. Loading a project resets them. */
@@ -35,6 +38,7 @@ export const zonesTransientUi = {
   zonesGrouping: { auto: "none", manual: "none" },
   zonesFocusedGroupId: null,
   hoveredZoneId: null,
+  hoveredZoneGroupId: null,
   zoneEditDraft: null,
   zoneEditDraftColor: null,
   zoneEditIsNew: false,
@@ -83,8 +87,24 @@ function withoutZone(s: MazeState, id: number): Partial<MazeState> {
     ...(s.zoneEditDraft?.id === id ? noZoneEdit : {}),
     ...(s.zoneCombine?.otherId === id ? { zoneCombine: { ...s.zoneCombine, otherId: null } } : {}),
     zoneColorOverrides: withoutKey(s.zoneColorOverrides, id),
+    zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutZone(o, id)),
   };
 }
+
+/** The patch applying `change` to one zone override. */
+function targetExists(s: MazeState, target: ZoneOverrideTarget): boolean {
+  return target.kind === "zone" ? s.zones.some((z) => z.id === target.id) : s.zoneGroups.some((g) => g.id === target.id);
+}
+
+const targetIds = (target: ZoneOverrideTarget): Pick<ZoneOverride, "zoneIds" | "groupIds"> => ({
+  zoneIds: target.kind === "zone" ? [target.id] : [],
+  groupIds: target.kind === "group" ? [target.id] : [],
+});
+
+function withOverrideChange(s: MazeState, id: number, change: (o: ZoneOverride) => ZoneOverride): Partial<MazeState> {
+  return { zoneOverrides: s.zoneOverrides.map((o) => (o.id === id ? change(o) : o)) };
+}
+
 
 /** The patch that leaves the group editor discarding the draft: leaving any way but "Done" is a cancel. */
 function discardingGroupEdit(s: MazeState): Partial<MazeState> {
@@ -141,6 +161,25 @@ function committingZoneEdit(s: MazeState): Partial<MazeState> {
 export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & ZonesActions> = (set, get) => ({
   ...zonesInitialState,
 
+  addZoneOverride: (params, target) => set((s) => (targetExists(s, target) ? {
+    zoneOverrides: [...s.zoneOverrides, { id: s.nextZoneOverrideId, ...targetIds(target), params }],
+    nextZoneOverrideId: s.nextZoneOverrideId + 1,
+  } : {})),
+  removeZoneOverride: (id) => set((s) => ({ zoneOverrides: s.zoneOverrides.filter((o) => o.id !== id) })),
+  // A row targets one zone or one group; an id of nothing is ignored.
+  setZoneOverrideTarget: (overrideId, target) => set((s) => (targetExists(s, target) ? withOverrideChange(s, overrideId, (o) => ({ ...o, ...targetIds(target) })) : {})),
+  setZoneOverrideParam: (overrideId, key, value) => set((s) => withOverrideChange(s, overrideId, (o) => {
+    const params = { ...o.params };
+    if (value === null) delete params[key];
+    else params[key] = value;
+    const { elevator_span_min: min, elevator_span_max: max } = params;
+    if (min !== undefined && max !== undefined && max < min) {
+      if (key === "elevator_span_min") params.elevator_span_max = min;
+      else params.elevator_span_min = max;
+    }
+    return { ...o, params };
+  })),
+
   // Closing the panel is a cancel of an unconfirmed group edit.
   setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null })),
   setZoneGroupsListMode: (mode) => set({ zoneGroupsListMode: mode, hoveredZoneId: null }),
@@ -156,6 +195,8 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   removeZoneGroup: (id) => set((s) => (isAutoGroupId(id) ? {} : {
     zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
     zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
+    zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutGroup(o, id)),
+    ...(s.hoveredZoneGroupId === id ? { hoveredZoneGroupId: null } : {}),
     ...(s.zonesFocusedGroupId === id ? { zonesFocusedGroupId: null } : {}),
     ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
   })),
@@ -200,6 +241,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   }),
   clearZonesFocusedGroup: () => set({ zonesFocusedGroupId: null }),
   setHoveredZone: (id) => set({ hoveredZoneId: id }),
+  setHoveredZoneGroup: (id) => set({ hoveredZoneGroupId: id }),
   toggleZoneVisibility: (id) => set((s) => ({
     hiddenZoneIds: s.hiddenZoneIds.includes(id) ? s.hiddenZoneIds.filter((hidden) => hidden !== id) : [...s.hiddenZoneIds, id],
   })),

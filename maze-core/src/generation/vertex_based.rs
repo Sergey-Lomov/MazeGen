@@ -17,7 +17,7 @@ use super::split_logic::{SplitOutcome, StartReassignment, try_split_src};
 use super::split_pattern::{PatternVariantCache, SplitGenerationConfig};
 use super::{
     ElementPlacementRules, ElementsConfig, GeneratedElementKind, GenerationParams, PresetState,
-    can_connect, gaussian_weighted_index, try_add_edge, try_add_edge_kind,
+    ZoneOverrideTable, can_connect, gaussian_weighted_index, try_add_edge, try_add_edge_kind,
 };
 use crate::event_log::{EventLog, ScopeGuard};
 use crate::graph::{EdgeKind, Graph};
@@ -116,9 +116,33 @@ pub(super) struct GenState {
     pub(super) element_placement_rules: Option<ElementPlacementRules>,
     /// Split-pattern variants per (pattern, cell binding), computed once per run.
     pub(super) pattern_variants: PatternVariantCache,
+    /// Per-zone parameter overrides (GitHub issue #1038); empty means every node uses the
+    /// maze-wide parameters.
+    pub(super) zone_overrides: ZoneOverrideTable,
 }
 
 impl GenState {
+    /// The maze-wide `params` / `elements` with the zone overrides of `src`'s cell applied. A node
+    /// minted during generation (a split node) is not in the table, so it takes its cell's first
+    /// node's overrides. `None` when no override applies.
+    pub(super) fn zone_params_for<T: Tessellation>(
+        &self,
+        field: &MultiLevelField<T>,
+        src: NodeId,
+        params: &GenerationParams,
+        elements: &ElementsConfig,
+    ) -> Option<(GenerationParams, ElementsConfig)> {
+        if self.zone_overrides.is_empty() {
+            return None;
+        }
+        let found = self.zone_overrides.get(src).or_else(|| {
+            let level = field.level_of(src)?;
+            let cell = field.cell_of(src)?;
+            self.zone_overrides.get(field.node_at(level, cell)?)
+        })?;
+        Some(found.apply(params, elements))
+    }
+
     #[cfg(test)]
     pub(super) fn new(graph: &Graph, seed: u64, start: NodeId) -> Self {
         Self::new_with_rules(graph, seed, start, None)
@@ -142,6 +166,7 @@ impl GenState {
             all_nodes,
             element_placement_rules,
             pattern_variants: PatternVariantCache::default(),
+            zone_overrides: ZoneOverrideTable::default(),
         };
         // preset_connected nodes are NOT added to visited upfront — this keeps them visible
         // as connection targets for free_neighbors. Exception: start itself may be preset_connected
@@ -189,6 +214,7 @@ pub fn generate<T: Tessellation>(
         params,
         elements,
         None,
+        ZoneOverrideTable::default(),
         split_config,
         preset_state,
         start_reassignment,
@@ -207,6 +233,7 @@ pub fn generate_with_rules<T: Tessellation>(
     params: &GenerationParams,
     elements: &ElementsConfig,
     element_placement_rules: Option<ElementPlacementRules>,
+    zone_overrides: ZoneOverrideTable,
     split_config: &SplitGenerationConfig,
     preset_state: &PresetState,
     start_reassignment: &mut Option<StartReassignment>,
@@ -214,6 +241,7 @@ pub fn generate_with_rules<T: Tessellation>(
     mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
     let mut state = GenState::new_with_rules(graph, seed, start, element_placement_rules);
+    state.zone_overrides = zone_overrides;
     if let Some(log) = event_log.as_deref_mut() {
         log.emit(VertexBasedEvent::StartVisited { node: start });
     }
@@ -695,6 +723,14 @@ fn step_from_frontier<T: Tessellation>(
 
     state.frontier.remove(fi);
     state.in_frontier.remove(&src);
+
+    // Zone overrides replace every parameter of this step except `depth_first`, which already
+    // picked `src` above.
+    let zone_params = state.zone_params_for(field, src, params, elements);
+    let (params, elements) = match &zone_params {
+        Some((p, e)) => (p, e),
+        None => (params, elements),
+    };
 
     let outcome = try_split_src(
         graph,

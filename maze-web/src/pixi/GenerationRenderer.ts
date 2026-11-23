@@ -21,6 +21,8 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape,
 import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "../domain/colorTokens";
+import { resolveCells } from "../domain/fieldEditUtils";
+import { buildPresetWallGroups } from "./selectors/presetSelectors";
 import { resolveDebugValueColor } from "./debugValueColors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { oneWayIndicatorSpan } from "./renderers/wallUtils";
@@ -30,6 +32,7 @@ export class GenerationRenderer {
   private readonly gridContainer: Container;
   private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
+  private readonly fieldGridContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
   private readonly splitJunctionContainer: Container;
@@ -41,6 +44,7 @@ export class GenerationRenderer {
   private readonly kruskalDsuHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly fieldGrid: GridRenderer;
   private readonly seamLayer: SeamArrowLayer;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
@@ -88,6 +92,7 @@ export class GenerationRenderer {
     this.gridContainer = new Container();
     this.seamArrowContainer = new Container();
     this.floorContainer = new Container();
+    this.fieldGridContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
     this.splitJunctionContainer = new Container();
@@ -100,6 +105,7 @@ export class GenerationRenderer {
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
+    viewport.addChild(this.fieldGridContainer);
     // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
     viewport.addChild(this.seamArrowContainer);
     viewport.addChild(this.closedCellsContainer);
@@ -115,6 +121,7 @@ export class GenerationRenderer {
     viewport.addChild(this.kruskalDsuHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "generation");
+    this.fieldGrid = new GridRenderer(this.fieldGridContainer, "generation field");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
@@ -152,6 +159,9 @@ export class GenerationRenderer {
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors ||
         state.floorFields[state.activeFloorId].fieldConfig !== prev.floorFields[prev.activeFloorId]?.fieldConfig ||
+        state.floorFields[state.activeFloorId].fieldPoints !== prev.floorFields[prev.activeFloorId]?.fieldPoints ||
+        state.floorFields[state.activeFloorId].fieldEditMode !== prev.floorFields[prev.activeFloorId]?.fieldEditMode ||
+        state.smoothPrimitives !== prev.smoothPrimitives ||
         state.activeFieldConfig !== prev.activeFieldConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugArena !== prev.debugArena ||
@@ -175,6 +185,7 @@ export class GenerationRenderer {
     // Nothing to mark on the field before a maze is generated.
     this.seamArrowContainer.visible = visible && state._generatedNodes.length > 0;
     this.floorContainer.visible = visible;
+    this.fieldGridContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
     this.splitJunctionContainer.visible = visible;
@@ -238,8 +249,16 @@ export class GenerationRenderer {
     const unscopedEdges = debugMazeView ? debugMazeView.edges : state._generatedEdges;
     const activeFloorIndex = state.floors.findIndex(f => f.id === state.activeFloorId);
 
-    const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
+    // Before a maze exists the field itself is drawn (floor, inner grid, outer walls), so there is something to
+    // light zones against (GitHub issue #1038).
+    const beforeGeneration = state._generatedNodes.length === 0;
+    const field = state.floorFields[state.activeFloorId];
+    const fieldCells = beforeGeneration
+      ? resolveCells(cfg, field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined, state.smoothPrimitives)
+      : null;
+    const cells: [number, number][] = fieldCells ?? view.nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+    this.fieldGrid.render({ viewport: this.viewport, color: canvas.wall.undecided }, cfg, fieldCells ?? []);
 
     const nodeById = new Map(view.nodes.map(n => [n.id, n]));
     const unscopedNodeById = new Map(unscopedNodes.map(n => [n.id, n]));
@@ -299,7 +318,8 @@ export class GenerationRenderer {
       this.geometryCache.splitWallFaces,
       this.geometryCache.splitSpecialShapes,
     );
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, undefined, undefined, extraWalls, noCapPoints);
+    const wallEdges = fieldCells ? buildPresetWallGroups(fieldCells, new Map(), cfg).preset : this.geometryCache.wallEdges;
+    this.walls.render({ edges: wallEdges }, cfg, undefined, undefined, extraWalls, noCapPoints);
     this.splitJunctions.render({
       passages: this.geometryCache.splitPassages,
       wallFaces: this.geometryCache.splitWallFaces,
@@ -410,6 +430,7 @@ export class GenerationRenderer {
     this.seamLayer.destroy();
     this.seamArrowContainer.destroy();
     this.grid.destroy();
+    this.fieldGrid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
@@ -422,6 +443,7 @@ export class GenerationRenderer {
     this.kruskalDsuHighlight.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
+    this.fieldGridContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();

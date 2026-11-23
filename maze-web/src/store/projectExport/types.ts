@@ -2,7 +2,7 @@ import type { FieldShape, PresetFieldShape, TessellationKind } from "../../field
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
 import type { Crease } from "../creases";
 import type { Zone } from "../../wasm/mazeService";
-import type { ZoneGroup } from "../zonesTypes";
+import type { ZoneGroup, ZoneOverride } from "../zonesTypes";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
 import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
@@ -199,6 +199,9 @@ export interface ProjectFileZones {
   nextGroupId: number;
   /** Explicit zone colours (0xRRGGBB) by zone id. */
   colorOverrides: Record<string, number>;
+  /** Per-zone generation parameter overrides (GitHub issue #1038); absent in files saved before them. */
+  generationOverrides?: ZoneOverride[];
+  nextOverrideId?: number;
 }
 
 export interface ProjectFile {

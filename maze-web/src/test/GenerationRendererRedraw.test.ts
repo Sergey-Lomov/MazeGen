@@ -30,10 +30,12 @@ const FIELD = fieldOf("square", { shape: "rect", cols: 4, rows: 1 });
 const NODES = [0, 1, 2, 3].map((x) => ({ id: x, x, y: 0, i: 0 }));
 const EDGES = [{ from: 0, to: 1, kind: "basic" as const }];
 
-// `GridRenderer.render` runs exactly once per `renderAll`, so its call count is the redraw count.
+// The outer grid's `GridRenderer.render` (no explicit colour) runs exactly once per `renderAll`, so its call count is the
+// redraw count; the inner field grid draws with its own colour.
 describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
   let renderer: GenerationRenderer | null = null;
   let renders: ReturnType<typeof vi.spyOn>;
+  const redraws = () => renders.mock.calls.filter(([options]: [{ color?: number }]) => options.color === undefined).length;
 
   const baseState = (patch: Partial<ReturnType<typeof useMazeStore.getState>> = {}) => ({
     ...baseStoreState(),
@@ -56,13 +58,13 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
   it("draws once on construction when the layer starts visible", () => {
     useMazeStore.setState(baseState({ openCard: "generation" }));
     renderer = new GenerationRenderer(new Container());
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("draws once on construction when the layer starts hidden", () => {
     useMazeStore.setState(baseState({ openCard: "field" } as never));
     renderer = new GenerationRenderer(new Container());
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("draws once when the first maze arrives together with the visibility change", () => {
@@ -72,7 +74,7 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
 
     // The empty-to-generated transition flips the seam arrows' visibility and changes the data in one update.
     useMazeStore.setState({ _generatedNodes: NODES, _generatedEdges: EDGES, start: 0, finish: 3 });
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("draws once when the card opens and the data changes in the same update", () => {
@@ -81,7 +83,7 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
     renders.mockClear();
 
     useMazeStore.setState({ openCard: "generation", _generatedNodes: NODES, _generatedEdges: EDGES });
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("draws once per data-only change while the layer stays visible", () => {
@@ -90,7 +92,7 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
     renders.mockClear();
 
     useMazeStore.setState({ _generatedEdges: [...EDGES] });
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("draws once when only the visibility changes", () => {
@@ -99,7 +101,7 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
     renders.mockClear();
 
     useMazeStore.setState({ openCard: "generation" });
-    expect(renders).toHaveBeenCalledTimes(1);
+    expect(redraws()).toBe(1);
   });
 
   it("does not draw while the layer is hidden and nothing relevant changed", () => {

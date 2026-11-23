@@ -310,6 +310,9 @@ pub struct GenerationConfig {
     /// `CustomVertexBased`-only (GitHub issue #222) automatic split-point assignment settings.
     /// Ignored by every other generation algorithm.
     pub split_generation: crate::generation::split_pattern::SplitGenerationConfig,
+    /// Per-zone parameter overrides (GitHub issue #1038), resolved per node. Only
+    /// `CustomVertexBased` reads them.
+    pub zone_overrides: crate::generation::ZoneOverrideTable,
 }
 
 impl Default for GenerationConfig {
@@ -324,6 +327,7 @@ impl Default for GenerationConfig {
             locked_nodes: vec![],
             split_points: vec![],
             split_generation: crate::generation::split_pattern::SplitGenerationConfig::default(),
+            zone_overrides: crate::generation::ZoneOverrideTable::default(),
         }
     }
 }

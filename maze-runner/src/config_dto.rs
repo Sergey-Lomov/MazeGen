@@ -148,6 +148,41 @@ pub struct ElementsConfigDto {
         std::collections::BTreeMap<String, std::collections::BTreeMap<String, bool>>,
 }
 
+/// Parameters one zone override sets (GitHub issue #1038); an omitted key keeps the maze-wide
+/// value. Mirrors `maze_core::generation::ParamOverrides`.
+#[derive(Deserialize, Default)]
+pub struct ZoneOverrideParamsDto {
+    pub corridor_chance: Option<f64>,
+    pub branching: Option<f64>,
+    pub directionality: Option<f64>,
+    pub cyclicity: Option<f64>,
+    pub one_way_chance: Option<f64>,
+    pub teleport_chance: Option<f64>,
+    pub teleport_one_way_chance: Option<f64>,
+    pub split_chance: Option<f64>,
+    pub cross_floor_teleport_balance: Option<f64>,
+    pub vertical_chance: Option<f64>,
+    pub vertical_passage_elevator_balance: Option<f64>,
+    pub one_way_vertical_passage_chance: Option<f64>,
+    pub vertical_up_down_balance: Option<f64>,
+    pub elevator_span_min: Option<usize>,
+    pub elevator_span_max: Option<usize>,
+    pub elevator_branching: Option<f64>,
+    pub allow_non_consecutive_elevator_floors: Option<bool>,
+}
+
+/// One zone with the parameters it overrides (GitHub issue #1038). `cells` are `[floor, x, y]`,
+/// `floor` the index in `level_fields`; a cell outside the tessellation, the field or the floor
+/// range is ignored. Where zones overlap, the smaller `zone_id` wins per parameter.
+#[derive(Deserialize)]
+pub struct ZoneOverrideDto {
+    pub zone_id: u32,
+    #[serde(default)]
+    pub cells: Vec<[i32; 3]>,
+    #[serde(default)]
+    pub params: ZoneOverrideParamsDto,
+}
+
 /// Wire shape for `maze_core::generation::SplitFaceRequirement` (GitHub issue #222).
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

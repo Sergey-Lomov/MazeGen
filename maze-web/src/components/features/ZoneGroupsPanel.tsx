@@ -63,7 +63,8 @@ export function ZoneGroupsPanel({ onClose }: { onClose: () => void }) {
 /** One group card. By default it has the pencil and trash, its zone
  *  bubbles go to the zone's floor on click, a click on the card opens the zones list grouped by groups, on this
  *  group's section (GitHub issue #1036); `onPick` makes the whole card a plain button instead (the dialog
- *  that adds a zone to a group): no actions, no bubble reactions. Hovering a group highlights nothing. */
+ *  that adds a zone to a group, or picks an override's target): no actions, no bubble reactions. Hovering a card highlights the
+ *  group's zones in the info blue only while picking. */
 export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => void }) {
   const zones = useMazeStore((s) => s.zones);
   const overrides = useMazeStore((s) => s.zoneColorOverrides);
@@ -72,6 +73,7 @@ export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => 
   const removeZoneGroup = useMazeStore((s) => s.removeZoneGroup);
   const setEditing = useMazeStore((s) => s.setZoneGroupEditId);
   const showZonesOfGroup = useMazeStore((s) => s.showZonesOfGroup);
+  const setHoverGroup = useMazeStore((s) => s.setHoveredZoneGroup);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const name = zoneGroupDisplayName(group);
   const colors = zoneColors(zones, overrides);
@@ -91,7 +93,7 @@ export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => 
       <ListCell
         data-testid="zone-group-cell"
         {...(onPick
-          ? { onClick: onPick, style: { cursor: "pointer" } }
+          ? { onClick: onPick, style: { cursor: "pointer" }, onMouseEnter: () => setHoverGroup(group.id), onMouseLeave: () => setHoverGroup(null) }
           : { onClick: () => showZonesOfGroup(group.id), style: { cursor: "pointer" } })}
         title={name}
         truncateTitle

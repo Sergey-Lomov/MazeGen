@@ -56,7 +56,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     floorFields,
     floorTopology: state.floorTopology,
     ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
-    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.some((group) => !isAutoGroupId(group.id))
+    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.some((group) => !isAutoGroupId(group.id)) || state.zoneOverrides.length > 0
       ? {
           zones: {
             zones: state.zones.filter((zone) => zone.kind !== "auto"),
@@ -64,6 +64,8 @@ export function serializeProject(state: MazeState): ProjectFile {
             groups: state.zoneGroups.filter((group) => !isAutoGroupId(group.id)),
             nextGroupId: state.nextZoneGroupId,
             colorOverrides: state.zoneColorOverrides,
+            generationOverrides: state.zoneOverrides,
+            nextOverrideId: state.nextZoneOverrideId,
           },
         }
       : {}),

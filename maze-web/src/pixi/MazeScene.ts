@@ -8,7 +8,7 @@ import { FieldEditController } from "./FieldEditController";
 import { cellsInActiveField, fieldToolsActive, zoneEditActive } from "../store/fieldEditTarget";
 import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
-import { ZonesRenderer } from "./ZonesRenderer";
+import { ZonesRenderer, ZoneHoverOverlay } from "./ZonesRenderer";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
 import { PostEditRenderer } from "./PostEditRenderer";
@@ -91,6 +91,8 @@ export class MazeScene {
   private primitivePreviewContainer: Container;
   private zonesRenderer: ZonesRenderer;
   private zonesContainer: Container;
+  private zoneHoverContainer: Container;
+  private zoneHoverOverlay: ZoneHoverOverlay;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
   private seamHoverTracker: SeamHoverTracker;
@@ -144,6 +146,7 @@ export class MazeScene {
     this.fieldEditorOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
     this.zonesContainer = new Container();
+    this.zoneHoverContainer = new Container();
     this.presetConnectionsContainer = new Container();
     this.postEditContainer = new Container();
     this.tessellationContainer = new Container();
@@ -158,6 +161,7 @@ export class MazeScene {
     // highlights and shapes read over the zones.
     this.syncedLayers = [
       this.zonesContainer,
+      this.zoneHoverContainer,
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
@@ -194,6 +198,7 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.zonesRenderer = new ZonesRenderer(this.zonesContainer);
+    this.zoneHoverOverlay = new ZoneHoverOverlay(this.zoneHoverContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.seamHoverTracker = new SeamHoverTracker(this.viewport, this.app.stage);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
@@ -751,6 +756,7 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.zonesRenderer.destroy();
+    this.zoneHoverOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
     this.seamHoverTracker.destroy();
     this.presetConnectionsController.destroy();
