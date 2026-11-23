@@ -15,8 +15,14 @@ import {
 import { assertObject, assertNumber } from "./validatePrimitives";
 import { validateQuality } from "./validateSections";
 
+/** A preset carries no zone scopes (GitHub issue #1039): zone ids belong to the project it was saved from. */
 export function serializeQualityPreset(state: MazeState): QualityPresetFile {
-  return { kind: QUALITY_PRESET_KIND, version: QUALITY_PRESET_VERSION, quality: serializeQuality(state) };
+  const quality = serializeQuality(state);
+  return {
+    kind: QUALITY_PRESET_KIND,
+    version: QUALITY_PRESET_VERSION,
+    quality: { ...quality, rules: quality.rules.map(({ zoneScope: _zoneScope, ...rule }) => rule) },
+  };
 }
 
 /** Validates a quality preset file. Keys missing in older presets fall back to defaults through

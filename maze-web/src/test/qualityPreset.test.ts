@@ -19,6 +19,7 @@ import {
 } from "../store/projectExport";
 import type { QcRuleState, RepairStageState } from "../store/storeTypes";
 import { rulesFromFile } from "../store/slices/generationSliceHelpers";
+import { validateQcRule } from "../store/projectExport/validateSections";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -164,6 +165,41 @@ describe("quality preset (GitHub issue #751)", () => {
   it("rejects unrelated JSON with a plain error", () => {
     expect(() => parseQualityPreset({ foo: 1 })).toThrow("Not a quality preset file");
     expect(() => parseQualityPreset({ foo: 1 })).not.toThrow(FileKindMismatchError);
+  });
+});
+
+describe("zone scope in files (GitHub issue #1039)", () => {
+  const zoneScope = { kind: "group" as const, id: 2, mode: "iteration" as const };
+  const scopedRules = [rule("rule_a", ["min_loop_length"], null, { zoneScope }), rule("rule_b", ["max_loop_length"], null)];
+  const setScoped = () => useMazeStore.setState({ rules: scopedRules, stages: [stage("s", ["rule_a", "rule_b"])] });
+
+  it("is saved with the project and read back, absent meaning the whole map", () => {
+    setScoped();
+    const raw = JSON.parse(JSON.stringify(serializeProject(useMazeStore.getState())));
+    const [a, b] = raw.quality.rules.map((r: unknown) => validateQcRule(r, "rule"));
+    expect(a.zoneScope).toEqual(zoneScope);
+    expect("zoneScope" in b).toBe(false);
+  });
+
+  it("defaults a missing group mode to union and rejects malformed scopes", () => {
+    const base = { id: "r", checks: [], disabled: false };
+    const scope = (zoneScope: unknown) => ({ ...base, zoneScope });
+    expect(validateQcRule(scope({ kind: "group", id: 1 }), "r").zoneScope).toEqual({ kind: "group", id: 1, mode: "union" });
+    expect(validateQcRule(scope({ kind: "zone", id: 4 }), "r").zoneScope).toEqual({ kind: "zone", id: 4 });
+    expect(() => validateQcRule(scope({ kind: "floor", id: 1 }), "r")).toThrow(/kind/);
+    expect(() => validateQcRule(scope({ kind: "group", id: 1, mode: "all" }), "r")).toThrow(/mode/);
+    expect(() => validateQcRule(scope({ kind: "zone", id: "1" }), "r")).toThrow();
+  });
+
+  it("is left out of a quality preset on save and on load", () => {
+    setScoped();
+    const raw = JSON.parse(JSON.stringify(serializeQualityPreset(useMazeStore.getState())));
+    expect(raw.quality.rules.some((r: QcRuleState) => "zoneScope" in r)).toBe(false);
+
+    const withScope = { ...raw, quality: { ...raw.quality, rules: raw.quality.rules.map((r: object) => ({ ...r, zoneScope })) } };
+    resetStore();
+    useMazeStore.getState().loadQualityPreset(parseQualityPreset(withScope).quality);
+    expect(useMazeStore.getState().rules.some((r) => r.zoneScope !== undefined)).toBe(false);
   });
 });
 

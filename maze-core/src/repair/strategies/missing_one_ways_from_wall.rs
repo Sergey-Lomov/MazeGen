@@ -1,11 +1,9 @@
 use super::missing_one_ways_shared::{ProposedPairs, canonical_pair, pick_random_pairs};
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{attempts_limit, reserve_target, src_mode};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::cmd_add_directed_edge;
 use crate::quality_control::MissingOneWaysIssue;
-use crate::quality_control::RepairArea;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -44,7 +42,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -55,55 +53,46 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         let mut commands = Vec::new();
         let mut total_found: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
-                continue;
-            }
-            let target = reserve_target(params, missing);
-            let found = pick_random_pairs(
-                maze,
-                rng,
-                target,
-                area,
-                src_mode,
-                max_failed_attempts,
-                |src, dst, rng| {
-                    if proposed.contains(&canonical_pair(src, dst)) {
-                        return false;
-                    }
-                    // A wall: no edge of any kind in either direction between the pair.
-                    if maze.graph.edge_between(src, dst).is_some()
-                        || maze.graph.edge_between(dst, src).is_some()
-                    {
-                        return false;
-                    }
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
+        let found = pick_random_pairs(
+            maze,
+            rng,
+            target,
+            src_mode,
+            max_failed_attempts,
+            |src, dst, rng| {
+                if proposed.contains(&canonical_pair(src, dst)) {
+                    return false;
+                }
+                // A wall: no edge of any kind in either direction between the pair.
+                if maze.graph.edge_between(src, dst).is_some()
+                    || maze.graph.edge_between(dst, src).is_some()
+                {
+                    return false;
+                }
 
-                    proposed.insert(canonical_pair(src, dst));
-                    let fwd_cmds = cmd_add_directed_edge(src, dst, preset_state);
-                    let bwd_cmds = cmd_add_directed_edge(dst, src, preset_state);
-                    let cmds = if !fwd_cmds.is_empty() && !bwd_cmds.is_empty() {
-                        if rng.random::<bool>() {
-                            fwd_cmds
-                        } else {
-                            bwd_cmds
-                        }
-                    } else if !fwd_cmds.is_empty() {
+                proposed.insert(canonical_pair(src, dst));
+                let fwd_cmds = cmd_add_directed_edge(src, dst, preset_state);
+                let bwd_cmds = cmd_add_directed_edge(dst, src, preset_state);
+                let cmds = if !fwd_cmds.is_empty() && !bwd_cmds.is_empty() {
+                    if rng.random::<bool>() {
                         fwd_cmds
-                    } else if !bwd_cmds.is_empty() {
-                        bwd_cmds
                     } else {
-                        return false;
-                    };
-                    commands.extend(cmds);
-                    true
-                },
-            );
-            deficits.consume_many(area, found);
-            total_found += found;
-        }
+                        bwd_cmds
+                    }
+                } else if !fwd_cmds.is_empty() {
+                    fwd_cmds
+                } else if !bwd_cmds.is_empty() {
+                    bwd_cmds
+                } else {
+                    return false;
+                };
+                commands.extend(cmds);
+                true
+            },
+        );
+        total_found += found;
 
         if total_found == 0 {
             return (RepairResult::Failed, vec![]);
@@ -119,7 +108,6 @@ mod tests {
     use super::*;
     use crate::IdGenerator;
     use crate::graph::{EdgeKind, Graph};
-    use crate::quality_control::RepairArea;
     use crate::random::MazeRng;
     use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
@@ -127,12 +115,7 @@ mod tests {
     use std::sync::Arc;
 
     fn missing_issue(missing: u32) -> MissingOneWaysIssue {
-        let entries = if missing == 0 {
-            vec![]
-        } else {
-            vec![(RepairArea::WholeMaze, missing)]
-        };
-        MissingOneWaysIssue::new_from_check("min_one_way_count", entries)
+        MissingOneWaysIssue::new_from_check("min_one_way_count", missing)
     }
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
@@ -292,85 +275,6 @@ mod tests {
             "must use the only unblocked direction"
         );
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
-    }
-
-    #[test]
-    fn apply_restricts_candidates_to_the_named_level() {
-        let mut ids = IdGenerator::new();
-        let field_a =
-            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-        let field_b =
-            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), [field_a]);
-        let level_b = mf.add_level(field_b);
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-        let issue = MissingOneWaysIssue::new_from_check(
-            "min_one_way_count",
-            vec![(RepairArea::Level(level_b), 2)],
-        );
-        let mut rng = MazeRng::seed_from_u64(42);
-        let result = apply_and_commit_default(
-            &MissingOneWaysFromWallStrategy,
-            &issue,
-            &mut maze,
-            &mut rng,
-            &PresetState::empty(),
-        );
-        assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert!(maze.graph.edges().count() > 0);
-        for edge in maze.graph.edges() {
-            assert_eq!(maze.field.level_of(edge.from), Some(level_b));
-            assert_eq!(maze.field.level_of(edge.to), Some(level_b));
-        }
-    }
-
-    #[test]
-    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-        // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
-        // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 edges total, not 6.
-        let mut ids = IdGenerator::new();
-        let field_a =
-            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-        let field_b =
-            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-        let field_c =
-            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), [field_a]);
-        let level_b = mf.add_level(field_b);
-        let level_c = mf.add_level(field_c);
-        let level_a = mf.levels_ordered().next().unwrap();
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-        let issue = MissingOneWaysIssue::new_from_check(
-            "min_one_way_count",
-            vec![
-                (RepairArea::Level(level_a), 1),
-                (RepairArea::Level(level_b), 1),
-                (RepairArea::Level(level_c), 1),
-                (RepairArea::WholeMaze, 3),
-            ],
-        );
-        let mut rng = MazeRng::seed_from_u64(11);
-        let result = apply_and_commit_default(
-            &MissingOneWaysFromWallStrategy,
-            &issue,
-            &mut maze,
-            &mut rng,
-            &PresetState::empty(),
-        );
-        assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), 3, "3 edges total, not 6");
     }
 
     #[test]

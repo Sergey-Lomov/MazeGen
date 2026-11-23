@@ -118,8 +118,7 @@ fn prepare<T: Tessellation>(
             &config.elements.cell_type_restrictions,
         )?,
     );
-    gen_config.zone_overrides =
-        build_zone_overrides(&config.zone_overrides, &field, cell_from_xy);
+    gen_config.zone_overrides = build_zone_overrides(&config.zone_overrides, &field, cell_from_xy);
 
     Ok(Prepared {
         seed,

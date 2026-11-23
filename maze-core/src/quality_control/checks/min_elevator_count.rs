@@ -1,7 +1,7 @@
 use super::elevator_core::elevator_groups;
 use crate::Maze;
+use crate::quality_control::MissingElevatorsIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingElevatorsIssue, RepairArea};
 use crate::space::Tessellation;
 use rand::RngCore;
 
@@ -33,11 +33,11 @@ impl<T: Tessellation> Check<T, MissingElevatorsIssue> for MinElevatorCountCheck 
         if missing == 0 {
             return;
         }
-        let issue = MissingElevatorsIssue::new_from_check(
+        let issue = MissingElevatorsIssue::new_from_check(&self.instance_id, missing).with_detail(
             &self.instance_id,
-            vec![(RepairArea::WholeMaze, missing)],
-        )
-        .with_detail(&self.instance_id, "missing", missing.to_string());
+            "missing",
+            missing.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -113,7 +113,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
+        assert_eq!(issues[0].missing, 2);
         assert_eq!(
             issues[0]
                 .details()
@@ -133,6 +133,6 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
+        assert_eq!(issues[0].missing, 2);
     }
 }

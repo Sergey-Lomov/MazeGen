@@ -55,12 +55,7 @@ fn two_level_maze(side: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingVerticalPassagesIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", entries)
+    MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", missing)
 }
 
 #[test]
@@ -425,104 +420,3 @@ fn passage_type_one_way_down_only_ever_adds_a_downward_edge() {
 // hard direction choice, not a probability -- it must not fall back to the other direction on a
 // boundary floor where the chosen one is unavailable. `two_level_maze` gives every node exactly
 // one neighbor floor, so a hard-pinned balance requesting the *other* one can never be satisfied.
-
-#[test]
-fn preset_locked_out_source_blocks_a_one_way_candidate() {
-    // Scope to the bottom floor only, so its single node is the only candidate src: locking it
-    // out via preset_state must make the strategy fail rather than silently add the edge.
-    let mut maze = two_level_maze(1);
-    let bottom = maze.field.levels_ordered().next().unwrap();
-    let src = maze
-        .field
-        .node_at(bottom, crate::space::SquarePoint { x: 0, y: 0 })
-        .unwrap();
-    let mut preset_state = PresetState::empty();
-    preset_state.locked_out.insert(src);
-
-    let issue = MissingVerticalPassagesIssue::new_from_check(
-        "min_vertical_passage_count",
-        vec![(RepairArea::Level(bottom), 1)],
-    );
-    let strategy = AddVerticalPassageStrategy {
-        passage_type: VerticalPassageType::OneWay,
-    };
-    let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(
-        &strategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &no_params(),
-        &preset_state,
-        &[],
-    );
-    assert!(
-        matches!(result, RepairResult::Failed),
-        "the only candidate's source is locked_out, so no one-way edge may be added"
-    );
-    assert_eq!(maze.graph.edges().count(), 0);
-}
-
-#[test]
-fn direction_balance_zero_never_falls_back_to_up_on_the_bottom_floor() {
-    let mut maze = two_level_maze(4);
-    // Scoped to the bottom floor only (via `RepairArea::Level`), so every candidate `src` has
-    // just one neighbor: up. `direction_balance=0` pins the choice to down, which is unavailable
-    // here -- the point being tested is that this must never fall back to the only floor that
-    // *is* reachable.
-    let bottom = maze.field.levels_ordered().next().unwrap();
-    let issue = MissingVerticalPassagesIssue::new_from_check(
-        "min_vertical_passage_count",
-        vec![(RepairArea::Level(bottom), 1)],
-    );
-    let strategy = AddVerticalPassageStrategy {
-        passage_type: VerticalPassageType::OneWay,
-    };
-    let params = params_with(&[(PARAM_DIRECTION_BALANCE, "0")]);
-    let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(
-        &strategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(
-        matches!(result, RepairResult::Failed),
-        "direction_balance=0 must never substitute an upward edge just because it's the only one available"
-    );
-    assert_eq!(maze.graph.edges().count(), 0);
-}
-
-#[test]
-fn direction_balance_one_never_falls_back_to_down_on_the_top_floor() {
-    let mut maze = two_level_maze(4);
-    // Mirrors the balance=0 test above, scoped to the top floor -- its only neighbor is down,
-    // which `direction_balance=1` (pinned to up) must not fall back to.
-    let top = maze.field.levels_ordered().last().unwrap();
-    let issue = MissingVerticalPassagesIssue::new_from_check(
-        "min_vertical_passage_count",
-        vec![(RepairArea::Level(top), 1)],
-    );
-    let strategy = AddVerticalPassageStrategy {
-        passage_type: VerticalPassageType::OneWay,
-    };
-    let params = params_with(&[(PARAM_DIRECTION_BALANCE, "1")]);
-    let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(
-        &strategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(
-        matches!(result, RepairResult::Failed),
-        "direction_balance=1 must never substitute a downward edge just because it's the only one available"
-    );
-    assert_eq!(maze.graph.edges().count(), 0);
-}

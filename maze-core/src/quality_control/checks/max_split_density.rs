@@ -1,14 +1,11 @@
 use crate::Maze;
 use crate::graph::cycles::rounded_excess_over_density;
 use crate::quality_control::check::Check;
-use crate::quality_control::floor_group::floor_point_count;
-use crate::quality_control::{FloorScope, InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
 use crate::space::{LevelId, Tessellation};
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MAX_SPLIT_DENSITY_DEFAULT: f64 = 30.0;
-pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags every split tile on the field invalid when their density (share of field cells carrying
 /// a split tile, per 100 — see `density_per_100`) exceeds `max_density` — see GitHub issue #249,
@@ -20,7 +17,6 @@ pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 pub struct MaxSplitDensityCheck {
     pub instance_id: String,
     pub max_density: f64,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCheck {
@@ -36,69 +32,21 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
         _requirement: (),
     ) {
         let tiles: Vec<(LevelId, SplitTileNodes)> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 (level, SplitTileNodes::new(nodes.to_vec()))
             })
             .collect();
 
-        // A split tile belongs to exactly one floor, so under `PerFloor` this is a plain
-        // per-floor grouping/filter, not a counts-toward-both case (GitHub issue #369).
-        let (group, to_remove) = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let field_cells = maze.field.cell_count();
-                if field_cells == 0 {
-                    return;
-                }
-                match Self::to_remove_for(tiles.len(), field_cells, self.max_density) {
-                    0 => return,
-                    n => (tiles.into_iter().map(|(_, tile)| tile).collect(), n),
-                }
-            }
-            FloorScope::PerFloor => {
-                let mut per_floor_count: HashMap<LevelId, usize> =
-                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                for &(level, _) in &tiles {
-                    *per_floor_count.entry(level).or_insert(0) += 1;
-                }
-                // A split tile belongs to exactly one floor, so each over-budget floor's own
-                // tiles and excess form their own independent group -- collapsing every
-                // over-budget floor's tiles into one group with a single (e.g. max) `to_remove`
-                // would let the repair strategy resolve a smaller floor's excess by removing
-                // tiles that actually belong to a different, larger floor's own quota.
-                let mut over_budget: HashMap<LevelId, u32> = HashMap::new();
-                for (&level, &count) in &per_floor_count {
-                    let field_cells = floor_point_count(&maze.field, level);
-                    let n = Self::to_remove_for(count, field_cells, self.max_density);
-                    if n > 0 {
-                        over_budget.insert(level, n);
-                    }
-                }
-                if over_budget.is_empty() {
-                    return;
-                }
-                let mut tiles_by_level: HashMap<LevelId, Vec<SplitTileNodes>> = HashMap::new();
-                for (level, tile) in tiles {
-                    tiles_by_level.entry(level).or_default().push(tile);
-                }
-                let groups: Vec<(Vec<SplitTileNodes>, u32)> = over_budget
-                    .into_iter()
-                    .filter_map(|(level, to_remove)| {
-                        tiles_by_level
-                            .remove(&level)
-                            .map(|tiles| (tiles, to_remove))
-                    })
-                    .collect();
-                let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, groups)
-                    .with_detail(
-                        &self.instance_id,
-                        "max_density",
-                        self.max_density.to_string(),
-                    );
-                issues.push(issue);
+        let (group, to_remove) = {
+            let field_cells = maze.scoped_cell_count();
+            if field_cells == 0 {
                 return;
+            }
+            match Self::to_remove_for(tiles.len(), field_cells, self.max_density) {
+                0 => return,
+                n => (tiles.into_iter().map(|(_, tile)| tile).collect(), n),
             }
         };
 
@@ -157,7 +105,6 @@ mod tests {
         let check = MaxSplitDensityCheck {
             instance_id: TEST_ID.to_string(),
             max_density: 20.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -182,7 +129,6 @@ mod tests {
         let check = MaxSplitDensityCheck {
             instance_id: TEST_ID.to_string(),
             max_density: 20.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -198,7 +144,6 @@ mod tests {
         let check = MaxSplitDensityCheck {
             instance_id: TEST_ID.to_string(),
             max_density: 0.0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -232,7 +177,6 @@ mod tests {
         let check = MaxSplitDensityCheck {
             instance_id: TEST_ID.to_string(),
             max_density: 30.1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -244,7 +188,6 @@ mod tests {
         let check = MaxSplitDensityCheck {
             instance_id: TEST_ID.to_string(),
             max_density: 29.9,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -256,65 +199,6 @@ mod tests {
         assert_eq!(
             issues[0].groups[0].1, 1,
             "target_count=round(29.9*1000/100)=299, to_remove=300-299=1"
-        );
-    }
-
-    /// Each floor is 10 field cells; `bottom_count`/`top_count` of them carry a split tile.
-    fn maze_with_split_tiles_on_two_floors(
-        bottom_count: usize,
-        top_count: usize,
-    ) -> Maze<SquareTessellation> {
-        use crate::space::Field;
-        let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), std::iter::empty());
-        let bottom = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
-        );
-        let top = mf.add_level(
-            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
-        );
-        for x in 0..bottom_count as i32 {
-            mf.add_node_at(bottom, SquarePoint { x, y: 0 }, &mut ids);
-        }
-        for x in 0..top_count as i32 {
-            mf.add_node_at(top, SquarePoint { x, y: 0 }, &mut ids);
-        }
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        Maze::new(mf, g)
-    }
-
-    #[test]
-    fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
-        // Bottom: 3/10 = 30% density (to_remove 1 to reach 20%). Top: 4/10 = 40% (to_remove 2).
-        let maze = maze_with_split_tiles_on_two_floors(3, 4);
-        let check = MaxSplitDensityCheck {
-            instance_id: TEST_ID.to_string(),
-            max_density: 20.0,
-            floor_scope: FloorScope::PerFloor,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1);
-        let mut groups = issues[0].groups.clone();
-        groups.sort_by_key(|(g, _)| g.len());
-        assert_eq!(
-            groups.len(),
-            2,
-            "each over-budget floor must get its own independent group"
-        );
-        assert_eq!(groups[0].0.len(), 3, "bottom floor's own tiles only");
-        assert_eq!(
-            groups[0].1, 1,
-            "bottom floor's own to_remove, not the max across floors"
-        );
-        assert_eq!(groups[1].0.len(), 4, "top floor's own tiles only");
-        assert_eq!(
-            groups[1].1, 2,
-            "top floor's own to_remove, not the max across floors"
         );
     }
 }

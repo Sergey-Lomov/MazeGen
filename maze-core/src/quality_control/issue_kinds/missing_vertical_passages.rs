@@ -1,5 +1,3 @@
-use super::merge_repair_area_deficits;
-use crate::quality_control::RepairArea;
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
 use crate::quality_control::issue::{
@@ -8,16 +6,15 @@ use crate::quality_control::issue::{
 
 /// Produced by any check that flags the maze as short on `VerticalPassage` edges overall
 /// (currently `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`) — see GitHub issue
-/// #343. Mirrors `MissingTeleportsIssue`'s role/shape exactly, including the
-/// `Vec<(RepairArea, u32)>` per-area deficit list.
+/// #343. Mirrors `MissingTeleportsIssue`'s role/shape exactly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissingVerticalPassagesIssue {
     meta: IssueMeta,
-    pub missing: Vec<(RepairArea, u32)>,
+    pub missing: u32,
 }
 
 impl MissingVerticalPassagesIssue {
-    pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
+    pub fn new_from_check(source_check: &str, missing: u32) -> Self {
         Self {
             meta: IssueMeta::new_from_check(source_check),
             missing,
@@ -43,7 +40,7 @@ crate::impl_issue!(MissingVerticalPassagesIssue);
 impl IssueMerge for MissingVerticalPassagesIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        merge_repair_area_deficits(&mut self.missing, other.missing);
+        self.missing = self.missing.max(other.missing);
     }
 }
 
@@ -53,34 +50,21 @@ mod tests {
 
     #[test]
     fn merge_takes_the_larger_missing_value_for_the_same_area() {
-        let mut a = MissingVerticalPassagesIssue::new_from_check(
-            "min_vertical_passage_count",
-            vec![(RepairArea::WholeMaze, 5)],
-        );
-        let b = MissingVerticalPassagesIssue::new_from_check(
-            "min_vertical_passage_ratio",
-            vec![(RepairArea::WholeMaze, 8)],
-        );
+        let mut a = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", 5);
+        let b = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_ratio", 8);
         a.merge(b);
         assert_eq!(
-            a.missing,
-            vec![(RepairArea::WholeMaze, 8)],
+            a.missing, 8,
             "must not silently keep the smaller self value"
         );
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingVerticalPassagesIssue::new_from_check(
-            "min_vertical_passage_count",
-            vec![(RepairArea::WholeMaze, 5)],
-        )
-        .with_detail("min_vertical_passage_count", "missing", "5".to_string());
-        let b = MissingVerticalPassagesIssue::new_from_check(
-            "min_vertical_passage_ratio",
-            vec![(RepairArea::WholeMaze, 8)],
-        )
-        .with_detail("min_vertical_passage_ratio", "missing", "8".to_string());
+        let mut a = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", 5)
+            .with_detail("min_vertical_passage_count", "missing", "5".to_string());
+        let b = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_ratio", 8)
+            .with_detail("min_vertical_passage_ratio", "missing", "8".to_string());
         a.merge(b);
 
         assert_eq!(

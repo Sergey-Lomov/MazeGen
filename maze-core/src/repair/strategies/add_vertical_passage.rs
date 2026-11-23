@@ -1,11 +1,10 @@
 use super::pool::Pool;
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit, reserve_target, src_mode};
 use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingVerticalPassagesIssue, RepairArea, VerticalPassageType};
+use crate::quality_control::{MissingVerticalPassagesIssue, VerticalPassageType};
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -82,7 +81,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue>
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -108,66 +107,45 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue>
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
+
+        let eligible: Vec<NodeId> = maze.scoped_node_ids().collect();
+        let mut pool = Pool::new(eligible, src_mode, maze, rng);
+        let mut added: u32 = 0;
+        // A popped `src` that adds nothing counts against the budget (running total).
+        let mut failed_attempts: usize = 0;
+
+        while added < target && failed_attempts < max_failed_attempts {
+            let Some(src) = pool.take() else { break };
+
+            let Some((from, to)) =
+                resolve_vertical_target(maze, src, rng, &constraint, direction_balance)
+            else {
+                failed_attempts += 1;
+                continue;
+            };
+            if maze.graph.edge_between(from, to).is_some()
+                || maze.graph.edge_between(to, from).is_some()
+            {
+                failed_attempts += 1;
                 continue;
             }
-            let target = reserve_target(params, missing);
 
-            let eligible: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&n| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-                })
-                .collect();
-            let mut pool = Pool::new(eligible, src_mode, maze, rng);
-            let mut added: u32 = 0;
-            // A popped `src` that adds nothing counts against the budget (running total).
-            let mut failed_attempts: usize = 0;
-
-            while added < target && failed_attempts < max_failed_attempts {
-                let Some(src) = pool.take() else { break };
-
-                let Some((from, to)) =
-                    resolve_vertical_target(maze, src, rng, &constraint, direction_balance)
-                else {
-                    failed_attempts += 1;
-                    continue;
-                };
-                if maze.graph.edge_between(from, to).is_some()
-                    || maze.graph.edge_between(to, from).is_some()
-                {
+            let one_way =
+                forced_one_way.unwrap_or_else(|| rng.random_bool(one_way_balance.clamp(0.0, 1.0)));
+            if one_way {
+                if !crate::generation::directed_edge_feasible(preset_state, from, to) {
                     failed_attempts += 1;
                     continue;
                 }
-
-                let one_way = forced_one_way
-                    .unwrap_or_else(|| rng.random_bool(one_way_balance.clamp(0.0, 1.0)));
-                if one_way {
-                    if !crate::generation::directed_edge_feasible(preset_state, from, to) {
-                        failed_attempts += 1;
-                        continue;
-                    }
-                    commands.push(MutationCommand::AddDirectedVerticalPassage { from, to });
-                } else {
-                    commands
-                        .push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
-                }
-                added += 1;
-
-                let mut covered = vec![RepairArea::WholeMaze];
-                if let Some(src_level) = maze.field.level_of(src) {
-                    covered.push(RepairArea::Level(src_level));
-                }
-                deficits.consume(&covered);
+                commands.push(MutationCommand::AddDirectedVerticalPassage { from, to });
+            } else {
+                commands.push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
             }
-            total_added += added;
+            added += 1;
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);

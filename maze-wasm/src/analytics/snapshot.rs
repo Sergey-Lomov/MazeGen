@@ -147,7 +147,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 IssuePayload::InvalidDeadEnd { nodes } => IssuePayloadDto::InvalidDeadEnd {
                     nodes: region_payload_map_dto(nodes),
                 },
-                IssuePayload::AreaDeficit { areas } => IssuePayloadDto::AreaDeficit { areas },
                 IssuePayload::MissingElevatorStopCount { groups } => {
                     IssuePayloadDto::MissingElevatorStopCount {
                         groups: missing_elevator_stops_map_dto(groups),
@@ -239,6 +238,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 source_checks,
                 source_check_types,
                 details,
+                scope_id: issue.meta().scope().map(str::to_string),
             }
         })
         .collect();

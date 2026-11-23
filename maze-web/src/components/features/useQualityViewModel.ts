@@ -3,7 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY, hasNoActiveChecks, strategyUnavailable, visibleProblems, type NestedStrategyState, type QcProblem } from "../../store/storeTypes";
 import { emptyLimitsCheckIds } from "../../store/qcDerivedProblems";
-import { resolveProblemText, resolveNoChecksProblemText, resolveLimitsEmptyProblemText } from "./qualityI18n/problems";
+import { zoneScopeHasNoZones } from "../../domain/qcZoneScope";
+import { resolveProblemText, resolveNoChecksProblemText, resolveNoZonesProblemText, resolveLimitsEmptyProblemText } from "./qualityI18n/problems";
 import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 import { useLocale } from "../../i18n/useLocale";
 
@@ -164,6 +165,8 @@ export function useQualityViewModel(): QualityViewModel {
   const rules = useMazeStore((s) => s.rules);
   const storeStages = useMazeStore((s) => s.stages);
   const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
+  const zones = useMazeStore((s) => s.zones);
+  const zoneGroups = useMazeStore((s) => s.zoneGroups);
   const { locale } = useLocale();
 
   return useMemo(() => {
@@ -232,6 +235,7 @@ export function useQualityViewModel(): QualityViewModel {
         .filter((c): c is CheckVM => c !== undefined);
       const shown = visibleProblems(r);
       const noChecks = hasNoActiveChecks(r);
+      const noZones = zoneScopeHasNoZones(r, zones, zoneGroups);
       const emptyLimits = emptyLimitsCheckIds(r, availableChecks)
         .map((localId) => ({ text: resolveLimitsEmptyProblemText(), checkLabel: producedBy.find((c) => c.localId === localId)?.label }));
       return {
@@ -249,8 +253,9 @@ export function useQualityViewModel(): QualityViewModel {
         params: r.params,
         collapsed: r.collapsed,
         ...(strategyUnavailable(r) ? { strategyUnavailable: true } : {}),
-        ...(shown.length > 0 || noChecks || emptyLimits.length > 0 ? { problems: [
+        ...(shown.length > 0 || noChecks || noZones || emptyLimits.length > 0 ? { problems: [
           ...(noChecks ? [{ text: resolveNoChecksProblemText() }] : []),
+          ...(noZones ? [{ text: resolveNoZonesProblemText() }] : []),
           ...emptyLimits,
           ...buildProblems(shown, producedBy, ruleParamIds),
         ] } : {}),
@@ -281,5 +286,5 @@ export function useQualityViewModel(): QualityViewModel {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale` isn't read directly, but
     // every `resolve*` call above reads the current paraglide locale internally; including it
     // here forces recompute on language switch (see GitHub issue #556).
-  }, [availableChecks, availableStrategies, availableRuleParams, rules, storeStages, locale]);
+  }, [availableChecks, availableStrategies, availableRuleParams, rules, storeStages, zones, zoneGroups, locale]);
 }

@@ -325,8 +325,7 @@ pub fn compute_vertical_stats<T: Tessellation>(
 /// Per-floor elevator stop count — unlike the rest of `VerticalStats`, a single elevator stop
 /// (one node) *does* belong to exactly one floor, so this is meaningful `by_floor` (GitHub issue
 /// #436). A floor's count is however still computed independently of `VerticalStats`'
-/// maze-wide `elevator_stop_count` (not a partition of it) — mirrors `FloorScoped`'s own
-/// total-is-not-a-sum-of-by_floor convention.
+/// maze-wide `elevator_stop_count` (not a partition of it).
 ///
 /// Takes `elevator_groups` (the caller's own `Graph::elevator_groups()` result) rather than
 /// recomputing it — that's a union-find pass over every `Elevator` edge, not worth repeating once

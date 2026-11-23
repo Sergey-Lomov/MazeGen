@@ -79,6 +79,10 @@ impl TarjanIter {
                 self.work.last_mut().unwrap().2 += 1;
 
                 if !self.node_state.contains_key(&w) {
+                    // A scope's boundary node is never a member of its components (`ScopeMask`).
+                    if !graph.is_inner(w) {
+                        continue;
+                    }
                     let w_neighbors: Vec<NodeId> = graph.outgoing_neighbors(w).collect();
                     self.push_node(w, w_neighbors);
                 } else if self.on_stack.contains(&w) {

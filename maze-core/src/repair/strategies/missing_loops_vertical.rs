@@ -1,11 +1,10 @@
 use super::dead_end_priority::apply_src_mode;
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit, reserve_target, src_mode};
 use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingLoopsIssue, RepairArea};
+use crate::quality_control::MissingLoopsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -71,7 +70,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -91,83 +90,61 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
+
+        let candidates: Vec<NodeId> = maze.scoped_node_ids().collect();
+        let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
+        let mut added: u32 = 0;
+        let mut failed_attempts: usize = 0;
+
+        while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
+            let src = pool
+                .pop()
+                .expect("pool.is_empty() already checked by the while condition");
+
+            let Some((from, to)) = resolve_vertical_target(
+                maze,
+                src,
+                rng,
+                &DirectionConstraint::Either,
+                direction_balance,
+            ) else {
+                failed_attempts += 1;
+                continue;
+            };
+
+            let already_connected = maze.graph.edge_between(from, to).is_some()
+                || maze.graph.edge_between(to, from).is_some()
+                || proposed_pairs.contains(&(from, to))
+                || proposed_pairs.contains(&(to, from));
+            if already_connected {
+                failed_attempts += 1;
                 continue;
             }
-            let target = reserve_target(params, missing);
 
-            let candidates: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&n| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-                })
-                .collect();
-            let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
-            let mut added: u32 = 0;
-            let mut failed_attempts: usize = 0;
-
-            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
-                let src = pool
-                    .pop()
-                    .expect("pool.is_empty() already checked by the while condition");
-
-                let Some((from, to)) = resolve_vertical_target(
-                    maze,
-                    src,
-                    rng,
-                    &DirectionConstraint::Either,
-                    direction_balance,
-                ) else {
-                    failed_attempts += 1;
-                    continue;
-                };
-
-                let already_connected = maze.graph.edge_between(from, to).is_some()
-                    || maze.graph.edge_between(to, from).is_some()
-                    || proposed_pairs.contains(&(from, to))
-                    || proposed_pairs.contains(&(to, from));
-                if already_connected {
+            if rng.random::<f64>() < one_way_chance {
+                let forward = rng.random::<bool>();
+                let (edge_from, edge_to) = if forward { (from, to) } else { (to, from) };
+                if !crate::generation::directed_edge_feasible(preset_state, edge_from, edge_to) {
                     failed_attempts += 1;
                     continue;
                 }
-
-                if rng.random::<f64>() < one_way_chance {
-                    let forward = rng.random::<bool>();
-                    let (edge_from, edge_to) = if forward { (from, to) } else { (to, from) };
-                    if !crate::generation::directed_edge_feasible(preset_state, edge_from, edge_to)
-                    {
-                        failed_attempts += 1;
-                        continue;
-                    }
-                    commands.push(MutationCommand::AddDirectedVerticalPassage {
-                        from: edge_from,
-                        to: edge_to,
-                    });
-                } else {
-                    if !crate::generation::bidirectional_edge_feasible(preset_state, from, to) {
-                        failed_attempts += 1;
-                        continue;
-                    }
-                    commands
-                        .push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
+                commands.push(MutationCommand::AddDirectedVerticalPassage {
+                    from: edge_from,
+                    to: edge_to,
+                });
+            } else {
+                if !crate::generation::bidirectional_edge_feasible(preset_state, from, to) {
+                    failed_attempts += 1;
+                    continue;
                 }
-                proposed_pairs.insert((from, to));
-                added += 1;
-
-                let mut covered = vec![RepairArea::WholeMaze];
-                if let Some(src_level) = maze.field.level_of(src) {
-                    covered.push(RepairArea::Level(src_level));
-                }
-                deficits.consume(&covered);
+                commands.push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
             }
-            total_added += added;
+            proposed_pairs.insert((from, to));
+            added += 1;
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);
@@ -217,12 +194,7 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingLoopsIssue {
-        let entries = if missing == 0 {
-            vec![]
-        } else {
-            vec![(RepairArea::WholeMaze, missing)]
-        };
-        MissingLoopsIssue::new_from_check("min_loops_count", entries)
+        MissingLoopsIssue::new_from_check("min_loops_count", missing)
     }
 
     #[test]

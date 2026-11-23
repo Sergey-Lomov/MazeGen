@@ -1,6 +1,5 @@
 use super::super::issue::Issue;
 use super::super::issue_kinds::*;
-use super::super::repair_area::RepairArea;
 use super::resolve_issue_payload;
 use super::resolvers::*;
 use super::types::*;
@@ -242,10 +241,10 @@ fn issues_with_nothing_flagged_resolve_to_none() {
             )),
         ),
         (
-            "missing_vertical_passages_issue_with_no_missing_areas",
+            "missing_vertical_passages_issue_has_no_payload",
             Box::new(MissingVerticalPassagesIssue::new_from_check(
                 "min_vertical_passage_count",
-                vec![],
+                1,
             )),
         ),
     ];

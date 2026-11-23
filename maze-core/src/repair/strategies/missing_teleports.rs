@@ -2,14 +2,13 @@ use super::dead_end_priority::is_dead_end;
 use super::farthest_reachable::{
     SEARCH_MODE_EXHAUSTIVE, SEARCH_MODE_PARAM, farthest_from, farthest_from_exhaustive, search_mode,
 };
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit, reserve_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
 use crate::graph::pathfinding::bfs_distances;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingTeleportsIssue, RepairArea};
+use crate::quality_control::MissingTeleportsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{
     PriorityLevel, StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams,
@@ -194,7 +193,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -251,110 +250,86 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
-                continue;
-            }
-            let target = reserve_target(params, missing);
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
 
-            // Only the entry side is restricted to the reported area — a teleport's exit is free
-            // to land on any floor (GitHub issue #369's floor-scope follow-up): teleports
-            // legitimately connect points on different floors, so forcing the exit onto the same
-            // area as the entry would rule out exactly the cross-floor teleports this strategy is
-            // meant to be able to add.
-            let mut pool: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&n| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-                })
-                .collect();
-            let mut added: u32 = 0;
+        // Only the entry side is restricted to the zone scope — a teleport's exit is free to
+        // land anywhere: teleports legitimately connect distant points, so forcing the exit into
+        // the same scope as the entry would rule out exactly the teleports this strategy is
+        // meant to be able to add.
+        let mut pool: Vec<NodeId> = maze
+            .field
+            .all_node_ids()
+            // The entry anchors the teleport in a zone scope (GitHub issue #1039).
+            .filter(|&n| maze.graph.is_inner(n))
+            .collect();
+        let mut added: u32 = 0;
 
-            while added < target && !pool.is_empty() {
-                let mut slot_filled = false;
+        while added < target && !pool.is_empty() {
+            let mut slot_filled = false;
 
-                for _ in 0..attempts_limit {
-                    if pool.is_empty() {
-                        break;
-                    }
-                    let pick = pick_pool_index(&pool, entry_pick, &dead_ends, rng);
-                    let candidate = pool[pick];
-
-                    let entry = match entry_pick {
-                        ENTRY_FARTHEST_FROM_RANDOM => {
-                            farthest_from_via_nav(maze, candidate, search_mode)
-                        }
-                        _ => candidate,
-                    };
-
-                    let Some(exit) = pick_exit(
-                        maze,
-                        entry,
-                        desired_min,
-                        desired_max,
-                        allow_out_of_interval,
-                        unreachable_priority,
-                        preset_state,
-                        &proposed,
-                        rng,
-                        cross_floor_mode,
-                        cross_floor_balance,
-                        exit_pick,
-                        &dead_ends,
-                    ) else {
-                        pool.swap_remove(pick);
-                        continue;
-                    };
-
-                    let want_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0));
-                    let bidi_cmds = if want_reverse {
-                        cmd_add_bidirectional_teleport(entry, exit, preset_state)
-                    } else {
-                        vec![]
-                    };
-                    if !bidi_cmds.is_empty() {
-                        commands.extend(bidi_cmds);
-                        proposed.insert((entry, exit));
-                        proposed.insert((exit, entry));
-                    } else {
-                        commands.extend(cmd_add_directed_teleport(entry, exit, preset_state));
-                        proposed.insert((entry, exit));
-                    }
-                    added += 1;
-                    slot_filled = true;
-
-                    // Decrement the entry's own area (usually `area`, but the entry may differ
-                    // from `candidate` under `entry_pick: farthest_from_random`, so re-derive it
-                    // from `entry`'s actual level rather than assuming it's still `area`) plus the
-                    // exit's level if it lands on a different floor, plus `WholeMaze` always — a
-                    // teleport can cross floors, so both ends' per-floor deficits are satisfied by
-                    // this one addition (GitHub issue #369 follow-up).
-                    let mut covered = vec![RepairArea::WholeMaze];
-                    if let Some(entry_level) = maze.field.level_of(entry) {
-                        covered.push(RepairArea::Level(entry_level));
-                    }
-                    if let Some(exit_level) = maze.field.level_of(exit) {
-                        covered.push(RepairArea::Level(exit_level));
-                    }
-                    deficits.consume(&covered);
+            for _ in 0..attempts_limit {
+                if pool.is_empty() {
                     break;
                 }
+                let pick = pick_pool_index(&pool, entry_pick, &dead_ends, rng);
+                let candidate = pool[pick];
 
-                // attempts_limit consecutive failures without exhausting the pool -- give up on
-                // this teleport slot only, not the whole apply() call. The failed candidates were
-                // evicted from `pool` above, so the next slot's attempts_limit budget draws from a
-                // smaller, different pool rather than retrying the exact same losing candidates.
-                if !slot_filled && pool.is_empty() {
-                    break;
+                let entry = match entry_pick {
+                    ENTRY_FARTHEST_FROM_RANDOM => {
+                        farthest_from_via_nav(maze, candidate, search_mode)
+                    }
+                    _ => candidate,
+                };
+
+                let Some(exit) = pick_exit(
+                    maze,
+                    entry,
+                    desired_min,
+                    desired_max,
+                    allow_out_of_interval,
+                    unreachable_priority,
+                    preset_state,
+                    &proposed,
+                    rng,
+                    cross_floor_mode,
+                    cross_floor_balance,
+                    exit_pick,
+                    &dead_ends,
+                ) else {
+                    pool.swap_remove(pick);
+                    continue;
+                };
+
+                let want_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0));
+                let bidi_cmds = if want_reverse {
+                    cmd_add_bidirectional_teleport(entry, exit, preset_state)
+                } else {
+                    vec![]
+                };
+                if !bidi_cmds.is_empty() {
+                    commands.extend(bidi_cmds);
+                    proposed.insert((entry, exit));
+                    proposed.insert((exit, entry));
+                } else {
+                    commands.extend(cmd_add_directed_teleport(entry, exit, preset_state));
+                    proposed.insert((entry, exit));
                 }
+                added += 1;
+                slot_filled = true;
+
+                break;
             }
-            total_added += added;
+
+            // attempts_limit consecutive failures without exhausting the pool -- give up on
+            // this teleport slot only, not the whole apply() call. The failed candidates were
+            // evicted from `pool` above, so the next slot's attempts_limit budget draws from a
+            // smaller, different pool rather than retrying the exact same losing candidates.
+            if !slot_filled && pool.is_empty() {
+                break;
+            }
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);

@@ -408,6 +408,10 @@ pub struct IssueMeta {
     /// several checks at once (e.g. `min_loop_length`'s and `max_loop_length`'s thresholds both
     /// present on one merged `INVALID_LOOP` issue) and a UI bubble is rendered per source check.
     details: HashMap<String, HashMap<&'static str, String>>,
+    /// Id of the zone scope of the rule this issue was found in (GitHub issue #1039, `Rule::scopes`);
+    /// `None` for a rule that sees the whole map. Stamped by the `Rule` after its checks ran, so
+    /// no check or merge ever handles it.
+    scope: Option<String>,
 }
 
 impl IssueMeta {
@@ -424,7 +428,17 @@ impl IssueMeta {
         Self {
             source_checks: vec![source_check.to_string()],
             details: HashMap::new(),
+            scope: None,
         }
+    }
+
+    /// Id of the zone scope the issue was found in; `None` for a rule without a scope.
+    pub fn scope(&self) -> Option<&str> {
+        self.scope.as_deref()
+    }
+
+    pub(crate) fn set_scope(&mut self, scope: &str) {
+        self.scope = Some(scope.to_string());
     }
 
     /// Attaches a display detail under `source_check` (raw value only, e.g. a threshold — never

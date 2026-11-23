@@ -1,7 +1,7 @@
 use super::elevator_core::elevator_groups;
 use crate::Maze;
+use crate::quality_control::MissingElevatorsIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingElevatorsIssue, RepairArea};
 use crate::space::Tessellation;
 use rand::RngCore;
 
@@ -29,17 +29,17 @@ impl<T: Tessellation> Check<T, MissingElevatorsIssue> for MinElevatorDensityChec
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let field_cells = maze.field.cell_count() as u64;
+        let field_cells = maze.scoped_cell_count() as u64;
         let count = elevator_groups(maze).len() as u64;
         let missing = Self::missing_for(count, field_cells, self.min_density);
         if missing == 0 {
             return;
         }
-        let issue = MissingElevatorsIssue::new_from_check(
+        let issue = MissingElevatorsIssue::new_from_check(&self.instance_id, missing).with_detail(
             &self.instance_id,
-            vec![(RepairArea::WholeMaze, missing)],
-        )
-        .with_detail(&self.instance_id, "missing", missing.to_string());
+            "missing",
+            missing.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -117,7 +117,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 5)]);
+        assert_eq!(issues[0].missing, 5);
         assert_eq!(
             issues[0]
                 .details()
@@ -184,8 +184,7 @@ mod tests {
             "30% density must fall short of a fractional minimum of 30.1"
         );
         assert_eq!(
-            issues[0].missing,
-            vec![(RepairArea::WholeMaze, 1)],
+            issues[0].missing, 1,
             "required=round(30.1*1000/100)=301, missing=1"
         );
 

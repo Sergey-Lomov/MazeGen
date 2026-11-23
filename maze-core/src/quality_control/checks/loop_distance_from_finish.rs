@@ -33,7 +33,12 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck
         _requirement: InvalidLoopRequirement,
     ) {
         // Not yet migrated to honor `_requirement` — always computes all(), see GitHub issue #105.
-        let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta)
+        // The finish lies on the whole maze: a zone only filters the loops, so the distances come from the
+        // whole maze's graph, re-keyed to the nav graph the loops are found on.
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        let Some(dist_from_finish) =
+            maze.analysis
+                .distance_from_finish_in(&maze.graph, &maze.meta, &nav)
         else {
             return;
         };

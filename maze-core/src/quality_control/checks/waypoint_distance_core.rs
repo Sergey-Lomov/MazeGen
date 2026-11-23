@@ -50,7 +50,10 @@ impl WaypointDistances {
             return None;
         }
 
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        // The waypoints lie on the whole maze, so does the graph their distances are read from.
+        let nav = maze
+            .graph
+            .unscoped(|| maze.analysis.nav_graph(&maze.graph, &maze.meta));
         Some(Self {
             nav,
             dist_from_start: if need_start { dist_from_start } else { None },

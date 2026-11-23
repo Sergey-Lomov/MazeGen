@@ -1,5 +1,3 @@
-use super::merge_repair_area_deficits;
-use crate::quality_control::RepairArea;
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
 use crate::quality_control::issue::{
@@ -8,18 +6,16 @@ use crate::quality_control::issue::{
 
 /// Produced by any check that flags the maze as short on elevators overall (currently
 /// `MinElevatorCountCheck`/`MinElevatorDensityCheck`) — see GitHub issue #401, part of epic #344.
-/// Mirrors `MissingTeleportsIssue`'s role/shape exactly, including the `Vec<(RepairArea, u32)>`
-/// per-area deficit list, though in practice `missing` only ever carries a single
-/// `RepairArea::WholeMaze` entry — both source checks are whole-maze scope only (see
-/// `MISSING_ELEVATORS`'s doc comment for why).
+/// Mirrors `MissingTeleportsIssue`'s role/shape exactly: `missing` is the elevator
+/// deficit (see `MISSING_ELEVATORS`'s doc comment).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissingElevatorsIssue {
     meta: IssueMeta,
-    pub missing: Vec<(RepairArea, u32)>,
+    pub missing: u32,
 }
 
 impl MissingElevatorsIssue {
-    pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
+    pub fn new_from_check(source_check: &str, missing: u32) -> Self {
         Self {
             meta: IssueMeta::new_from_check(source_check),
             missing,
@@ -45,7 +41,7 @@ crate::impl_issue!(MissingElevatorsIssue);
 impl IssueMerge for MissingElevatorsIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        merge_repair_area_deficits(&mut self.missing, other.missing);
+        self.missing = self.missing.max(other.missing);
     }
 }
 
@@ -55,34 +51,27 @@ mod tests {
 
     #[test]
     fn merge_takes_the_larger_missing_value_for_the_same_area() {
-        let mut a = MissingElevatorsIssue::new_from_check(
-            "min_elevator_count",
-            vec![(RepairArea::WholeMaze, 5)],
-        );
-        let b = MissingElevatorsIssue::new_from_check(
-            "min_elevator_density",
-            vec![(RepairArea::WholeMaze, 8)],
-        );
+        let mut a = MissingElevatorsIssue::new_from_check("min_elevator_count", 5);
+        let b = MissingElevatorsIssue::new_from_check("min_elevator_density", 8);
         a.merge(b);
         assert_eq!(
-            a.missing,
-            vec![(RepairArea::WholeMaze, 8)],
+            a.missing, 8,
             "must not silently keep the smaller self value"
         );
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingElevatorsIssue::new_from_check(
+        let mut a = MissingElevatorsIssue::new_from_check("min_elevator_count", 5).with_detail(
             "min_elevator_count",
-            vec![(RepairArea::WholeMaze, 5)],
-        )
-        .with_detail("min_elevator_count", "missing", "5".to_string());
-        let b = MissingElevatorsIssue::new_from_check(
+            "missing",
+            "5".to_string(),
+        );
+        let b = MissingElevatorsIssue::new_from_check("min_elevator_density", 8).with_detail(
             "min_elevator_density",
-            vec![(RepairArea::WholeMaze, 8)],
-        )
-        .with_detail("min_elevator_density", "missing", "8".to_string());
+            "missing",
+            "8".to_string(),
+        );
         a.merge(b);
 
         assert_eq!(

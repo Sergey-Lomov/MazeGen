@@ -2,12 +2,10 @@ import * as m from "~/paraglide/messages";
 
 type MessageFn = () => string;
 
-/// Picks a check's label based on its instance params, for the (rare) check whose displayed name
-/// should reflect a configured option instead of staying fixed — e.g. `max_teleport_count` reads
-/// "Кол-во телепортов на этаж" once `floor_scope` is set to `per_floor`, since the plain "Макс.
-/// количество телепортов" label doesn't convey the per-floor evaluation. `params` is the check
-/// instance's raw `Record<string, string>` (`CheckInstance.params`); absent for callers with no
-/// instance in scope (falls through to `label`).
+/// Picks a check's label based on its instance params, for a check whose displayed name should
+/// reflect a configured option instead of staying fixed. `params` is the check instance's raw
+/// `Record<string, string>` (`CheckInstance.params`); absent for callers with no instance in scope
+/// (falls through to `label`).
 type ParamLabelFn = (params?: Record<string, string>) => string;
 
 export const checkI18n: Record<string, { label: ParamLabelFn; description: ParamLabelFn; cardLabel?: ParamLabelFn }> = {
@@ -335,20 +333,12 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     cardLabel: m["check.cross_element_graph_proximity.label"] as MessageFn,
   },
   max_teleport_count: {
-    label: (params) => params?.floor_scope === "per_floor"
-      ? (m["check.max_teleport_count.label_per_floor"] as MessageFn)()
-      : (m["check.max_teleport_count.label"] as MessageFn)(),
-    description: (params) => params?.floor_scope === "per_floor"
-      ? (m["check.max_teleport_count.description_per_floor"] as MessageFn)()
-      : (m["check.max_teleport_count.description"] as MessageFn)(),
+    label: m["check.max_teleport_count.label"] as MessageFn,
+    description: m["check.max_teleport_count.description"] as MessageFn,
   },
   max_teleport_density: {
-    label: (params) => params?.floor_scope === "per_floor"
-      ? (m["check.max_teleport_density.label_per_floor"] as MessageFn)()
-      : (m["check.max_teleport_density.label"] as MessageFn)(),
-    description: (params) => params?.floor_scope === "per_floor"
-      ? (m["check.max_teleport_density.description_per_floor"] as MessageFn)()
-      : (m["check.max_teleport_density.description"] as MessageFn)(),
+    label: m["check.max_teleport_density.label"] as MessageFn,
+    description: m["check.max_teleport_density.description"] as MessageFn,
   },
 };
 

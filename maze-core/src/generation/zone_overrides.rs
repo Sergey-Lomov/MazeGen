@@ -69,7 +69,11 @@ impl ParamOverrides {
     }
 
     /// The maze-wide `params` / `elements` with this set's values written over them.
-    pub fn apply(&self, params: &GenerationParams, elements: &ElementsConfig) -> (GenerationParams, ElementsConfig) {
+    pub fn apply(
+        &self,
+        params: &GenerationParams,
+        elements: &ElementsConfig,
+    ) -> (GenerationParams, ElementsConfig) {
         let mut p = params.clone();
         let mut e = elements.clone();
         macro_rules! set {
@@ -210,7 +214,10 @@ mod tests {
             ..Default::default()
         };
         let (p, e) = o.apply(&GenerationParams::default(), &ElementsConfig::default());
-        assert_eq!(p.corridor_chance, GenerationParams::default().corridor_chance);
+        assert_eq!(
+            p.corridor_chance,
+            GenerationParams::default().corridor_chance
+        );
         assert_eq!(e.teleport_chance, 0.5);
         assert_eq!(e.elevator_span_min, 4);
         assert_eq!(e.elevator_span_max, 4);
@@ -218,15 +225,32 @@ mod tests {
 
     #[test]
     fn non_consecutive_floors_override_merges_by_smallest_zone_id_and_applies() {
-        let on = ParamOverrides { allow_non_consecutive_elevator_floors: Some(true), ..Default::default() };
-        let off = ParamOverrides { allow_non_consecutive_elevator_floors: Some(false), ..Default::default() };
+        let on = ParamOverrides {
+            allow_non_consecutive_elevator_floors: Some(true),
+            ..Default::default()
+        };
+        let off = ParamOverrides {
+            allow_non_consecutive_elevator_floors: Some(false),
+            ..Default::default()
+        };
         let table = ZoneOverrideTable::from_entries(vec![
-            ZoneOverrideEntry { zone_id: 5, overrides: on, nodes: vec![n(1)] },
-            ZoneOverrideEntry { zone_id: 2, overrides: off, nodes: vec![n(1)] },
+            ZoneOverrideEntry {
+                zone_id: 5,
+                overrides: on,
+                nodes: vec![n(1)],
+            },
+            ZoneOverrideEntry {
+                zone_id: 2,
+                overrides: off,
+                nodes: vec![n(1)],
+            },
         ]);
         let merged = *table.get(n(1)).unwrap();
         assert_eq!(merged.allow_non_consecutive_elevator_floors, Some(false));
-        let base = ElementsConfig { allow_non_consecutive_elevator_floors: true, ..ElementsConfig::default() };
+        let base = ElementsConfig {
+            allow_non_consecutive_elevator_floors: true,
+            ..ElementsConfig::default()
+        };
         let (_, e) = merged.apply(&GenerationParams::default(), &base);
         assert!(!e.allow_non_consecutive_elevator_floors);
         let (_, e) = ParamOverrides::default().apply(&GenerationParams::default(), &base);

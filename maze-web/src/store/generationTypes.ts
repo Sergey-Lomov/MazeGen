@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, ElementCellTypeRestrictions, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { FeatureId } from "./tessellationTypes";
-import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
+import type { QcRuleState, RepairStageState, PathSegment, QcZoneScopeTarget } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
 
 /** A generation-run failure stored as data for generation state; the user-facing error is emitted
@@ -261,6 +261,9 @@ export interface GenerationActions {
   /** Flips the rule card's `collapsed` — UI-only, does not mark the config stale. */
   toggleRuleCollapsed: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;
+  /** Binds the rule to one zone or group (GitHub issue #1039), replacing the previous binding; `null` unbinds it, so
+   * the rule sees the whole map again. Marks the config stale. */
+  setRuleZoneScope: (ruleId: string, target: QcZoneScopeTarget | null) => void;
   /** Removes a rule entirely along with its member checks — the inverse of a rule existing
    * only ever meaning its checks are active. Also removes the rule's id from whichever stage's
    * `ruleIds` currently holds it. */

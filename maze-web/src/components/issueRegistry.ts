@@ -250,14 +250,10 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   min_teleport_count: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_count_label"]({ missing: d.missing }) : undefined,
   min_teleport_ratio: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_ratio_label"]({ missing: d.missing }) : undefined,
   max_teleport_count: (d) => d.max_teleport_count !== undefined
-    ? (d.floor_scope === "per_floor"
-      ? m["issue.invalid_teleport_group.max_teleport_count_per_floor_label"]({ max_teleport_count: d.max_teleport_count })
-      : m["issue.invalid_teleport_group.max_teleport_count_label"]({ max_teleport_count: d.max_teleport_count })) + teleportFiltersSuffix(d)
+    ? m["issue.invalid_teleport_group.max_teleport_count_label"]({ max_teleport_count: d.max_teleport_count }) + teleportFiltersSuffix(d)
     : undefined,
   max_teleport_density: (d) => d.max_teleport_density !== undefined
-    ? (d.floor_scope === "per_floor"
-      ? m["issue.invalid_teleport_group.max_teleport_density_per_floor_label"]({ max_teleport_density: d.max_teleport_density })
-      : m["issue.invalid_teleport_group.max_teleport_density_label"]({ max_teleport_density: d.max_teleport_density })) + teleportFiltersSuffix(d)
+    ? m["issue.invalid_teleport_group.max_teleport_density_label"]({ max_teleport_density: d.max_teleport_density }) + teleportFiltersSuffix(d)
     : undefined,
   split_distance_from_waypoint: (d) => d.distance !== undefined ? m["issue.invalid_split_tile.split_distance_from_waypoint_label"]({ distance: d.distance }) : undefined,
   // No detail values at all (a pure structural teleport-shape test, mirrors
@@ -376,11 +372,8 @@ const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => s
   split_teleport_intersection: () => resolveCheckDescription("split_teleport_intersection", ""),
   max_vertical_passage_count: () => resolveCheckDescription("max_vertical_passage_count", ""),
   max_vertical_passage_ratio: () => resolveCheckDescription("max_vertical_passage_ratio", ""),
-  // `floor_scope` (present in `details` only when `PerFloor`, see `MaxTeleportCountCheck`'s own
-  // `with_detail` call) picks the per-floor-worded description, same gate as `DETAIL_LABELS`'s own
-  // `max_teleport_count` entry uses for the bubble's title.
-  max_teleport_count: (d) => resolveCheckDescription("max_teleport_count", "", d),
-  max_teleport_density: (d) => resolveCheckDescription("max_teleport_density", "", d),
+  max_teleport_count: () => resolveCheckDescription("max_teleport_count", ""),
+  max_teleport_density: () => resolveCheckDescription("max_teleport_density", ""),
   vertical_passage_group_geometric_proximity: () => resolveCheckDescription("vertical_passage_group_geometric_proximity", ""),
   vertical_passage_group_graph_proximity: () => resolveCheckDescription("vertical_passage_group_graph_proximity", ""),
   elevator_stop_group_geometric_proximity: () => resolveCheckDescription("elevator_stop_group_geometric_proximity", ""),

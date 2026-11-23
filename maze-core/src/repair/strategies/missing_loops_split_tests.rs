@@ -34,12 +34,7 @@ fn maze_grid(side: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingLoopsIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingLoopsIssue::new_from_check("min_loops_count", entries)
+    MissingLoopsIssue::new_from_check("min_loops_count", missing)
 }
 
 #[test]
@@ -350,119 +345,6 @@ fn apply_fails_when_no_split_eligible_candidate_exists() {
         &[],
     );
     assert!(matches!(result, RepairResult::Failed));
-}
-
-#[test]
-fn apply_restricts_candidates_to_the_named_level() {
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let nodes_before = maze.field.node_count();
-
-    let issue =
-        MissingLoopsIssue::new_from_check("min_loops_count", vec![(RepairArea::Level(level_b), 1)]);
-    let mut overrides = std::collections::HashMap::new();
-    overrides.insert(
-        crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(),
-        "0".to_string(),
-    );
-    let params =
-        build_params(
-            <MissingLoopsSplitStrategy as RepairStrategy<
-                SquareTessellation,
-                MissingLoopsIssue,
-            >>::params(&strategy_unconstrained()),
-            Some(&overrides),
-        );
-    let mut rng = MazeRng::seed_from_u64(11);
-    let result = apply_and_commit(
-        &strategy_unconstrained(),
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert_eq!(maze.field.node_count(), nodes_before + 1);
-    let split_points: std::collections::HashSet<_> = maze.field.split_cells().collect();
-    assert_eq!(split_points.len(), 1);
-    assert_eq!(
-        split_points.iter().next().unwrap().0,
-        level_b,
-        "the split tile must land on the reported level"
-    );
-}
-
-#[test]
-fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-    // GitHub issue #369 follow-up: a per-floor deficit and a whole-maze deficit on the same
-    // rule both land in one issue's `missing` — the whole-maze entry is the same requirement
-    // measured differently, not independent on top. 1 per floor on 3 floors + 3 whole-maze
-    // must add 3 split tiles total, not 6.
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_c = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let level_c = mf.add_level(field_c);
-    let level_a = mf.levels_ordered().next().unwrap();
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let nodes_before = maze.field.node_count();
-
-    let issue = MissingLoopsIssue::new_from_check(
-        "min_loops_count",
-        vec![
-            (RepairArea::Level(level_a), 1),
-            (RepairArea::Level(level_b), 1),
-            (RepairArea::Level(level_c), 1),
-            (RepairArea::WholeMaze, 3),
-        ],
-    );
-    let mut overrides = std::collections::HashMap::new();
-    overrides.insert(
-        crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(),
-        "0".to_string(),
-    );
-    let params =
-        build_params(
-            <MissingLoopsSplitStrategy as RepairStrategy<
-                SquareTessellation,
-                MissingLoopsIssue,
-            >>::params(&strategy_unconstrained()),
-            Some(&overrides),
-        );
-    let mut rng = MazeRng::seed_from_u64(11);
-    let result = apply_and_commit(
-        &strategy_unconstrained(),
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert_eq!(
-        maze.field.node_count(),
-        nodes_before + 3,
-        "3 split tiles total, not 6"
-    );
 }
 
 #[test]

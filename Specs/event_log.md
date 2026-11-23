@@ -2025,6 +2025,12 @@ codegen bug is each source's pre-existing hand-written tests (`event.rs`'s own `
 tests`, kept unmodified through migration) — these assert expected bytes without going through
 `Schema` at all, so they catch what golden tests structurally cannot.
 
+### Zone scope event scopes (GitHub issue #1039)
+
+A QC rule bound to zone scopes runs once per scope, and each run is opened inside a scope named `"scope <id>"` (the scope
+id, `zone:<n>` or `group:<n>`) under the rule's scope. A rule without scopes opens none, so its event stream is
+unchanged. Tests assert the invariant (one such scope per dispatched scope), not an exact sequence.
+
 ### What stays hand-written
 
 `applyX` replay/state-reconstruction functions (bidirectional edge expansion, DSU seeding,

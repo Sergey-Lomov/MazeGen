@@ -196,7 +196,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const splitPatterns = useMazeStore((s) => s.splitPatterns);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
-  const problemRuleCount = useMazeStore((s) => problematicRuleCount(s.rules, s.stages, s.availableChecks));
+  const problemRuleCount = useMazeStore((s) => problematicRuleCount(s.rules, s.stages, s.availableChecks, s.zones, s.zoneGroups));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);

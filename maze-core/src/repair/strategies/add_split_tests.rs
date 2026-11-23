@@ -41,12 +41,7 @@ fn maze_grid(width: usize, height: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingSplitTilesIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingSplitTilesIssue::new_from_check("split_count", entries)
+    MissingSplitTilesIssue::new_from_check("split_count", missing)
 }
 
 fn strategy_unconstrained() -> AddSplitStrategy {
@@ -283,97 +278,6 @@ fn apply_reports_failed_when_no_eligible_point_exists() {
         &[],
     );
     assert!(matches!(result, RepairResult::Failed));
-}
-
-#[test]
-fn apply_restricts_candidates_to_the_named_level() {
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let nodes_before = maze.field.node_count();
-
-    let issue = MissingSplitTilesIssue::new_from_check(
-        "split_count",
-        vec![(RepairArea::Level(level_b), 2)],
-    );
-    let mut rng = MazeRng::seed_from_u64(7);
-    let result = apply_and_commit(
-        &strategy_unconstrained(),
-        &issue,
-        &mut maze,
-        &mut rng,
-        &no_params(),
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert_eq!(maze.field.node_count(), nodes_before + 2);
-    let split_points: std::collections::HashSet<_> = maze.field.split_cells().collect();
-    assert_eq!(split_points.len(), 2);
-    for (level, _) in split_points {
-        assert_eq!(
-            level, level_b,
-            "every new split tile must be on the reported level"
-        );
-    }
-}
-
-#[test]
-fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-    // GitHub issue #369 follow-up: a per-floor deficit ("3 per floor" on 3 floors) and a
-    // whole-maze deficit on the same rule ("12 whole-maze") both land in one issue's
-    // `missing` — the whole-maze entry is the same requirement measured differently, not an
-    // independent 12 on top. Total added must be 12 (3+3+3, whole-maze already satisfied by
-    // then), not 21.
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap();
-    let field_c = crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let level_c = mf.add_level(field_c);
-    let level_a = mf.levels_ordered().next().unwrap();
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-    let nodes_before = maze.field.node_count();
-
-    let issue = MissingSplitTilesIssue::new_from_check(
-        "split_count",
-        vec![
-            (RepairArea::Level(level_a), 3),
-            (RepairArea::Level(level_b), 3),
-            (RepairArea::Level(level_c), 3),
-            (RepairArea::WholeMaze, 12),
-        ],
-    );
-    let mut rng = MazeRng::seed_from_u64(11);
-    let result = apply_and_commit(
-        &strategy_unconstrained(),
-        &issue,
-        &mut maze,
-        &mut rng,
-        &no_params(),
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert_eq!(
-        maze.field.node_count(),
-        nodes_before + 12,
-        "12 split tiles total, not 21"
-    );
 }
 
 #[test]

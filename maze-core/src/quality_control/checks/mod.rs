@@ -129,12 +129,8 @@ pub use loop_distance_from_finish::{
 };
 pub use loop_distance_from_start::{LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromStartCheck};
 pub use loop_length::{LOOP_LENGTH_DEFAULT, LOOP_LENGTH_DEFAULT_COMPARISON, LoopLengthCheck};
-pub use max_dead_end_count::{
-    MAX_DEAD_END_COUNT_DEFAULT, MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE, MaxDeadEndCountCheck,
-};
-pub use max_dead_end_density::{
-    MAX_DEAD_END_DENSITY_DEFAULT, MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE, MaxDeadEndDensityCheck,
-};
+pub use max_dead_end_count::{MAX_DEAD_END_COUNT_DEFAULT, MaxDeadEndCountCheck};
+pub use max_dead_end_density::{MAX_DEAD_END_DENSITY_DEFAULT, MaxDeadEndDensityCheck};
 pub use max_elevator_count::{MAX_ELEVATOR_COUNT_DEFAULT, MaxElevatorCountCheck};
 pub use max_elevator_density::{MAX_ELEVATOR_DENSITY_DEFAULT, MaxElevatorDensityCheck};
 pub use max_elevator_stop_gap::{MAX_ELEVATOR_STOP_GAP_DEFAULT, MaxElevatorStopGapCheck};
@@ -142,47 +138,31 @@ pub use max_elevator_stops::{MAX_ELEVATOR_STOPS_DEFAULT, MaxElevatorStopsCheck};
 pub use max_elevator_stops_per_floor::{
     MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MaxElevatorStopsPerFloorCheck,
 };
-pub use max_loop_density::{
-    MAX_LOOP_DENSITY_DEFAULT, MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MaxLoopDensityCheck,
-};
-pub use max_loops_count::{
-    MAX_LOOPS_COUNT_DEFAULT, MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE, MaxLoopsCountCheck,
-};
-pub use max_one_way_count::{
-    MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE, MaxOneWayCountCheck,
-};
-pub use max_one_way_ratio::{
-    MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE, MaxOneWayRatioCheck,
-};
+pub use max_loop_density::{MAX_LOOP_DENSITY_DEFAULT, MaxLoopDensityCheck};
+pub use max_loops_count::{MAX_LOOPS_COUNT_DEFAULT, MaxLoopsCountCheck};
+pub use max_one_way_count::{MAX_ONE_WAY_COUNT_DEFAULT, MaxOneWayCountCheck};
+pub use max_one_way_ratio::{MAX_ONE_WAY_RATIO_DEFAULT, MaxOneWayRatioCheck};
 pub use max_region_ratio::{MAX_REGION_RATIO_DEFAULT, MaxRegionRatioCheck};
 pub use max_region_size::{MAX_REGION_SIZE_DEFAULT, MaxRegionSizeCheck};
-pub use max_split_count::{
-    MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE, MaxSplitCountCheck,
-};
-pub use max_split_density::{
-    MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE, MaxSplitDensityCheck,
-};
+pub use max_split_count::{MAX_SPLIT_COUNT_DEFAULT, MaxSplitCountCheck};
+pub use max_split_density::{MAX_SPLIT_DENSITY_DEFAULT, MaxSplitDensityCheck};
 pub use max_split_tile_node_count::{
     MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, MaxSplitTileNodeCountCheck,
 };
 pub use max_teleport_count::{
     MAX_TELEPORT_COUNT_DEFAULT, MAX_TELEPORT_COUNT_DEFAULT_DIRECTION,
-    MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE,
-    MaxTeleportCountCheck,
+    MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND, MaxTeleportCountCheck,
 };
 pub use max_teleport_density::{
     MAX_TELEPORT_DENSITY_DEFAULT, MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION,
-    MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE,
-    MaxTeleportDensityCheck,
+    MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND, MaxTeleportDensityCheck,
 };
 pub use max_vertical_passage_count::{
-    MAX_VERTICAL_PASSAGE_COUNT_DEFAULT, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
-    MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE,
+    MAX_VERTICAL_PASSAGE_COUNT_DEFAULT, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE,
     MaxVerticalPassageCountCheck,
 };
 pub use max_vertical_passage_ratio::{
-    MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
-    MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE,
+    MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE,
     MaxVerticalPassageRatioCheck,
 };
 pub use min_elevator_count::{MIN_ELEVATOR_COUNT_DEFAULT, MinElevatorCountCheck};
@@ -190,43 +170,28 @@ pub use min_elevator_density::{MIN_ELEVATOR_DENSITY_DEFAULT, MinElevatorDensityC
 pub use min_elevator_height::{MIN_ELEVATOR_HEIGHT_DEFAULT, MinElevatorHeightCheck};
 pub use min_elevator_stop_count::{MIN_ELEVATOR_STOP_COUNT_DEFAULT, MinElevatorStopCountCheck};
 pub use min_elevator_stops_per_area_count::{
-    MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT,
-    MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE, MinElevatorStopsPerAreaCountCheck,
+    MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MinElevatorStopsPerAreaCountCheck,
 };
 pub use min_elevator_stops_per_area_density::{
-    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT,
-    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE, MinElevatorStopsPerAreaDensityCheck,
+    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MinElevatorStopsPerAreaDensityCheck,
 };
 pub use min_loop_density::{
-    AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MIN_LOOP_DENSITY_DEFAULT,
-    MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MinLoopDensityCheck,
+    AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, MinLoopDensityCheck,
 };
-pub use min_loops_count::{
-    MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE, MIN_LOOPS_DEFAULT, MinLoopsCountCheck,
-};
-pub use min_one_way_count::{
-    MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE, MinOneWayCountCheck,
-};
-pub use min_one_way_ratio::{
-    MIN_ONE_WAY_RATIO_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE, MinOneWayRatioCheck,
-};
+pub use min_loops_count::{MIN_LOOPS_DEFAULT, MinLoopsCountCheck};
+pub use min_one_way_count::{MIN_ONE_WAY_COUNT_DEFAULT, MinOneWayCountCheck};
+pub use min_one_way_ratio::{MIN_ONE_WAY_RATIO_DEFAULT, MinOneWayRatioCheck};
 pub use min_region_count::{MIN_REGION_COUNT_DEFAULT, MinRegionCountCheck};
 pub use min_region_ratio::{MIN_REGION_RATIO_DEFAULT, MinRegionRatioCheck};
 pub use min_region_size::{MIN_REGION_SIZE_DEFAULT, MinRegionSizeCheck};
-pub use min_teleport_count::{
-    MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE, MinTeleportCountCheck,
-};
-pub use min_teleport_ratio::{
-    MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE, MinTeleportRatioCheck,
-};
+pub use min_teleport_count::{MIN_TELEPORT_COUNT_DEFAULT, MinTeleportCountCheck};
+pub use min_teleport_ratio::{MIN_TELEPORT_RATIO_DEFAULT, MinTeleportRatioCheck};
 pub use min_vertical_passage_count::{
-    MIN_VERTICAL_PASSAGE_COUNT_DEFAULT, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
-    MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE,
+    MIN_VERTICAL_PASSAGE_COUNT_DEFAULT, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE,
     MinVerticalPassageCountCheck,
 };
 pub use min_vertical_passage_ratio::{
-    MIN_VERTICAL_PASSAGE_RATIO_DEFAULT, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
-    MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE,
+    MIN_VERTICAL_PASSAGE_RATIO_DEFAULT, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE,
     MinVerticalPassageRatioCheck,
 };
 pub use missing_endpoints::MissingEndpointsCheck;
@@ -247,10 +212,8 @@ pub use one_way_waypoint_distance::{
     OneWayWaypoint, OneWayWaypointDistanceCheck,
 };
 pub use scc_count::{MAX_SCC_COUNT_DEFAULT, SccCountCheck};
-pub use split_count::{SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE, SplitCountCheck};
-pub use split_density::{
-    SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE, SplitDensityCheck,
-};
+pub use split_count::{SPLIT_COUNT_DEFAULT, SplitCountCheck};
+pub use split_density::{SPLIT_DENSITY_DEFAULT, SplitDensityCheck};
 pub use split_distance_from_waypoint::{
     SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
     SplitDistanceFromWaypointCheck, SplitWaypoint,

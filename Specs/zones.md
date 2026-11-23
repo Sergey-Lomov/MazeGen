@@ -310,6 +310,12 @@ Zones and groups can scope per-zone generation parameter overrides; see `Specs/g
 (`removeZone`) or a group (`removeZoneGroup`) removes its id from every override. Automatic zones that vanish are not
 scrubbed: their ids are stable and an override naming one simply has no zones until it reappears.
 
+## Quality rule scopes (GitHub issue #1039)
+
+A zone or a group can scope one QC rule; see `Specs/quality-feature.md`, "Zone scope". Deleting a zone (`removeZone`) or a
+group (`removeZoneGroup`) leaves the rules alone: a rule bound to it keeps the vanished id, warns and is not sent to core.
+The target picker (`ZoneTargetPicker`) is shared by the rule dialog and the generation overrides' side panel.
+
 ## Web mirror
 
 `maze-web/src/wasm/mazeService.ts`: `Zone`, `ZoneKind`, `ZoneCellWire`, `normalizeZones`,

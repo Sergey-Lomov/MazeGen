@@ -48,8 +48,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitPatternShapeCheck
         }
 
         let invalid: Vec<SplitTileNodes> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 if split_tile_matches_any(&maze.graph, &maze.field, nodes, &self.patterns) {

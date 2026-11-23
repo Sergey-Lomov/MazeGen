@@ -105,6 +105,10 @@ impl<T: Tessellation> Stage<T> {
         &self.rules
     }
 
+    pub fn rules_mut(&mut self) -> &mut [Box<dyn RuleTrait<T>>] {
+        &mut self.rules
+    }
+
     /// Drives this stage's own fixpoint repair loop: each iteration runs only this stage's own
     /// rules' checks (stage-scoped QC — the wasteful stage-agnostic pass issue #106 replaces) and
     /// dispatches repair for every rule that found an issue, in `self.rules`' own configured

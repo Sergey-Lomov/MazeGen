@@ -71,6 +71,11 @@ pub struct AnalyticsRuleGroupConfig {
     #[serde(default)]
     #[dto(ts_type = "StrategyConfig")]
     pub strategy: Option<crate::generation_config::StrategyConfig>,
+    /// Zone scopes of the rule (GitHub issue #1039), same meaning as `QcRuleConfig.zone_scopes`:
+    /// the issues of the rule are reported per scope. Absent: the whole map.
+    #[serde(default)]
+    #[dto(ts_type = "ZoneScopeWire[]")]
+    pub zone_scopes: Option<Vec<maze_runner::config::ZoneScopeDto>>,
 }
 
 #[derive(Deserialize, Dto)]

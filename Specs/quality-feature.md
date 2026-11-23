@@ -537,11 +537,11 @@ type EntityVisibility =
 - `MultiFloorOnly` — hidden whenever the maze has fewer than 2 floors. First consumer:
   `scored_endpoints`'s `cross_floor_weight`/`elevator_stop_weight` params (issue #390),
   meaningless on a single-floor maze. Extended (issue #349 follow-up) to:
-  - Every param built from `floor_scope_param`/`geometric_floor_mode_param`/
-    `teleport_floor_kind_param` (`check_descriptor.rs`) — `floor_scope` (WholeMaze vs PerFloor),
-    `floor_mode` (geometric cross-floor distance handling), and `teleport_floor_kind`
-    (any/inter-floor/same-floor) all collapse to a single trivial value with 1 floor, so the tag is
-    stamped once inside each shared constructor rather than at every one of their ~27 call sites.
+  - Every param built from `geometric_floor_mode_param`/`teleport_floor_kind_param`
+    (`check_descriptor.rs`) — `floor_mode` (geometric cross-floor distance handling) and
+    `teleport_floor_kind` (any/inter-floor/same-floor) both collapse to a single trivial value
+    with 1 floor, so the tag is stamped once inside each shared constructor rather than at every
+    one of their call sites.
   - Whole checks/strategies that only make sense with vertical passages/elevators — entity types
     that don't exist on a single-floor maze — covering every check/strategy operating on
     `VerticalPassage`/elevator/elevator-stop entities. This also includes the explicitly vertical
@@ -701,6 +701,54 @@ interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: nu
 - Persisted in project files and quality presets as `problems` (omitted when empty; files without it load as none).
 - UI: `QcProblemVM` (`StrategySlotVM.problems`), texts in `qualityI18n/problems.ts`, `RulesColumn` renders one warning
   `WarningBubble` per problem under the rule title.
+
+## Zone scope (GitHub issue #1039)
+
+A rule can be bound to one zone or one zone group so it sees only its cells and the links leaving them (core semantics:
+`Specs/quality_control.md`, "Zone scope"; repair: `Specs/repair.md`, "anchor rule"). One binding per rule, never a list.
+
+```typescript
+type QcZoneScopeTarget =
+  | { kind: "zone"; id: number }
+  | { kind: "group"; id: number; mode: "union" | "iteration" };   // QcRuleState.zoneScope?
+```
+
+- **State.** `zoneScope` absent: the whole map (the default; files saved before the feature load this way). Picking again
+  replaces the binding, the dialog's delete button removes it (`setRuleZoneScope(ruleId, target | null)`, marks the analytics
+  stale).
+- **Modes.** A zone is one scope (`zone:<id>`). A group is `union` (its zones merged into one scope `group:<id>`) or
+  `iteration` (one scope `zone:<id>` per member zone, the rule runs per zone); the mode is chosen when the group is picked.
+  Zones are never merged inside QC (use a zone group for that). Automatic zones are allowed (listed from the start).
+- **Wire** (`domain/qcZoneScope.ts`, `buildZoneScopesWire`): the target expands into `QcRuleConfig.zone_scopes`
+  (`{ id, cells: [floor, x, y][] }`), cut to the field with `filterZonesToField`, shared cells of a union listed once. A zone
+  that exists but has no cells on the field gives a scope with empty `cells`. Absent `zoneScope`: no `zone_scopes`.
+- **Deleting a zone or a group** does not touch the rules: the binding keeps naming the vanished id (ids are never reused),
+  so the rule warns instead of silently widening to the whole map. Its bubble reads `quality.zone_scope_missing` until the
+  user rebinds or removes it. A vanished automatic zone behaves the same.
+- **Problem** (derived, never stored, `zoneScopeHasNoZones`, category `needs_reconfiguration`): the bound zone or group does
+  not exist. Shown in the card as `quality.problem_no_zones`, counted by `problematicRuleCount` (so the Quality feature
+  card gets the `status.quality_problems` warning), and such a rule is **not sent to core** (`ruleIsSendable`, in
+  `qcDerivedProblems.ts`, shared by `buildGenerateConfig`, the post-edit config and the analytics modal).
+- **UI.** A button in the rule card toolbar (next to move up/down and edit) opens `RuleZoneScopeDialog`, a compact fixed-height dialog
+  (not a side panel) over the shared `ZoneTargetPicker`: zones or groups, search, "Show automatic" on by default, and for
+  groups a "Mode" dropdown (`Union` / `By zones`, a `SelectRow`) with an info button that opens `CategoryInfoModal` describing both modes. A pick binds and closes. The dialog footer always has a destructive
+  full-width "Delete restriction" button that unbinds the rule; it is disabled with the tooltip "No restriction set" while the rule
+  has none. The card header shows the binding under the title, above the separator (`RuleZoneScope`): a caption
+  (`Limited to zone:`, `Limited to group:` for a union group, `For each zone in group:` for an iteration group) and a bubble
+  with the zone in its colour or the group name in blue; no cross, no mode or prefix inside the bubble. The generation
+  overrides use the same picker inside a side panel (`ZoneTargetPanel`, without group modes).
+- **Persistence.** Saved with the rule as `quality.rules[].zoneScope` (`validateZoneScope`: a missing group `mode` is
+  `union`; a malformed scope rejects the file). **Not saved in a quality preset**, and stripped on `loadQualityPreset`:
+  zone ids belong to a project, so "Load rules" replaces all rules and drops the scopes of the old ones.
+- **Issues** carry `scope_id` (`IssueDto`); showing the zone in the issues list is not done.
+- **Applicability:** a rule holding a check about the maze as a whole (`CheckDescriptor.zone_scope_unsupported`: start and
+  finish present or connected, regions) cannot take a scope: its zone button is disabled with the tooltip
+  `quality.zone_scope_unsupported` (`domain/qcZoneScope.ts`, `zoneScopeUnsupported`); a rule that already holds a scope
+  keeps its button enabled, so the scope can still be cleared. Such a check is alone in its issue
+  kind, so no rule mixes it with scopable checks. Distance and route checks stay scopable: the zone filters their
+  candidates, the start and finish lie on the whole maze.
+- **Audit and limits:** `Specs/quality_control.md`, "Zone scope"; remaining strategy candidate pools are covered by the
+  anchor guard only. Follow-up ticket.
 
 ## Store: rule-related state and actions
 

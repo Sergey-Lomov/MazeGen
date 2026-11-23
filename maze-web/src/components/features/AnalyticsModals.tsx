@@ -1,7 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
-import { ruleHasSendableChecks } from "../../store/storeTypes";
+import { ruleIsSendable } from "../../store/qcDerivedProblems";
 import { Modal } from "../Modal";
 import { canvas } from "../../domain/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
@@ -115,6 +115,8 @@ export function ScoreInfoModal({ onClose }: { onClose: () => void }) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
   const stages = useMazeStore((s) => s.stages);
+  const zones = useMazeStore((s) => s.zones);
+  const zoneGroups = useMazeStore((s) => s.zoneGroups);
   const descriptor = availableStrategies.find((s) => s.id === SCORED_ENDPOINTS_STRATEGY_ID);
   // Match `buildGenerateConfig` and `score_weights_from_stages`: stage order decides which active
   // scored-endpoints rule supplies route-score weights when several rules configure it.
@@ -126,7 +128,7 @@ export function ScoreInfoModal({ onClose }: { onClose: () => void }) {
     .find((rule) => rule !== undefined
       && !rule.ruleDisabled
       && !rule.disabled
-      && ruleHasSendableChecks(rule)
+      && ruleIsSendable(rule, zones, zoneGroups)
       && rule.strategyId === SCORED_ENDPOINTS_STRATEGY_ID);
   const values = descriptor ? buildValues(descriptor.params, scoreRule?.strategyParams ?? {}) : {};
   return (

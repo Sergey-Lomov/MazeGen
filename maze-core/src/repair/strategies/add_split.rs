@@ -1,5 +1,4 @@
 use super::pool::Pool;
-use super::remaining_deficits::RemainingDeficits;
 use super::split_core::{
     pick_weighted_pattern, plan_pattern_split as core_plan_pattern_split,
     plan_unconstrained_split as core_plan_unconstrained_split,
@@ -9,7 +8,7 @@ use crate::Maze;
 use crate::generation::{PresetState, SplitPattern};
 use crate::graph::route_protection::is_node_on_route;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingSplitTilesIssue, RepairArea};
+use crate::quality_control::MissingSplitTilesIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -140,7 +139,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -159,71 +158,54 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
         // `split_core::ExcludedTargets`).
         let mut committed: std::collections::HashSet<NodeId> = std::collections::HashSet::new();
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
-                continue;
-            }
-            let target = reserve_target(params, missing);
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
 
-            // A split tile belongs to exactly one floor (GitHub issue #369's floor-scope
-            // follow-up), so restricting by area is a plain point-set filter — no cross-floor
-            // double-counting concern like a teleport's exit side.
-            let eligible: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&node| {
-                    crate::generation::split_is_eligible(&maze.field, preset_state, node)
-                })
-                .filter(|&node| !protect_route || !is_node_on_route(maze, node))
-                .filter(|&node| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(node) == Some(level),
-                })
-                .collect();
-            // `src_mode` orders the candidate pool for `pop`-from-end consumption — dead ends last
-            // (poppable first) under `dead_end_priority` (GitHub issue #486).
-            let mut pool = Pool::new(eligible, src_mode, maze, rng);
+        let eligible: Vec<NodeId> = maze
+            .field
+            .all_node_ids()
+            .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
+            .filter(|&node| !protect_route || !is_node_on_route(maze, node))
+            .collect();
+        // `src_mode` orders the candidate pool for `pop`-from-end consumption — dead ends last
+        // (poppable first) under `dead_end_priority` (GitHub issue #486).
+        let mut pool = Pool::new(eligible, src_mode, maze, rng);
 
-            let mut added = 0u32;
-            let mut failed_attempts = 0u32;
+        let mut added = 0u32;
+        let mut failed_attempts = 0u32;
 
-            while added < target && failed_attempts < max_attempts {
-                let Some(at) = pool.take() else { break };
+        while added < target && failed_attempts < max_attempts {
+            let Some(at) = pool.take() else { break };
 
-                let outcome = if resolved_patterns.is_empty() {
-                    let node_count = self.max_split_nodes.max(2) as usize;
-                    core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
-                } else {
-                    let pattern_idx = pick_weighted_pattern(&resolved_patterns, rng);
-                    core_plan_pattern_split(
-                        maze,
-                        at,
-                        &resolved_patterns[pattern_idx],
-                        None,
-                        &committed,
-                        rng,
-                        allow_lose,
-                        allow_add,
-                    )
-                };
+            let outcome = if resolved_patterns.is_empty() {
+                let node_count = self.max_split_nodes.max(2) as usize;
+                core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
+            } else {
+                let pattern_idx = pick_weighted_pattern(&resolved_patterns, rng);
+                core_plan_pattern_split(
+                    maze,
+                    at,
+                    &resolved_patterns[pattern_idx],
+                    None,
+                    &committed,
+                    rng,
+                    allow_lose,
+                    allow_add,
+                )
+            };
 
-                match outcome {
-                    Some(nodes) => {
-                        committed.insert(at);
-                        commands.push(MutationCommand::ReplacePointNodes { at, nodes });
-                        added += 1;
-                        deficits.consume(&[area, RepairArea::WholeMaze]);
-                    }
-                    None => {
-                        failed_attempts += 1;
-                    }
+            match outcome {
+                Some(nodes) => {
+                    committed.insert(at);
+                    commands.push(MutationCommand::ReplacePointNodes { at, nodes });
+                    added += 1;
+                }
+                None => {
+                    failed_attempts += 1;
                 }
             }
-            total_added += added;
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);

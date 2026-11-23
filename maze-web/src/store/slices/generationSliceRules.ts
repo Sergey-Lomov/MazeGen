@@ -12,7 +12,7 @@ type RulesSliceKeys =
   | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "toggleCheckDisabled" | "removeCheckFromRule"
   | "setStrategy" | "clearStrategy" | "setNestedStrategy" | "setNestedStrategyParam" | "addNestedStrategy"
   | "removeNestedStrategy" | "moveNestedStrategy" | "toggleStrategyDisabled" | "toggleRuleDisabled"
-  | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule"
+  | "toggleRuleCollapsed" | "renameRule" | "setRuleZoneScope" | "removeRule" | "moveRule"
   | "reorderRule" | "moveRuleToNewStage";
 
 export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, RulesSliceKeys>> = (set) => ({
@@ -238,6 +238,15 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // rule, instead of freezing that locale's text as a permanent custom name.
   renameRule: (ruleId, name) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId ? { ...g, name: name === defaultRuleName(g.kind) ? null : name } : g),
+  })),
+
+  setRuleZoneScope: (ruleId, target) => set((state) => ({
+    rules: state.rules.map((g) => {
+      if (g.id !== ruleId) return g;
+      const { zoneScope: _, ...rest } = g;
+      return target ? { ...rest, zoneScope: target } : rest;
+    }),
+    debugStale: debugStaleOf(state),
   })),
 
   removeRule: (ruleId) => set((state) => ({

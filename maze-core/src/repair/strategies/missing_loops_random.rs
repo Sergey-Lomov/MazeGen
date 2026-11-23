@@ -1,11 +1,10 @@
 use super::dead_end_priority::apply_src_mode;
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit, reserve_target, src_mode};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_edge, cmd_add_directed_edge};
 use crate::ids::NodeId;
-use crate::quality_control::{MissingLoopsIssue, RepairArea};
+use crate::quality_control::MissingLoopsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -81,7 +80,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -100,94 +99,79 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
-                continue;
-            }
-            let target = reserve_target(params, missing);
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
 
-            let candidates: Vec<NodeId> = maze
-                .field
-                .all_node_ids()
-                .filter(|&n| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-                })
-                .collect();
-            let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
-            let mut added: u32 = 0;
-            // A popped `src` that yields no new edge counts against the budget; a successful one
-            // does not (`attempts_limit`, GitHub issue #486).
-            let mut failed_attempts: usize = 0;
+        let candidates: Vec<NodeId> = maze.scoped_node_ids().collect();
+        let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
+        let mut added: u32 = 0;
+        // A popped `src` that yields no new edge counts against the budget; a successful one
+        // does not (`attempts_limit`, GitHub issue #486).
+        let mut failed_attempts: usize = 0;
 
-            // GitHub issue #976: also stops on the QC deadline, keeping the edges already proposed.
-            while added < target
-                && !pool.is_empty()
-                && failed_attempts < max_failed_attempts
-                && !crate::deadline::expired()
-            {
-                // Pop from the end, not a random index — `apply_src_mode` orders the pool so
-                // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
-                // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
-                // ordering and re-introduce the original bug (falling through to the rest of the
-                // pool only by accident, not by design). Every one of `src`'s neighbors is tried in
-                // the inner loop below regardless of outcome, so `src` is never worth revisiting this
-                // same call either way — popping it (success or failure) is correct, not just
-                // convenient.
-                let src = pool
-                    .pop()
-                    .expect("pool.is_empty() already checked by the while condition");
-                let added_before = added;
+        // GitHub issue #976: also stops on the QC deadline, keeping the edges already proposed.
+        while added < target
+            && !pool.is_empty()
+            && failed_attempts < max_failed_attempts
+            && !crate::deadline::expired()
+        {
+            // Pop from the end, not a random index — `apply_src_mode` orders the pool so
+            // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
+            // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
+            // ordering and re-introduce the original bug (falling through to the rest of the
+            // pool only by accident, not by design). Every one of `src`'s neighbors is tried in
+            // the inner loop below regardless of outcome, so `src` is never worth revisiting this
+            // same call either way — popping it (success or failure) is correct, not just
+            // convenient.
+            let src = pool
+                .pop()
+                .expect("pool.is_empty() already checked by the while condition");
+            let added_before = added;
 
-                let mut neighbors = maze.field.neighbors(src);
+            let mut neighbors = maze.field.neighbors(src);
 
-                while !neighbors.is_empty() {
-                    let n_pick = rng.random_range(0..neighbors.len());
-                    let dst = neighbors.swap_remove(n_pick);
+            while !neighbors.is_empty() {
+                let n_pick = rng.random_range(0..neighbors.len());
+                let dst = neighbors.swap_remove(n_pick);
 
-                    let already_connected = maze.graph.edge_between(src, dst).is_some()
-                        || maze.graph.edge_between(dst, src).is_some()
-                        || proposed_pairs.contains(&(src, dst))
-                        || proposed_pairs.contains(&(dst, src));
-                    if already_connected {
+                let already_connected = maze.graph.edge_between(src, dst).is_some()
+                    || maze.graph.edge_between(dst, src).is_some()
+                    || proposed_pairs.contains(&(src, dst))
+                    || proposed_pairs.contains(&(dst, src));
+                if already_connected {
+                    continue;
+                }
+                // Same RNG sample-consumption contract as `generation::edge_ops::add_edge_kind`:
+                // a one-way pair rolls the chance check then the direction (two samples), a
+                // bidirectional pair rolls only the chance check (one sample) — always rolled,
+                // regardless of which branch preset_state ends up permitting, so a later param
+                // change doesn't reorder RNG draws relative to earlier iterations of this loop.
+                if rng.random::<f64>() < one_way_chance {
+                    let forward = rng.random::<bool>();
+                    let (from, to) = if forward { (src, dst) } else { (dst, src) };
+                    let cmds = cmd_add_directed_edge(from, to, preset_state);
+                    if cmds.is_empty() {
                         continue;
                     }
-                    // Same RNG sample-consumption contract as `generation::edge_ops::add_edge_kind`:
-                    // a one-way pair rolls the chance check then the direction (two samples), a
-                    // bidirectional pair rolls only the chance check (one sample) — always rolled,
-                    // regardless of which branch preset_state ends up permitting, so a later param
-                    // change doesn't reorder RNG draws relative to earlier iterations of this loop.
-                    if rng.random::<f64>() < one_way_chance {
-                        let forward = rng.random::<bool>();
-                        let (from, to) = if forward { (src, dst) } else { (dst, src) };
-                        let cmds = cmd_add_directed_edge(from, to, preset_state);
-                        if cmds.is_empty() {
-                            continue;
-                        }
-                        commands.extend(cmds);
-                    } else {
-                        // Strictly bidirectional: skip the pair unless both directions are
-                        // unblocked, rather than `can_connect`'s "at least one direction" contract.
-                        let cmds = cmd_add_bidirectional_edge(src, dst, preset_state);
-                        if cmds.is_empty() {
-                            continue;
-                        }
-                        commands.extend(cmds);
+                    commands.extend(cmds);
+                } else {
+                    // Strictly bidirectional: skip the pair unless both directions are
+                    // unblocked, rather than `can_connect`'s "at least one direction" contract.
+                    let cmds = cmd_add_bidirectional_edge(src, dst, preset_state);
+                    if cmds.is_empty() {
+                        continue;
                     }
-                    proposed_pairs.insert((src, dst));
-                    added += 1;
-                    deficits.consume(&[area, RepairArea::WholeMaze]);
-                    break;
+                    commands.extend(cmds);
                 }
-                if added == added_before {
-                    failed_attempts += 1;
-                }
+                proposed_pairs.insert((src, dst));
+                added += 1;
+                break;
             }
-            total_added += added;
+            if added == added_before {
+                failed_attempts += 1;
+            }
         }
+        total_added += added;
 
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);

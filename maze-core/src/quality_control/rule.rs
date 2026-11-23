@@ -1,7 +1,8 @@
-use super::apply_commands::{ApplyOutcome, apply_commands, qc_event_proposed_for_command};
+use super::apply_commands::{ApplyOutcome, apply_commands_scoped, qc_event_proposed_for_command};
 use super::check::Check;
 use super::event::QcEvent;
 use super::issue::{Issue, IssueMerge, IssueRequirement};
+use super::scope::ScopeCells;
 use crate::Maze;
 use crate::event_log::ScopeGuard;
 use crate::generation::PresetState;
@@ -51,6 +52,9 @@ pub struct Rule<T: Tessellation, I: IssueRequirement + IssueMerge> {
     pub id: String,
     checks: Vec<(String, Box<dyn Check<T, I>>)>,
     strategy: Option<RuleStrategy<T, I>>,
+    /// Zone scopes the rule is bound to (GitHub issue #1039). `None`: the rule sees the whole map.
+    /// `Some`: it runs once per scope, each time seeing only that scope (an empty list: nothing).
+    scopes: Option<Vec<ScopeCells<T>>>,
 }
 
 impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
@@ -75,7 +79,19 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             id,
             checks,
             strategy,
+            scopes: None,
         }
+    }
+
+    /// Binds the rule to `scopes` (GitHub issue #1039): scopes with the same id are one scope, the
+    /// first wins. See `Specs/quality_control.md`, "Zone scope".
+    pub fn with_scopes(mut self, scopes: Vec<ScopeCells<T>>) -> Self {
+        RuleTrait::bind_scopes(&mut self, scopes);
+        self
+    }
+
+    pub fn scopes(&self) -> Option<&[ScopeCells<T>]> {
+        self.scopes.as_deref()
     }
 
     /// `(local_id, &dyn Check<T, I>)` pairs, in the order checks were configured.
@@ -249,6 +265,13 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     /// `proposed`/`applied` directly. What a strategy itself narrates *inside* its own `"strategy
     /// <id>"` scope beyond the `*Proposed` line (e.g. per-strategy decision events) is each
     /// strategy's own concern, added issue-by-issue in later tickets.
+    ///
+    /// A rule bound to zone scopes (GitHub issue #1039) runs this once per scope, in order, each
+    /// inside a `"scope <id>"` event scope, and folds the results: no issue anywhere is `NoIssue`;
+    /// issues but no strategy is `NoStrategy`; otherwise `Repaired`, `Failed` only when every
+    /// dispatched scope failed, so one scope that could still repair keeps the rule off the stage's
+    /// blacklist. Scopes are independent and may overlap; agreement between them comes from the
+    /// stage's own fixpoint. The QC deadline is checked between scopes.
     #[allow(clippy::too_many_arguments)]
     pub fn check_and_repair_typed(
         &self,
@@ -261,14 +284,97 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        let issue = self.run_checks_typed(
-            maze,
-            rng,
-            preset_state,
-            per_check,
-            now_ms,
-            event_log.as_deref_mut(),
-        );
+        let Some(scopes) = self.scopes.as_deref() else {
+            return self.repair_in_scope(
+                maze,
+                None,
+                rng,
+                preset_state,
+                per_check,
+                per_strategy,
+                now_ms,
+                event_log,
+                debug_state,
+            );
+        };
+        let mut issued = false;
+        let mut dispatched = false;
+        let mut all_failed = true;
+        let mut fixed_score = None;
+        let mut totals = ApplyOutcome::default();
+        for scope in scopes.iter().filter(|s| s.cell_count() > 0) {
+            if crate::deadline::expired() {
+                break;
+            }
+            let mut scope_log = event_log
+                .as_mut()
+                .map(|log| log.enter(format!("scope {}", scope.id())));
+            let outcome = self.repair_in_scope(
+                maze,
+                Some(scope),
+                rng,
+                preset_state,
+                per_check,
+                per_strategy,
+                now_ms,
+                scope_log.as_mut(),
+                debug_state.as_deref_mut(),
+            );
+            match outcome {
+                RuleIterationOutcome::NoIssue => {}
+                RuleIterationOutcome::NoStrategy => issued = true,
+                RuleIterationOutcome::Repaired(result, applied) => {
+                    issued = true;
+                    dispatched = true;
+                    totals.proposed += applied.proposed;
+                    totals.applied += applied.applied;
+                    if let RepairResult::Fixed { score } = result {
+                        all_failed = false;
+                        fixed_score = score.or(fixed_score);
+                    }
+                }
+            }
+        }
+        match (issued, dispatched) {
+            (false, _) => RuleIterationOutcome::NoIssue,
+            (true, false) => RuleIterationOutcome::NoStrategy,
+            (true, true) => RuleIterationOutcome::Repaired(
+                if all_failed {
+                    RepairResult::Failed
+                } else {
+                    RepairResult::Fixed { score: fixed_score }
+                },
+                totals,
+            ),
+        }
+    }
+
+    /// One check, strategy and apply round of this rule, seeing `scope` only (the whole map for
+    /// `None`). The mask is raised just around the reads (checks and `strategy.apply`); commands
+    /// are applied outside it, against the scope's cells.
+    #[allow(clippy::too_many_arguments)]
+    fn repair_in_scope(
+        &self,
+        maze: &mut Maze<T>,
+        scope: Option<&ScopeCells<T>>,
+        rng: &mut dyn RngCore,
+        preset_state: &PresetState,
+        per_check: &mut HashMap<&'static str, (f64, u32)>,
+        per_strategy: &mut HashMap<&'static str, (f64, u32)>,
+        now_ms: &dyn Fn() -> f64,
+        mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
+    ) -> RuleIterationOutcome {
+        let issue = in_scope(maze, scope, |m| {
+            self.run_checks_typed(
+                m,
+                rng,
+                preset_state,
+                per_check,
+                now_ms,
+                event_log.as_deref_mut(),
+            )
+        });
         let Some(issue) = issue else {
             return RuleIterationOutcome::NoIssue;
         };
@@ -281,14 +387,16 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             rule_strategy.strategy.strategy_id(),
             now_ms,
             || {
-                rule_strategy.strategy.apply(
-                    &issue,
-                    maze,
-                    rng,
-                    &rule_strategy.params,
-                    preset_state,
-                    &rule_strategy.nested,
-                )
+                in_scope(maze, scope, |m| {
+                    rule_strategy.strategy.apply(
+                        &issue,
+                        m,
+                        rng,
+                        &rule_strategy.params,
+                        preset_state,
+                        &rule_strategy.nested,
+                    )
+                })
             },
         );
 
@@ -311,19 +419,21 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         }
 
         let outcome = if commands.is_empty() {
-            apply_commands(
+            apply_commands_scoped(
                 maze,
                 preset_state,
                 commands,
+                scope,
                 None,
                 debug_state.as_deref_mut(),
             )
         } else {
             let mut apply_scope = event_log.as_mut().map(|log| log.enter("apply requests"));
-            apply_commands(
+            apply_commands_scoped(
                 maze,
                 preset_state,
                 commands,
+                scope,
                 apply_scope.as_mut(),
                 debug_state,
             )
@@ -341,11 +451,28 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         now_ms: &dyn Fn() -> f64,
     ) -> Vec<I> {
         let mut issues = Vec::new();
-        for (_, check) in &self.checks {
-            let mut found = timed(timing, check.check_type_id(), now_ms, || {
-                check.report_check(maze, rng)
+        let Some(scopes) = self.scopes.as_deref() else {
+            for (_, check) in &self.checks {
+                let mut found = timed(timing, check.check_type_id(), now_ms, || {
+                    check.report_check(maze, rng)
+                });
+                issues.append(&mut found);
+            }
+            return issues;
+        };
+        // Every issue carries the id of the scope it was found in (`IssueMeta::scope`).
+        for scope in scopes.iter().filter(|s| s.cell_count() > 0) {
+            maze.with_scope(scope.inner_nodes(&maze.field), |m| {
+                for (_, check) in &self.checks {
+                    let mut found = timed(timing, check.check_type_id(), now_ms, || {
+                        check.report_check(m, rng)
+                    });
+                    for issue in &mut found {
+                        issue.meta_mut().set_scope(scope.id());
+                    }
+                    issues.append(&mut found);
+                }
             });
-            issues.append(&mut found);
         }
         issues
     }
@@ -358,6 +485,8 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
 /// below is the only erased entry point into it.
 pub trait RuleTrait<T: Tessellation> {
     fn id(&self) -> &str;
+    /// Binds the rule to zone scopes (`Rule::with_scopes`) after it was built type-erased.
+    fn bind_scopes(&mut self, scopes: Vec<ScopeCells<T>>);
     fn report_checks(
         &self,
         maze: &Maze<T>,
@@ -382,6 +511,13 @@ pub trait RuleTrait<T: Tessellation> {
 impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> for Rule<T, I> {
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn bind_scopes(&mut self, scopes: Vec<ScopeCells<T>>) {
+        let mut seen = std::collections::HashSet::new();
+        let mut unique = scopes;
+        unique.retain(|s| seen.insert(s.id().to_string()));
+        self.scopes = Some(unique);
     }
 
     fn report_checks(
@@ -418,6 +554,18 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
             event_log,
             debug_state,
         )
+    }
+}
+
+/// Runs `f` on `maze` seen through `scope`, or on the whole `maze` for `None`.
+fn in_scope<T: Tessellation, R>(
+    maze: &Maze<T>,
+    scope: Option<&ScopeCells<T>>,
+    f: impl FnOnce(&Maze<T>) -> R,
+) -> R {
+    match scope {
+        Some(scope) => maze.with_scope(scope.inner_nodes(&maze.field), f),
+        None => f(maze),
     }
 }
 

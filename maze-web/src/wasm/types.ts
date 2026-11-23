@@ -49,6 +49,8 @@ export interface CheckDescriptor {
   /** What the tessellation must be like for the check to be offered — see `TessellationRequirement`.
    *  `undefined` means always available. */
   requires?: TessellationRequirement[];
+  /** The check is about the maze as a whole, so a rule holding it cannot take a zone scope. */
+  zone_scope_unsupported?: boolean;
 }
 
 /** Availability tag (GitHub issue #1008), next to `EntityVisibility` with a different effect: a
@@ -202,6 +204,16 @@ export interface QcRuleConfig {
   /** Rule-level parameters (e.g. `protect_route`) — shared by every check/strategy in this rule
    * that has been migrated to consume it, see GitHub issue #253. */
   params: Record<string, string>;
+  /** Zone scopes the rule is bound to (GitHub issue #1039); absent: the whole map. Mirrors Rust's
+   * `QcRuleConfig.zone_scopes`. */
+  zone_scopes?: ZoneScopeWire[];
+}
+
+/** One zone scope of a QC rule on the wire (mirrors Rust's `ZoneScopeDto`): `id` is `zone:<id>` or
+ * `group:<id>`, `cells` are `[floor, x, y]`. */
+export interface ZoneScopeWire {
+  id: string;
+  cells: [number, number, number][];
 }
 
 /** A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and GitHub issue

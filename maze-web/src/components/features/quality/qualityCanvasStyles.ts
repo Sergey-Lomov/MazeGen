@@ -170,12 +170,17 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.default}`,
     overflow: "hidden",
   },
-  ruleCardTitle: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-    padding: "7px 6px 7px 10px",
+  ruleCardHeader: {
     borderBottom: `1px solid ${ui.border.default}`,
+  },
+  // A grid so the zone scope line (GitHub issue #1039) can sit under the title text, in its column; without it
+  // there is a single row and the header looks like a plain flex row.
+  ruleCardTitle: {
+    display: "grid",
+    gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
+    alignItems: "center",
+    columnGap: spacing.itemGap,
+    padding: "7px 6px 7px 10px",
   },
   ruleCardProblem: {
     // Full shorthand: React drops a lone `borderColor` on re-render and the border falls back to the text color.

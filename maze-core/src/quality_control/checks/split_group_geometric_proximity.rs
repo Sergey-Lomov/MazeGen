@@ -55,8 +55,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
             .map(|(i, l)| (l, i))
             .collect();
         let tiles: Vec<(crate::space::LevelId, usize, T::CellId, Vec<NodeId>)> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 let level_index = *level_indices.get(&level)?;
