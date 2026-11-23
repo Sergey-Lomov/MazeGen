@@ -96,48 +96,6 @@ describe("IssueBubble floor badges (GitHub issue #365)", () => {
     expect(screen.queryByText("L1")).not.toBeInTheDocument();
     expect(screen.queryByText("L2")).not.toBeInTheDocument();
   });
-
-  it("GitHub issue #1007: a per-floor missing-loops deficit badges every short floor and navigates to it", () => {
-    const floor0 = { id: "floor_0", title: "Floor 1" };
-    const floor1 = { id: "floor_1", title: "Floor 2" };
-    const floor2 = { id: "floor_2", title: "Floor 3" };
-    useMazeStore.setState({ floors: [floor0, floor1, floor2], activeFloorId: floor0.id, nodes: [] });
-    const issue: IssueDto = {
-      kind: "missing_loops",
-      payload: { kind: "area_deficit", areas: { min_loops_count: [0, 2] } },
-      source_checks: ["min_loops_count"],
-      source_check_types: { min_loops_count: "min_loops_count" },
-      details: { min_loops_count: { missing: "2" } },
-    };
-    render(<IssueBubble issue={issue} sourceCheck="min_loops_count" />);
-
-    expect(screen.getByText("L1")).toBeInTheDocument();
-    expect(screen.queryByText("L2")).not.toBeInTheDocument();
-    expect(screen.getByText("L3")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("L3"));
-    expect(useMazeStore.getState().activeFloorId).toBe(floor2.id);
-  });
-
-  it("a per-floor missing-one-ways deficit uses its AreaDeficit floors for badges", () => {
-    const floors = [
-      { id: "floor_0", title: "Floor 1" },
-      { id: "floor_1", title: "Floor 2" },
-    ];
-    useMazeStore.setState({ floors, activeFloorId: floors[0].id, nodes: [] });
-    const issue: IssueDto = {
-      kind: "missing_one_ways",
-      payload: { kind: "area_deficit", areas: { min_one_way_count: [1] } },
-      source_checks: ["min_one_way_count"],
-      source_check_types: { min_one_way_count: "min_one_way_count" },
-      details: { min_one_way_count: { missing: "1" } },
-    };
-    render(<IssueBubble issue={issue} sourceCheck="min_one_way_count" />);
-
-    expect(screen.queryByText("L1")).not.toBeInTheDocument();
-    expect(screen.getByText("L2")).toBeInTheDocument();
-    fireEvent.mouseEnter(screen.getByText("Missing 1 one-way passage(s) to reach the required minimum"));
-    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
-  });
 });
 
 describe("IssueBubble", () => {

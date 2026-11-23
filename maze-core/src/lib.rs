@@ -111,6 +111,67 @@ impl<T: Tessellation> Maze<T> {
         self.field.remove_node_at(node);
     }
 
+    /// Runs `f` with the graph seen through the scope whose own nodes are `inner` (GitHub issue
+    /// #1039, see `graph::ScopeMask`). The previous mask is restored afterwards, also on panic.
+    /// For reads only: every graph mutator asserts that no mask is raised, so apply commands
+    /// outside `f`.
+    pub fn with_scope<R>(
+        &self,
+        inner: std::collections::HashSet<NodeId>,
+        f: impl FnOnce(&Self) -> R,
+    ) -> R {
+        struct Restore<'a>(&'a Graph, Option<std::sync::Arc<graph::ScopeMask>>);
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.0.replace_scope(self.1.take());
+            }
+        }
+        let mask = self.graph.build_scope_mask(inner);
+        let previous = self.graph.replace_scope(Some(mask));
+        let _restore = Restore(&self.graph, previous);
+        f(self)
+    }
+
+    /// Distinct field cells the raised scope covers; every cell of the field without one. The
+    /// denominator of the density and ratio checks, which normalise per field cell.
+    pub fn scoped_cell_count(&self) -> usize {
+        if !self.graph.scope_active() {
+            return self.field.cell_count();
+        }
+        self.graph
+            .nodes()
+            .filter_map(|n| Some((self.field.level_of(n.id)?, self.field.cell_of(n.id)?)))
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    }
+
+    /// Whether `cell` on `level` belongs to the raised scope (true for every cell without one).
+    /// Candidate pools a strategy draws from the field instead of the graph need this filter.
+    pub fn in_scope_cell(&self, level: LevelId, cell: T::CellId) -> bool {
+        !self.graph.scope_active()
+            || self
+                .field
+                .nodes_at(level, cell)
+                .iter()
+                .any(|&n| self.graph.is_inner(n))
+    }
+
+    /// `field.split_cells()` cut to the raised scope: a split tile whose nodes are inner. Every split tile
+    /// without a scope. Checks enumerate split tiles from the field, which the graph mask does not reach.
+    pub fn scoped_split_cells(&self) -> impl Iterator<Item = (LevelId, T::CellId)> + '_ {
+        self.field
+            .split_cells()
+            .filter(move |&(level, cell)| self.in_scope_cell(level, cell))
+    }
+
+    /// `field.all_node_ids()` cut to the raised scope: inner nodes only. Every node without a scope.
+    /// Candidate pools a strategy draws from the field use this instead of the unmasked listing.
+    pub fn scoped_node_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.field
+            .all_node_ids()
+            .filter(move |&n| self.graph.is_inner(n))
+    }
+
     /// An independent working copy for a `RepairStrategy` that needs to mutate-and-inspect
     /// intermediate state before committing to a final `MutationCommand` list (GitHub issue #118,
     /// `Specs/repair.md`) — currently only `MissingRegionsStrategy`'s reuse/growth attempts. Fresh

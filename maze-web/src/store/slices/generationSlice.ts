@@ -262,7 +262,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   loadQualityPreset: (quality) => set((state) => ({
-    rules: rulesFromFile(quality.rules, state.availableStrategies),
+    // Zone ids belong to the project a preset came from, so a loaded rule is never bound to zones (GitHub issue #1039).
+    rules: rulesFromFile(quality.rules.map(({ zoneScope: _zoneScope, ...rule }) => rule), state.availableStrategies),
     stages: quality.stages,
     repairMaxIterations: quality.repairMaxIterations,
     repairTimeBudgetSecs: quality.repairTimeBudgetSecs,

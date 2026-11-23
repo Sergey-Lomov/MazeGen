@@ -77,4 +77,29 @@ describe("the installed auto zone sync", () => {
       vi.useRealTimers();
     }
   });
+
+  it("recomputes at once on the first change of a burst and once more when the burst ends", () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(computeAutoZones).mockReset().mockReturnValue([]);
+      const calls = () => vi.mocked(computeAutoZones).mock.calls.length;
+      const afterStart = calls();
+      const addPoint = (point: number) => {
+        const s = useMazeStore.getState();
+        const id = s.activeFloorId;
+        useMazeStore.setState({ floorFields: { ...s.floorFields, [id]: { ...s.floorFields[id], fieldPoints: new Set([point]) } } });
+      };
+      vi.advanceTimersByTime(AUTO_ZONES_DEBOUNCE_MS);
+
+      addPoint(10);
+      expect(calls()).toBe(afterStart + 1);
+      addPoint(11);
+      addPoint(12);
+      expect(calls()).toBe(afterStart + 1);
+      vi.advanceTimersByTime(AUTO_ZONES_DEBOUNCE_MS);
+      expect(calls()).toBe(afterStart + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

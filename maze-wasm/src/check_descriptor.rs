@@ -1,7 +1,7 @@
 use maze_core::RegionClass;
 use maze_core::quality_control::{
-    Comparison, CycleKind, FloorScope, GeometricFloorMode, TeleportDirectionFilter,
-    TeleportFloorKindFilter, VerticalPassageType,
+    Comparison, CycleKind, GeometricFloorMode, TeleportDirectionFilter, TeleportFloorKindFilter,
+    VerticalPassageType,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -138,6 +138,12 @@ pub struct CheckDescriptor {
     /// means always available — see `TessellationRequirement`'s own doc comment.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<TessellationRequirement>,
+    /// A check about the maze as a whole (start and finish present or connected, regions), which a
+    /// zone scope cannot meaningfully narrow (GitHub issue #1039). The UI keeps a rule holding one
+    /// from taking a scope. Every other check reads the graph through the scope mask, and distances
+    /// from the start and finish through the whole maze.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub zone_scope_unsupported: bool,
 }
 
 /// A condition on the tessellation a check needs (GitHub issue #1008) — the *availability* tag, next
@@ -296,26 +302,6 @@ pub fn cycle_kind_param() -> ParamDescriptor {
     }
 }
 
-/// Shared `floor_scope` param descriptor — GitHub issue #369: every count/density-style QC check
-/// (except region-based checks and `scc_count`) exposes whether its threshold is evaluated over
-/// the whole maze or independently per floor (an entity spanning floors counts toward every floor
-/// it touches under `PerFloor`). `default` is `WholeMaze` for count-style checks (the pre-#369
-/// behavior) and `PerFloor` for density-style checks (per-floor coverage is the more meaningful
-/// default for a per-100-cells share).
-pub fn floor_scope_param(default: FloorScope) -> ParamDescriptor {
-    ParamDescriptor {
-        id: "floor_scope",
-        label: "Floor scope",
-        kind: ParamKindDto::Enum {
-            options: FloorScope::ALL.iter().map(|s| s.as_str()).collect(),
-            default: default.as_str(),
-        },
-        // WholeMaze and PerFloor collapse to the same behavior with 1 floor (GitHub issue #349
-        // follow-up).
-        visibility: Some(EntityVisibility::MultiFloorOnly),
-    }
-}
-
 /// Shared `passage_type` param descriptor for the 4 min/max vertical-passage count/ratio checks
 /// and the 2 group-proximity checks (GitHub issue #343 follow-up) — which logical `VerticalPassage`
 /// passages participate (any, two-way only, one-way in either/a specific direction).
@@ -378,14 +364,10 @@ pub fn vertical_passage_same_type_only_param() -> ParamDescriptor {
     }
 }
 
-/// Shared `count_incoming` param descriptor — only matters for one-way passages. For the 4 min/max
-/// vertical-passage count/ratio checks under `FloorScope::PerFloor` (GitHub issue #343 follow-up):
-/// when off, a one-way passage counts only toward its `from` floor; when on, it also counts toward
-/// its `to` floor. Ignored entirely under `FloorScope::WholeMaze`. For the 2 proximity checks:
-/// when off, a one-way passage's `to` end is excluded from the proximity scan entirely (only its
-/// `from` end participates); when on, both ends participate, same as a two-way passage's two ends.
-/// Each caller passes its own `default` since the two families disagree on it (count/ratio checks
-/// default to off, proximity checks default to on).
+/// Shared `count_incoming` param descriptor — only matters for one-way passages of the 2 vertical
+/// passage proximity checks (GitHub issue #343 follow-up): when off, a one-way passage's `to` end
+/// is excluded from the proximity scan entirely (only its `from` end participates); when on, both
+/// ends participate, same as a two-way passage's two ends.
 pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
     ParamDescriptor {
         id: "count_incoming",

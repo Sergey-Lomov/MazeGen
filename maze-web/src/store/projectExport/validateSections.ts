@@ -5,7 +5,7 @@ import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import type { PostEditCommand, ResolvedRotateNode, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdgeState } from "../postEditTypes";
 import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY } from "../storeTypes";
-import type { QcProblem } from "../storeTypes";
+import type { QcProblem, QcZoneScopeTarget } from "../storeTypes";
 import type {
   ProjectFilePostEdit,
   ProjectFileQcRule,
@@ -535,7 +535,19 @@ export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   const problems = obj.problems != null
     ? assertArray(obj.problems, `${path}.problems`).map((p, i) => validateQcProblem(p, `${path}.problems[${i}]`))
     : [];
-  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed, ...(problems.length > 0 ? { problems } : {}) };
+  // Absent means the whole map, and so do files saved before zone scopes existed (GitHub issue #1039).
+  const zoneScope = obj.zoneScope != null ? validateZoneScope(obj.zoneScope, `${path}.zoneScope`) : undefined;
+  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed, ...(problems.length > 0 ? { problems } : {}), ...(zoneScope ? { zoneScope } : {}) };
+}
+
+function validateZoneScope(v: unknown, path: string): QcZoneScopeTarget {
+  const obj = assertObject(v, path);
+  const id = assertNumber(obj.id, `${path}.id`);
+  if (obj.kind === "zone") return { kind: "zone", id };
+  if (obj.kind !== "group") throw new Error(`Invalid zone scope kind at ${path}.kind`);
+  const mode = obj.mode ?? "union";
+  if (mode !== "union" && mode !== "iteration") throw new Error(`Invalid zone scope mode at ${path}.mode`);
+  return { kind: "group", id, mode };
 }
 
 function validateQcProblem(v: unknown, path: string): QcProblem {

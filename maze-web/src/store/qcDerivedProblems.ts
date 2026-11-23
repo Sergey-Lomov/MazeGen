@@ -1,6 +1,18 @@
 import type { ParamDescriptor } from "../wasm/types";
 import { activeLimitCount, parseNodeShapeLimits } from "../components/features/nodeShapeLimits";
-import { isRuleProblematic, type ProblemRule, type QcProblem } from "./qcRuleTypes";
+import type { Zone } from "../wasm/mazeService";
+import { zoneScopeHasNoZones } from "../domain/qcZoneScope";
+import type { ZoneGroup } from "./zonesTypes";
+import { isRuleProblematic, ruleHasSendableChecks, type ProblemRule, type QcProblem, type QcZoneScopeTarget } from "./qcRuleTypes";
+
+/** Whether core receives anything from `rule`: it has sendable checks and, if bound to zones, some zone left. */
+export function ruleIsSendable(
+  rule: Parameters<typeof ruleHasSendableChecks>[0] & { zoneScope?: QcZoneScopeTarget },
+  zones: readonly Zone[],
+  groups: readonly ZoneGroup[],
+): boolean {
+  return ruleHasSendableChecks(rule) && !zoneScopeHasNoZones(rule, zones, groups);
+}
 
 type CheckLike = { localId: number; typeId: string; params: Record<string, string>; disabled: boolean };
 type DescriptorLike = { id: string; params: readonly Pick<ParamDescriptor, "id" | "kind">[] };
@@ -22,14 +34,17 @@ export function emptyLimitsCheckIds(
     .map((check) => check.localId);
 }
 
-/** Rules the feature card counts as problematic: stored problems, an empty rule, or empty limits.
+/** Rules the feature card counts as problematic: stored problems, an empty rule, empty limits, or a zone scope
+ *  with no zone left (GitHub issue #1039).
  *  A disabled rule and the rules of a disabled stage are not counted. */
 export function problematicRuleCount(
-  rules: readonly (ProblemRule & { id: string; checks: readonly CheckLike[] })[],
+  rules: readonly (ProblemRule & { id: string; checks: readonly CheckLike[]; zoneScope?: QcZoneScopeTarget })[],
   stages: readonly { ruleIds: readonly string[]; disabled: boolean }[],
   descriptors: readonly DescriptorLike[],
+  zones: readonly Zone[],
+  groups: readonly ZoneGroup[],
 ): number {
   const inDisabledStage = new Set(stages.filter((s) => s.disabled).flatMap((s) => s.ruleIds));
   return rules.filter((r) => !inDisabledStage.has(r.id) && !r.ruleDisabled
-    && (isRuleProblematic(r) || emptyLimitsCheckIds(r, descriptors).length > 0)).length;
+    && (isRuleProblematic(r) || zoneScopeHasNoZones(r, zones, groups) || emptyLimitsCheckIds(r, descriptors).length > 0)).length;
 }

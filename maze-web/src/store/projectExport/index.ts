@@ -3,3 +3,4 @@ export * from "./validate";
 export * from "./serialize";
 export * from "./visualPreset";
 export * from "./qualityPreset";
+export * from "./fileSave";

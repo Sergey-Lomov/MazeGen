@@ -273,6 +273,7 @@ fn main() -> ExitCode {
                     ("WireTopology", "../types"),
                     ("PresetConnection", "../types"),
                     ("StrategyConfig", "../types"),
+                    ("ZoneScopeWire", "../types"),
                 ],
             );
             let dto_ts_path = repo_root

@@ -50,12 +50,7 @@ fn multi_floor_maze(floors: usize, side: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingElevatorsIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingElevatorsIssue::new_from_check("min_elevator_count", entries)
+    MissingElevatorsIssue::new_from_check("min_elevator_count", missing)
 }
 
 #[test]
@@ -293,7 +288,7 @@ fn distribute_stops_places_endpoints_and_keeps_every_gap_in_the_skip_range() {
     // valid, so different seeds exercise different backtracking paths through the same call.
     for seed in 0..30u64 {
         let mut rng = MazeRng::seed_from_u64(seed);
-        let indices = distribute_stops(0, 9, 4, 0, 2, None, &mut rng)
+        let indices = distribute_stops(0, 9, 4, 0, 2, &mut rng)
             .expect("a valid placement always exists for this span/stop_count/skip combo");
         assert_eq!(indices.len(), 4);
         assert_eq!(indices[0], 0, "first stop is always the base index");
@@ -316,7 +311,7 @@ fn distribute_stops_places_endpoints_and_keeps_every_gap_in_the_skip_range() {
 fn distribute_stops_returns_none_when_the_span_is_geometrically_unreachable() {
     // step fixed at exactly 1 (skip 0..=0), but a span of 5 can't be split into 2 gaps of 1 each.
     let mut rng = MazeRng::seed_from_u64(1);
-    assert_eq!(distribute_stops(0, 5, 3, 0, 0, None, &mut rng), None);
+    assert_eq!(distribute_stops(0, 5, 3, 0, 0, &mut rng), None);
 }
 
 #[test]

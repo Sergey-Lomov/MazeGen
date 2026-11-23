@@ -16,6 +16,10 @@ are the Save / Load buttons in the `FeaturesPanel` footer (`maze-web/src/compone
 
 Every save flow opens the shared filename dialog with its generated timestamped base name selected, so the user can confirm immediately or replace it. Project saves default to `maze-project-DDHHmmss.maze`, visual styles to `maze-style-DDHHmmss.mazestyle`, and quality rules to `maze-quality-DDHHmmss.mazequality`. The timestamp is the local day of month, hour, minute, and second. The extension is displayed separately, cannot be edited, and Save is disabled for a blank base name.
 
+GitHub issue #1077. The dialog prefills the base name last confirmed for the same kind (project, style, quality, PNG export) instead of a fresh timestamp; it is kept in `localStorage` (`maze:lastFileBaseName:<kind>`) and falls back to the generated name when absent or storage is unavailable. The debug-config export does not remember.
+
+GitHub issue #1077, save in place (`store/projectExport/fileSave.ts`). Where the browser has `showSaveFilePicker`, the dialogs of the three JSON kinds (project, style, quality) show two buttons: **Save** writes to a user-chosen file and **Download** keeps the download flow above. PNG export stays download-only. Save keeps the `FileSystemFileHandle` of each kind for the session. While the confirmed name equals that file's name it rewrites the file without any picker; any other name opens the native picker, which asks before replacing an existing file, and the chosen file becomes the new target. The dialog is prefilled with the target file's base name. Writing goes through a writable stream the browser commits only on `close`, so a failure midway leaves the old file intact. A failure (permission revoked, file moved or deleted) aborts the stream, forgets the handle and raises an `error` toast (`file_save.failed`, source `file_save`); the next Save asks for a file again. Cancelling the picker is silent. Without `showSaveFilePicker` (Firefox, Safari) the dialog keeps a single Save button that downloads. The handle is not persisted across reloads, and opening a project via the Load button does not set a target. There is no unsaved-changes indicator in the app, so none is reset. An overwrite confirmation is not possible: the download flow (`<a download>`) cannot see whether a file with that name exists, and the browser decides what to do with a duplicate.
+
 The debug-config export in the footer uses the same dialog, defaulting to `maze-debug-call-<seed>-DDHHmmss.json`.
 
 `downloadProjectFile(state)` (`serialize.ts`): `serializeProject(state)` → `downloadJsonFile` (shared
@@ -125,6 +129,10 @@ Generation parameter overrides (GitHub issue #1038, `Specs/generation.md`) are s
 overrides). `validateZones` rejects an unknown parameter key and a duplicate override id, and drops zone and group
 ids that name nothing (automatic ids are kept).
 
+Quality rule zone scopes (GitHub issue #1039, `Specs/quality-feature.md`) are saved with the rule as
+`quality.rules[].zoneScope` (one zone or group by `kind` and `id`, a group with `mode` `union` or `iteration`), written
+only when set; absent loads as the whole map, a missing group `mode` as `union`. They are not part of a quality preset.
+
 On load `validateZones` (`validateZones.ts`) checks the structure only and rejects, naming the path, a bad cell,
 kind or id and a duplicate zone or group id. Cells of floors or points no longer in the field are kept and dropped
 at use (`filterZonesToField`), so they never break loading. Group members naming no zone and colour overrides of
@@ -179,6 +187,8 @@ Quality card's top-right corner (`QualityFeature.tsx`).
   `validateQuality` (`validateSections.ts`).
 - Extension: `QUALITY_PRESET_FILE_EXTENSION = ".mazequality"`, with the same iOS/iPadOS `accept`
   exception as project files (`qualityPresetFileAccept`) and the same neutral download MIME type.
+- Zone scopes of rules (`zoneScope`, GitHub issue #1039) are left out on save and stripped on load: zone ids belong to
+  the project the preset is applied to.
 - Load replaces the whole quality configuration (rules, stages, strategy params, repair limits);
   maze content, generation parameters, visual style and every other setting stay untouched.
   `nextLocalCheckId` is recomputed (`rulesFromFile`, shared with `loadProject`).

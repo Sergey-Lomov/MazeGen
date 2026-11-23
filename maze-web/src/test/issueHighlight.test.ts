@@ -9,8 +9,8 @@ function regionGroup(nodes: number[]) {
 }
 
 describe("resolveIssueHighlight", () => {
-  it("resolves none/excessiveSccCount/areaDeficit to no highlight", () => {
-    for (const kind of ["none", "excessiveSccCount", "areaDeficit"] as const) {
+  it("resolves none/excessiveSccCount to no highlight", () => {
+    for (const kind of ["none", "excessiveSccCount"] as const) {
       expect(resolveIssueHighlight({ kind } as NormalizedIssuePayload<number>)).toEqual({ cycle: null, region: null });
     }
   });

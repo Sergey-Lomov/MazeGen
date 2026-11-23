@@ -25,12 +25,7 @@ fn maze_grid(side: usize) -> Maze<SquareTessellation> {
 }
 
 fn missing_issue(missing: u32) -> MissingTeleportsIssue {
-    let entries = if missing == 0 {
-        vec![]
-    } else {
-        vec![(RepairArea::WholeMaze, missing)]
-    };
-    MissingTeleportsIssue::new_from_check("min_teleport_count", entries)
+    MissingTeleportsIssue::new_from_check("min_teleport_count", missing)
 }
 
 #[test]
@@ -343,123 +338,6 @@ fn attempts_limit_failure_on_one_slot_does_not_abort_remaining_slots() {
         teleport_count, 2,
         "both teleport slots must succeed despite earlier attempts_limit exhaustion on locked-out candidates"
     );
-}
-
-#[test]
-fn apply_restricts_entry_to_the_named_level_but_allows_any_exit() {
-    // Two disjoint 4x4 levels, no connections between them at all. The deficit is reported
-    // only for level_b -- every added teleport's entry must be on level_b, but its exit is
-    // free to land on either level (a teleport can legitimately cross floors).
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![(RepairArea::Level(level_b), 2)],
-    );
-    let mut rng = MazeRng::seed_from_u64(42);
-    let result = apply_and_commit(
-        &MissingTeleportsStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &no_params(),
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert!(maze.graph.edges().count() > 0);
-    // A bidirectional teleport mints edges in both directions, so a plain `edge.from` check
-    // would wrongly flag the reverse (exit -> entry) edge. Each teleport's node *pair* must
-    // still include the reported level on one side (the entry), regardless of edge direction.
-    for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
-        let from_level = maze.field.level_of(edge.from);
-        let to_level = maze.field.level_of(edge.to);
-        assert!(
-            from_level == Some(level_b) || to_level == Some(level_b),
-            "every teleport must have its entry on the reported level"
-        );
-    }
-}
-
-#[test]
-fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
-    // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
-    // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 teleports total, not 6.
-    let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let field_c = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::new(Arc::default(), [field_a]);
-    let level_b = mf.add_level(field_b);
-    let level_c = mf.add_level(field_c);
-    let level_a = mf.levels_ordered().next().unwrap();
-    let mut g = Graph::new();
-    for node in mf.all_node_ids() {
-        g.add_node(node);
-    }
-    let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
-
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![
-            (RepairArea::Level(level_a), 1),
-            (RepairArea::Level(level_b), 1),
-            (RepairArea::Level(level_c), 1),
-            (RepairArea::WholeMaze, 3),
-        ],
-    );
-    let mut overrides = HashMap::new();
-    overrides.insert("reserve_percent".to_string(), "0".to_string());
-    let params =
-        build_params(
-            <MissingTeleportsStrategy as RepairStrategy<
-                SquareTessellation,
-                MissingTeleportsIssue,
-            >>::params(&MissingTeleportsStrategy),
-            Some(&overrides),
-        );
-    let mut rng = MazeRng::seed_from_u64(11);
-    let result = apply_and_commit(
-        &MissingTeleportsStrategy,
-        &issue,
-        &mut maze,
-        &mut rng,
-        &params,
-        &PresetState::empty(),
-        &[],
-    );
-    assert!(matches!(result, RepairResult::Fixed { score: None }));
-    let teleport_count = maze
-        .graph
-        .edges()
-        .filter(|e| e.kind == EdgeKind::Teleport)
-        .count();
-    assert!(
-        teleport_count <= 6,
-        "at most 3 teleports (each possibly bidirectional -> 2 edges), not 6+3=9 or worse"
-    );
-    // Count distinct (entry, exit) pairs regardless of direction to get the actual teleport count.
-    let mut pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
-    for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
-        let key = if edge.from <= edge.to {
-            (edge.from, edge.to)
-        } else {
-            (edge.to, edge.from)
-        };
-        pairs.insert(key);
-    }
-    assert_eq!(pairs.len(), 3, "3 distinct teleports total, not 6");
 }
 
 #[test]
@@ -945,10 +823,7 @@ fn two_level_maze() -> (
 #[test]
 fn cross_floor_mode_forbidden_never_crosses_floors() {
     let (mut maze, level_a, level_b) = two_level_maze();
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![(RepairArea::WholeMaze, 10)],
-    );
+    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", 10);
     let mut overrides = HashMap::new();
     overrides.insert("cross_floor_mode".to_string(), "forbidden".to_string());
     overrides.insert("reserve_percent".to_string(), "0".to_string());
@@ -986,10 +861,7 @@ fn cross_floor_mode_forbidden_never_crosses_floors() {
 #[test]
 fn cross_floor_mode_manual_balance_zero_behaves_like_forbidden() {
     let (mut maze, _level_a, _level_b) = two_level_maze();
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![(RepairArea::WholeMaze, 10)],
-    );
+    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", 10);
     let mut overrides = HashMap::new();
     overrides.insert("cross_floor_mode".to_string(), "manual".to_string());
     overrides.insert("cross_floor_balance".to_string(), "0".to_string());
@@ -1026,10 +898,7 @@ fn cross_floor_mode_manual_balance_zero_behaves_like_forbidden() {
 #[test]
 fn cross_floor_mode_manual_balance_one_always_crosses_floors() {
     let (mut maze, _level_a, _level_b) = two_level_maze();
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![(RepairArea::WholeMaze, 10)],
-    );
+    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", 10);
     let mut overrides = HashMap::new();
     overrides.insert("cross_floor_mode".to_string(), "manual".to_string());
     overrides.insert("cross_floor_balance".to_string(), "1".to_string());
@@ -1271,10 +1140,7 @@ fn cross_floor_mode_natural_ignores_floor_entirely() {
     // default behavior (floor never consulted), this just pins that the new param plumbing
     // doesn't accidentally change it.
     let (mut maze, _level_a, _level_b) = two_level_maze();
-    let issue = MissingTeleportsIssue::new_from_check(
-        "min_teleport_count",
-        vec![(RepairArea::WholeMaze, 4)],
-    );
+    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", 4);
     let mut overrides = HashMap::new();
     overrides.insert("cross_floor_mode".to_string(), "natural".to_string());
     overrides.insert("reserve_percent".to_string(), "0".to_string());

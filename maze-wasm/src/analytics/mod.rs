@@ -72,6 +72,7 @@ fn analytics_only_stages(
         .into_iter()
         .enumerate()
         .map(|(i, group)| generation_config::QcRuleConfig {
+            zone_scopes: group.zone_scopes,
             id: format!("analytics_only_{i}"),
             checks: group.checks,
             strategy: None,
@@ -191,7 +192,7 @@ where
     // by (point, slot_id, level) that only comes into being here (GitHub issue #221/#359).
     let split_map = apply_split_points(
         &mut maze,
-        xy_to_cell,
+        &xy_to_cell,
         &cfg.split_points,
         &existing_by_index,
         &level_ids,
@@ -216,7 +217,11 @@ where
         stages,
         ..GenerateConfig::default()
     };
-    let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)?;
+    let (mut qc_engine, check_types) =
+        crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)?;
+    maze_runner::runner::bind_zone_scopes(&mut qc_engine, &qc_config, &maze.field, |x, y| {
+        xy_to_cell([x, y])
+    });
 
     // Reuses each node's real `i` from the client's own `cfg.nodes` where known (GitHub issue
     // #236). A node this exact call just minted via `apply_split_points` isn't in `cfg.nodes` yet
@@ -294,6 +299,7 @@ mod tests {
             checks,
             params,
             strategy: None,
+            zone_scopes: None,
         }
     }
 
@@ -664,6 +670,7 @@ mod tests {
             cfg.rule_groups = vec![crate::dto::AnalyticsRuleGroupConfig {
                 checks: vec![check("missing_endpoints")],
                 params: HashMap::new(),
+                zone_scopes: None,
                 strategy: Some(generation_config::StrategyConfig {
                     id: "scored_endpoints".to_string(),
                     params: HashMap::new(),
@@ -885,6 +892,7 @@ mod tests {
         let rule_groups = vec![crate::dto::AnalyticsRuleGroupConfig {
             checks: vec![check("missing_endpoints")],
             params: HashMap::new(),
+            zone_scopes: None,
             strategy: Some(generation_config::StrategyConfig {
                 id: "scored_endpoints".to_string(),
                 params,

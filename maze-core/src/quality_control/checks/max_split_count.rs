@@ -1,12 +1,10 @@
 use crate::Maze;
 use crate::quality_control::check::Check;
-use crate::quality_control::{FloorScope, InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
 use crate::space::{LevelId, Tessellation};
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MAX_SPLIT_COUNT_DEFAULT: u32 = 20;
-pub const MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags every split tile on the field invalid when their total count exceeds `max_split_count`
 /// — see GitHub issue #249, part of epic #246. A field-wide/aggregate decision (mirrors
@@ -19,7 +17,6 @@ pub const MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaz
 pub struct MaxSplitCountCheck {
     pub instance_id: String,
     pub max_split_count: u32,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountCheck {
@@ -35,66 +32,20 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountChec
         _requirement: (),
     ) {
         let tiles: Vec<(LevelId, SplitTileNodes)> = maze
-            .field
-            .split_cells()
+            .scoped_split_cells()
             .map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 (level, SplitTileNodes::new(nodes.to_vec()))
             })
             .collect();
 
-        // A split tile belongs to exactly one floor (unlike edges/nodes spanning floors), so
-        // under `PerFloor` this is a plain per-floor grouping/filter, not a counts-toward-both
-        // case (GitHub issue #369).
-        let (group, to_remove) = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let count = tiles.len() as u32;
-                if count <= self.max_split_count {
-                    return;
-                }
-                let to_remove = count - self.max_split_count;
-                (tiles.into_iter().map(|(_, tile)| tile).collect(), to_remove)
-            }
-            FloorScope::PerFloor => {
-                let mut per_floor_count: HashMap<LevelId, u32> =
-                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                for &(level, _) in &tiles {
-                    *per_floor_count.entry(level).or_insert(0) += 1;
-                }
-                // A split tile belongs to exactly one floor, so each over-budget floor's own
-                // tiles and excess form their own independent group -- collapsing every
-                // over-budget floor's tiles into one group with a single (e.g. max) `to_remove`
-                // would let the repair strategy resolve a smaller floor's excess by removing
-                // tiles that actually belong to a different, larger floor's own quota.
-                let mut tiles_by_level: HashMap<LevelId, Vec<SplitTileNodes>> = HashMap::new();
-                for (level, tile) in tiles {
-                    tiles_by_level.entry(level).or_default().push(tile);
-                }
-                let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = per_floor_count
-                    .into_iter()
-                    .filter(|&(_, count)| count > self.max_split_count)
-                    .filter_map(|(level, count)| {
-                        let to_remove = count - self.max_split_count;
-                        tiles_by_level
-                            .remove(&level)
-                            .map(|tiles| (tiles, to_remove))
-                    })
-                    .collect();
-                if groups.is_empty() {
-                    return;
-                }
-                let issue = InvalidSplitTileGroupIssue::new_from_check(
-                    &self.instance_id,
-                    std::mem::take(&mut groups),
-                )
-                .with_detail(
-                    &self.instance_id,
-                    "max_split_count",
-                    self.max_split_count.to_string(),
-                );
-                issues.push(issue);
+        let (group, to_remove) = {
+            let count = tiles.len() as u32;
+            if count <= self.max_split_count {
                 return;
             }
+            let to_remove = count - self.max_split_count;
+            (tiles.into_iter().map(|(_, tile)| tile).collect(), to_remove)
         };
 
         let issue =
@@ -148,7 +99,6 @@ mod tests {
         let check = MaxSplitCountCheck {
             instance_id: TEST_ID.to_string(),
             max_split_count: 1,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -178,7 +128,6 @@ mod tests {
         let check = MaxSplitCountCheck {
             instance_id: TEST_ID.to_string(),
             max_split_count: 2,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -191,78 +140,9 @@ mod tests {
         let check = MaxSplitCountCheck {
             instance_id: TEST_ID.to_string(),
             max_split_count: 0,
-            floor_scope: FloorScope::WholeMaze,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
-    }
-
-    fn maze_with_split_tiles_on_two_floors(
-        bottom_count: usize,
-        top_count: usize,
-    ) -> Maze<SquareTessellation> {
-        use crate::space::Field;
-        let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new(Arc::default(), std::iter::empty());
-        let bottom = mf.add_level(
-            Field::<SquareTessellation>::new(
-                Arc::default(),
-                square_rect(bottom_count.max(1) + 1, 1),
-                &mut ids,
-            )
-            .unwrap(),
-        );
-        let top = mf.add_level(
-            Field::<SquareTessellation>::new(
-                Arc::default(),
-                square_rect(top_count.max(1) + 1, 1),
-                &mut ids,
-            )
-            .unwrap(),
-        );
-        for x in 0..bottom_count as i32 {
-            mf.add_node_at(bottom, SquarePoint { x, y: 0 }, &mut ids);
-        }
-        for x in 0..top_count as i32 {
-            mf.add_node_at(top, SquarePoint { x, y: 0 }, &mut ids);
-        }
-        let mut g = Graph::new();
-        for node in mf.all_node_ids() {
-            g.add_node(node);
-        }
-        Maze::new(mf, g)
-    }
-
-    #[test]
-    fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_excess() {
-        // Bottom floor: 3 split tiles (excess 2 over max 1). Top floor: 2 split tiles (excess 1).
-        let maze = maze_with_split_tiles_on_two_floors(3, 2);
-        let check = MaxSplitCountCheck {
-            instance_id: TEST_ID.to_string(),
-            max_split_count: 1,
-            floor_scope: FloorScope::PerFloor,
-        };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1);
-        let mut groups = issues[0].groups.clone();
-        groups.sort_by_key(|(g, _)| g.len());
-        assert_eq!(
-            groups.len(),
-            2,
-            "each over-budget floor must get its own independent group"
-        );
-        assert_eq!(groups[0].0.len(), 2, "top floor's own tiles only");
-        assert_eq!(
-            groups[0].1, 1,
-            "top floor's own excess, not the max across floors"
-        );
-        assert_eq!(groups[1].0.len(), 3, "bottom floor's own tiles only");
-        assert_eq!(
-            groups[1].1, 2,
-            "bottom floor's own excess, not the max across floors"
-        );
     }
 }

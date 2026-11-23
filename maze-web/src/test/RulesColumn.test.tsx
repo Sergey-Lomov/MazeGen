@@ -125,6 +125,18 @@ describe("RulesColumn", () => {
     expect(screen.getByText("Check One")).toBeInTheDocument();
   });
 
+  it("disables the zone scope button of a rule with a whole-maze check, unless the rule already holds a scope", () => {
+    useMazeStore.setState({ availableChecks: [{ id: "c1", issue_kinds: ["k1"], params: [], zone_scope_unsupported: true }] as never });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
+    const { unmount } = render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(getTooltipControl("Zone scope does not apply")).toBeDisabled();
+    unmount();
+
+    useMazeStore.setState({ rules: defaultRules().map((r) => ({ ...r, zoneScope: { kind: "zone" as const, id: 1 } })) });
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(getTooltipControl("Limit to a zone")).toBeEnabled();
+  });
+
   it("hides a stage's rule cards when the stage is collapsed", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     const stages: QualityStageVM[] = [{ stageId: "stage_1", name: "Stage 1", slots, disabled: false, collapsed: true }];

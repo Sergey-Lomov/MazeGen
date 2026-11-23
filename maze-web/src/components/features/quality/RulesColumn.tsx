@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Shapes } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { CollapseButton } from "../../CollapseButton";
 import { CheckSelectDialog } from "../CheckSelectDialog";
@@ -13,6 +13,10 @@ import { AddCheckToRuleDialog } from "../AddCheckToRuleDialog";
 import { RuleStrategyPanel } from "./RuleStrategyPanel";
 import { RuleCheckRow } from "./RuleCheckRow";
 import { RuleParamsSection } from "./RuleParamsSection";
+import { RuleZoneScope } from "./RuleZoneScope";
+import { zoneScopeUnsupported } from "../../../domain/qcZoneScope";
+import { RuleZoneScopeDialog } from "../../dialogs/RuleZoneScopeDialog";
+import { FlatIconButton } from "../../FlatIconButton";
 import { QcSortable, StageHead, NewStageZone, qcCollisionDetection, lockVerticalAxis } from "./QcSortable";
 import { useQualityDnd, EDGE_ZONE_PX } from "./useQualityDnd";
 import { ruleDndId, stageDndId, stageHeadDndId, NEW_STAGE_START_ID, NEW_STAGE_END_ID, RULE_PREFIX } from "./qcDnd";
@@ -114,6 +118,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
   const renameRule = useMazeStore((s) => s.renameRule);
   const removeRule = useMazeStore((s) => s.removeRule);
+  const rules = useMazeStore((s) => s.rules);
   const moveRule = useMazeStore((s) => s.moveRule);
   const addStage = useMazeStore((s) => s.addStage);
   const renameStage = useMazeStore((s) => s.renameStage);
@@ -124,6 +129,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const toggleRuleCollapsed = useMazeStore((s) => s.toggleRuleCollapsed);
   const [newRuleStep, setNewRuleStep] = useState<NewRuleStep>(null);
   const [strategyDialogRuleId, setStrategyDialogRuleId] = useState<string | null>(null);
+  const [zoneScopeRuleId, setZoneScopeRuleId] = useState<string | null>(null);
   const [addToRuleId, setAddToRuleId] = useState<string | null>(null);
   const [removeConfirmRuleId, setRemoveConfirmRuleId] = useState<string | null>(null);
   const [renamingRuleId, setRenamingRuleId] = useState<string | null>(null);
@@ -144,8 +150,12 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   function renderRuleCard(slot: StrategySlotVM, ruleHandle: ReactNode, isFirst: boolean, isLast: boolean) {
     const strategySelected = (selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === slot.ruleId;
     const isRenaming = renamingRuleId === slot.ruleId;
+    // A rule that already holds a scope keeps its button, so the scope can still be cleared.
+    const rule = rules.find((r) => r.id === slot.ruleId);
+    const noZoneScope = !rule?.zoneScope && zoneScopeUnsupported(rule ?? { checks: [] }, availableChecks);
     return (
     <div style={{ ...styles.ruleCard, ...(slot.problems ? styles.ruleCardProblem : {}), ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
+      <div style={styles.ruleCardHeader}>
       <div style={styles.ruleCardTitle}>
         {ruleHandle}
         <CollapseButton
@@ -181,9 +191,16 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           </div></Tooltip>
           <IconActionButton action="move-up" title={m["quality.move_rule_up"]()} disabled={isFirst} onClick={() => moveRule(slot.ruleId, "up")} />
           <IconActionButton action="move-down" title={m["quality.move_rule_down"]()} disabled={isLast} onClick={() => moveRule(slot.ruleId, "down")} />
+          <FlatIconButton
+            title={noZoneScope ? m["quality.zone_scope_unsupported"]() : m["quality.zone_scope_button"]()}
+            disabled={noZoneScope}
+            onClick={() => setZoneScopeRuleId(slot.ruleId)}
+          ><Shapes size={16} /></FlatIconButton>
           <EditIconButton title={m["quality.rename_rule"]()} onClick={() => startRename(slot)} />
           <DeleteIconButton title={m["quality.remove_rule"]()} onClick={() => setRemoveConfirmRuleId(slot.ruleId)} />
         </div>
+        <RuleZoneScope ruleId={slot.ruleId} />
+      </div>
       </div>
       {slot.problems && (
         <div style={styles.ruleProblems}>
@@ -481,6 +498,9 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           }}
           onClose={() => setNewRuleStep(null)}
         />
+      )}
+      {zoneScopeRuleId !== null && (
+        <RuleZoneScopeDialog ruleId={zoneScopeRuleId} onClose={() => setZoneScopeRuleId(null)} />
       )}
       {strategyDialogRuleId !== null && (
         <StrategySelectDialog

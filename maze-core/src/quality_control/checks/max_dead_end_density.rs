@@ -1,21 +1,17 @@
 use super::dead_end_core::dead_end_nodes;
 use crate::Maze;
 use crate::graph::cycles::density_per_100;
+use crate::quality_control::InvalidDeadEndGroupIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::floor_group::floor_point_count;
-use crate::quality_control::{FloorScope, InvalidDeadEndGroupIssue};
-use crate::space::{LevelId, Tessellation};
+use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
 
 pub const MAX_DEAD_END_DENSITY_DEFAULT: f64 = 30.0;
-pub const MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags every dead end in each scope whose dead ends per 100 field cells exceed the maximum.
 pub struct MaxDeadEndDensityCheck {
     pub instance_id: String,
     pub max_dead_end_density: f64,
-    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidDeadEndGroupIssue> for MaxDeadEndDensityCheck {
@@ -31,37 +27,13 @@ impl<T: Tessellation> Check<T, InvalidDeadEndGroupIssue> for MaxDeadEndDensityCh
         _requirement: (),
     ) {
         let nodes = dead_end_nodes(maze);
-        let groups = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let cells = maze.field.cell_count();
-                let excess = Self::excess(nodes.len(), cells, self.max_dead_end_density);
-                if excess > 0 {
-                    vec![(nodes, excess)]
-                } else {
-                    Vec::new()
-                }
-            }
-            FloorScope::PerFloor => {
-                let mut by_level: HashMap<LevelId, Vec<_>> = HashMap::new();
-                for node in nodes {
-                    if let Some(level) = maze.field.level_of(node) {
-                        by_level.entry(level).or_default().push(node);
-                    }
-                }
-                let mut groups: Vec<_> = by_level
-                    .into_iter()
-                    .filter_map(|(level, mut nodes)| {
-                        nodes.sort_unstable();
-                        let excess = Self::excess(
-                            nodes.len(),
-                            floor_point_count(&maze.field, level),
-                            self.max_dead_end_density,
-                        );
-                        (excess > 0).then_some((nodes, excess))
-                    })
-                    .collect();
-                groups.sort_by(|a, b| a.0.cmp(&b.0));
-                groups
+        let groups = {
+            let cells = maze.scoped_cell_count();
+            let excess = Self::excess(nodes.len(), cells, self.max_dead_end_density);
+            if excess > 0 {
+                vec![(nodes, excess)]
+            } else {
+                Vec::new()
             }
         };
         if groups.is_empty() {
@@ -96,7 +68,7 @@ mod tests {
     use super::*;
     use crate::IdGenerator;
     use crate::graph::{EdgeKind, Graph};
-    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
     use std::sync::Arc;
 
@@ -122,49 +94,9 @@ mod tests {
         MaxDeadEndDensityCheck {
             instance_id: "density".into(),
             max_dead_end_density: 30.0,
-            floor_scope: FloorScope::WholeMaze,
         }
         .repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].groups, vec![(vec![a, b, c, d], 1)]);
-    }
-
-    #[test]
-    fn scopes_density_independently_per_floor_or_across_the_whole_maze() {
-        let mut ids = IdGenerator::new();
-        let mut field =
-            MultiLevelField::<SquareTessellation>::new(Arc::default(), std::iter::empty());
-        let bottom =
-            field.add_level(Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap());
-        let top = field.add_level(Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap());
-        let mut graph = Graph::new();
-        for node in field.all_node_ids() {
-            graph.add_node(node);
-        }
-        for level in [bottom, top] {
-            let a = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
-            let b = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
-            graph.add_bidirectional_edge(a, b, EdgeKind::Basic);
-        }
-        let maze = Maze::new(field, graph);
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-
-        let mut issues = Vec::new();
-        MaxDeadEndDensityCheck {
-            instance_id: "whole".into(),
-            max_dead_end_density: 50.0,
-            floor_scope: FloorScope::WholeMaze,
-        }
-        .repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues[0].groups, vec![(vec![0, 1, 3, 4], 1)]);
-
-        let mut issues = Vec::new();
-        MaxDeadEndDensityCheck {
-            instance_id: "per-floor".into(),
-            max_dead_end_density: 50.0,
-            floor_scope: FloorScope::PerFloor,
-        }
-        .repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues[0].groups, vec![(vec![0, 1], 1), (vec![3, 4], 1)]);
     }
 }

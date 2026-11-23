@@ -10,6 +10,7 @@ mod nested_strategy_tests {
 
     fn scc_count_rule(strategy: Option<StrategyConfig>) -> QcRuleConfig {
         QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "scc_count".to_string(),
@@ -116,6 +117,7 @@ mod nested_strategy_tests {
     fn top_level_strategy_with_slot_id_is_rejected() {
         let strategy = strategy_cfg("farthest_endpoints", Some("merge_target"), vec![]);
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "missing_endpoints".to_string(),
@@ -185,6 +187,7 @@ mod nested_strategy_tests {
         let mut config = config_with_points(two_disjoint_islands_points());
 
         let scc_check_rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r_scc".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "scc_count".to_string(),
@@ -238,6 +241,7 @@ mod nested_strategy_tests {
         config.elements.one_way_chance = Some(1.0);
 
         let scc_check_rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r_scc".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "scc_count".to_string(),
@@ -276,6 +280,7 @@ mod nested_strategy_tests {
         let mut config = config_with_points(two_disjoint_islands_points());
 
         let region_rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r_region".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "min_region_size".to_string(),
@@ -847,6 +852,7 @@ mod rule_level_params_tests {
         let mut params = HashMap::new();
         params.insert("protect_route".to_string(), "false".to_string());
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "0".to_string(),
@@ -874,6 +880,7 @@ mod rule_level_params_tests {
         let mut strategy_params = HashMap::new();
         strategy_params.insert("protect_route".to_string(), "false".to_string());
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "0".to_string(),
@@ -904,6 +911,7 @@ mod rule_level_params_tests {
         // protect_route's applies_to list) must not be affected by the migrated-param guard —
         // this only proves the guard is scoped to actual consumers, not every check.
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "0".to_string(),
@@ -924,6 +932,7 @@ mod rule_level_params_tests {
         let mut rule_params = HashMap::new();
         rule_params.insert("protect_rooute".to_string(), "false".to_string());
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "0".to_string(),
@@ -952,6 +961,7 @@ mod rule_level_params_tests {
         let mut rule_params = HashMap::new();
         rule_params.insert("protect_route".to_string(), "false".to_string());
         let rule = QcRuleConfig {
+            zone_scopes: None,
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig {
                 local_id: "0".to_string(),

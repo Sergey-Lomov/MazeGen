@@ -1,11 +1,10 @@
-use super::remaining_deficits::RemainingDeficits;
-use super::standard_add_params::{self, attempts_limit};
+use super::standard_add_params::{self, attempts_limit, reserve_target};
 use crate::Maze;
 use crate::generation::{PresetState, bidirectional_edge_feasible};
 use crate::ids::NodeId;
 use crate::quality_control::checks::elevator_core::{Elevator, elevator_groups, stop_floors};
 use crate::quality_control::{
-    AreaMissingElevatorStopsIssue, MISSING_ELEVATORS, MissingElevatorsIssue, RepairArea,
+    AreaMissingElevatorStopsIssue, MISSING_ELEVATORS, MissingElevatorsIssue,
 };
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::nested_params;
@@ -68,27 +67,22 @@ static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
 /// primarily grows existing ones, only falling through to "add new" when growing fails (or the
 /// `existing_reuse_balance` roll picks that branch first).
 ///
-/// Per `(RepairArea, count)` pair (processed via `RemainingDeficits`, same floors-before-whole-
-/// maze ordering every sibling deficit strategy uses): each unit of deficit rolls
-/// `existing_reuse_balance` to pick "add new" vs. "reuse existing", falling back to the other
-/// branch on failure. A pair that makes zero progress after both branches fail is abandoned (not
-/// retried forever) — mirrors `AddElevatorStrategy`'s "infeasible slots don't abort the whole
-/// repair" posture: the whole `apply()` call only reports `Failed` if literally nothing was added
-/// across every pair.
+/// Each unit of deficit rolls `existing_reuse_balance` to pick "add new" vs. "reuse existing",
+/// falling back to the other branch on failure. Once `attempts_limit` consecutive attempts fail
+/// the deficit is abandoned (not retried forever) — mirrors `AddElevatorStrategy`'s "infeasible
+/// slots don't abort the whole repair" posture: the whole `apply()` call only reports `Failed` if
+/// literally nothing was added.
 ///
 /// **Add-new branch**: delegates to the nested `SLOT_ADD_ELEVATOR_STRATEGY` strategy with a
-/// synthetic single-elevator `MissingElevatorsIssue`. Which floors the nested strategy actually
-/// picked is read back from its returned `AddBidirectionalElevator` commands (the only way to
-/// learn this, since the nested call's `RepairResult` carries no floor detail) — every floor
-/// touched by at least one such command has its own deficit (and the whole-maze deficit)
-/// decremented by one stop, per the issue's own accounting rule ("decrement... by the number of
-/// stops added").
+/// synthetic single-elevator `MissingElevatorsIssue`. How many stops the nested strategy actually
+/// placed is read back from its returned `AddBidirectionalElevator` commands (the only way to
+/// learn this, since the nested call's `RepairResult` carries no such detail) — the deficit is
+/// decremented by the number of stops added.
 ///
-/// **Reuse-existing branch**: candidate elevators are every current elevator (`WholeMaze` scope)
-/// or every elevator whose stop span could gain a stop landing on the target floor (`Level`
-/// scope, gated by `allow_span_extension` — see `candidate_elevators_for_level`'s doc comment),
-/// picked uniformly at random; `WholeMaze` scope then adds a stop on a random floor the picked
-/// elevator doesn't already stop at, `Level` scope adds a stop on the pair's own floor.
+/// **Reuse-existing branch**: candidates are every current elevator (including ones planned
+/// earlier in the same call), picked uniformly at random; a stop is added on a random floor the
+/// picked elevator doesn't already stop at (restricted to floors strictly inside its span unless
+/// `allow_span_extension`).
 pub struct AddElevatorStopStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddElevatorStopStrategy {
@@ -117,7 +111,7 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -143,90 +137,49 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        // `reserve_percent` scales every reported deficit up front so the reuse/add loop keeps
-        // going past the bare deficit when asked to over-provision (GitHub issue #486).
-        let scaled_missing = standard_add_params::reserve_scaled_missing(params, &issue.missing);
-        let mut deficits = RemainingDeficits::new(&scaled_missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-        for area in areas {
-            // `attempts_limit` is a per-area budget (mirrors `AddVerticalPassageStrategy`'s own
-            // per-area `failed_attempts`, GitHub issue #486) — reset for every area, not shared
-            // across the whole `apply()` call, so one hard area doesn't starve the attempt budget
-            // of every area that comes after it.
-            let mut failed_attempts: usize = 0;
-            // Re-read `deficits.live(area)` fresh every iteration (not a `target` captured once
-            // before the loop) — the add-new branch can deliver a whole elevator's worth of stops
-            // (several floors) from a single call, so one iteration can satisfy several units of
-            // deficit at once; a stale pre-captured target would keep looping and over-build.
-            while deficits.live(area) > 0 && failed_attempts < max_failed_attempts {
-                let reuse_first = rng.random_range(0.0..1.0) < existing_reuse_balance;
-                // Elevators built earlier in this same `apply()` call only exist as queued
-                // `commands` -- `maze` itself is an immutable pre-mutation snapshot (the
-                // MutationCommand contract) and never reflects them. Without this, the reuse
-                // branch is blind to elevators it planned moments ago and keeps falling back to
-                // add-new instead of growing them, over-building (see GitHub issue #408 follow-up).
-                let planned = planned_elevator_pairs(&commands);
+        // `reserve_percent` scales the reported deficit up front so the reuse/add loop keeps going
+        // past the bare deficit when asked to over-provision (GitHub issue #486).
+        let mut remaining = reserve_target(params, issue.missing);
+        // `attempts_limit` bounds the failed attempts in a row (GitHub issue #486).
+        let mut failed_attempts: usize = 0;
+        // `remaining` is re-read fresh every iteration — the add-new branch can deliver a whole
+        // elevator's worth of stops (several floors) from a single call, so one iteration can
+        // satisfy several units of deficit at once; a stale pre-captured target would keep
+        // looping and over-build.
+        while remaining > 0 && failed_attempts < max_failed_attempts {
+            let reuse_first = rng.random_range(0.0..1.0) < existing_reuse_balance;
+            // Elevators built earlier in this same `apply()` call only exist as queued
+            // `commands` -- `maze` itself is an immutable pre-mutation snapshot (the
+            // MutationCommand contract) and never reflects them. Without this, the reuse
+            // branch is blind to elevators it planned moments ago and keeps falling back to
+            // add-new instead of growing them, over-building (see GitHub issue #408 follow-up).
+            let planned = planned_elevator_pairs(&commands);
 
-                let (mut ok, mut cmds) = if reuse_first {
-                    try_reuse_existing(
-                        maze,
-                        &planned,
-                        area,
-                        allow_span_extension,
-                        preset_state,
-                        rng,
-                    )
+            let (mut ok, mut cmds) = if reuse_first {
+                try_reuse_existing(maze, &planned, allow_span_extension, preset_state, rng)
+            } else {
+                try_add_new(maze, add_target, &inherited_overrides, preset_state, rng)
+            };
+            if !ok {
+                (ok, cmds) = if reuse_first {
+                    try_add_new(maze, add_target, &inherited_overrides, preset_state, rng)
                 } else {
-                    try_add_new(
-                        maze,
-                        add_target,
-                        &inherited_overrides,
-                        preset_state,
-                        rng,
-                        area,
-                    )
+                    try_reuse_existing(maze, &planned, allow_span_extension, preset_state, rng)
                 };
-                if !ok {
-                    (ok, cmds) = if reuse_first {
-                        try_add_new(
-                            maze,
-                            add_target,
-                            &inherited_overrides,
-                            preset_state,
-                            rng,
-                            area,
-                        )
-                    } else {
-                        try_reuse_existing(
-                            maze,
-                            &planned,
-                            area,
-                            allow_span_extension,
-                            preset_state,
-                            rng,
-                        )
-                    };
-                }
-
-                if !ok {
-                    // Retry (a fresh reuse-first coin flip, fresh candidates) rather than bailing
-                    // on the area outright — `attempts_limit` (GitHub issue #486) is the budget
-                    // that now governs when to give up, not "the very first failure".
-                    failed_attempts += 1;
-                    continue;
-                }
-
-                // One `consume` call per stop actually added (not one per branch call) — the
-                // add-new branch's nested strategy can place several stops (several floors) in one
-                // call, and each of those stops independently covers its own floor plus the
-                // whole-maze total, per the issue's own accounting rule.
-                let touched = touched_floors(maze, &commands, &cmds);
-                for level in &touched {
-                    deficits.consume(&[RepairArea::Level(*level), RepairArea::WholeMaze]);
-                }
-                total_added += touched.len() as u32;
-                commands.append(&mut cmds);
             }
+
+            if !ok {
+                // Retry (a fresh reuse-first coin flip, fresh candidates) rather than bailing
+                // outright — `attempts_limit` is the budget that governs when to give up, not
+                // "the very first failure".
+                failed_attempts += 1;
+                continue;
+            }
+
+            let added = new_stop_count(maze, &commands, &cmds);
+            remaining = remaining.saturating_sub(added);
+            total_added += added;
+            commands.append(&mut cmds);
         }
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);
@@ -237,25 +190,25 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
 
 crate::impl_erased_repair_strategy!(AddElevatorStopStrategy, AreaMissingElevatorStopsIssue);
 
-/// Every distinct floor that gained a brand-new stop from `new_cmds` — the only way to learn
-/// which floors a nested `AddElevatorStrategy` call actually placed stops on, since its
-/// `RepairResult` carries no floor detail (see this strategy's own doc comment).
+/// Number of brand-new stops in `new_cmds` — the only way to learn how many stops a nested
+/// `AddElevatorStrategy` call actually placed, since its `RepairResult` carries no such detail
+/// (see this strategy's own doc comment).
 ///
 /// A single new stop is fanned out to every pre-existing stop of its elevator (one
 /// `AddBidirectionalElevator` command per pair, see `add_stop_command_with_planned`), and a
 /// brand-new elevator's stops are fanned out to each other (see `AddElevatorStrategy`) — either
-/// way, counting both endpoints of every command would count a pre-existing stop's floor again on
-/// every fan-out edge, inflating the touched-floor count far beyond the number of stops actually
-/// added (and over-consuming `RemainingDeficits` to match). A node is a genuinely new stop iff it
-/// is not already a stop in `maze` (the immutable pre-mutation snapshot) NOR in `prior_cmds`
-/// (commands queued by earlier iterations of this same `apply()` call, per the planned-elevator
-/// overlay `try_reuse_existing` also relies on — without folding those in too, a stop added last
-/// iteration looks "new" again this iteration since it never touches the real `maze`).
-fn touched_floors<T: Tessellation>(
+/// way, counting both endpoints of every command would count a pre-existing stop again on every
+/// fan-out edge, inflating the count far beyond the number of stops actually added. A node is a
+/// genuinely new stop iff it is not already a stop in `maze` (the immutable pre-mutation
+/// snapshot) NOR in `prior_cmds` (commands queued by earlier iterations of this same `apply()`
+/// call, per the planned-elevator overlay `try_reuse_existing` also relies on — without folding
+/// those in too, a stop added last iteration looks "new" again this iteration since it never
+/// touches the real `maze`).
+fn new_stop_count<T: Tessellation>(
     maze: &Maze<T>,
     prior_cmds: &[MutationCommand],
     new_cmds: &[MutationCommand],
-) -> Vec<LevelId> {
+) -> u32 {
     let mut existing_stops: HashSet<NodeId> = elevator_groups(maze)
         .into_iter()
         .flat_map(|e| e.stops)
@@ -267,7 +220,7 @@ fn touched_floors<T: Tessellation>(
         }
     }
 
-    let mut floors: Vec<LevelId> = new_cmds
+    let new_stops: HashSet<NodeId> = new_cmds
         .iter()
         .filter_map(|cmd| match cmd {
             MutationCommand::AddBidirectionalElevator { a, b } => Some([*a, *b]),
@@ -275,15 +228,12 @@ fn touched_floors<T: Tessellation>(
         })
         .flatten()
         .filter(|n| !existing_stops.contains(n))
-        .filter_map(|n| maze.field.level_of(n))
         .collect();
-    floors.sort();
-    floors.dedup();
-    floors
+    new_stops.len() as u32
 }
 
 /// Delegates to the nested `SLOT_ADD_ELEVATOR_STRATEGY` strategy with a synthetic single-elevator
-/// `MissingElevatorsIssue { missing: [(area, 1)] }` — the synthetic issue is never published to
+/// `MissingElevatorsIssue { missing: 1 }` — the synthetic issue is never published to
 /// the shared issue pool, mirroring `ReduceSccCountStrategy`'s own synthesize-and-delegate
 /// pattern. Fails outright if no nested strategy is configured for the slot.
 fn try_add_new<T: Tessellation>(
@@ -292,12 +242,11 @@ fn try_add_new<T: Tessellation>(
     inherited_overrides: &std::collections::HashMap<String, String>,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
-    area: RepairArea,
 ) -> (bool, Vec<MutationCommand>) {
     let Some(add_target) = add_target else {
         return (false, vec![]);
     };
-    let synthetic = MissingElevatorsIssue::new_from_check("add_elevator_stop", vec![(area, 1)]);
+    let synthetic = MissingElevatorsIssue::new_from_check("add_elevator_stop", 1);
     let nested_params = nested_params(add_target, inherited_overrides);
     let (result, cmds) = add_target.strategy.apply(
         &synthetic as &dyn crate::quality_control::Issue,
@@ -434,22 +383,18 @@ fn add_stop_command_with_planned<T: Tessellation>(
     )
 }
 
-/// Picks one candidate elevator at random and adds it a stop — `RepairArea::WholeMaze` picks any
-/// elevator and, when `allow_span_extension` is false, only a floor strictly inside that
-/// elevator's own span (a gap fill, same restriction `candidate_elevators_for_level` applies for
-/// `RepairArea::Level`); when true, any floor it doesn't already stop at, span or no. `RepairArea
-/// ::Level` restricts candidates via `candidate_elevators_for_level` and always targets that exact
-/// floor. Fails (no candidates, or the picked candidate's stop turns out infeasible) rather than
-/// trying every candidate in turn — mirrors `ElevatorGroupSelectStrategy`'s single-random-pick
-/// posture; a failed attempt here just falls back to the "add new" branch at the call site, same
-/// as the other direction's fallback.
+/// Picks one candidate elevator at random and adds it a stop — any elevator, and a floor strictly
+/// inside that elevator's own span when `allow_span_extension` is false (a gap fill); when true,
+/// any floor it doesn't already stop at, span or no. Fails (no candidates, or the picked
+/// candidate's stop turns out infeasible) rather than trying every candidate in turn — mirrors
+/// `ElevatorGroupSelectStrategy`'s single-random-pick posture; a failed attempt here just falls
+/// back to the "add new" branch at the call site, same as the other direction's fallback.
 ///
 /// `planned` — see `planned_elevator_pairs`/`groups_with_planned`: candidates include elevators
 /// built earlier in this same `apply()` call, not just what's already in `maze`.
 fn try_reuse_existing<T: Tessellation>(
     maze: &Maze<T>,
     planned: &[(NodeId, NodeId)],
-    area: RepairArea,
     allow_span_extension: bool,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
@@ -459,105 +404,39 @@ fn try_reuse_existing<T: Tessellation>(
         return (false, vec![]);
     }
 
-    match area {
-        RepairArea::WholeMaze => {
-            let levels: Vec<LevelId> = maze.field.levels_ordered().collect();
-            let mut candidates: Vec<usize> = (0..all_elevators.len()).collect();
-            candidates.shuffle(rng);
-            for idx in candidates {
-                let elevator = &all_elevators[idx];
-                let floors = stop_floors(elevator, maze);
-                let stopped: std::collections::HashSet<usize> = floors.iter().copied().collect();
-                let (min, max) = match (floors.first(), floors.last()) {
-                    (Some(&min), Some(&max)) => (min, max),
-                    _ => continue,
-                };
-                let mut free_floors: Vec<LevelId> = levels
-                    .iter()
-                    .enumerate()
-                    .filter(|&(i, _)| {
-                        !stopped.contains(&i) && (allow_span_extension || (i > min && i < max))
-                    })
-                    .map(|(_, &l)| l)
-                    .collect();
-                if free_floors.is_empty() {
-                    continue;
-                }
-                free_floors.shuffle(rng);
-                for target in free_floors {
-                    if let Some(cmds) =
-                        add_stop_command_with_planned(maze, planned, elevator, target, preset_state)
-                    {
-                        return (true, cmds);
-                    }
-                }
-            }
-            (false, vec![])
+    let levels: Vec<LevelId> = maze.field.levels_ordered().collect();
+    let mut candidates: Vec<usize> = (0..all_elevators.len()).collect();
+    candidates.shuffle(rng);
+    for idx in candidates {
+        let elevator = &all_elevators[idx];
+        let floors = stop_floors(elevator, maze);
+        let stopped: HashSet<usize> = floors.iter().copied().collect();
+        let (min, max) = match (floors.first(), floors.last()) {
+            (Some(&min), Some(&max)) => (min, max),
+            _ => continue,
+        };
+        let mut free_floors: Vec<LevelId> = levels
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| {
+                !stopped.contains(&i) && (allow_span_extension || (i > min && i < max))
+            })
+            .map(|(_, &l)| l)
+            .collect();
+        if free_floors.is_empty() {
+            continue;
         }
-        RepairArea::Level(target_level) => {
-            let mut candidates = candidate_elevators_for_level(
-                maze,
-                &all_elevators,
-                target_level,
-                allow_span_extension,
-            );
-            candidates.shuffle(rng);
-            for elevator in candidates.drain(..) {
-                if let Some(cmds) = add_stop_command_with_planned(
-                    maze,
-                    planned,
-                    elevator,
-                    target_level,
-                    preset_state,
-                ) {
-                    return (true, cmds);
-                }
+        free_floors.shuffle(rng);
+        for target in free_floors {
+            if let Some(cmds) =
+                add_stop_command_with_planned(maze, planned, elevator, target, preset_state)
+            {
+                return (true, cmds);
             }
-            (false, vec![])
         }
     }
+    (false, vec![])
 }
-
-/// Elevators eligible to gain a stop on `target_level`, under `Level`-scoped reuse.
-///
-/// `allow_span_extension = true`: any elevator whose existing stop span (min..max floor index,
-/// via `stop_floors`) already covers `target_level`'s index (a "gap" fill), OR whose span could be
-/// extended by exactly one stop to cover it (`target_index == min_index - 1` or `target_index ==
-/// max_index + 1`) — i.e. every elevator that could gain a stop landing on `target_level` at all.
-///
-/// `allow_span_extension = false`: restricted to gap-fills only — `target_index` strictly between
-/// the elevator's own min and max (`min < target < max`, not `<=`: if `target_index` already
-/// equals `min_index` or `max_index`, that floor already has a stop, nothing to add there).
-fn candidate_elevators_for_level<'a, T: Tessellation>(
-    maze: &Maze<T>,
-    elevators: &'a [Elevator],
-    target_level: LevelId,
-    allow_span_extension: bool,
-) -> Vec<&'a Elevator> {
-    let Some(target_index) = maze.field.levels_ordered().position(|l| l == target_level) else {
-        return vec![];
-    };
-
-    elevators
-        .iter()
-        .filter(|elevator| {
-            let floors = stop_floors(elevator, maze);
-            let (Some(&min), Some(&max)) = (floors.first(), floors.last()) else {
-                return false;
-            };
-            if floors.contains(&target_index) {
-                return false;
-            }
-            let is_gap = target_index > min && target_index < max;
-            if allow_span_extension {
-                is_gap || target_index + 1 == min || target_index == max + 1
-            } else {
-                is_gap
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "add_elevator_stop_tests.rs"]
 mod tests;

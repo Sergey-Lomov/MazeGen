@@ -6,6 +6,7 @@ pub use crate::config_dto::{
     PresetVerticalPassageDto, QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto,
     SplitPatternDto, SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig,
     TessellationKind, VerticalPassageDirectionDto, ZoneOverrideDto, ZoneOverrideParamsDto,
+    ZoneScopeDto,
 };
 use crate::topology_wire::TopologyDto;
 use maze_core::{
@@ -16,8 +17,9 @@ use maze_core::{
         PresetConnectionState, PresetElevator, PresetEndpoint, PresetVerticalPassage,
         TeleportDirection, VerticalPassageDirection, ZoneOverrideEntry, ZoneOverrideTable,
     },
-    space::{MultiLevelField, Tessellation},
+    quality_control::ScopeCells,
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+    space::{MultiLevelField, Tessellation},
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -107,6 +109,7 @@ impl Default for GenerateConfig {
                 name: "Stage 1".to_string(),
                 rules: vec![
                     QcRuleConfig {
+                        zone_scopes: None,
                         id: "default_missing_endpoints".to_string(),
                         checks: vec![CheckInstanceConfig {
                             local_id: MISSING_ENDPOINTS.as_str().to_string(),
@@ -122,6 +125,7 @@ impl Default for GenerateConfig {
                         params: HashMap::new(),
                     },
                     QcRuleConfig {
+                        zone_scopes: None,
                         id: "default_unreachable_finish".to_string(),
                         checks: vec![CheckInstanceConfig {
                             local_id: UNREACHABLE_FINISH.as_str().to_string(),
@@ -282,6 +286,29 @@ pub fn build_zone_overrides<T: Tessellation>(
         })
         .collect();
     ZoneOverrideTable::from_entries(entries)
+}
+
+/// Resolves the wire zone scopes of one QC rule against the built field (GitHub issue #1039): each
+/// scope keeps the cells that are cells of the tessellation with a node on a floor in range, the
+/// rest are skipped. A scope left with no cell stays in the list (the rule skips it).
+pub fn build_zone_scopes<T: Tessellation>(
+    dtos: &[ZoneScopeDto],
+    field: &MultiLevelField<T>,
+    from_xy: impl Fn(i32, i32) -> Option<T::CellId>,
+) -> Vec<ScopeCells<T>> {
+    let levels: Vec<_> = field.levels_ordered().collect();
+    dtos.iter()
+        .map(|dto| {
+            let cells = dto.cells.iter().filter_map(|&[floor, x, y]| {
+                let &level = usize::try_from(floor).ok().and_then(|f| levels.get(f))?;
+                let cell = from_xy(x, y)?;
+                (field.tessellation().is_valid_cell(cell)
+                    && !field.nodes_at(level, cell).is_empty())
+                .then_some((level, cell))
+            });
+            ScopeCells::new(dto.id.clone(), cells)
+        })
+        .collect()
 }
 
 fn build_param_overrides(dto: &ZoneOverrideParamsDto) -> ParamOverrides {

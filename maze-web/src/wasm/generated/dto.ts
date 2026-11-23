@@ -7,6 +7,7 @@ import type { WasmTessellationConfig } from "../types";
 import type { WireTopology } from "../types";
 import type { PresetConnection } from "../types";
 import type { StrategyConfig } from "../types";
+import type { ZoneScopeWire } from "../types";
 
 /**
  * `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
@@ -272,10 +273,6 @@ export type IssuePayloadDto =
       nodes: Record<string, IssueRegionPayload[]>;
     }
   | {
-      kind: "area_deficit";
-      areas: Record<string, (number | null)[]>;
-    }
-  | {
       kind: "missing_elevator_stop_count";
       groups: Record<string, IssueMissingElevatorStopsPayload[]>;
     }
@@ -347,6 +344,11 @@ export interface IssueDto {
    * messages — the web UI looks them up by key via its own i18n templates per check id.
    */
   details: Record<string, Record<string, string>>;
+  /**
+   * Id of the zone scope the issue was found in (GitHub issue #1039): `zone:<id>` or
+   * `group:<id>`, as sent in `QcRuleConfig.zone_scopes`. Absent for a rule seeing the whole map.
+   */
+  scope_id?: string | null;
 }
 
 export interface JunctionBucket {
@@ -617,6 +619,11 @@ export interface AnalyticsRuleGroupConfig {
   checks: CheckInstanceConfig[];
   params?: Record<string, string>;
   strategy?: StrategyConfig;
+  /**
+   * Zone scopes of the rule (GitHub issue #1039), same meaning as `QcRuleConfig.zone_scopes`:
+   * the issues of the rule are reported per scope. Absent: the whole map.
+   */
+  zone_scopes?: ZoneScopeWire[];
 }
 
 export interface ComputeAnalyticsConfig {

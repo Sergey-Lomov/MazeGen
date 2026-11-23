@@ -94,7 +94,7 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue>
         let max_steps = self.min_detour.saturating_sub(1) as usize;
 
         let split_points: Vec<(crate::space::LevelId, T::CellId)> =
-            maze.field.split_cells().collect();
+            maze.scoped_split_cells().collect();
         if split_points.is_empty() {
             return;
         }

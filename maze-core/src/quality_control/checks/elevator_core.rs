@@ -99,8 +99,7 @@ pub fn stop_floors<T: Tessellation>(elevator: &Elevator, maze: &Maze<T>) -> Vec<
 }
 
 /// Every elevator stop node grouped by the floor it sits on, across every elevator in the maze —
-/// shared by `MaxElevatorStopsPerFloorCheck` (extracted here, GitHub issue #408) and
-/// `MinElevatorStopsPerAreaCountCheck`/`MinElevatorStopsPerAreaDensityCheck`'s `PerFloor` scope.
+/// shared by `MaxElevatorStopsPerFloorCheck` (extracted here, GitHub issue #408).
 pub fn elevator_stops_per_floor<T: Tessellation>(maze: &Maze<T>) -> HashMap<LevelId, Vec<NodeId>> {
     let mut per_floor: HashMap<LevelId, Vec<NodeId>> = HashMap::new();
     for elevator in elevator_groups(maze) {

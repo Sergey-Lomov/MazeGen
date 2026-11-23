@@ -1,6 +1,7 @@
 import { generateMaze, startGenerateMaze } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
-import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
+import type { GenerateConfig, WasmTessellationConfig, StrategyConfig, QcRuleConfig } from "../../wasm/types";
+import type { Zone } from "../../wasm/mazeService";
 import type { FieldConfig } from "../../fieldConfig";
 import { topologyKey } from "../topologyWire";
 import { presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../domain/fieldEditUtils";
@@ -11,7 +12,9 @@ import { configAllCells, resolveFieldConfig } from "../../domain/tessellationCel
 import { postEditTeleportsToDto } from "../../domain/postEditUtils";
 import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
 import { buildMultiFloorPostEditDraft, buildPostEditBaseline } from "./postEditBaselineBuilders";
-import { MAX_NESTED_STRATEGY_DEPTH, ruleHasSendableChecks, sendableChecks, strategyUnavailable } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, sendableChecks, strategyUnavailable } from "../storeTypes";
+import { buildZoneScopesWire } from "../../domain/qcZoneScope";
+import { ruleIsSendable } from "../qcDerivedProblems";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
 import { warmCartesianCache } from "../../domain/cartesianCache";
@@ -118,7 +121,7 @@ export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): Strategy
 
 // Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
 // `buildGenerateConfig` before this is called (per-stage, per rule), not here.
-function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null; params: Record<string, string> } {
+function ruleToConfig(state: MazeStore, g: QcRuleState, fieldZones: readonly Zone[]): QcRuleConfig {
   const strategy = ruleStrategyToConfig(state, g);
   // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
   // determinism doesn't depend on Map/object iteration order at this layer. A `disabled` check
@@ -133,7 +136,8 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
   for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, g.disabled ? null : g.strategyId)) {
     if (g.params[p.id] !== undefined) ruleParams[p.id] = g.params[p.id];
   }
-  return { id: g.id, checks, strategy, params: ruleParams };
+  const zone_scopes = buildZoneScopesWire(g, fieldZones, state.zoneGroups);
+  return { id: g.id, checks, strategy, params: ruleParams, ...(zone_scopes ? { zone_scopes } : {}) };
 }
 
 /** The project's currently-valid preset connections (regular + teleport), converted to wire DTOs
@@ -187,6 +191,9 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) return null;
   const ruleById = new Map(state.rules.map((g) => [g.id, g]));
+  const resolveFieldAt = resolveFieldAtOf(state);
+  // Zone scopes of rules (GitHub issue #1039) and zone overrides read the zones cut to the field.
+  const fieldZones = filterZonesToField(state.zones, resolveFieldAt);
   // A `disabled` stage is omitted entirely — as if it didn't exist for this run, same as a
   // `ruleDisabled` rule being omitted from its stage's `rules` below (not sent with an empty
   // `rules: []`, which would still be a real, dispatchable-if-non-empty stage entry).
@@ -210,11 +217,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
         // the same way a `ruleDisabled` rule is: core's `build_qc_and_repair` rejects an empty
         // `checks` array outright ("rule <id> has no checks"), so it must never cross the wasm
         // boundary with one.
-        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && ruleHasSendableChecks(g))
-        .map((g) => ruleToConfig(state, g)),
+        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && ruleIsSendable(g, state.zones, state.zoneGroups))
+        .map((g) => ruleToConfig(state, g, fieldZones)),
     }));
   const activeTessellation = activeFloorTessellationOf(state);
-  const resolveFieldAt = resolveFieldAtOf(state);
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
@@ -240,7 +246,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
     });
   const zone_overrides = state.initialConfig.method === "custom_vertex_based"
-    ? buildZoneOverrideWire(state.zoneOverrides, filterZonesToField(state.zones, resolveFieldAt), state.zoneGroups)
+    ? buildZoneOverrideWire(state.zoneOverrides, fieldZones, state.zoneGroups)
     : [];
   const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id), state.smoothPrimitives));
   return {

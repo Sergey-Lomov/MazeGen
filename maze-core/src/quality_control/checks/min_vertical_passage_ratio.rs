@@ -1,19 +1,12 @@
-use super::vertical_passage_count_core::{
-    count_logical_vertical_passages, logical_vertical_passages_per_floor,
-};
+use super::vertical_passage_count_core::count_logical_vertical_passages;
 use crate::Maze;
 use crate::quality_control::check::Check;
-use crate::quality_control::floor_group::floor_point_count;
-use crate::quality_control::{
-    FloorScope, MissingVerticalPassagesIssue, RepairArea, VerticalPassageType,
-};
+use crate::quality_control::{MissingVerticalPassagesIssue, VerticalPassageType};
 use crate::space::Tessellation;
 use rand::RngCore;
 
 pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT: f64 = 10.0;
-pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
-pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
 
 /// Flags a deficit against the share of logical `VerticalPassage` passages matching `passage_type`
 /// relative to the field's size — see GitHub issue #343. Mirrors `MinTeleportRatioCheck`: a count
@@ -23,9 +16,7 @@ pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
 pub struct MinVerticalPassageRatioCheck {
     pub instance_id: String,
     pub min_vertical_passage_ratio: f64,
-    pub floor_scope: FloorScope,
     pub passage_type: VerticalPassageType,
-    pub count_incoming: bool,
 }
 
 impl<T: Tessellation> Check<T, MissingVerticalPassagesIssue> for MinVerticalPassageRatioCheck {
@@ -42,46 +33,18 @@ impl<T: Tessellation> Check<T, MissingVerticalPassagesIssue> for MinVerticalPass
     ) {
         let min_ratio = self.min_vertical_passage_ratio;
 
-        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
-            FloorScope::WholeMaze => {
-                let field_cells = maze.field.cell_count() as u64;
-                let missing = Self::missing_for(
-                    count_logical_vertical_passages(maze, self.passage_type) as u64,
-                    field_cells,
-                    min_ratio,
-                );
-                if missing == 0 {
-                    vec![]
-                } else {
-                    vec![(RepairArea::WholeMaze, missing)]
-                }
-            }
-            FloorScope::PerFloor => {
-                let mut missing: Vec<(RepairArea, u32)> = logical_vertical_passages_per_floor(
-                    maze,
-                    self.passage_type,
-                    self.count_incoming,
-                )
-                .into_iter()
-                .filter_map(|(level, edges)| {
-                    let missing = Self::missing_for(
-                        edges.len() as u64,
-                        floor_point_count(&maze.field, level) as u64,
-                        min_ratio,
-                    );
-                    (missing > 0).then_some((RepairArea::Level(level), missing))
-                })
-                .collect();
-                missing.sort_by_key(|&(area, _)| area);
-                missing
-            }
-        };
-        if missing.is_empty() {
+        let field_cells = maze.scoped_cell_count() as u64;
+        let missing = Self::missing_for(
+            count_logical_vertical_passages(maze, self.passage_type) as u64,
+            field_cells,
+            min_ratio,
+        );
+        if missing == 0 {
             return;
         }
-        let total: u32 = missing.iter().map(|(_, m)| m).sum();
+
         let issue = MissingVerticalPassagesIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", total.to_string());
+            .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
 }
@@ -144,9 +107,7 @@ mod tests {
         let check = MinVerticalPassageRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_vertical_passage_ratio: 5.0,
-            floor_scope: FloorScope::WholeMaze,
             passage_type: VerticalPassageType::Any,
-            count_incoming: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -160,15 +121,13 @@ mod tests {
         let check = MinVerticalPassageRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_vertical_passage_ratio: 30.0,
-            floor_scope: FloorScope::WholeMaze,
             passage_type: VerticalPassageType::Any,
-            count_incoming: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         // required = round(30*20/100) = 6, missing = 6 - 1 = 5.
-        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 5)]);
+        assert_eq!(issues[0].missing, 5);
         assert_eq!(
             issues[0]
                 .details()
@@ -186,9 +145,7 @@ mod tests {
         let check = MinVerticalPassageRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_vertical_passage_ratio: 5.0,
-            floor_scope: FloorScope::WholeMaze,
             passage_type: VerticalPassageType::Any,
-            count_incoming: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -205,9 +162,7 @@ mod tests {
         let check = MinVerticalPassageRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_vertical_passage_ratio: 10.0,
-            floor_scope: FloorScope::WholeMaze,
             passage_type: VerticalPassageType::OneWayUp,
-            count_incoming: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -225,9 +180,7 @@ mod tests {
         let check = MinVerticalPassageRatioCheck {
             instance_id: TEST_ID.to_string(),
             min_vertical_passage_ratio: 50.0,
-            floor_scope: FloorScope::WholeMaze,
             passage_type: VerticalPassageType::Any,
-            count_incoming: false,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());

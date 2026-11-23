@@ -1,10 +1,9 @@
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::ids::{EdgeId, NodeId};
-use crate::quality_control::floor_group::floors_of_node;
 use crate::quality_control::{TeleportDirectionFilter, TeleportFloorKindFilter};
-use crate::space::{LevelId, Tessellation};
-use std::collections::{HashMap, HashSet};
+use crate::space::Tessellation;
+use std::collections::HashSet;
 
 /// Counts distinct teleports on the field — shared by `MinTeleportCountCheck`/
 /// `MinTeleportRatioCheck` (GitHub issue #211). A bidirectional teleport (`A->B` plus a parallel
@@ -17,8 +16,7 @@ pub fn count_distinct_teleports<T: Tessellation>(maze: &Maze<T>) -> u32 {
     distinct_teleport_pairs(maze).len() as u32
 }
 
-/// Distinct teleport portals as unordered node pairs — same dedup as `count_distinct_teleports`,
-/// exposed for `floor_scope: PerFloor` grouping (GitHub issue #369).
+/// Distinct teleport portals as unordered node pairs — same dedup as `count_distinct_teleports`.
 fn distinct_teleport_pairs<T: Tessellation>(maze: &Maze<T>) -> HashSet<(NodeId, NodeId)> {
     distinct_teleport_edge_representatives(maze)
         .into_iter()
@@ -61,7 +59,7 @@ fn teleport_directed_pairs<T: Tessellation>(maze: &Maze<T>) -> HashSet<(NodeId, 
 }
 
 /// True if the portal between `from`/`to` matches `floor_kind` — `InterFloor` requires the two
-/// endpoints to share no floor (see `floors_of_node`), `SameFloor` requires them to share at least
+/// endpoints to share no floor, `SameFloor` requires them to share at least
 /// one, `Any` always matches.
 fn matches_floor_kind<T: Tessellation>(
     maze: &Maze<T>,
@@ -72,9 +70,8 @@ fn matches_floor_kind<T: Tessellation>(
     match floor_kind {
         TeleportFloorKindFilter::Any => true,
         TeleportFloorKindFilter::InterFloor | TeleportFloorKindFilter::SameFloor => {
-            let from_floors = floors_of_node(&maze.field, from);
-            let to_floors = floors_of_node(&maze.field, to);
-            let shares_floor = from_floors.intersection(&to_floors).next().is_some();
+            let from_level = maze.field.level_of(from);
+            let shares_floor = from_level.is_some() && from_level == maze.field.level_of(to);
             if floor_kind == TeleportFloorKindFilter::SameFloor {
                 shares_floor
             } else {
@@ -108,27 +105,8 @@ fn distinct_teleport_edge_representatives<T: Tessellation>(
     representatives
 }
 
-/// Per-floor distinct teleport counts — a teleport whose two ends sit on different floors counts
-/// toward both (GitHub issue #369). Floors with no teleport still appear with a count of 0, so
-/// callers can compute a deficit/excess against every floor.
-pub fn count_distinct_teleports_per_floor<T: Tessellation>(
-    maze: &Maze<T>,
-) -> HashMap<LevelId, u32> {
-    let mut per_floor: HashMap<LevelId, u32> =
-        maze.field.levels_ordered().map(|l| (l, 0)).collect();
-    for (from, to) in distinct_teleport_pairs(maze) {
-        let mut floors = floors_of_node(&maze.field, from);
-        floors.extend(floors_of_node(&maze.field, to));
-        for level in floors {
-            *per_floor.entry(level).or_insert(0) += 1;
-        }
-    }
-    per_floor
-}
-
 /// One representative `EdgeId` per distinct teleport portal matching `direction`/`floor_kind` —
-/// thin filtered wrapper over `distinct_teleport_edge_representatives`, for `FloorScope::WholeMaze`
-/// callers (GitHub issue #379).
+/// thin filtered wrapper over `distinct_teleport_edge_representatives` (GitHub issue #379).
 pub fn distinct_teleport_representatives<T: Tessellation>(
     maze: &Maze<T>,
     direction: TeleportDirectionFilter,
@@ -143,37 +121,6 @@ pub fn distinct_teleport_representatives<T: Tessellation>(
         })
         .map(|(id, _, _)| id)
         .collect()
-}
-
-/// Per-floor representative-edge-id grouping matching `direction`/`floor_kind` — same portal dedup
-/// and filtering as `distinct_teleport_representatives`, grouped per floor for
-/// `FloorScope::PerFloor` (a teleport crossing floors counts toward both, mirroring
-/// `count_distinct_teleports_per_floor`). Floors with no teleport still appear with an empty `Vec`,
-/// so callers can compute an excess against every floor uniformly.
-pub fn distinct_teleport_representatives_per_floor<T: Tessellation>(
-    maze: &Maze<T>,
-    direction: TeleportDirectionFilter,
-    floor_kind: TeleportFloorKindFilter,
-) -> HashMap<LevelId, Vec<EdgeId>> {
-    let mut per_floor: HashMap<LevelId, Vec<EdgeId>> = maze
-        .field
-        .levels_ordered()
-        .map(|l| (l, Vec::new()))
-        .collect();
-    let directed_pairs = teleport_directed_pairs(maze);
-    for (edge_id, from, to) in distinct_teleport_edge_representatives(maze) {
-        if !matches_direction(&directed_pairs, from, to, direction)
-            || !matches_floor_kind(maze, from, to, floor_kind)
-        {
-            continue;
-        }
-        let mut floors = floors_of_node(&maze.field, from);
-        floors.extend(floors_of_node(&maze.field, to));
-        for level in floors {
-            per_floor.entry(level).or_default().push(edge_id);
-        }
-    }
-    per_floor
 }
 
 #[cfg(test)]

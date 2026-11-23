@@ -1,12 +1,11 @@
 use super::dead_end_priority::is_dead_end;
-use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit, reserve_target};
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
 use crate::graph::pathfinding::bfs_distances;
 use crate::ids::NodeId;
-use crate::quality_control::{MissingLoopsIssue, RepairArea};
+use crate::quality_control::MissingLoopsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -106,7 +105,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsTelep
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing.is_empty() {
+        if issue.missing == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
         let entry_pick = enum_param(params, PARAM_ENTRY_PICK, ENTRY_DEAD_END_PRIORITY);
@@ -141,62 +140,53 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsTelep
         let mut proposed_pairs = HashSet::new();
         let mut commands = Vec::new();
         let mut total_added = 0;
-        let mut deficits = RemainingDeficits::new(&issue.missing);
-        let areas: Vec<RepairArea> = deficits.areas().collect();
-
-        for area in areas {
-            let missing = deficits.live(area);
-            if missing == 0 {
+        let missing = issue.missing;
+        let target = reserve_target(params, missing);
+        let mut pool: Vec<NodeId> = all_nodes
+            .iter()
+            .copied()
+            // The entry anchors the teleport in a zone scope (GitHub issue #1039); the exit may
+            // lie outside it.
+            .filter(|&n| maze.graph.is_inner(n))
+            .collect();
+        let mut added = 0;
+        let mut failed_attempts = 0;
+        while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
+            let source = take_entry(&mut pool, entry_pick, &dead_ends, rng);
+            let distances = bfs_distances(&maze.graph, source);
+            let Some(destination) = pick_exit(
+                maze,
+                source,
+                &distances,
+                min_length,
+                max_length,
+                allow_out_of_interval,
+                exit_pick,
+                &dead_ends,
+                &proposed_pairs,
+                &all_nodes,
+                rng,
+            ) else {
+                failed_attempts += 1;
+                continue;
+            };
+            // One-way chance is a percentage and, like MissingTeleportsStrategy, keeps the
+            // selected entry -> exit orientation instead of randomly reversing it.
+            let cmds = if rng.random::<f64>() < one_way_chance {
+                cmd_add_directed_teleport(source, destination, preset_state)
+            } else {
+                cmd_add_bidirectional_teleport(source, destination, preset_state)
+            };
+            if cmds.is_empty() {
+                failed_attempts += 1;
                 continue;
             }
-            let target = reserve_target(params, missing);
-            let mut pool: Vec<NodeId> = all_nodes
-                .iter()
-                .copied()
-                .filter(|&n| match area {
-                    RepairArea::WholeMaze => true,
-                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
-                })
-                .collect();
-            let mut added = 0;
-            let mut failed_attempts = 0;
-            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
-                let source = take_entry(&mut pool, entry_pick, &dead_ends, rng);
-                let distances = bfs_distances(&maze.graph, source);
-                let Some(destination) = pick_exit(
-                    maze,
-                    source,
-                    &distances,
-                    min_length,
-                    max_length,
-                    allow_out_of_interval,
-                    exit_pick,
-                    &dead_ends,
-                    &proposed_pairs,
-                    &all_nodes,
-                    rng,
-                ) else {
-                    failed_attempts += 1;
-                    continue;
-                };
-                // One-way chance is a percentage and, like MissingTeleportsStrategy, keeps the
-                // selected entry -> exit orientation instead of randomly reversing it.
-                let cmds = if rng.random::<f64>() < one_way_chance {
-                    cmd_add_directed_teleport(source, destination, preset_state)
-                } else {
-                    cmd_add_bidirectional_teleport(source, destination, preset_state)
-                };
-                if cmds.is_empty() {
-                    failed_attempts += 1;
-                    continue;
-                }
-                commands.extend(cmds);
-                proposed_pairs.insert((source, destination));
-                added += 1;
-                deficits.consume(&[area, RepairArea::WholeMaze]);
-            }
-            total_added += added;
+            commands.extend(cmds);
+            proposed_pairs.insert((source, destination));
+            added += 1;
         }
+        total_added += added;
+
         if total_added == 0 {
             return (RepairResult::Failed, vec![]);
         }
@@ -348,7 +338,7 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(seed);
         apply_and_commit(
             &MissingLoopsTeleportStrategy,
-            &MissingLoopsIssue::new_from_check("min_loops_count", vec![(RepairArea::WholeMaze, 1)]),
+            &MissingLoopsIssue::new_from_check("min_loops_count", 1),
             maze,
             &mut rng,
             &strategy_params(overrides),

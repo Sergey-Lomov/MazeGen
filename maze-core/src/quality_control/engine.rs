@@ -97,6 +97,10 @@ impl<T: Tessellation> QualityControlEngine<T> {
         Self { stages }
     }
 
+    pub fn stages_mut(&mut self) -> &mut [Stage<T>] {
+        &mut self.stages
+    }
+
     pub fn stages(&self) -> &[Stage<T>] {
         &self.stages
     }

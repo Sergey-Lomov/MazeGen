@@ -81,7 +81,7 @@ export function ZoneOverridesSection({ paramKeys, integer, expanded, onRequest }
   const targets = (o: ZoneOverride): { key: string; label: string; colors: { bg: string; text: string }; target: ZoneOverrideTarget }[] => [
     ...groups.filter((g) => o.groupIds.includes(g.id)).map((g) => ({
       key: `g${g.id}`,
-      label: `${m["generation.zone_override_group_prefix"]()} ${zoneGroupDisplayName(g)}`,
+      label: `${m["zones.group_prefix"]()} ${zoneGroupDisplayName(g)}`,
       colors: { bg: ui.bg.info, text: ui.text.info },
       target: { kind: "group" as const, id: g.id },
     })),

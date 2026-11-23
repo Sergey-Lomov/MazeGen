@@ -57,6 +57,12 @@ A named, ordered group of QC rules — see `Specs/repair.md`'s "Stages" section 
 }
 ```
 
+`QcRuleConfig.zone_scopes` (GitHub issue #1039, `Specs/quality_control.md`, "QcRuleConfig") binds a rule to zone scopes;
+`AnalyticsRuleGroupConfig.zone_scopes` does the same for the analytics-only path, and `IssueDto.scope_id` names the scope
+an issue was found in (`zone:<id>` or `group:<id>`, absent for an unscoped rule).
+`CheckDescriptor.zone_scope_unsupported` (serialized only when `true`, set in the check's own descriptor)
+marks the checks a zone scope cannot narrow; the web disables the scope button of a rule holding one.
+
 ### `InitialGenerationConfig`
 
 Discriminated union keyed on `method`:

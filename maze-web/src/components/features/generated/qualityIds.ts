@@ -233,7 +233,6 @@ export const PARAM_IDS = [
   "exit_pick",
   "expand_elevator",
   "floor_mode",
-  "floor_scope",
   "forbid_cell_type_dodecagon",
   "forbid_cell_type_hexagon",
   "forbid_cell_type_octagon",

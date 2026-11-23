@@ -117,9 +117,16 @@ pub fn compute_auto_zones<T: Tessellation>(
     for (floor, (data, cells)) in floors.iter().zip(&sorted_floors).enumerate() {
         let members: FastSet<T::CellId> = cells.iter().copied().collect();
         if floors.len() > 1 {
-            push(&mut zones, AutoZoneKey::Floor(floor), on_floor(floor, cells));
+            push(
+                &mut zones,
+                AutoZoneKey::Floor(floor),
+                on_floor(floor, cells),
+            );
         }
-        for (index, typed) in cells_by_type(tessellation, floor, cells).into_iter().enumerate() {
+        for (index, typed) in cells_by_type(tessellation, floor, cells)
+            .into_iter()
+            .enumerate()
+        {
             push(&mut zones, AutoZoneKey::CellType { floor, index }, typed);
         }
         let edge: Vec<_> = cells
@@ -127,7 +134,11 @@ pub fn compute_auto_zones<T: Tessellation>(
             .copied()
             .filter(|&c| has_outside_neighbor(tessellation, &members, c))
             .collect();
-        push(&mut zones, AutoZoneKey::FieldEdge(floor), on_floor(floor, &edge));
+        push(
+            &mut zones,
+            AutoZoneKey::FieldEdge(floor),
+            on_floor(floor, &edge),
+        );
         if data.folded {
             let parts = components(tessellation, cells, &members, |c, face| {
                 !on_crease(tessellation, &data.creases, c, face)
@@ -135,7 +146,11 @@ pub fn compute_auto_zones<T: Tessellation>(
             // One face is no polyhedron: the floor is that zone already.
             if parts.len() > 1 {
                 for (index, part) in parts.into_iter().enumerate() {
-                    push(&mut zones, AutoZoneKey::Face { floor, index }, on_floor(floor, &part));
+                    push(
+                        &mut zones,
+                        AutoZoneKey::Face { floor, index },
+                        on_floor(floor, &part),
+                    );
                 }
             }
         }
@@ -143,7 +158,11 @@ pub fn compute_auto_zones<T: Tessellation>(
         // One region is the whole floor: the floor (or the maze) is that zone already.
         if parts.len() > 1 {
             for (index, part) in parts.into_iter().enumerate() {
-                push(&mut zones, AutoZoneKey::Region { floor, index }, on_floor(floor, &part));
+                push(
+                    &mut zones,
+                    AutoZoneKey::Region { floor, index },
+                    on_floor(floor, &part),
+                );
             }
         }
     }
@@ -242,7 +261,8 @@ fn components<T: Tessellation>(
     members: &FastSet<T::CellId>,
     crosses: impl Fn(T::CellId, T::Face) -> bool,
 ) -> Vec<Vec<T::CellId>> {
-    let mut seen: FastSet<T::CellId> = FastSet::with_capacity_and_hasher(cells.len(), Default::default());
+    let mut seen: FastSet<T::CellId> =
+        FastSet::with_capacity_and_hasher(cells.len(), Default::default());
     let mut parts = Vec::new();
     for &start in cells {
         if seen.contains(&start) {
@@ -277,7 +297,9 @@ fn components<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation};
+    use crate::space::{
+        SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation,
+    };
 
     fn rect(w: i32, h: i32) -> Vec<SquarePoint> {
         (0..h)
@@ -306,10 +328,7 @@ mod tests {
         let zones = compute_auto_zones(&SquareTessellation, &[floor(rect(3, 3))]);
         assert_eq!(
             keys(&zones),
-            vec![
-                AutoZoneKey::Maze,
-                AutoZoneKey::FieldEdge(0),
-            ]
+            vec![AutoZoneKey::Maze, AutoZoneKey::FieldEdge(0),]
         );
         assert_eq!(zone(&zones, AutoZoneKey::Maze).cells.len(), 9);
         // Every cell of a 3x3 touches the outside except the center.
@@ -318,7 +337,8 @@ mod tests {
 
     #[test]
     fn floor_zones_exist_only_on_a_multi_floor_maze() {
-        let zones = compute_auto_zones(&SquareTessellation, &[floor(rect(2, 1)), floor(rect(1, 1))]);
+        let zones =
+            compute_auto_zones(&SquareTessellation, &[floor(rect(2, 1)), floor(rect(1, 1))]);
         assert_eq!(zone(&zones, AutoZoneKey::Maze).cells.len(), 3);
         assert_eq!(zone(&zones, AutoZoneKey::Floor(1)).cells.len(), 1);
         assert!(zone(&zones, AutoZoneKey::Floor(0)).cells.len() == 2);
@@ -332,21 +352,39 @@ mod tests {
             SquarePoint { x: 5, y: 5 },
         ];
         let zones = compute_auto_zones(&SquareTessellation, &[floor(cells)]);
-        assert_eq!(zone(&zones, AutoZoneKey::Region { floor: 0, index: 0 }).cells.len(), 2);
-        assert_eq!(zone(&zones, AutoZoneKey::Region { floor: 0, index: 1 }).cells.len(), 1);
+        assert_eq!(
+            zone(&zones, AutoZoneKey::Region { floor: 0, index: 0 })
+                .cells
+                .len(),
+            2
+        );
+        assert_eq!(
+            zone(&zones, AutoZoneKey::Region { floor: 0, index: 1 })
+                .cells
+                .len(),
+            1
+        );
     }
 
     #[test]
     fn a_single_region_makes_no_region_zone() {
         let zones = compute_auto_zones(&SquareTessellation, &[floor(rect(3, 3))]);
-        assert!(!keys(&zones).iter().any(|k| matches!(k, AutoZoneKey::Region { .. })));
+        assert!(
+            !keys(&zones)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::Region { .. }))
+        );
     }
 
     #[test]
     fn faces_need_folds_and_are_split_by_creases() {
         let mut data = floor(rect(4, 1));
         let unfolded = compute_auto_zones(&SquareTessellation, &[data.clone()]);
-        assert!(!keys(&unfolded).iter().any(|k| matches!(k, AutoZoneKey::Face { .. })));
+        assert!(
+            !keys(&unfolded)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::Face { .. }))
+        );
 
         data.folded = true;
         // A crease on the edge between x=1 and x=2 (unit cells, edge at x=2).
@@ -365,18 +403,30 @@ mod tests {
         let mut data = floor(rect(3, 2));
         data.folded = true;
         let zones = compute_auto_zones(&SquareTessellation, &[data]);
-        assert!(!keys(&zones).iter().any(|k| matches!(k, AutoZoneKey::Face { .. })));
+        assert!(
+            !keys(&zones)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::Face { .. }))
+        );
     }
 
     #[test]
     fn floors_without_folds_get_no_face_zones() {
-        let zones = compute_auto_zones(&SquareTessellation, &[floor(rect(2, 1)), floor(rect(2, 1))]);
-        assert!(!keys(&zones).iter().any(|k| matches!(k, AutoZoneKey::Face { .. })));
+        let zones =
+            compute_auto_zones(&SquareTessellation, &[floor(rect(2, 1)), floor(rect(2, 1))]);
+        assert!(
+            !keys(&zones)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::Face { .. }))
+        );
     }
 
     fn octagon_field(points: &[(i32, i32)]) -> AutoZoneFloor<SquareOctagonPoint> {
         AutoZoneFloor {
-            cells: points.iter().map(|&(x, y)| SquareOctagonPoint { x, y }).collect(),
+            cells: points
+                .iter()
+                .map(|&(x, y)| SquareOctagonPoint { x, y })
+                .collect(),
             creases: Vec::new(),
             folded: false,
         }
@@ -385,7 +435,10 @@ mod tests {
     #[test]
     fn a_floor_is_split_by_cell_type_floor_by_floor() {
         // Floor 0 holds octagons and a square, floor 1 octagons only.
-        let floors = [octagon_field(&[(0, 0), (1, 1), (2, 2)]), octagon_field(&[(0, 0), (2, 2)])];
+        let floors = [
+            octagon_field(&[(0, 0), (1, 1), (2, 2)]),
+            octagon_field(&[(0, 0), (2, 2)]),
+        ];
         let zones = compute_auto_zones(&SquareOctagonTessellation, &floors);
         let key = |floor, index| AutoZoneKey::CellType { floor, index };
         assert_eq!(zone(&zones, key(0, 0)).cells.len(), 2);
@@ -394,26 +447,56 @@ mod tests {
             vec![ZoneCell::new(0, SquareOctagonPoint { x: 1, y: 1 })]
         );
         // Octagons only: that zone would be the floor. No zone spans floors.
-        assert!(!keys(&zones).iter().any(|k| matches!(k, AutoZoneKey::CellType { floor: 1, .. })));
-        assert_eq!(keys(&zones).iter().filter(|k| matches!(k, AutoZoneKey::CellType { .. })).count(), 2);
+        assert!(
+            !keys(&zones)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::CellType { floor: 1, .. }))
+        );
+        assert_eq!(
+            keys(&zones)
+                .iter()
+                .filter(|k| matches!(k, AutoZoneKey::CellType { .. }))
+                .count(),
+            2
+        );
     }
 
     #[test]
     fn a_single_floor_maze_is_split_by_type_too() {
-        let zones = compute_auto_zones(&SquareOctagonTessellation, &[octagon_field(&[(0, 0), (1, 1)])]);
-        assert_eq!(keys(&zones).iter().filter(|k| matches!(k, AutoZoneKey::CellType { .. })).count(), 2);
+        let zones = compute_auto_zones(
+            &SquareOctagonTessellation,
+            &[octagon_field(&[(0, 0), (1, 1)])],
+        );
+        assert_eq!(
+            keys(&zones)
+                .iter()
+                .filter(|k| matches!(k, AutoZoneKey::CellType { .. }))
+                .count(),
+            2
+        );
     }
 
     #[test]
     fn a_floor_of_one_type_makes_no_type_zone() {
-        let zones = compute_auto_zones(&SquareOctagonTessellation, &[octagon_field(&[(0, 0), (2, 2)])]);
-        assert!(!zones.iter().any(|z| matches!(z.key, AutoZoneKey::CellType { .. })));
+        let zones = compute_auto_zones(
+            &SquareOctagonTessellation,
+            &[octagon_field(&[(0, 0), (2, 2)])],
+        );
+        assert!(
+            !zones
+                .iter()
+                .any(|z| matches!(z.key, AutoZoneKey::CellType { .. }))
+        );
     }
 
     #[test]
     fn a_single_type_tessellation_makes_no_type_zone() {
         let zones = compute_auto_zones(&SquareTessellation, &[floor(rect(3, 3))]);
-        assert!(!keys(&zones).iter().any(|k| matches!(k, AutoZoneKey::CellType { .. })));
+        assert!(
+            !keys(&zones)
+                .iter()
+                .any(|k| matches!(k, AutoZoneKey::CellType { .. }))
+        );
     }
 
     #[test]

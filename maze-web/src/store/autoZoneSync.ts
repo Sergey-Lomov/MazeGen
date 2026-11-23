@@ -55,19 +55,31 @@ export function refreshAutoZones(store: StoreApi<MazeStore>): void {
   });
 }
 
-/** Keeps the automatic zones in step with the field: every change of what they are computed from schedules a
- *  recomputation, debounced so a drag or a stroke computes once (GitHub issue #1033). */
+/** Keeps the automatic zones in step with the field. The first change of a burst recomputes at once (the store
+ *  subscribers run before React renders, so a project load or a preset swap never shows a frame with zones missing,
+ *  which would flag every rule bound to an automatic zone); the rest of the burst is debounced to one trailing
+ *  recomputation, so a drag or a stroke stays cheap (GitHub issue #1033). */
 export function installAutoZoneSync(store: StoreApi<MazeStore>): void {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const schedule = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => refreshAutoZones(store), AUTO_ZONES_DEBOUNCE_MS);
+  let trailing = false;
+  const settle = () => {
+    timer = undefined;
+    if (trailing) {
+      trailing = false;
+      refreshAutoZones(store);
+    }
   };
   store.subscribe((state, prev) => {
-    if (inputsChanged(state, prev)) {
-      schedule();
+    if (!inputsChanged(state, prev)) return;
+    if (timer === undefined) {
+      refreshAutoZones(store);
+    } else {
+      trailing = true;
+      clearTimeout(timer);
     }
+    timer = setTimeout(settle, AUTO_ZONES_DEBOUNCE_MS);
   });
-  // The initial field is no change, but it has zones too.
-  schedule();
+  // The initial field is no change, but it has zones too. No rule can be bound to one yet, so this may wait.
+  trailing = true;
+  timer = setTimeout(settle, AUTO_ZONES_DEBOUNCE_MS);
 }

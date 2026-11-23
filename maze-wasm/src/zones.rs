@@ -165,14 +165,21 @@ pub fn zones_compute_auto(config: JsValue, cells: &[i32]) -> Result<JsValue, JsV
     for zone in &zones {
         let pair = js_sys::Array::new();
         pair.push(&JsValue::from_str(&zone.key));
-        pair.push(&js_sys::Int32Array::from(flatten_zone_cells(&zone.cells).as_slice()));
+        pair.push(&js_sys::Int32Array::from(
+            flatten_zone_cells(&zone.cells).as_slice(),
+        ));
         out.push(&pair);
     }
     Ok(out.into())
 }
 
 fn auto_zones_for(cfg: &AutoZonesConfig) -> Result<Vec<AutoZoneDto>, String> {
-    build_tessellation(&cfg.tessellation, AutoZones { floors: &cfg.floors })?
+    build_tessellation(
+        &cfg.tessellation,
+        AutoZones {
+            floors: &cfg.floors,
+        },
+    )?
 }
 
 fn auto_key_string(key: AutoZoneKey) -> String {
@@ -471,11 +478,23 @@ mod tests {
                 params: serde_json::Map::new(),
             },
             floors: vec![
-                AutoZoneFloorDto { cells: vec![[0, 0], [1, 1]], creases: vec![], folded: false },
-                AutoZoneFloorDto { cells: vec![[0, 0], [1, 1]], creases: vec![], folded: false },
+                AutoZoneFloorDto {
+                    cells: vec![[0, 0], [1, 1]],
+                    creases: vec![],
+                    folded: false,
+                },
+                AutoZoneFloorDto {
+                    cells: vec![[0, 0], [1, 1]],
+                    creases: vec![],
+                    folded: false,
+                },
             ],
         };
-        let keys: Vec<_> = auto_zones_for(&cfg).unwrap().into_iter().map(|z| z.key).collect();
+        let keys: Vec<_> = auto_zones_for(&cfg)
+            .unwrap()
+            .into_iter()
+            .map(|z| z.key)
+            .collect();
         for key in ["type:0:0", "type:0:1", "type:1:0", "type:1:1"] {
             assert!(keys.iter().any(|k| k == key), "{key} missing from {keys:?}");
         }
@@ -521,8 +540,16 @@ mod tests {
         let wire = AutoZonesWire {
             tessellation: square(),
             floors: vec![
-                AutoZoneFloorWire { count: 2, creases: vec![], folded: false },
-                AutoZoneFloorWire { count: 1, creases: vec![], folded: true },
+                AutoZoneFloorWire {
+                    count: 2,
+                    creases: vec![],
+                    folded: false,
+                },
+                AutoZoneFloorWire {
+                    count: 1,
+                    creases: vec![],
+                    folded: true,
+                },
             ],
         };
         let cfg = auto_config_from_flat(wire, &[0, 0, 1, 0, 5, 6]).unwrap();
@@ -535,13 +562,20 @@ mod tests {
     fn flat_cells_must_match_the_announced_counts() {
         let wire = AutoZonesWire {
             tessellation: square(),
-            floors: vec![AutoZoneFloorWire { count: 2, creases: vec![], folded: false }],
+            floors: vec![AutoZoneFloorWire {
+                count: 2,
+                creases: vec![],
+                folded: false,
+            }],
         };
         assert!(auto_config_from_flat(wire, &[0, 0, 1]).is_err());
     }
 
     #[test]
     fn zone_cells_flatten_to_floor_x_y_triples() {
-        assert_eq!(flatten_zone_cells(&[[0, 1, 2], [1, 3, 4]]), vec![0, 1, 2, 1, 3, 4]);
+        assert_eq!(
+            flatten_zone_cells(&[[0, 1, 2], [1, 3, 4]]),
+            vec![0, 1, 2, 1, 3, 4]
+        );
     }
 }

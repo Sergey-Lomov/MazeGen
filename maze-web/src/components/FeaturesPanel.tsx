@@ -27,7 +27,7 @@ import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNot
 import { useMazeStore } from "../store/mazeStore";
 import { problematicRuleCount } from "../store/qcDerivedProblems";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
+import { downloadProjectFile, saveJsonInPlace, serializeProject, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, listedInvalidConnections, listedInvalidSplitKeys } from "../domain/fieldValidity";
 import { resolveFieldAtOf } from "../store/storeHelpers";
@@ -196,7 +196,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const splitPatterns = useMazeStore((s) => s.splitPatterns);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
-  const problemRuleCount = useMazeStore((s) => problematicRuleCount(s.rules, s.stages, s.availableChecks));
+  const problemRuleCount = useMazeStore((s) => problematicRuleCount(s.rules, s.stages, s.availableChecks, s.zones, s.zoneGroups));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);
@@ -489,6 +489,8 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
           <FileNameModal
             defaultBaseName={timestampedBaseName("maze-project")}
             extension={PROJECT_FILE_EXTENSION}
+            rememberKey="project"
+            onSaveInPlace={(fileName) => { setProjectSaveDialogOpen(false); void saveJsonInPlace("project", serializeProject(useMazeStore.getState()), fileName, PROJECT_FILE_EXTENSION); }}
             onConfirm={(fileName) => { setProjectSaveDialogOpen(false); downloadProjectFile(useMazeStore.getState(), fileName); }}
             onCancel={() => setProjectSaveDialogOpen(false)}
           />

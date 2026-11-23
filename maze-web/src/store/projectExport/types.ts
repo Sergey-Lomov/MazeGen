@@ -7,7 +7,7 @@ import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageE
 import type { PresetEndpoint } from "../../domain/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation, QcProblem } from "../storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation, QcProblem, QcZoneScopeTarget } from "../storeTypes";
 import type { ParamLink } from "../parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
@@ -168,6 +168,9 @@ export interface ProjectFileQcRule {
   collapsed: boolean;
   /** Mirrors `QcRuleState.problems` — absent means none (GitHub issue #1044). */
   problems?: QcProblem[];
+  /** Mirrors `QcRuleState.zoneScope` — absent means the whole map (GitHub issue #1039). Not saved in a
+   *  quality preset: zone ids belong to their project. */
+  zoneScope?: QcZoneScopeTarget;
 }
 
 /** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc
