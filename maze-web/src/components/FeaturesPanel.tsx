@@ -28,7 +28,7 @@ import { problematicRuleCount } from "../store/qcDerivedProblems";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../domain/fieldValidity";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, listedInvalidConnections, listedInvalidSplitKeys } from "../domain/fieldValidity";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../domain/selectors/mazeSelectors";
 import { countManualZones } from "../domain/selectors/zoneSelectors";
@@ -314,7 +314,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     [presetSplitPoints, resolveFieldAt],
   );
   const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0) + (presetInvalidGenSource ? 1 : 0);
-  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount + presetInvalidLockedKeys.size + presetInvalidSplitKeys.size;
+  const presetInvalidCount = listedInvalidConnections(presetConnections, presetSplitPoints, presetInvalidKeys).length + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount + presetInvalidLockedKeys.size + listedInvalidSplitKeys(presetSplitPoints, presetInvalidSplitKeys).length;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   // Always green once available: zones have no invalid state, even with none defined.

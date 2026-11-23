@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "../domain/renderConstants";
@@ -7,7 +7,6 @@ import { buildNodePositions } from "../domain/splitNodeGeometry";
 import { drawDirectionArrow, splitWallAndLineEdges } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { TILE_SIZE } from "../domain/constants";
-import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "../domain/colorTokens";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
@@ -15,7 +14,6 @@ import type { NodeCellResolver } from "./BaseGraphRenderer";
 import type { IssueHighlightEdge } from "../store/postEditFullTypes";
 import { hopPieces, type SeamHopContext } from "../domain/graphSeams";
 
-const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 1;
 
@@ -23,20 +21,12 @@ export interface IssueHighlightData {
   nodes: NodeDto[];
   /** Base-graph edges to highlight — typically issue loops or boundary-style entities. Each edge's
    * own `asWall` (GitHub issue #377) picks line-vs-wall drawing — see `IssueHighlightEdge`.
-   * Teleport issue endpoints are supplied through `regionGroups`, not as rendered edge lines. */
+   * Flagged cells are not drawn here: they go through the shared coordinate warning layer. */
   edges: IssueHighlightEdge[] | null;
   /** The maze's full edge list (`state.edges`, not the highlighted subset above) — drives
    *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
    *  doc comment. `[]` falls back to the generic hub position. */
   allEdges: EdgeDto[];
-  /** SCC regions to highlight, each as its own list of maze node ids plus its own split-vs-region
-   * inset style (GitHub issue #619 — set by the caller from the payload kind, never guessed from
-   * the group's own geometry). Kept as separate groups (not one flat list) so each region gets
-   * its own perimeter/fill, instead of two adjacent-in-id-space-but-disjoint regions merging into
-   * one outline. Independent of `edges`, not mutually exclusive: a mixed `invalid_cross_element_group`
-   * pair (a one-way member alongside a split/region member, GitHub issue #619) sets both at once,
-   * and both are rendered independently. */
-  regionGroups: { nodes: number[]; isSplit: boolean }[] | null;
   cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a highlighted edge whose other endpoint crosses to another floor
@@ -63,47 +53,11 @@ export interface IssueHighlightData {
 }
 
 export class IssueHighlightOverlay extends BaseGraphRenderer {
-  private readonly regionContainer: Container;
-  private readonly regionRenderer: RegionHighlightRenderer;
-
-  constructor(container: Container) {
-    super(container);
-    this.regionContainer = new Container();
-    this.overlayContainer.addChild(this.regionContainer);
-    this.regionRenderer = new RegionHighlightRenderer(this.regionContainer);
-  }
-
   render(data: IssueHighlightData): void {
     this.resetContainers();
-    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth, seam } = data;
+    const { nodes, edges, allEdges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth, seam } = data;
     const hasEdges = edges != null && edges.length > 0;
-    const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
-
-    if (hasRegions) {
-      // Each group picks its own inset direction from its own `isSplit` flag (GitHub issue #619) --
-      // deciding this globally for the whole `regionGroups` list meant one split group anywhere in
-      // the list flipped every *other* group -- e.g. an unrelated region member of the same
-      // `invalid_cross_element_group` pair -- to the outward style too. Guessing it from the
-      // group's own geometry (duplicate node/cell) doesn't work either: a multi-cell split tile has
-      // no duplicate to detect.
-      const insetGroups = regionGroups.filter((group) => !group.isSplit).map((group) => group.nodes);
-      const outsetGroups = regionGroups.filter((group) => group.isSplit).map((group) => group.nodes);
-      this.regionRenderer.render({
-        nodes,
-        regionGroups: [],
-        color: HIGHLIGHT_COLOR,
-        width: HIGHLIGHT_WIDTH,
-        alpha: HIGHLIGHT_ALPHA,
-        cfg,
-        skipPerimeter: true,
-        groups: [
-          { regionGroups: insetGroups, color: HIGHLIGHT_COLOR, insetMode: "inset" },
-          { regionGroups: outsetGroups, color: HIGHLIGHT_COLOR, insetMode: "outset" },
-        ],
-      });
-    } else {
-      this.regionRenderer.clear();
-    }
+    const highlightColor = canvas.coordinateWarning[edges?.[0]?.severity ?? "warning"];
 
     if (!hasEdges || nodes.length === 0) return;
 
@@ -120,7 +74,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     };
 
     const wallG = new Graphics();
-    const lineEdges = splitWallAndLineEdges(wallG, edges, cellOf, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset());
+    const lineEdges = splitWallAndLineEdges(wallG, edges, cellOf, cfg, highlightColor, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset());
     this.edgesContainer.addChild(wallG);
 
     if (lineEdges.length === 0) return;
@@ -144,11 +98,11 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
         const b = path[1];
         g.moveTo(a.x, a.y);
         g.lineTo(b.x, b.y);
-        g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+        g.stroke({ width: HIGHLIGHT_WIDTH, color: highlightColor, alpha: HIGHLIGHT_ALPHA });
         if (baseEdgeKeys.has(`${from},${to}`) && !baseEdgeKeys.has(`${to},${from}`)) {
           const len = Math.hypot(b.x - a.x, b.y - a.y);
           if (len >= 1) {
-            drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, HIGHLIGHT_COLOR, HIGHLIGHT_ALPHA);
+            drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, highlightColor, HIGHLIGHT_ALPHA);
           }
         }
       }
@@ -174,7 +128,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
         return dir ? [{ from: dir[0], to: dir[1] }] : [{ from, to }, { from: to, to: from }];
       });
       const markers = buildCrossFloorMarkers(markerPairs, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
-      this.renderCrossFloorMarkers(markers, NODE_RADIUS, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, true, HIGHLIGHT_WIDTH);
+      this.renderCrossFloorMarkers(markers, NODE_RADIUS, highlightColor, highlightColor, highlightColor, true, HIGHLIGHT_WIDTH);
     }
 
     const nodesG = new Graphics();
@@ -182,19 +136,12 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
       nodesG.circle(pos.x, pos.y, NODE_RADIUS);
-      nodesG.fill({ color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+      nodesG.fill({ color: highlightColor, alpha: HIGHLIGHT_ALPHA });
     }
     this.nodesContainer.addChild(nodesG);
   }
 
   clear(): void {
     this.resetContainers();
-    this.regionRenderer.clear();
-  }
-
-  override destroy(): void {
-    super.destroy();
-    this.regionRenderer.destroy();
-    this.regionContainer.destroy();
   }
 }

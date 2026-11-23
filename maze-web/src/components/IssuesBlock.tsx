@@ -11,6 +11,7 @@ import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
 import { selectNodeLevelResolver } from "../domain/selectors/mazeSelectors";
 import { FloorBadgeRow } from "./FloorBadgeRow";
+import { nodeCoordinateTargets, type CoordinateWarning } from "../domain/coordinateWarning";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto, IssueEdgeGroupPayload } from "../wasm/types";
@@ -64,7 +65,8 @@ function normalizeSourcelessPayload(payload: IssueDto["payload"]): NormalizedIss
 export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
-  const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
+  const setHoveredCoordinateWarning = useMazeStore((s) => s.setHoveredCoordinateWarning);
+  const nodes = useMazeStore((s) => s.nodes);
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const { severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
@@ -212,30 +214,34 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   })();
   const resolved = normalizedPayload != null ? resolveIssueHighlight(normalizedPayload) : null;
 
-  // Wall/line edges (`setHoveredIssueLoopEdges`) and region-square cells
-  // (`setHoveredIssueRegionGroups`) are independent overlay states -- normally a bubble only ever
-  // populates one of the two families, but `invalid_cross_element_group` can populate both at once
-  // (a one-way member drawn as a wall alongside other members drawn as region squares), so both are
-  // set together rather than picking just the first match. A teleport/vertical-passage/elevator/
-  // elevator-stop/missing-stop-count issue resolves to a `region`, not a `cycle`, from
-  // `resolveIssueHighlight` (its endpoint cells are highlighted as squares, not a connector line —
-  // see that function's own doc comments), matching the old bespoke code's behavior exactly.
+  // Wall/line edges (`setHoveredIssueLoopEdges`) and flagged cells (the shared coordinate warning
+  // layer) are independent overlay states -- `invalid_cross_element_group` can populate both at once
+  // (a one-way member drawn as a wall alongside other members drawn as cells), so both are set
+  // together. Every region-shaped result of `resolveIssueHighlight` (endpoint cells of a teleport/
+  // vertical passage/elevator, regions, split tiles, dead ends, ...) becomes coordinate groups.
   const highlightEdges: IssueHighlightEdge[] | null = resolved?.cycle != null
-    ? resolved.cycle.edges.map(([from, to]) => ({ from, to, asWall: resolved.cycle!.asWall }))
+    ? resolved.cycle.edges.map(([from, to]) => ({ from, to, asWall: resolved.cycle!.asWall, severity }))
     : null;
-  const highlightRegionGroups: { nodes: number[]; isSplit: boolean }[] | null = resolved?.region != null
-    ? resolved.region.groups
+  // Each region group is one merged contour (split tiles drawn outward, `isSplit`, GitHub issue #619); a
+  // singleton group (endpoint cell, dead end, ...) is the same contour of one cell.
+  const coordinateWarning: CoordinateWarning | null = resolved?.region != null
+    ? {
+        severity,
+        targets: nodeCoordinateTargets(resolved.region.groups.flatMap((g) => g.nodes), nodes),
+        groups: resolved.region.groups.map((g) => ({ targets: nodeCoordinateTargets(g.nodes, nodes), outset: g.isSplit })),
+      }
     : null;
-  const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
+  const hasHover = highlightEdges != null || coordinateWarning != null;
+  const handleMouseEnter = hasHover
     ? () => {
         if (highlightEdges != null) setHoveredIssueLoopEdges(highlightEdges);
-        if (highlightRegionGroups != null) setHoveredIssueRegionGroups(highlightRegionGroups);
+        if (coordinateWarning != null) setHoveredCoordinateWarning(coordinateWarning);
       }
     : undefined;
-  const handleMouseLeave = highlightEdges != null || highlightRegionGroups != null
+  const handleMouseLeave = hasHover
     ? () => {
         if (highlightEdges != null) setHoveredIssueLoopEdges(null);
-        if (highlightRegionGroups != null) setHoveredIssueRegionGroups(null);
+        if (coordinateWarning != null) setHoveredCoordinateWarning(null);
       }
     : undefined;
 
@@ -266,7 +272,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // which *floors* the bubble spans; the actual hover highlight is unaffected by this.
   const touchedNodeIds = [
     ...(highlightEdges ?? []).flatMap((e) => [e.from, e.to]),
-    ...(highlightRegionGroups ?? []).flatMap((g) => g.nodes),
+    ...(resolved?.region?.groups ?? []).flatMap((g) => g.nodes),
   ];
 
   return (

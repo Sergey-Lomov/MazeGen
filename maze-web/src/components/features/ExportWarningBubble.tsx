@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
 import { resolveExportWarningMessage, resolveExportWarningDescription } from "./exportWarningsI18n";
-import type { ExportWarning } from "../../pixi/selectors/exportWarnings";
+import { BOUNDARY_WARNING_IDS, type ExportWarning } from "../../pixi/selectors/exportWarnings";
 import { spacing, typography, muted } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { FloorBadgeRow } from "../FloorBadgeRow";
+import { nodeCoordinateTargets, uniqueCoordinateTargets, type CoordinateWarning } from "../../domain/coordinateWarning";
+import { presetEndpoint } from "../../domain/presetEndpoint";
+import { useCoordinateWarningHover } from "../useCoordinateWarningHover";
 
 /** Distinct, ascending floor indices a warning touches: cross-floor targets (flagged nodes are
  *  folded in by the cross-floor merge) plus highlighted cells and floor polygons, which carry no node ids (e.g. marker
@@ -37,6 +40,24 @@ export function ExportWarningBubble({ warning, interactive = true }: { warning: 
   const description = resolveExportWarningDescription(warning.id, warning.colorFields, warning.colorValues, warning.markerPairs);
   const palette = notificationPalette("warning");
   const levels = resolveWarningFloorLevels(warning);
+  const nodes = useMazeStore((s) => s.nodes);
+  // Flagged nodes and explicit cells are the warning's coordinate targets; the shared layer
+  // highlights them. Edges, polygons and bands keep the export renderers' own highlight.
+  const coordinateWarning = useMemo<CoordinateWarning>(() => {
+    // A one-way passage warning is drawn by the mode renderer as the passage's own boundary; it has no coordinate targets.
+    if (BOUNDARY_WARNING_IDS.has(warning.id)) return { severity: "warning", targets: [] };
+    const nodeTargets = nodeCoordinateTargets(warning.nodes, nodes);
+    return {
+      severity: "warning",
+      targets: uniqueCoordinateTargets([
+        ...nodeTargets,
+        ...(warning.cells ?? []).map((cell) => presetEndpoint([cell.x, cell.y], undefined, cell.floorIndex)),
+      ]),
+      // Split warnings flag tiles that merge into one outward contour; every other warning flags single cells.
+      groups: warning.id.includes("split") ? [{ targets: nodeTargets, outset: true }] : undefined,
+    };
+  }, [warning.id, warning.nodes, warning.cells, nodes]);
+  const hover = useCoordinateWarningHover(coordinateWarning);
 
   return (
     <>
@@ -48,8 +69,8 @@ export function ExportWarningBubble({ warning, interactive = true }: { warning: 
           borderColor: palette.text,
         }}
         onClick={interactive ? () => setOpen(true) : undefined}
-        onMouseEnter={() => setHoveredExportWarningKey(warning.key)}
-        onMouseLeave={() => setHoveredExportWarningKey(null)}
+        onMouseEnter={() => { setHoveredExportWarningKey(warning.key); hover.onMouseEnter(); }}
+        onMouseLeave={() => { setHoveredExportWarningKey(null); hover.onMouseLeave(); }}
       >
         <div style={styles.topRow}>
           <span style={{ ...styles.label, color: palette.text }}>{message}</span>

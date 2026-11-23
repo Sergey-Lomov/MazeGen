@@ -341,14 +341,14 @@ Post-edit issue bubbles use:
 The Analytics region issue warnings are specifically `region_needs_expansion` and
 `region_needs_shrink`. `excessive_scc_count` does not highlight a particular region.
 
-A region highlight's outward-vs-inward inset is set explicitly per group by the caller
-(`isSplit`, GitHub issue #619), from the payload kind that produced the group, never
-guessed from the group's own geometry — a duplicate-node/cell heuristic can't detect a
-multi-cell split tile with no literal duplicate. `hoveredIssueLoopEdges` and
-`hoveredIssueRegionGroups` are independent, not mutually exclusive: an
-`invalid_cross_element_group` bubble mixing a one-way member (wall) with a split/region
-member sets both at once, and `IssueHighlightOverlay` renders them independently in the
-same pass. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTarget`'s
+In the Analytics bubbles every region-shaped result (regions, split tiles, endpoint cells, dead
+ends, ...) is a coordinate group: `IssueBubble` turns each resolved node group into a
+`CoordinateGroup` (`outset` from `isSplit`) and the shared coordinate warning layer
+(`Specs/coordinate-warnings.md`) draws it as one merged contour, split tiles outward.
+`hoveredIssueLoopEdges` and the coordinate warning are independent, not
+mutually exclusive: an `invalid_cross_element_group` bubble mixing a one-way member (wall)
+with a split/region member sets both at once, and each layer renders its own part.
+The debug tree draws the same inset/outset contours in `DebugRefHighlightOverlay`. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTarget`'s
 `cycle`/`region` fields in `algorithmNarration.ts`, rendered by
 `DebugRefHighlightOverlay`) so an issue reads identically in both views.
 

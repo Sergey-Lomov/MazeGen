@@ -31,7 +31,6 @@ const stateOf = (topology: WireTopology | null, extra: Partial<MazeState> = {}):
   nodes,
   edges: [],
   hoveredIssueLoopEdges: null,
-  hoveredIssueRegionGroups: null,
   ...extra,
 } as unknown as MazeState);
 

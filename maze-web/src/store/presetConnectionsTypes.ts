@@ -16,6 +16,10 @@ export interface PresetHoveredLink {
   from: PresetEndpoint;
   to: PresetEndpoint;
   highlightStyle?: "line" | "one_way" | "boundary";
+  /** Frame color; omitted uses the hover color of the style. */
+  color?: number;
+  /** More connections highlighted together with this one (the "outside the field" warning shows all its connections). */
+  more?: PresetHoveredLink[];
 }
 
 export interface PresetConnectionsState {
@@ -36,12 +40,6 @@ export interface PresetConnectionsState {
    * behavior; `"random"` seeds from a uniformly random field point, deterministic per generation
    * seed. Has no effect once `presetGenSource` is set — the pin always wins regardless of mode. */
   generationSourceMode: "default" | "random";
-  highlightInvalidPresets: boolean;
-  highlightIsolatedNodes: boolean;
-  /** Whether the "N split node(s) unused" warning bubble is currently hovered (GitHub issue #420) —
-   *  mirrors `highlightIsolatedNodes` above, driving the same kind of canvas highlight for orphan
-   *  split nodes instead. */
-  highlightOrphanSplitNodes: boolean;
   showPresetOrigin: boolean;
   /** Whether preset lock/blocker markers are rendered on the canvas. */
   showPresetLocks: boolean;
@@ -114,8 +112,6 @@ export interface PresetConnectionsState {
   /** Coordinate cells currently hovered in an Elements row. */
   presetHoveredEntity: PresetEndpoint[] | null;
   presetHoveredEntityMode: PresetEntityHighlightMode;
-  /** Subset of `presetHoveredEntity` that uses the warning canvas palette. */
-  presetHoveredEntityWarningEndpoints: PresetEndpoint[];
   /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
    *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
    *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
@@ -258,9 +254,6 @@ export interface PresetConnectionsActions {
   setPresetGenSourceEndpoint: (endpoint: PresetEndpoint | null) => void;
   setGenerationSourceMode: (mode: "default" | "random") => void;
   setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
-  setHighlightInvalidPresets: (highlight: boolean) => void;
-  setHighlightIsolatedNodes: (highlight: boolean) => void;
-  setHighlightOrphanSplitNodes: (highlight: boolean) => void;
   setShowPresetOrigin: (show: boolean) => void;
   setShowPresetLocks: (show: boolean) => void;
   setLockedNode: (x: number, y: number, kind: NodeLockKind, slotId?: number) => void;
@@ -333,7 +326,7 @@ export interface PresetConnectionsActions {
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
   setPresetHoveredLink: (link: PresetHoveredLink | null) => void;
-  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null, mode?: PresetEntityHighlightMode, warningEndpoints?: PresetEndpoint[]) => void;
+  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null, mode?: PresetEntityHighlightMode) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */

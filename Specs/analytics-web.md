@@ -236,7 +236,7 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 | 10 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
 | 11 | `pureCyclesContainer` | `PureCyclesOverlay` | `analyticsOpen && showPureCyclesOverlay && navNodes.length > 0` |
 | 12 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
-| 13 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && (hoveredIssueLoopEdges or hoveredIssueRegionGroups non-empty)` |
+| 13 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && hoveredIssueLoopEdges non-empty` |
 
 `closedCells` (layer 3) renders nodes with no connection at all in `WALL_COLOR` — isolated cells that are completely walled off, including a cell whose only connection is a teleport (a teleport counts as a connection here even though it renders no wall opening on any geometric side — see `buildClosedCells` in `mazeSelectors.ts`). Regions (layer 4) and Region classes (layer 5) both sit between closedCells and walls so their tint shows through wall rendering — intentional. The `components: number[][]` array (member node ids per SCC, derived from `statistics.graph_stats.node_component`) is built once in `syncAll` and shared by both renderers rather than rebuilt per layer.
 

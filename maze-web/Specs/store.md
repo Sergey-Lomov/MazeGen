@@ -85,8 +85,7 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `presetFinish` | `[number, number] \| null` | Forced finish cell |
 | `presetGenSource` | `[number, number] \| null` | Generator start cell; overrides `presetStart` in WASM config |
 | `presetConnectionsOpen` | `boolean` | Preset connections panel open |
-| `highlightInvalidPresets` | `boolean` | Highlight out-of-field presets |
-| `highlightIsolatedNodes` | `boolean` | Highlight isolated nodes |
+| `hoveredCoordinateWarning` | `CoordinateWarning \| null` | Coordinate warning (or one of its targets) under the cursor; drawn by `CoordinateWarningHighlight` (`Specs/coordinate-warnings.md`). Replaces the former `highlight*` preset flags |
 | `showPresetOrigin` | `boolean` | Show origin marker in preset view |
 | `lockedNodes` | `Map<string, NodeLockKind>` | Key = `"x,y"`, manual locks |
 | `autoLock` | `boolean` | Auto-lock fully-constrained nodes |
