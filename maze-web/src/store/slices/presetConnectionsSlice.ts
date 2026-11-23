@@ -41,9 +41,6 @@ function relocatePresetLock(state: MazeState, from: PresetEndpoint, to: PresetEn
 /** Tool, highlights, pending placements, prompts and hovers of the presets editor (GitHub issue #946). */
 export const presetConnectionsTransientUi = {
   presetConnectionsTool: "wall" as PresetConnectionTool,
-  highlightInvalidPresets: false,
-  highlightIsolatedNodes: false,
-  highlightOrphanSplitNodes: false,
   showPresetLocksBeforeLockTool: null,
   presetEditConfirmation: null,
   presetTeleportPendingFrom: null,
@@ -54,7 +51,6 @@ export const presetConnectionsTransientUi = {
   presetHoveredLink: null,
   presetHoveredEntity: null,
   presetHoveredEntityMode: "inset" as const,
-  presetHoveredEntityWarningEndpoints: [],
   presetSplitTargetPrompt: null,
   presetEntityDeletePrompt: null,
   presetDragOverride: null,
@@ -295,9 +291,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const presetConnections = applyDefaultEdgeState(state, s);
     return withRecomputedAutoLock(state, { defaultEdgeState: s, presetConnections });
   }),
-  setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
-  setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
-  setHighlightOrphanSplitNodes: (highlight) => set({ highlightOrphanSplitNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
   setShowPresetLocks: (show) => set({ showPresetLocks: show }),
 

@@ -259,6 +259,12 @@ describe("zone intersections", () => {
     expect(zoneIntersections(zones, zones[0]).map((e) => e.zone.id)).toEqual([2]);
     expect(zoneIntersections(zones, zones[3])).toEqual([]);
   });
+  it("skips automatic zones", () => {
+    const manual: Zone = { id: 1, name: "", kind: "manual", cells: [[0, 0, 0]] };
+    const auto: Zone = { id: 2, name: "", kind: "auto", cells: [[0, 0, 0]] };
+    expect(zoneIntersections([manual, auto], manual)).toEqual([]);
+    expect(zoneIntersections([manual, auto], manual, true).map((e) => e.zone.id)).toEqual([2]);
+  });
 });
 
 describe("zone smoothing", () => {

@@ -21,7 +21,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights, buildPresetNodePositions, buildPresetSplitHostKeys } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildPresetNodePositions, buildPresetSplitHostKeys } = await import("../pixi/selectors/presetSelectors");
 const { getCellCenter } = await import("../domain/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
@@ -133,7 +133,7 @@ describe("buildLocks", () => {
         from: original, to: presetEndpoint([1, 0]), state: "passage", source: "user",
       }],
     ]);
-    expect(buildIsolatedCellHighlights(new Map([["0,0:1", "both"]]), new Set(), connections)).toEqual([[0, 0]]);
+    expect(computeIsolatedNodeKeys(new Map([["0,0:1", "both"]]), new Set(), connections)).toEqual(["0,0:1"]);
   });
 
   it("does not report an auto-locked split node when its passage is connected to that slot", () => {

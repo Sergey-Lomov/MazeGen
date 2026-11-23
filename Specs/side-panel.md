@@ -94,6 +94,20 @@ keeps the normal event path. Because the replay happens after `mouseup`, it also
 `data-side-panel-recovered-press` so the affected control keeps visible pressed feedback instead
 of changing selection without the usual `:active` styling.
 
+### Footer language menu (issue #1074)
+
+The footer of `FeaturesPanel` hosts `LanguageSwitcher` (`components/LanguageSwitcher.tsx`), an icon
+button (`FlatIconButton`, `Languages` icon) in the same style as the save/load/fit buttons. Its tooltip
+and accessible name name the current language (`language.tooltip`); the button shows the active surface
+while the menu is open. A click opens a `role="menu"` popup above the button listing every locale by its
+native name (`NATIVE_NAMES`, `Record<Locale, string>`: never translated, so a new locale does not compile
+until named) as `role="menuitemradio"` buttons; the current one carries `aria-checked` and a check mark.
+Picking a language applies it and closes the menu.
+
+Keyboard: opening focuses the current item; Up/Down move between items and wrap; closing (pick or Escape)
+returns focus to the button. Escape is claimed through `claimEscape` at `escapePriority.transient` while the
+menu is open (see `keyboard-interactions.md`), so one press closes only the menu. A press outside closes it too.
+
 ## `Modal`
 
 Centered, blocking dialog (`Modal.tsx`), portaled to `document.body`, with a dimmed full-viewport

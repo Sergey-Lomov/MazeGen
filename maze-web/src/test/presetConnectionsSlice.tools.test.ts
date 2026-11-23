@@ -261,14 +261,6 @@ describe("mazeStore preset connections", () => {
     expect(s.presetConnections.get("-1,0@1-0,0@1")?.state).toBe("wall");
   });
 
-  it("setHighlightInvalidPresets / setHighlightIsolatedNodes toggle flags", () => {
-    useMazeStore.getState().setHighlightInvalidPresets(true);
-    useMazeStore.getState().setHighlightIsolatedNodes(true);
-    const s = useMazeStore.getState();
-    expect(s.highlightInvalidPresets).toBe(true);
-    expect(s.highlightIsolatedNodes).toBe(true);
-  });
-
   it("setShowPresetOrigin toggles flag", () => {
     useMazeStore.getState().setShowPresetOrigin(true);
     expect(useMazeStore.getState().showPresetOrigin).toBe(true);

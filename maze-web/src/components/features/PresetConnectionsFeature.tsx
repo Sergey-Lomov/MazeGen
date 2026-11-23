@@ -1,23 +1,23 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
+import { canvas } from "../../domain/colorTokens";
 import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../domain/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidPresetEndpointKeys, computeInvalidSplitPoints } from "../../domain/fieldValidity";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidPresetEndpointKeys, computeInvalidSplitPoints, listedInvalidConnections, listedInvalidSplitKeys } from "../../domain/fieldValidity";
 import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
-import { presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
+import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
-import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
 import { SectionHeader } from "../SectionHeader";
 import { Switch } from "../Switch";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { Stack, Grid } from "../Layout";
-import { WarningBubble } from "../WarningBubble";
-import { FloorBadgeRow } from "../FloorBadgeRow";
-import { notificationPalette } from "../EmbeddedNotification";
+import { CoordinateWarningBubble } from "../CoordinateWarningBubble";
+import { useCoordinateWarningHover } from "../useCoordinateWarningHover";
+import type { CoordinateWarning } from "../../domain/coordinateWarning";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog";
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
@@ -84,11 +84,8 @@ export function PresetConnectionsFeature() {
   const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
-  const setHighlightInvalidPresets = useMazeStore((s) => s.setHighlightInvalidPresets);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const clearLockedNodes = useMazeStore((s) => s.clearLockedNodes);
-  const setHighlightIsolatedNodes = useMazeStore((s) => s.setHighlightIsolatedNodes);
-  const setHighlightOrphanSplitNodes = useMazeStore((s) => s.setHighlightOrphanSplitNodes);
   const showPresetOrigin = useMazeStore((s) => s.showPresetOrigin);
   const setShowPresetOrigin = useMazeStore((s) => s.setShowPresetOrigin);
   const showPresetLocks = useMazeStore((s) => s.showPresetLocks);
@@ -148,9 +145,8 @@ export function PresetConnectionsFeature() {
   // style as isolatedNodes above), not blocking generation. Computed across every floor (not just
   // the active one) — `presetEndpointIsSplit` is deliberately level-agnostic (point+slot only, see
   // its own doc comment), so a point's orphan status doesn't depend on which floor is active. The
-  // hover highlight (GitHub issue #420) only lights up the active floor's own orphan cells
-  // (`buildOrphanSplitCellHighlights`, wired in `PresetConnectionsRenderer`), same convention as
-  // `isolatedNodes` above — the floor badges below are what surfaces "this also exists elsewhere".
+  // hover highlight (GitHub issue #420) goes through the shared coordinate warning layer, which only
+  // lights up the active floor's own cells — the floor badges below surface "this also exists elsewhere".
   const orphanPoints = useMemo(
     () => computeOrphanSplitPoints(presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource),
     [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource],
@@ -193,12 +189,17 @@ export function PresetConnectionsFeature() {
     () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
     [presetSplitPoints, resolveFieldAt],
   );
+  // The connections the preset list shows (one row per user-authored connection; a split tile's face records are not rows) that
+  // lead out of the field: the problem count counts what the list shows. They are framed on their edge, not highlighted as cells.
+  const invalidLinks = useMemo(
+    () => listedInvalidConnections(presetConnections, presetSplitPoints, invalidKeys),
+    [presetConnections, presetSplitPoints, invalidKeys],
+  );
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
-  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + invalidSplitKeys.size + invalidLockedKeys.size;
+  const invalidCount = invalidLinks.length + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + listedInvalidSplitKeys(presetSplitPoints, invalidSplitKeys).length + invalidLockedKeys.size;
   const hasInvalid = invalidCount > 0;
   const invalidEndpoints = useMemo(() => {
     const endpoints: PresetEndpoint[] = [
-      ...Array.from(presetConnections.values()).flatMap(({ from, to }) => [from, to]),
       ...[presetStart, presetFinish, presetGenSource].filter((endpoint): endpoint is PresetEndpoint => endpoint !== null),
       ...presetTeleports.flatMap(({ from, to }) => [from, to]),
       ...presetVerticalPassages.flatMap(({ from, to }) => [from, to]),
@@ -214,7 +215,52 @@ export function PresetConnectionsFeature() {
     ];
     const invalidEndpointKeys = computeInvalidPresetEndpointKeys(endpoints, resolveFieldAt);
     return endpoints.filter((endpoint) => invalidEndpointKeys.has(presetEndpointKey(endpoint)));
-  }, [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, resolveFieldAt]);
+  }, [presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, resolveFieldAt]);
+  const isolatedWarning = useMemo<CoordinateWarning>(() => ({
+    severity: "warning",
+    targets: isolatedNodes.flatMap((key) => presetEndpointFromKey(key) ?? []),
+  }), [isolatedNodes]);
+  // Split nodes are drawn as one merged outward contour (the split style); every other target is a single cell.
+  const orphanWarning = useMemo<CoordinateWarning>(() => ({
+    severity: "warning",
+    targets: orphanPoints,
+    groups: orphanPoints.length > 0 ? [{ targets: orphanPoints, outset: true }] : undefined,
+  }), [orphanPoints]);
+  // Connections are not cell targets (their endpoints are drawn as edges, never as cells): only the points outside the
+  // field. Split points are one outward contour (the split style), every other target is a single cell.
+  const invalidWarning = useMemo<CoordinateWarning>(() => {
+    const splitTargets = invalidEndpoints.filter((endpoint) =>
+      (presetSplitPoints[presetEndpointKey(presetEndpoint(endpoint.point, undefined, endpoint.level))]?.length ?? 0) > 0);
+    return {
+      severity: "warning",
+      targets: invalidEndpoints,
+      groups: splitTargets.length > 0 ? [{ targets: splitTargets, outset: true }] : undefined,
+      floorTargets: invalidLinks.flatMap(({ from, to }) => [from, to]),
+    };
+  }, [invalidEndpoints, presetSplitPoints, invalidLinks]);
+  // "Clear invalid" shows what it would remove: the same targets as the outside-field warning.
+  const invalidHover = useCoordinateWarningHover(invalidWarning);
+  // Invalid connections are framed like any hovered connection: the one-way frame or the boundary frame on their edge.
+  const setPresetHoveredLink = useMazeStore((st) => st.setPresetHoveredLink);
+  const invalidLinksHovered = useRef(false);
+  const setInvalidLinksHovered = useCallback((hovering: boolean) => {
+    invalidLinksHovered.current = hovering;
+    const links = invalidLinks.map((entry) => ({
+      from: entry.from,
+      to: entry.to,
+      color: canvas.coordinateWarning.warning,
+      highlightStyle: entry.state === "one_way_forward" || entry.state === "one_way_backward" ? "one_way" as const : "boundary" as const,
+    }));
+    setPresetHoveredLink(hovering && links.length > 0 ? { ...links[0], more: links.slice(1) } : null);
+  }, [invalidLinks, setPresetHoveredLink]);
+  // The frame goes with what it frames: "Clear invalid" removes the connections (and disables its button) and a card
+  // switch unmounts this view, both without a mouse-leave; the bubble reports its own unmount through `onHoverChange`.
+  useEffect(() => () => {
+    if (invalidLinksHovered.current) {
+      invalidLinksHovered.current = false;
+      setPresetHoveredLink(null);
+    }
+  }, [invalidLinks, setPresetHoveredLink]);
   const problemCount = isolatedNodes.length + orphanSplitCount + (hasInvalid ? 1 : 0);
   const problemsExpanded = presetSectionsExpanded["problems"] ?? false;
 
@@ -236,35 +282,27 @@ export function PresetConnectionsFeature() {
             <div style={styles.nestedContent}>
               <Stack gap="itemGap">
                 {isolatedNodes.length > 0 && (
-                  <WarningBubble
+                  <CoordinateWarningBubble
+                    warning={isolatedWarning}
                     message={isolatedNodes.length === 1
                       ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
                       : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
-                    onMouseEnter={() => setHighlightIsolatedNodes(true)}
-                    onMouseLeave={() => setHighlightIsolatedNodes(false)}
-                  >
-                    <IsolatedNodeFloorBadges isolatedNodeKeys={isolatedNodes} />
-                  </WarningBubble>
+                  />
                 )}
                 {orphanSplitCount > 0 && (
-                  <WarningBubble
+                  <CoordinateWarningBubble
+                    warning={orphanWarning}
                     message={orphanSplitCount === 1
                       ? m["preset.split_orphan"]({ count: orphanSplitCount })
                       : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
-                    onMouseEnter={() => setHighlightOrphanSplitNodes(true)}
-                    onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
-                  >
-                    <OrphanSplitFloorBadges orphanPoints={orphanPoints} />
-                  </WarningBubble>
+                  />
                 )}
                 {hasInvalid && (
-                  <WarningBubble
+                  <CoordinateWarningBubble
+                    warning={invalidWarning}
                     message={m["preset.elements_outside_field"]({ count: invalidCount })}
-                    onMouseEnter={() => setHighlightInvalidPresets(true)}
-                    onMouseLeave={() => setHighlightInvalidPresets(false)}
-                  >
-                    <InvalidPresetFloorBadges endpoints={invalidEndpoints} />
-                  </WarningBubble>
+                    onHoverChange={setInvalidLinksHovered}
+                  />
                 )}
               </Stack>
             </div>
@@ -371,8 +409,8 @@ export function PresetConnectionsFeature() {
             layoutStyle={{ width: "100%" }}
             disabled={!hasInvalid}
             onClick={() => clearInvalidPresetConnections()}
-            onMouseEnter={() => setHighlightInvalidPresets(true)}
-            onMouseLeave={() => setHighlightInvalidPresets(false)}
+            onMouseEnter={() => { invalidHover.onMouseEnter(); setInvalidLinksHovered(true); }}
+            onMouseLeave={() => { invalidHover.onMouseLeave(); setInvalidLinksHovered(false); }}
           >
             {m["preset.clear_invalid"]({ count: invalidCount })}
           </Button>
@@ -424,33 +462,6 @@ export function PresetConnectionsFeature() {
   );
 }
 
-
-/** Row of solid `L{n}` badges for the orphan-split-node warning bubble (GitHub issue #420) —
- *  preset-stage counterpart of `IssuesBlock`'s `IssueFloorBadges`, but keyed directly off each
- *  orphan point's own `level` instead of resolving through generated `NodeId`s (presets run before
- *  generation, so there's no node snapshot to look levels up in). */
-function OrphanSplitFloorBadges({ orphanPoints }: { orphanPoints: PresetEndpoint[] }) {
-  const palette = notificationPalette("warning");
-  const levels = Array.from(new Set(orphanPoints.map((ep) => ep.level ?? 0))).sort((a, b) => a - b);
-  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
-}
-
-function IsolatedNodeFloorBadges({ isolatedNodeKeys }: { isolatedNodeKeys: string[] }) {
-  const palette = notificationPalette("warning");
-  const levels = Array.from(new Set(
-    isolatedNodeKeys.flatMap((key) => {
-      const endpoint = presetEndpointFromKey(key);
-      return endpoint ? [endpoint.level ?? 0] : [];
-    }),
-  )).sort((a, b) => a - b);
-  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
-}
-
-function InvalidPresetFloorBadges({ endpoints }: { endpoints: PresetEndpoint[] }) {
-  const palette = notificationPalette("warning");
-  const levels = Array.from(new Set(endpoints.map((endpoint) => endpoint.level ?? 0))).sort((a, b) => a - b);
-  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
-}
 
 const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {

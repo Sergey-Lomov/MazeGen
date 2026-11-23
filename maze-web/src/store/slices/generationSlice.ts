@@ -210,7 +210,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     ...(card === "image_export" ? chooseFloorLabelModeOnce(state) : {}),
     openCard: card,
     ...(state.openCard === "preset_connections" && card !== "preset_connections"
-      ? { highlightInvalidPresets: false, highlightIsolatedNodes: false, highlightOrphanSplitNodes: false }
+      ? { hoveredCoordinateWarning: null }
       : {}),
   })),
 

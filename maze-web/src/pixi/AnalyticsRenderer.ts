@@ -12,6 +12,7 @@ import { NavGraphRenderer } from "./NavGraphRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
+import { CoordinateWarningHighlight } from "./CoordinateWarningHighlight";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportFloorInputs } from "../domain/selectors/mazeSelectors";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "../domain/postEditEndpoint";
@@ -48,6 +49,8 @@ export class AnalyticsRenderer {
   private readonly pureCyclesContainer: Container;
   private readonly routeContainer: Container;
   private readonly issueHighlightContainer: Container;
+  private readonly coordinateWarningContainer: Container;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
 
   private readonly grid: GridRenderer;
   private readonly seamLayer: SeamArrowLayer;
@@ -108,6 +111,9 @@ export class AnalyticsRenderer {
     container.addChild(this.navGraphContainer);
     container.addChild(this.pureCyclesContainer);
     container.addChild(this.routeContainer);
+    // Below the issue edges, like the region highlight that was part of the issue highlight overlay.
+    this.coordinateWarningContainer = new Container();
+    container.addChild(this.coordinateWarningContainer);
     container.addChild(this.issueHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "analytics");
@@ -128,6 +134,7 @@ export class AnalyticsRenderer {
     this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
     this.routeRenderer = new RouteOverlay(this.routeContainer);
     this.issueHighlightRenderer = new IssueHighlightOverlay(this.issueHighlightContainer);
+    this.coordinateWarning = new CoordinateWarningHighlight(this.coordinateWarningContainer, (state) => state.openCard === "analytics");
 
     this.syncAll(useMazeStore.getState());
     this.subscribe();
@@ -146,8 +153,7 @@ export class AnalyticsRenderer {
         state.showPureCyclesOverlay !== prev.showPureCyclesOverlay ||
         state.showRouteOverlay !== prev.showRouteOverlay ||
         state.showRegionClassesOverlay !== prev.showRegionClassesOverlay ||
-        state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
-        state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups;
+        state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges;
 
       const dataChanged =
         state.nodes !== prev.nodes ||
@@ -179,7 +185,7 @@ export class AnalyticsRenderer {
     const analyticsOpen = state.openCard === "analytics";
     const { activeFieldConfig: cfg,
       showGridOverlay, showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
-      showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
+      showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges } = state;
 
     // Floor-scoped (GitHub issue #358) — `state.nodes` can span every floor (post-edit's confirm
     // no longer restricts to floor 0), so a same-(x,y) node on another floor must not be drawn on
@@ -395,10 +401,9 @@ export class AnalyticsRenderer {
       this.routeRenderer.clear();
     }
 
-    // Issue highlight overlay — hovered issue's loop edges or undersized region perimeter/fill
+    // Issue highlight overlay — hovered issue's loop edges
     const hasLoopEdges = hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0;
-    const hasRegionGroups = hoveredIssueRegionGroups != null && hoveredIssueRegionGroups.length > 0;
-    const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
+    const showIssueHighlight = analyticsOpen && hasLoopEdges;
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
       this.issueHighlightRenderer.render(selectIssueHighlightData(state, { nodes, edges }, cfg));
@@ -429,6 +434,7 @@ export class AnalyticsRenderer {
     this.pureCyclesRenderer.destroy();
     this.routeRenderer.destroy();
     this.issueHighlightRenderer.destroy();
+    this.coordinateWarning.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.regionsContainer.destroy();
@@ -445,5 +451,6 @@ export class AnalyticsRenderer {
     this.pureCyclesContainer.destroy();
     this.routeContainer.destroy();
     this.issueHighlightContainer.destroy();
+    this.coordinateWarningContainer.destroy();
   }
 }

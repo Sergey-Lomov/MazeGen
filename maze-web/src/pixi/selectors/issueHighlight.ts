@@ -7,7 +7,7 @@ import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { selectNodeLevelResolver } from "../../domain/selectors/mazeSelectors";
 import { selectSeamHopContext } from "./seamHop";
 
-/// Everything `IssueHighlightOverlay` needs for the hovered issue (loop edges, undersized region groups): the
+/// Everything `IssueHighlightOverlay` needs for the hovered issue (loop edges): the
 /// resolvers read the *unscoped* node and edge lists, the scene (floor-scoped `nodes` and `edges`) comes from the caller.
 /// Shared by the analytics and post-edit renderers so a new field reaches both.
 export function selectIssueHighlightData(
@@ -20,7 +20,6 @@ export function selectIssueHighlightData(
     nodes: scene.nodes,
     edges: state.hoveredIssueLoopEdges,
     allEdges: scene.edges,
-    regionGroups: state.hoveredIssueRegionGroups,
     cfg,
     resolveNodeLevel: selectNodeLevelResolver(state.nodes),
     resolveNodeCell: (id) => {

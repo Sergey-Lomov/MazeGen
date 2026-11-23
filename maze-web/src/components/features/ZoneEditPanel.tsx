@@ -25,7 +25,7 @@ import * as m from "~/paraglide/messages";
 /** Zone editing side panel (GitHub issue #1031): the shape tools of the field editor, acting on the
  *  cells of one manual zone on the active floor. Changes go into a draft, not the zones list, and the
  *  tools can only reach cells that are part of the field. The close cross discards the draft; "Done" commits it. Sections: Properties (name, colour), Editing (modes,
- *  tools, smoothing, other zones) and Intersections (only while the zone overlaps another). */
+ *  tools, smoothing, other zones) and Intersections (the zones overlapping it; automatic ones behind a switch). */
 export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const zone = useMazeStore((s) => editedZoneOf(s));
   const storedZones = useMazeStore((s) => s.zones);
@@ -49,6 +49,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
   const clearCells = useMazeStore((s) => s.clearZoneCells);
   const [dialog, setDialog] = useState<"pick" | "name" | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [showAutoCrossing, setShowAutoCrossing] = useState(false);
 
   // The hover belongs to the panel: it must not outlive it.
   useEffect(() => () => setHover(null), [setHover]);
@@ -57,7 +58,7 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
   const count = zone.cells.length;
   const zoneGroups = groups.filter((g) => draftGroupIds.includes(g.id));
   const multiFloor = zoneFloors(zone).length > 1;
-  const crossing = zoneIntersections(zones, zone);
+  const crossing = zoneIntersections(zones, zone, showAutoCrossing);
   const color = zoneColors(zones, overrides)[zones.findIndex((z) => z.id === zone.id)];
   // The zones' bubbles read as the zone's colour on the canvas, as in the groups list.
   const allColors = zoneColors(zones, overrides);
@@ -130,24 +131,25 @@ export function ZoneEditPanel({ onDone, onCancel }: { onDone: () => void; onCanc
           </Stack>
         </Stack>
 
-        {crossing.length > 0 && (
-          <Stack gap="itemGap">
-            <div style={styles.sectionHeader}>{m["zones.intersections_title"]()}</div>
-            {/* Touching hover zones, as in the glue editor's side rows: no gap between the lines where the
-                hover could drop and flash the edited zone. */}
-            <BubbleHoverZones style={{ ...styles.content, flexDirection: "column" }}>
-              {crossing.map(({ zone: other, floor }) => (
-                <BubbleHoverZone key={`${other.id}-${floor}`} onMouseEnter={() => setHover(other.id)} onMouseLeave={() => setHover(null)}>
-                  <Inline gap="itemGap">
-                    <Bubble colors={chipColorsOf(other.id)}>{zoneDisplayName(other, floors)}</Bubble>
-                    {multiFloor && <BubbleArrow>-</BubbleArrow>}
-                    {multiFloor && <FloorBadgeRow levels={[floor]} />}
-                  </Inline>
-                </BubbleHoverZone>
-              ))}
-            </BubbleHoverZones>
+        <Stack gap="itemGap">
+          <div style={styles.sectionHeader}>{m["zones.intersections_title"]()}</div>
+          <Stack gap="itemGap" style={styles.content}>
+            <ToggleRow label={m["zones.intersections_show_auto"]()} checked={showAutoCrossing} onChange={setShowAutoCrossing} />
           </Stack>
-        )}
+          {/* Touching hover zones, as in the glue editor's side rows: no gap between the lines where the
+              hover could drop and flash the edited zone. */}
+          <BubbleHoverZones style={{ ...styles.content, flexDirection: "column" }}>
+            {crossing.map(({ zone: other, floor }) => (
+              <BubbleHoverZone key={`${other.id}-${floor}`} style={styles.hoverZone} onMouseEnter={() => setHover(other.id)} onMouseLeave={() => setHover(null)}>
+                <Inline gap="itemGap">
+                  <Bubble colors={chipColorsOf(other.id)}>{zoneDisplayName(other, floors)}</Bubble>
+                  {multiFloor && <BubbleArrow>-</BubbleArrow>}
+                  {multiFloor && <FloorBadgeRow levels={[floor]} />}
+                </Inline>
+              </BubbleHoverZone>
+            ))}
+          </BubbleHoverZones>
+        </Stack>
 
         <Button variant="destructive" layoutStyle={{ width: "100%", marginTop: spacing.itemGap }} disabled={count === 0} onClick={() => setConfirmingClear(true)}>
           {m["zones.clear"]()}
@@ -175,6 +177,8 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeader: sharedStyles.sectionHeader,
   content: { paddingLeft: indent.tree, minWidth: 0, boxSizing: "border-box", width: "100%" },
   info: { ...typography.caption },
+  // Shrink to the bubble: a column flex child would stretch over the full row width.
+  hoverZone: { alignSelf: "flex-start" },
   placeholder: { ...disabled(typography.body) },
   sectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   groupRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },

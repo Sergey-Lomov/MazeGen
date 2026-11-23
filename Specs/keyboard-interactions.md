@@ -12,5 +12,8 @@ an in-progress canvas operation cancels before its editor closes, and a modal cl
 Responder registrations must be released on unmount or controller destruction. A persistent
 controller may remain registered, but must return `false` when it has no cancellable state.
 
+Transient popups such as the footer language menu (`LanguageSwitcher`) claim Escape at `transient`
+priority only while open, so they close before the side panel behind them.
+
 Nested or local DOM controls may handle Escape themselves before the global dispatcher. Any
 window-level Escape behavior must use the dispatcher so it participates in this ordering.

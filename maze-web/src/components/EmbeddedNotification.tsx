@@ -1,7 +1,9 @@
 import { ui, radius, typography } from "../styles/theme";
 import type React from "react";
 
-export type NotificationSeverity = "info" | "warning" | "critical";
+import type { NotificationSeverity } from "../domain/notificationSeverity";
+
+export type { NotificationSeverity };
 
 /** Shared bg/text colors for a given severity — same palette across `WarningBubble`,
  * `WarningIcon` and `IssuesBlock`'s `IssueBubble`. */

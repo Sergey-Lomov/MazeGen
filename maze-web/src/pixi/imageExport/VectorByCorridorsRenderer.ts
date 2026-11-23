@@ -1,3 +1,4 @@
+import { CoordinateWarningHighlight } from "../CoordinateWarningHighlight";
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
@@ -126,6 +127,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly floorLabelContainer: Container;
   private readonly floorLabel: FloorLabelRenderer;
   private readonly warningHighlightContainer: Container;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
   /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
    *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
    *  export warning's cells (GitHub issue #313 follow-up: this mode's warnings section had no
@@ -237,6 +239,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.warningHighlightContainer = new Container();
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer);
+    // Inside the warning highlight container (shown with the renderer): above the boundary highlight, below the connector shapes.
+    const coordinateWarningContainer = new Container();
+    this.warningHighlightContainer.addChildAt(coordinateWarningContainer, 1);
+    this.coordinateWarning = new CoordinateWarningHighlight(coordinateWarningContainer, (state) => state.openCard === "image_export");
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -1469,6 +1475,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
     this.floorLabelContainer.destroy();
+    this.coordinateWarning.destroy();
     this.warningHighlight.destroy();
     this.warningHighlightContainer.destroy();
   }

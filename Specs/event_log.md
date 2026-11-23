@@ -454,7 +454,7 @@ debug fields.
 `QcEvent::CheckRan`'s "issue found" line and `IssuesMerged` now render an interactive bubble
 instead of a plain-text issue-kind string — reusing this same `DebugRefBubble`/`hoveredDebugRef`/
 `DebugRefHighlightOverlay` machinery (not Analytics' `IssueBubble`/`hoveredIssueLoopEdges` /
-`setHoveredIssueRegionGroups`, which only render while the Analytics panel is open — the debug
+`hoveredCoordinateWarning`, which only render while the Analytics panel is open — the debug
 panel needs the hover highlight independent of that).
 
 `Token`/`HoveredDebugRef` both gain a fourth-and-final variant:

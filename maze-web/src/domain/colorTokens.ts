@@ -62,6 +62,13 @@ export const canvas = {
     invalid: hexToNumber(base.invalid),
   },
 
+  // Canvas highlight of a coordinate warning, by its severity (the bubble's own palette is `notificationPalette`).
+  coordinateWarning: {
+    info: hexToNumber(base.info),
+    warning: hexToNumber(base.warning),
+    critical: hexToNumber(base.error),
+  },
+
   fieldEditor: {
     previewAdd: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.add),
     previewRemove: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.remove),

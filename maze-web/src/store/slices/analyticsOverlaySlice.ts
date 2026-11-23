@@ -5,7 +5,6 @@ import type { MazeStore, AnalyticsOverlayState, AnalyticsOverlayActions } from "
 export const analyticsTransientUi = {
   regionClassLegendOpen: false,
   hoveredIssueLoopEdges: null,
-  hoveredIssueRegionGroups: null,
 } satisfies Partial<AnalyticsOverlayState>;
 
 export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], AnalyticsOverlayState & AnalyticsOverlayActions> = (set) => ({
@@ -31,7 +30,6 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   setShowRegionClassesOverlay: (v) => set({ showRegionClassesOverlay: v }),
   setRegionClassLegendOpen: (v) => set({ regionClassLegendOpen: v }),
   setHoveredIssueLoopEdges: (edges) => set({ hoveredIssueLoopEdges: edges }),
-  setHoveredIssueRegionGroups: (groups) => set({ hoveredIssueRegionGroups: groups }),
   setAnalyticsSectionExpanded: (id, expanded) =>
     set((s) => ({ analyticsSectionsExpanded: { ...s.analyticsSectionsExpanded, [id]: expanded } })),
   setShowFullyPresetLockedIssues: (v) => set({ showFullyPresetLockedIssues: v }),

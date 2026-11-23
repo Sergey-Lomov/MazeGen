@@ -6,6 +6,7 @@ import {
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
   type PresetVerticalPassageEndpointHit, type PresetElevatorEndpointHit,
 } from "./fieldEditUtils";
+import { presetSplitPointKey } from "./presetSplitResolve";
 
 /** Builds a `level -> Set<encodePoint>` field-cell-set cache lazily, one entry per level actually
  * queried — shared by every function below that needs repeated per-level field-membership checks
@@ -294,4 +295,29 @@ export function moveElevatorEndpoint(
     floors: entry.floors.map((f) => overridesByLevel?.get(f.level ?? 0) ?? presetEndpoint(point, undefined, f.level)),
   };
   return { elevators: elevators.map((e) => (e.id === hit.id ? updated : e)) };
+}
+
+/** The invalid connections the preset list shows: one row per user-authored connection, so a split tile's face records
+ * (a connection with an end on a split point that has slots) and derived entries are not counted. The "elements outside
+ * the field" counts (the feature card and the features panel status) count what the list shows. */
+export function listedInvalidConnections(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  presetSplitPoints: Record<string, number[]>,
+  invalidKeys: ReadonlySet<string>,
+): PresetConnectionEntry[] {
+  const splitKeys = new Set(Object.entries(presetSplitPoints).filter(([, slotIds]) => slotIds.length > 0).map(([key]) => key));
+  return Array.from(invalidKeys).flatMap((key) => {
+    const entry = presetConnections.get(key);
+    if (!entry || entry.source !== "user") return [];
+    const atSplit = [entry.from, entry.to].some((end) => splitKeys.has(presetSplitPointKey(end.point, end.level)));
+    return atSplit ? [] : [entry];
+  });
+}
+
+/** The invalid split points the preset list shows (one row per split point that has slots). */
+export function listedInvalidSplitKeys(
+  presetSplitPoints: Record<string, number[]>,
+  invalidSplitKeys: ReadonlySet<string>,
+): string[] {
+  return Array.from(invalidSplitKeys).filter((key) => (presetSplitPoints[key]?.length ?? 0) > 0);
 }

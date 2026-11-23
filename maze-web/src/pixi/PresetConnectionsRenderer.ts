@@ -1,9 +1,9 @@
+import { CoordinateWarningHighlight } from "./CoordinateWarningHighlight";
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { SeamArrowLayer } from "./seamArrowSync";
 import { selectSeamPairs } from "./selectors/seamHop";
 import { presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "../domain/fieldEditUtils";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints } from "../domain/fieldValidity";
 import type { FieldEdge } from "../domain/fieldEditUtils";
 import { makeProjection } from "../domain/tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
@@ -28,16 +28,12 @@ import {
   buildPresetNodePositions,
   buildPresetSplitHostKeys,
   buildLocks,
-  buildIsolatedCellHighlights,
-  computeOrphanSplitPoints,
-  buildOrphanSplitCellHighlights,
-  buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
   buildPresetSplitPassages,
   buildLinkHoverHighlight,
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
-import { presetEndpoint, presetEndpointKey, withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
+import { presetEndpoint, withoutLevel, type PresetEndpoint } from "../domain/presetEndpoint";
 import { layoutEditorMarkersOnHosts } from "./editorMarkerLayout";
 import { canvas } from "../domain/colorTokens";
 import { WALL_THICKNESS } from "../domain/renderConstants";
@@ -46,12 +42,10 @@ import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } f
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
-import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
+import { activeFloorLevel } from "../store/storeHelpers";
 import { isPresetLockTool } from "../store/storeTypes";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
-
-const ISOLATED_HL_ALPHA = 0.35;
 
 export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly root: Container;
@@ -69,11 +63,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
   private readonly originContainer: Container;
-  private readonly invalidMarkerHLContainer: Container;
   private readonly genSourceContainer: Container;
-  private readonly isolatedHLContainer: Container;
-  private readonly orphanHLContainer: Container;
-  private readonly invalidHLContainer: Container;
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
   private readonly splitPanelTargetContainer: Container;
@@ -99,11 +89,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly origin: OriginRenderer;
-  private readonly invalidMarkerHL: CellFillRenderer;
   private readonly genSource: GenSourceRenderer;
-  private readonly isolatedHL: CellFillRenderer;
-  private readonly orphanHL: RegionHighlightRenderer;
-  private readonly invalidHL: EdgeHighlightRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
   private readonly splitPanelTarget: CellFillRenderer;
@@ -114,9 +100,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
    *  highlight. */
   private readonly linkHover: NodeEdgeHighlightRenderer;
   private readonly entityHighlightContainer: Container;
-  private readonly warningEntityHighlightContainer: Container;
+  private readonly coordinateWarningContainer: Container;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
   private readonly entityHighlight: RegionHighlightRenderer;
-  private readonly warningEntityHighlight: RegionHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -135,18 +121,14 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
     this.originContainer         = new Container();
-    this.invalidMarkerHLContainer = new Container();
     this.genSourceContainer      = new Container();
-    this.isolatedHLContainer     = new Container();
-    this.orphanHLContainer       = new Container();
-    this.invalidHLContainer      = new Container();
     this.hoverContainer          = new Container();
     this.cellHoverContainer      = new Container();
     this.splitPanelTargetContainer = new Container();
     this.teleportPreviewContainer = new Container();
     this.linkHoverContainer      = new Container();
     this.entityHighlightContainer = new Container();
-    this.warningEntityHighlightContainer = new Container();
+    this.coordinateWarningContainer = new Container();
 
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
@@ -162,18 +144,15 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
-    this.root.addChild(this.invalidMarkerHLContainer);
     this.root.addChild(this.genSourceContainer);
-    this.root.addChild(this.isolatedHLContainer);
-    this.root.addChild(this.orphanHLContainer);
-    this.root.addChild(this.invalidHLContainer);
+    // Where the old isolated/orphan/invalid highlight layers were: above the markers, below the hover layers.
+    this.root.addChild(this.coordinateWarningContainer);
     this.root.addChild(this.hoverContainer);
     this.root.addChild(this.cellHoverContainer);
     this.root.addChild(this.splitPanelTargetContainer);
     this.root.addChild(this.teleportPreviewContainer);
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
-    this.root.addChild(this.warningEntityHighlightContainer);
 
     this.grid           = new GridRenderer(this.gridContainer, "preset connections");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
@@ -193,11 +172,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
     this.origin         = new OriginRenderer(this.originContainer);
-    this.invalidMarkerHL = new CellFillRenderer(this.invalidMarkerHLContainer);
     this.genSource      = new GenSourceRenderer(this.genSourceContainer);
-    this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
-    this.orphanHL       = new RegionHighlightRenderer(this.orphanHLContainer);
-    this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
     this.splitPanelTarget = new CellFillRenderer(this.splitPanelTargetContainer);
@@ -207,7 +182,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.boundaryHover = new Graphics();
     this.linkHoverContainer.addChild(this.boundaryHover);
     this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
-    this.warningEntityHighlight = new RegionHighlightRenderer(this.warningEntityHighlightContainer);
+    this.coordinateWarning = new CoordinateWarningHighlight(this.coordinateWarningContainer, (state) => this.isCardOpen(state));
 
     this.root.visible = false;
 
@@ -307,22 +282,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.redrawOrigin(state.showPresetOrigin);
     }
 
-    if (state.highlightInvalidPresets !== prev.highlightInvalidPresets) {
-      this.redrawInvalidHL(state);
-    }
-
-    if (state.highlightIsolatedNodes !== prev.highlightIsolatedNodes) {
-      this.redrawIsolatedHL(state);
-    }
-
-    if (state.highlightOrphanSplitNodes !== prev.highlightOrphanSplitNodes) {
-      this.redrawOrphanHL(state);
-    }
-
     if (state.presetHoveredLink !== prev.presetHoveredLink) {
       this.redrawLinkHover(state);
     }
-    if (state.presetHoveredEntity !== prev.presetHoveredEntity || state.presetHoveredEntityMode !== prev.presetHoveredEntityMode || state.presetHoveredEntityWarningEndpoints !== prev.presetHoveredEntityWarningEndpoints) this.redrawEntityHighlight(state);
+    if (state.presetHoveredEntity !== prev.presetHoveredEntity || state.presetHoveredEntityMode !== prev.presetHoveredEntityMode) this.redrawEntityHighlight(state);
 
     if (
       state.presetConnectionsTool !== prev.presetConnectionsTool
@@ -477,12 +440,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     });
 
     this.redrawOrigin(state.showPresetOrigin);
-    this.redrawGenSource(presetGenSource, level, nodePositions);
-    this.redrawIsolatedHL(state);
-    this.redrawOrphanHL(state);
-
-    this.redrawInvalidHL(state);
-    this.splitPanelTarget.render({
+    this.redrawGenSource(presetGenSource, level, nodePositions);    this.splitPanelTarget.render({
       cells: state.presetFocusedPoint ? [state.presetFocusedPoint] : [],
       color: canvas.fieldEditor.panelTarget,
       alpha: 0,
@@ -498,7 +456,6 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private redrawEntityHighlight(state: MazeState): void {
     if (!this.cfg) return;
     const activeLevel = activeFloorLevel(state) ?? 0;
-    const warningKeys = new Set(state.presetHoveredEntityWarningEndpoints.map(presetEndpointKey));
     const cells = (state.presetHoveredEntity ?? [])
       .filter((endpoint) => (endpoint.level ?? 0) === activeLevel);
     this.entityHighlight.render({
@@ -506,42 +463,41 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       // Preset endpoints are intentionally kept as endpoints in the store because their level is
       // needed when a multi-floor bubble is hovered.
       nodes: [], regionGroups: [],
-      cells: cells.filter((endpoint) => !warningKeys.has(presetEndpointKey(endpoint))).map((endpoint) => endpoint.point),
+      cells: cells.map((endpoint) => endpoint.point),
       color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1, cfg: this.cfg, skipPerimeter: true,
-      insetMode: state.presetHoveredEntityMode,
-    });
-    this.warningEntityHighlight.render({
-      nodes: [], regionGroups: [],
-      cells: cells.filter((endpoint) => warningKeys.has(presetEndpointKey(endpoint))).map((endpoint) => endpoint.point),
-      color: canvas.preset.invalid, width: WALL_THICKNESS * 2, alpha: 1, cfg: this.cfg, skipPerimeter: true,
       insetMode: state.presetHoveredEntityMode,
     });
   }
 
   private redrawLinkHover(state: MazeState): void {
     if (!this.cfg) return;
-    const link = state.presetHoveredLink;
+    const hovered = state.presetHoveredLink;
     this.boundaryHover.clear();
-    if (!link || !link.highlightStyle || link.highlightStyle === "line") {
-      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg, selectSeamPairs(state)));
+    if (!hovered || !hovered.highlightStyle || hovered.highlightStyle === "line") {
+      this.linkHover.render(buildLinkHoverHighlight(hovered, this.cfg, selectSeamPairs(state)));
       return;
     }
     this.linkHover.render([]);
-    const color = link.highlightStyle === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
-    const span = link.highlightStyle === "one_way"
-      ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
-      : WALL_HIGHLIGHT_SPAN;
-    drawCellBoundaryHighlight(
-      this.boundaryHover,
-      link.from.point,
-      link.to.point,
-      this.cfg,
-      color,
-      0.25,
-      WALL_THICKNESS,
-      span,
-      getCellHighlightInset(),
-    );
+    const activeLevel = activeFloorLevel(state) ?? 0;
+    const links = [hovered, ...(hovered.more ?? [])].filter((link) => (link.from.level ?? 0) === activeLevel && (link.to.level ?? 0) === activeLevel);
+    for (const link of links) {
+      if (!link.highlightStyle || link.highlightStyle === "line") continue;
+      const color = link.color ?? (link.highlightStyle === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover);
+      const span = link.highlightStyle === "one_way"
+        ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
+        : WALL_HIGHLIGHT_SPAN;
+      drawCellBoundaryHighlight(
+        this.boundaryHover,
+        link.from.point,
+        link.to.point,
+        this.cfg,
+        color,
+        0.25,
+        WALL_THICKNESS,
+        span,
+        getCellHighlightInset(),
+      );
+    }
   }
 
   private redrawOrigin(show: boolean): void {
@@ -575,138 +531,6 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.genSource.render({ sourceScreen: { x, y } });
   }
 
-  private redrawIsolatedHL(state: MazeState): void {
-    if (!this.cfg) return;
-    if (!state.highlightIsolatedNodes) {
-      this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
-      return;
-    }
-    const level = activeFloorLevel(state);
-    const cells = buildIsolatedCellHighlights(
-      mapOnLevel(state.lockedNodes, level),
-      setOnLevel(state.autoLockedNodes, level),
-      presetConnectionsOnLevel(state.presetConnections, level),
-    );
-    this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
-  }
-
-  private redrawOrphanHL(state: MazeState): void {
-    if (!this.cfg) return;
-    if (!state.highlightOrphanSplitNodes) {
-      this.orphanHL.render({ nodes: [], regionGroups: [], color: canvas.preset.invalid, width: 0, alpha: 0, cfg: this.cfg, skipPerimeter: true, insetMode: "outset" });
-      return;
-    }
-    const level = activeFloorLevel(state);
-    const orphanPoints = computeOrphanSplitPoints(
-      state.presetSplitPoints, state.presetConnections, state.presetTeleports, state.presetStart, state.presetFinish, state.presetGenSource,
-    );
-    const cells = buildOrphanSplitCellHighlights(orphanPoints, level);
-    const nodes = cells.map(([x, y], id) => ({ id, x, y, i: id }));
-    this.orphanHL.render({
-      nodes,
-      regionGroups: nodes.length > 0 ? [nodes.map((node) => node.id)] : [],
-      color: canvas.preset.invalid,
-      width: 0,
-      alpha: ISOLATED_HL_ALPHA,
-      cfg: this.cfg,
-      skipPerimeter: true,
-      insetMode: "outset",
-    });
-  }
-
-  private redrawInvalidHL(state: MazeState): void {
-    if (!this.cfg) return;
-    if (!state.highlightInvalidPresets) {
-      this.invalidHL.render({ highlights: [] });
-      this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
-      return;
-    }
-    const presetConnections = presetConnectionsOnLevel(state.presetConnections, activeFloorLevel(state));
-    const invalidKeys = computeInvalidKeysFromCells(presetConnections, this.cachedCells, activeFloorLevel(state));
-    const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, presetConnections, this.cfg);
-    this.invalidHL.render({ highlights: edgeHighlights });
-    this.redrawInvalidTeleportHL(state);
-  }
-
-  private redrawInvalidTeleportHL(state: MazeState): void {
-    if (!this.cfg) return;
-    if (!state.highlightInvalidPresets) return;
-
-    const level = activeFloorLevel(state);
-    const resolveFieldAt = resolveFieldAtOf(state);
-    const invalidPointCells: [number, number][] = [];
-
-    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
-    const invalidIds = computeInvalidTeleportIds(presetTeleports, resolveFieldAt);
-    for (const t of presetTeleports) {
-      if (!invalidIds.has(t.id)) continue;
-      // Only highlight whichever endpoint is actually on this floor — the other end (a
-      // cross-floor teleport, GitHub issue #357/#340) isn't drawn as a real point on this image at
-      // all, so its own raw (x, y) would land on the wrong cell if highlighted unconditionally.
-      for (const ep of [t.from, t.to]) {
-        if ((ep.level ?? 0) !== (level ?? 0)) continue;
-        invalidPointCells.push(ep.point);
-      }
-    }
-
-    // Invalid preset vertical passages/elevators (GitHub issue #357) — only the active floor's own
-    // endpoint of each invalid entry is drawn (the other end, on a different floor, isn't visible
-    // from here), same "highlight what's actually on screen" rule the teleport pass above follows.
-    const presetVerticalPassages = state.presetVerticalPassages.filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0));
-    const invalidVerticalPassageIds = computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt);
-    for (const p of presetVerticalPassages) {
-      if (!invalidVerticalPassageIds.has(p.id)) continue;
-      const own = (p.from.level ?? 0) === (level ?? 0) ? p.from : p.to;
-      invalidPointCells.push(own.point);
-    }
-
-    const presetElevators = state.presetElevators.filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)));
-    const invalidElevatorIds = computeInvalidElevatorIds(presetElevators, resolveFieldAt);
-    for (const e of presetElevators) {
-      if (!invalidElevatorIds.has(e.id)) continue;
-      const ownEndpoint = e.floors.find((f) => (f.level ?? 0) === (level ?? 0));
-      if (!ownEndpoint) continue;
-      invalidPointCells.push(ownEndpoint.point);
-    }
-
-    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
-    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
-    const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
-    const invalidMarkers = computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt);
-    const invalidGenSource = computeInvalidEndpoint(presetGenSource, resolveFieldAt);
-    const invalidLockedKeys = computeInvalidLockedNodeKeys(state.lockedNodes, resolveFieldAt);
-    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
-    const invalidLockedCells: [number, number][] = [];
-    for (const key of invalidLockedKeys) {
-      const [pointPart, levelPart] = key.split("@");
-      if (Number(levelPart ?? 0) !== (level ?? 0)) continue;
-      const [x, y] = pointPart.split(",").map(Number);
-      invalidLockedCells.push([x, y]);
-    }
-    const invalidSplitCells: [number, number][] = [];
-    for (const key of invalidSplitKeys) {
-      const [pointPart, levelPart] = key.split("@");
-      if (Number(levelPart ?? 0) !== (level ?? 0)) continue;
-      const [x, y] = pointPart.split(",").map(Number);
-      invalidSplitCells.push([x, y]);
-    }
-    for (const [invalid, endpoint] of [[invalidMarkers.start, presetStart], [invalidMarkers.finish, presetFinish]] as const) {
-      if (!invalid || !endpoint) continue;
-      invalidPointCells.push(endpoint.point);
-    }
-    this.invalidMarkerHL.render({
-      cells: [
-        ...invalidPointCells,
-        ...(invalidGenSource && presetGenSource ? [presetGenSource.point] : []),
-        ...invalidLockedCells,
-        ...invalidSplitCells,
-      ],
-      color: canvas.preset.invalid,
-      alpha: ISOLATED_HL_ALPHA,
-      inset: getCellHighlightInset(),
-    }, this.cfg);
-  }
-
   protected clearAll(): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
@@ -722,16 +546,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.origin.render({ show: false }, cfg);
     this.genSource.render({ sourceScreen: null });
-    this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
-    this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
-    this.invalidHL.render({ highlights: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
     this.linkHover.clear();
     this.boundaryHover.clear();
     this.entityHighlight.clear();
-    this.warningEntityHighlight.clear();
     this.teleportPreview.clear();
   }
 
@@ -751,16 +571,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.markers.destroy();
     this.origin.destroy();
     this.genSource.destroy();
-    this.isolatedHL.destroy();
-    this.invalidMarkerHL.destroy();
-    this.invalidHL.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
     this.splitPanelTarget.destroy();
     this.linkHover.destroy();
     this.boundaryHover.destroy();
     this.entityHighlight.destroy();
-    this.warningEntityHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.backgroundImageContainer.destroy();
@@ -774,18 +590,15 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locksContainer.destroy();
     this.markersContainer.destroy();
     this.originContainer.destroy();
-    this.invalidMarkerHLContainer.destroy();
     this.genSourceContainer.destroy();
-    this.isolatedHLContainer.destroy();
-    this.orphanHLContainer.destroy();
-    this.invalidHLContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
     this.splitPanelTargetContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
     this.entityHighlightContainer.destroy();
-    this.warningEntityHighlightContainer.destroy();
+    this.coordinateWarning.destroy();
+    this.coordinateWarningContainer.destroy();
   }
 }
 

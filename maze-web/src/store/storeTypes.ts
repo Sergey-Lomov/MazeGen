@@ -9,6 +9,7 @@ export * from "./postEditFullTypes";
 export * from "./floorsTypes";
 export * from "./topologyTypes";
 export * from "./zonesTypes";
+export * from "./coordinateWarningTypes";
 
 import type { TessellationState, FloorFieldsState, TessellationActions, FloorFieldsActions } from "./tessellationTypes";
 import type { PresetConnectionsState, PresetConnectionsActions } from "./presetConnectionsTypes";
@@ -18,7 +19,8 @@ import type { ImageExportState, ImageExportActions } from "./imageExportTypes";
 import type { FloorsState, RootActions, FloorsActions } from "./floorsTypes";
 import type { TopologyState, TopologyActions } from "./topologyTypes";
 import type { ZonesState, ZonesActions } from "./zonesTypes";
+import type { CoordinateWarningState, CoordinateWarningActions } from "./coordinateWarningTypes";
 
-export type MazeState = TessellationState & FloorFieldsState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState & TopologyState & ZonesState;
-export type MazeActions = RootActions & TessellationActions & FloorFieldsActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions & TopologyActions & ZonesActions;
+export type MazeState = TessellationState & FloorFieldsState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState & TopologyState & ZonesState & CoordinateWarningState;
+export type MazeActions = RootActions & TessellationActions & FloorFieldsActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions & TopologyActions & ZonesActions & CoordinateWarningActions;
 export type MazeStore = MazeState & MazeActions;

@@ -16,6 +16,7 @@ import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
 import { createTopologySlice } from "./slices/topologySlice";
 import { createZonesSlice } from "./slices/zonesSlice";
+import { createCoordinateWarningSlice } from "./slices/coordinateWarningSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installAutoZoneSync } from "./autoZoneSync";
@@ -59,6 +60,7 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
   ...createFloorsSlice(...a),
   ...createTopologySlice(...a),
   ...createZonesSlice(...a),
+  ...createCoordinateWarningSlice(...a),
 
   loadProject: async (file) => {
     const [set, get] = a;

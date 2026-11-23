@@ -452,3 +452,9 @@ export function computeVectorByCorridorsWarnings(
   );
   return CORRIDORS_WARNING_GROUPS.flatMap((group) => group.run(env, rawSettings));
 }
+
+/** Warnings about a one-way passage itself: highlighted by the mode renderer as the passage's shared boundary (not as coordinate targets) (walls) or
+ *  its two cells (corridors) rather than as plain cell regions. */
+export const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
+  "one_way_low_contrast_corridor", "one_way_arrows_overflow_corridor", "teleport_connector_covers_one_way",
+]);
