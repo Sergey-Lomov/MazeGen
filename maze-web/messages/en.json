@@ -5,6 +5,8 @@
   "file_name.title": "Save file",
   "file_name.label": "File name",
   "file_name.save": "Save",
+  "file_name.download": "Download",
+  "file_save.failed": "Failed to save file",
   "common.ok": "Ok",
   "common.loading": "Loading…",
   "loading.wasm": "Loading engine",

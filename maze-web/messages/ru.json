@@ -18,6 +18,8 @@
   "file_name.title": "Сохранить файл",
   "file_name.label": "Имя файла",
   "file_name.save": "Сохранить",
+  "file_name.download": "Скачать",
+  "file_save.failed": "Не удалось сохранить файл",
   "common.ok": "Ок",
   "common.loading": "Загрузка…",
   "loading.wasm": "Загрузка движка",

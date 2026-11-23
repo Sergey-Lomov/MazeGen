@@ -8,7 +8,7 @@ import { readJsonFile } from "../jsonFile";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
 import {
-  downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError, QUALITY_PRESET_FILE_EXTENSION,
+  downloadQualityPresetFile, saveJsonInPlace, serializeQualityPreset, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError, QUALITY_PRESET_FILE_EXTENSION,
   type ProjectFileQuality,
 } from "../../store/projectExport";
 import { typography, muted, disabled, spacing, inset } from "../../styles/theme";
@@ -187,6 +187,8 @@ export function QualityFeature() {
         <FileNameModal
           defaultBaseName={timestampedBaseName("maze-quality")}
           extension={QUALITY_PRESET_FILE_EXTENSION}
+          rememberKey="quality"
+          onSaveInPlace={(fileName) => { setSaveDialogOpen(false); void saveJsonInPlace("quality", serializeQualityPreset(useMazeStore.getState()), fileName, QUALITY_PRESET_FILE_EXTENSION); }}
           onConfirm={(fileName) => { setSaveDialogOpen(false); downloadQualityPresetFile(useMazeStore.getState(), fileName); }}
           onCancel={() => setSaveDialogOpen(false)}
         />
