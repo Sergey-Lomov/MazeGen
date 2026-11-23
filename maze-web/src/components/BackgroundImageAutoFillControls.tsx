@@ -9,6 +9,7 @@ import { SelectRow } from "./SelectRow";
 import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
 import { hasOpenModal } from "./Modal";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 import { indent, spacing } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -147,18 +148,23 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
 
   useEffect(() => {
     if (!enabled || !autoFillPreviewActive) return;
+    const releaseEscape = claimEscape(() => {
+      if (hasOpenModal()) return false;
+      cancelAutoFillPreview();
+      return true;
+    }, escapePriority.transient);
     function handleKeyDown(event: KeyboardEvent) {
       if (hasOpenModal()) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelAutoFillPreview();
-      } else if (event.key === "Enter" && !autoFillCalculating) {
+      if (event.key === "Enter" && !autoFillCalculating) {
         event.preventDefault();
         void requestAutoFillConfirmation();
       }
     }
     window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      releaseEscape();
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
   }, [enabled, autoFillPreviewActive, autoFillCalculating]);
 
   if (!enabled) return null;

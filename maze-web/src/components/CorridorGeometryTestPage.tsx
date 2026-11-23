@@ -11,6 +11,7 @@ import {
 } from "../pixi/imageExport/vectorByCorridorsContour";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 import { Tooltip } from "./Tooltip";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 export type Family = {
   id: string;
@@ -508,11 +509,10 @@ export function CorridorGeometryTestPage() {
 
   useEffect(() => {
     if (!expandedCard) return undefined;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpandedCard(null);
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    return claimEscape(() => {
+      setExpandedCard(null);
+      return true;
+    }, escapePriority.transient);
   }, [expandedCard]);
 
   return (
