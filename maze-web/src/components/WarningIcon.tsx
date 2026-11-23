@@ -7,7 +7,7 @@ import { Tooltip } from "./Tooltip";
 interface Props {
   /** Tooltip text — defaults to the experimental-strategy warning, the overwhelming majority of
    * this icon's uses (strategy select dialogs' item list, the rule card's strategy panel). */
-  title?: string;
+  title?: React.ReactNode;
   /** "critical" (red, same palette as `IssuesBlock`'s critical issues) for a condition that
    * guarantees a hard failure, "warning" (yellow, default) for anything softer. See
    * `WarningBubble`'s matching prop. */

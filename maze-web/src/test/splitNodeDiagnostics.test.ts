@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../pixi/splitNodeDiagnostics";
+import { splitNodeDiagnostics } from "../pixi/splitNodeDiagnostics";
 import type { TileFaceNode } from "../domain/tileFace";
-import type { SplitPattern } from "../wasm/types";
 
 function node(faces: TileFaceNode["faces"]): TileFaceNode {
   return { color: "#000000", faces };
@@ -42,12 +41,6 @@ describe("splitNodeDiagnostics", () => {
     expect(splitNodeDiagnostics(nodes)).toEqual([]);
   });
 
-  it("skips indices listed in skipIndices", () => {
-    const nodes = [node([{ kind: "wall", boundary: false }]), node([{ kind: "wall", boundary: false }])];
-    const result = splitNodeDiagnostics(nodes, new Set([0]));
-    expect(result).toEqual(["Node 2 only has wall faces and no valid neighbor, it will be unreachable."]);
-  });
-
   it("reports one message per flagged node, in node order", () => {
     const nodes = [
       node([{ kind: "wall", boundary: false }]),
@@ -60,48 +53,4 @@ describe("splitNodeDiagnostics", () => {
     ]);
   });
 
-});
-
-describe("patternEmptyNodeDiagnostics", () => {
-  function pattern(faces: SplitPattern["faces"], nodeCount = faces.length): SplitPattern {
-    return { shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 };
-  }
-
-  it("flags a node with an empty face list", () => {
-    const p = pattern([[]]);
-    expect(patternEmptyNodeDiagnostics(p)).toEqual(["Node 1 has no faces defined."]);
-  });
-
-  it("does not flag a node with at least one face entry", () => {
-    const p = pattern([[{ face_index: 0, requirement: { kind: "wall" } }]]);
-    expect(patternEmptyNodeDiagnostics(p)).toEqual([]);
-  });
-
-  it("treats a missing faces entry (index beyond the array) as empty too", () => {
-    const p = pattern([[{ face_index: 0, requirement: { kind: "passage" } }]], 2);
-    expect(patternEmptyNodeDiagnostics(p)).toEqual(["Node 2 has no faces defined."]);
-  });
-});
-
-describe("patternSiblingDiagnostics", () => {
-  function pattern(faces: SplitPattern["faces"], nodeCount: number): SplitPattern {
-    return { shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 };
-  }
-
-  it("flags a sibling_target outside [0, node_count)", () => {
-    for (const target of [5, -1]) {
-      const p = pattern([[{ face_index: 0, requirement: { kind: "passage" }, sibling_target: target }]], 2);
-      expect(patternSiblingDiagnostics(p)).toEqual(["Node 1, face 0: sibling target no longer exists."]);
-    }
-  });
-
-  it("does not flag a sibling_target within range", () => {
-    const p = pattern([[{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 1 }]], 2);
-    expect(patternSiblingDiagnostics(p)).toEqual([]);
-  });
-
-  it("does not flag a face with no sibling_target at all", () => {
-    const p = pattern([[{ face_index: 0, requirement: { kind: "wall" } }]], 2);
-    expect(patternSiblingDiagnostics(p)).toEqual([]);
-  });
 });

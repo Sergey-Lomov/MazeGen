@@ -1,24 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { Modal } from "../Modal";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
-import { Inline, Stack } from "../Layout";
 import { dialogPanelStyles, type SplitEdgeKind, KIND_LABEL } from "../features/SplitNodesDialogView";
 import { TileFaceEditor } from "../features/TileFaceEditor";
 import type { TileFaceNode } from "../../domain/tileFace";
-import { WarningsSection } from "../WarningsSection";
-import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { typography } from "../../styles/theme";
+import { indent, muted, spacing, typography } from "../../styles/theme";
 import { anchorCanonicalFaces } from "../../domain/tessellationGeometry";
 import { originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../domain/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
+import { ToolIconButton } from "../ToolIconButton";
+import { ToolGlyph } from "../features/ToolGlyph";
+import { ListCell, ListCellAction } from "../ListCell";
+import { EntityColorSwatch } from "../EntityColorSwatch";
+import { AddIconButton } from "../AddIconButton";
+import { sharedStyles } from "../../styles/shared";
+import { WarningIcon } from "../WarningIcon";
+import { isTypingTarget } from "../../pixi/domUtils";
+import { presetToolForShortcut, presetToolShortcut } from "../../pixi/toolShortcuts";
 import * as m from "~/paraglide/messages";
 
 interface Props {
   pattern: SplitPattern;
-  onChange: (next: SplitPattern) => void;
+  onConfirm: (next: SplitPattern) => void;
   onClose: () => void;
 }
 /** Synthetic anchor point for `TileFaceEditor`'s tile geometry — a pattern has no real field point
@@ -32,7 +38,8 @@ interface Props {
 // the time this pattern applies (no cyclic-style retry the way Passage/OneWay faces get) — in
 // practice it reads to the user as "maybe a passage" but behaves as "wall" far more often than
 // not. See the tracking issue for making it actually probabilistic before re-exposing it here.
-const AVAILABLE_KINDS: SplitEdgeKind[] = ["passage", "one_way", "wall"];
+const AVAILABLE_KINDS = ["passage", "one_way", "wall"] as const;
+type PatternTool = (typeof AVAILABLE_KINDS)[number];
 
 /** A pattern-local node index, addressed directly (no `NodeId`/point+slot concept — a pattern is
  *  pure face-index data until applied during generation, see `SplitGenerationConfig`'s doc
@@ -57,37 +64,50 @@ type NodeRef = number;
  *  editor no longer exposes any UI for setting it (GitHub issue #237 — the per-face sibling
  *  dropdown read as confusing and siblings aren't meant to link to each other directly); a
  *  follow-up issue tracks removing the field itself from both sides. */
-export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Props) {
+export function AbstractPatternEditorDialog({ pattern, onConfirm, onClose }: Props) {
   const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const canonicalFaces = useMemo(() => anchorCanonicalFaces(fieldConfig), [fieldConfig]);
   const anchorPoint = originCellOf(fieldConfig);
+  const [draft, setDraft] = useState(pattern);
   const [activeNode, setActiveNode] = useState(0);
-  const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
+  const [activeKind, setActiveKind] = useState<PatternTool>("passage");
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (pendingRemove !== null || isTypingTarget(event.target)) return;
+      const tool = presetToolForShortcut(event);
+      if (!tool || !AVAILABLE_KINDS.includes(tool as PatternTool)) return;
+      event.preventDefault();
+      setActiveKind(tool as PatternTool);
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [pendingRemove]);
 
   function updateNodeFaces(nodeIndex: number, faces: SplitPatternFace[]) {
-    const next = pattern.faces.map((f, i) => i === nodeIndex ? faces : f);
-    onChange({ ...pattern, faces: next });
+    const next = draft.faces.map((f, i) => i === nodeIndex ? faces : f);
+    setDraft({ ...draft, faces: next });
   }
 
   function setNodeCount(n: number) {
     const nodeCount = Math.max(1, Math.trunc(n));
-    onChange(resizePatternNodes(pattern, nodeCount));
+    setDraft(resizePatternNodes(draft, nodeCount));
     if (activeNode >= nodeCount) setActiveNode(nodeCount - 1);
   }
 
   function addNode() {
-    setNodeCount(pattern.node_count + 1);
-    setActiveNode(pattern.node_count);
+    setNodeCount(draft.node_count + 1);
+    setActiveNode(draft.node_count);
   }
 
   function removeNode(nodeIndex: number) {
-    if (pattern.node_count <= 1) return;
-    onChange(removePatternNode(pattern, nodeIndex));
+    if (draft.node_count <= 1) return;
+    setDraft(removePatternNode(draft, nodeIndex));
     setActiveNode((i) => i >= nodeIndex && i > 0 ? i - 1 : i);
   }
 
   function setFaceRequirement(nodeIndex: number, faceIndex: number, requirement: SplitFaceRequirement | null) {
-    const nodeFaces = pattern.faces[nodeIndex] ?? [];
+    const nodeFaces = draft.faces[nodeIndex] ?? [];
     const rest = nodeFaces.filter((f) => f.face_index !== faceIndex);
     if (requirement === null) {
       updateNodeFaces(nodeIndex, rest);
@@ -110,7 +130,7 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
 
   function handleFaceClick(side: number) {
     const faceIndex = canonicalFaces[side];
-    const existing = pattern.faces[activeNode]?.find((f) => f.face_index === faceIndex)?.requirement;
+    const existing = draft.faces[activeNode]?.find((f) => f.face_index === faceIndex)?.requirement;
     setFaceRequirement(activeNode, faceIndex, requirementFor(activeKind, existing));
   }
 
@@ -118,84 +138,107 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
     setFaceRequirement(activeNode, canonicalFaces[side], { kind: "wall" });
   }
 
-  const nodeRefs: NodeRef[] = useMemo(() => Array.from({ length: pattern.node_count }, (_, i) => i), [pattern.node_count]);
+  const nodeRefs: NodeRef[] = useMemo(() => Array.from({ length: draft.node_count }, (_, i) => i), [draft.node_count]);
   const colorAt = splitPatternNodeColor;
-  const tileNodes: TileFaceNode[] = tileNodesForPattern(pattern, fieldConfig);
-  const emptyNodeIndices = new Set(
-    nodeRefs.filter((i) => (pattern.faces[i]?.length ?? 0) === 0),
-  );
-  const warnings = [
-    ...patternEmptyNodeDiagnostics(pattern),
-    ...splitNodeDiagnostics(tileNodes, emptyNodeIndices),
-    ...patternSiblingDiagnostics(pattern),
-  ];
+  const tileNodes: TileFaceNode[] = tileNodesForPattern(draft, fieldConfig);
 
   const [pendingRemove, setPendingRemove] = useState<NodeRef | null>(null);
+  const nodeWarnings = nodeRefs.map(warningsForNode);
+
+  function confirm() {
+    onConfirm(draft);
+  }
+
+  function faceSummary(nodeIndex: number) {
+    const counts = { passage: 0, wall: 0, oneWay: 0 };
+    for (const face of tileNodes[nodeIndex]?.faces ?? []) {
+      if (face.kind === "passage") counts.passage += 1;
+      else if (face.kind === "wall") counts.wall += 1;
+      else if (face.kind === "one_way_in" || face.kind === "one_way_out") counts.oneWay += 1;
+    }
+    return `${m["generation.split_face_passage"]()}: ${counts.passage} · ${m["generation.split_face_wall"]()}: ${counts.wall} · ${m["generation.split_face_one_way"]()}: ${counts.oneWay}`;
+  }
+
+  function warningsForNode(nodeIndex: number): string[] {
+    const node = tileNodes[nodeIndex];
+    if (!node) return [];
+    const messages: string[] = [];
+    const openable = node.faces.filter((face) => !face.boundary);
+    if (openable.length > 0 && openable.every((face) => face.kind === "wall")) {
+      messages.push(m["generation.split_pattern_warning_only_walls"]());
+    } else if (!node.faces.some((face) => face.kind === "passage" || face.kind === "one_way_out" || face.kind === "one_way_in" || face.kind === "undefined")) {
+      messages.push(m["generation.split_pattern_warning_no_connections"]());
+    }
+    for (const face of draft.faces[nodeIndex] ?? []) {
+      if (face.sibling_target !== undefined && (face.sibling_target < 0 || face.sibling_target >= draft.node_count)) {
+        messages.push(m["generation.split_pattern_warning_missing_sibling"]({ face: face.face_index }));
+      }
+    }
+    return messages;
+  }
 
   return (
     <>
-    <Modal title={m["generation.split_pattern_editor_title"]()} size="wide" onClose={onClose} rawBody={
+    <Modal title={m["generation.split_pattern_editor_title"]()} size="wide" onClose={onClose} onConfirm={confirm} rawBody={
       <>
-        <WarningsSection warnings={warnings} testId="split-pattern-warnings" />
         <div style={dialogPanelStyles.tileArea}>
-          <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
+          <div style={styles.editorWorkspace}>
+          <div style={styles.tools}>
             {AVAILABLE_KINDS.map((kind) => (
-              <Button
-                key={kind}
-                variant={kind === activeKind ? "toggle-selected" : "toggle"}
-                onClick={() => setActiveKind(kind)}
-              >
-                {KIND_LABEL[kind]()}
-              </Button>
+              <ToolIconButton key={kind} selected={kind === activeKind} title={KIND_LABEL[kind]()} shortcut={presetToolShortcut(kind)} onClick={() => setActiveKind(kind)}>
+                <ToolGlyph tool={kind} />
+              </ToolIconButton>
             ))}
-          </Inline>
+          </div>
           <TileFaceEditor
             point={anchorPoint} cfg={fieldConfig} nodes={tileNodes} activeIndex={activeNode}
             onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={() => {}}
             showRotateControls={false}
           />
+          </div>
         </div>
 
         <div style={dialogPanelStyles.nodeListWrap}>
           <div style={dialogPanelStyles.nodeList}>
-            <Stack gap="itemGap">
-              {nodeRefs.map((nodeIndex) => (
-                <div
-                  key={nodeIndex}
-                  style={{ ...dialogPanelStyles.card, cursor: nodeIndex === activeNode ? "default" : "pointer" }}
-                  className={nodeIndex === activeNode ? undefined : "hoverable"}
-                  onClick={nodeIndex === activeNode ? undefined : () => setActiveNode(nodeIndex)}
-                >
-                  {nodeIndex === activeNode && (
-                    <div style={dialogPanelStyles.cardCorner}>
-                      <span style={dialogPanelStyles.activeBadge}>{m["post_edit.split_active_badge"]()}</span>
-                    </div>
-                  )}
-                  <div style={dialogPanelStyles.titleLine}>
-                    <span style={{ ...dialogPanelStyles.colorDot, background: colorAt(nodeIndex) }} />
-                    <span style={typography.body}>{m["generation.split_pattern_node_label"]()} {nodeIndex}</span>
-                  </div>
-                </div>
-              ))}
-            </Stack>
+            <div style={styles.nodesHeader}>
+              <span style={sharedStyles.sectionHeader}>{m["generation.split_pattern_nodes"]()}</span>
+              <AddIconButton title={m["post_edit.split_add_node"]()} onClick={addNode} />
+            </div>
+            <div style={styles.nodesList}>
+              {nodeRefs.map((nodeIndex) => {
+                const warnings = nodeWarnings[nodeIndex] ?? [];
+                return (
+                  <ListCell
+                    key={nodeIndex}
+                    className="hoverable"
+                    onClick={() => setActiveNode(nodeIndex)}
+                    current={nodeIndex === activeNode}
+                    title={`${m["generation.split_pattern_node_label"]()} ${nodeIndex}`}
+                    titleAddon={<><EntityColorSwatch color={colorAt(nodeIndex)} />{warnings.length > 0 && <WarningIcon title={<>{warnings.map((warning) => <span key={warning} style={styles.warningLine}>{warning}</span>)}</>} />}</>}
+                    details={<span style={muted(typography.caption)}>{faceSummary(nodeIndex)}</span>}
+                    actionsPlacement="title"
+                    actions={(
+                      <ListCellAction
+                        action="delete"
+                        title={m["post_edit.split_remove"]()}
+                        description={draft.node_count <= 1 ? m["generation.split_pattern_remove_last_node_hint"]() : undefined}
+                        danger
+                        disabled={draft.node_count <= 1}
+                        onAction={() => setPendingRemove(nodeIndex)}
+                      />
+                    )}
+                  />
+                );
+              })}
+            </div>
           </div>
 
           {/* Fixed footer (GitHub issue #237 follow-up) — Add/Remove stay reachable regardless of
            * how far the card list above is scrolled. */}
           <div style={dialogPanelStyles.nodeListFooter}>
-            <Inline gap="itemGap">
-              <Button variant="primary" layoutStyle={{ flex: 1 }} onClick={addNode}>
-                {m["post_edit.split_add_node"]()}
-              </Button>
-              <Button
-                variant="destructive"
-                layoutStyle={{ flex: 1 }}
-                disabled={pattern.node_count <= 1}
-                onClick={() => setPendingRemove(activeNode)}
-              >
-                {m["post_edit.split_remove"]()}
-              </Button>
-            </Inline>
+            <Button variant="primary" dialogAction layoutStyle={styles.confirmButton} onClick={confirm}>
+              {m["common.confirm"]()}
+            </Button>
           </div>
         </div>
       </>
@@ -210,3 +253,12 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
     </>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  editorWorkspace: { display: "flex", gap: spacing.groupGap, flex: 1, minHeight: 0 },
+  tools: { display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: spacing.itemGap, flexShrink: 0 },
+  nodesHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap, padding: `${spacing.itemGap}px 0` },
+  nodesList: { marginLeft: indent.tree },
+  confirmButton: { width: "100%" },
+  warningLine: { display: "block" },
+};

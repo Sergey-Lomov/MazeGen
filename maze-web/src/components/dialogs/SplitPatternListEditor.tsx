@@ -63,6 +63,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   const degree = degreeFor(fieldConfig);
   const anchorPoint = originCellOf(fieldConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [newPatternIndex, setNewPatternIndex] = useState<number | null>(null);
 
   function addPattern(pattern: SplitPattern) {
     onChange([...patterns, pattern]);
@@ -80,6 +81,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
     const fresh: SplitPattern = { shape: patternShapeOf(fieldConfig), node_count: 2, faces: [[], []], weight: 1.0 };
     addPattern(fresh);
     setEditingIndex(patterns.length);
+    setNewPatternIndex(patterns.length);
   }
 
   const blueprints = useMemo(() => blueprintsFor(patternShapeOf(fieldConfig), degree), [fieldConfig, degree]);
@@ -103,17 +105,17 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
       if (current > index) return current - 1;
       return current;
     });
+    setNewPatternIndex((current) => {
+      if (current === null || current === index) return null;
+      return current > index ? current - 1 : current;
+    });
   }
 
-  // Closing the editor on a pattern left with no faces defined on any node (GitHub issue #237) —
-  // silently drops it from the list instead of keeping a dead entry the generator would treat as
-  // an all-wall split (every face defaults to `Wall` when absent, see `tileFaceKindOf`).
   function handleCloseEditor() {
     if (editingIndex === null) return;
-    const edited = patterns[editingIndex];
-    const isEmpty = edited && edited.faces.every((nodeFaces) => nodeFaces.length === 0);
-    if (isEmpty) removePattern(editingIndex);
+    if (editingIndex === newPatternIndex) removePattern(editingIndex);
     setEditingIndex(null);
+    setNewPatternIndex(null);
   }
 
   const totalWeight = patterns.reduce((sum, p) => sum + Math.max(0, p.weight ?? 1.0), 0);
@@ -190,7 +192,11 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
       {editingIndex !== null && patterns[editingIndex] && (
         <AbstractPatternEditorDialog
           pattern={patterns[editingIndex]}
-          onChange={(next) => updatePattern(editingIndex, next)}
+          onConfirm={(next) => {
+            updatePattern(editingIndex, next);
+            setEditingIndex(null);
+            setNewPatternIndex(null);
+          }}
           onClose={handleCloseEditor}
         />
       )}
