@@ -22,7 +22,12 @@ export const styles: Record<string, React.CSSProperties> = {
   // already separates it from the toolbar above and the scroll area below, so the scrollable
   // list starts right beneath this line rather than floating in extra whitespace.
   toolbarDivider: { height: 1, background: ui.border.default, flexShrink: 0, margin: 0 },
-  rowsScroll: { flex: 1, minHeight: 0, overflowY: "auto" as const },
+  // The negative right margin cancels `dialogBody`'s own right padding so the scrollbar sits flush
+  // with the dialog edge, while the matching right padding keeps the list content aligned with the
+  // toolbar and off the scrollbar (GitHub issue #1081).
+  rowsScroll: { flex: 1, minHeight: 0, overflowY: "auto" as const, marginRight: -dialogSpacing.paddingX, paddingRight: dialogSpacing.paddingX },
+  // Ungrouped list shown while the breadcrumb filter is active (GitHub issue #1081).
+  flatRows: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   breadcrumbRoot: { position: "relative" as const, flex: 1, minWidth: 0 },
   breadcrumbBar: {
     ...typography.field,
