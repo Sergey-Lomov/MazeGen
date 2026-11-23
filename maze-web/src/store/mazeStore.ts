@@ -166,6 +166,8 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
       zoneGroups: file.zones?.groups ?? [],
       nextZoneGroupId: file.zones?.nextGroupId ?? 1,
       zoneColorOverrides: Object.fromEntries(Object.entries(file.zones?.colorOverrides ?? {}).map(([id, color]) => [Number(id), color])),
+      zoneOverrides: file.zones?.generationOverrides ?? [],
+      nextZoneOverrideId: file.zones?.nextOverrideId ?? 1,
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,

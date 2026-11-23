@@ -304,6 +304,12 @@ Web (`store/autoZones.ts`, `store/autoZoneSync.ts`):
   thread; measured on a dev-profile wasm, a release build is expected to be several times faster. Further options from
   the issue: changed cells only, a worker, skipping zones nobody uses.
 
+## Generation overrides (GitHub issue #1038)
+
+Zones and groups can scope per-zone generation parameter overrides; see `Specs/generation.md`. Deleting a zone
+(`removeZone`) or a group (`removeZoneGroup`) removes its id from every override. Automatic zones that vanish are not
+scrubbed: their ids are stable and an override naming one simply has no zones until it reappears.
+
 ## Web mirror
 
 `maze-web/src/wasm/mazeService.ts`: `Zone`, `ZoneKind`, `ZoneCellWire`, `normalizeZones`,

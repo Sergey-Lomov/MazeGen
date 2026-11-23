@@ -165,6 +165,8 @@ pub fn run_generate<T: Tessellation + 'static>(
         )
         .map_err(|e| JsValue::from_str(&e))?,
     );
+    gen_config.zone_overrides =
+        maze_runner::config::build_zone_overrides(&config.zone_overrides, &field, codec.from_xy);
 
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs

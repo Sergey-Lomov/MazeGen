@@ -29,6 +29,7 @@ import { CREASE_SNAP_RADIUS_PX, creasePointAt } from "./creaseGeometry";
 import type { TopologyPickTarget } from "../store/topologyTypes";
 import { isTypingTarget } from "./domUtils";
 import { fieldClipboardSupported, registerFieldClipboardHost } from "./fieldClipboard";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 /** How close (screen pixels) a click must be to a boundary face to pick it for a fold. */
 const TOPOLOGY_PICK_RADIUS_PX = 14;
@@ -125,6 +126,7 @@ export class FieldEditController {
   private mirrorAxisDragOriginalPoint: MirrorPoint | null = null;
 
   private canvas: HTMLCanvasElement;
+  private releaseEscape: () => void = () => {};
   private getProjection: () => TessellationProjection | null;
   private getViewport: () => Container;
   private panCallbacks: PanCallbacks;
@@ -202,16 +204,6 @@ export class FieldEditController {
       this.controlHeld = true;
       this.refreshCursorPreviews();
     }
-    if (e.code === "Escape") {
-      this.cancelGesture();
-      this.topologyDrag = null;
-      if (state.topologyPick !== null) state.startTopologyPick(null);
-      // Cancelling a crease draft is all Escape does then: the claim keeps the side panel open.
-      if (state.creaseDraft !== null) {
-        e.preventDefault();
-        state.cancelCreaseDraft();
-      }
-    }
     if (e.code === "Backspace" || e.code === "Delete") {
       const state = useMazeStore.getState();
       const field = editFieldOf(state);
@@ -260,6 +252,19 @@ export class FieldEditController {
     }
   };
   private onWindowBlur = () => { this.setSmoothInverted(false); };
+  private onEscape = () => {
+    const state = useMazeStore.getState();
+    if (isTypingTarget(document.activeElement)) return false;
+    const hasGesture = this.gestureActive || this.selectionPreviewVisible || this.polygonPoints.length > 0
+      || this.parallelogramAnchors.length > 0 || this.topologyDrag !== null
+      || state.topologyPick !== null || state.creaseDraft !== null;
+    if (!hasGesture) return false;
+    this.cancelGesture();
+    this.topologyDrag = null;
+    if (state.topologyPick !== null) state.startTopologyPick(null);
+    if (state.creaseDraft !== null) state.cancelCreaseDraft();
+    return true;
+  };
   private onContextMenu = (e: Event) => { e.preventDefault(); };
   private onPointerEnter = () => { this.pointerInsideCanvas = true; };
   private onPointerLeave = () => { this.pointerInsideCanvas = false; };
@@ -292,6 +297,7 @@ export class FieldEditController {
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     registerFieldClipboardHost(this);
     window.addEventListener("keydown", this.onKeyDown);
+    this.releaseEscape = claimEscape(this.onEscape, escapePriority.transient);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onWindowBlur);
   }
@@ -1650,6 +1656,7 @@ export class FieldEditController {
     registerFieldClipboardHost(null);
     useMazeStore.getState().setFieldHasSelection(false);
     window.removeEventListener("keydown", this.onKeyDown);
+    this.releaseEscape();
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onWindowBlur);
     useMazeStore.getState().setSmoothInverted(false);

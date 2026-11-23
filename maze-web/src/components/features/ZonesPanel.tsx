@@ -150,8 +150,8 @@ export function CardDetails({ levels, children }: { levels: number[]; children: 
 }
 
 /** One zone card. By default it carries the list's actions; `onAdd` leaves a single add icon (a group's
- *  candidates), `onRemove` a single delete icon (a group's zones). */
-export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: string; onAdd?: () => void; onRemove?: () => void }) {
+ *  candidates), `onRemove` a single delete icon (a group's zones), `onPick` makes the whole card a plain button. */
+export function ZoneCell({ zone, color, onAdd, onRemove, onPick }: { zone: Zone; color: string; onAdd?: () => void; onRemove?: () => void; onPick?: () => void }) {
   const hidden = useMazeStore((s) => s.hiddenZoneIds.includes(zone.id));
   const toggleVisibility = useMazeStore((s) => s.toggleZoneVisibility);
   const setHover = useMazeStore((s) => s.setHoveredZone);
@@ -161,7 +161,7 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
   const floors = useMazeStore((s) => s.floors);
   const name = zoneDisplayName(zone, floors);
   const manual = zone.kind === "manual";
-  const listActions = !onAdd && !onRemove;
+  const listActions = !onAdd && !onRemove && !onPick;
   const groups = useMazeStore((s) => s.zoneGroups);
   const zoneGroups = groups.filter((g) => g.zoneIds.includes(zone.id));
   const showZonesOfGroup = useMazeStore((s) => s.showZonesOfGroup);
@@ -169,6 +169,7 @@ export function ZoneCell({ zone, color, onAdd, onRemove }: { zone: Zone; color: 
     <>
       <ListCell
         data-testid="zone-cell"
+        {...(onPick ? { onClick: onPick, style: { cursor: "pointer" } } : {})}
         onMouseEnter={() => setHover(zone.id)}
         onMouseLeave={() => setHover(null)}
         title={name}

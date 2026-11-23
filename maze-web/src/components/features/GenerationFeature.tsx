@@ -18,6 +18,9 @@ import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, indent } from "../../styles/theme";
 import { notAllowedCursor } from "../../styles/cursors";
 import { Switch } from "../Switch";
+import { WarningBubble } from "../WarningBubble";
+import { zoneOverrideConflicts, zoneOverrideConflictParams, overrideHasNoZones } from "../../domain/zoneOverrides";
+import { ZoneOverrideConflictModal } from "./ZoneOverrideConflictModal";
 import { selectPostEditDirty } from "../../domain/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -48,8 +51,13 @@ export function GenerationFeature({ canGenerate }: Props) {
   const setVertexSettingsPanelOpen = useMazeStore((s) => s.setVertexSettingsPanelOpen);
   const generateAsync = useMazeStore((s) => s.generateAsync);
   const postEditDirty = useMazeStore(selectPostEditDirty);
+  const zoneOverrides = useMazeStore((s) => s.zoneOverrides);
+  const zones = useMazeStore((s) => s.zones);
+  const zoneGroups = useMazeStore((s) => s.zoneGroups);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
+  const [conflictInfoOpen, setConflictInfoOpen] = useState(false);
+  const conflictParams = zoneOverrideConflictParams(zoneOverrideConflicts(zoneOverrides, zones, zoneGroups));
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
@@ -188,6 +196,16 @@ export function GenerationFeature({ canGenerate }: Props) {
           <EditIconButton title={m["generation.edit"]()} onClick={() => setAlgorithmDialogOpen(true)} />
         </div>
       </div>
+
+      {isVertexBased && zoneOverrides.some((o) => overrideHasNoZones(o, zones, zoneGroups)) && (
+        <WarningBubble message={m["generation.zone_override_no_zones_warning"]()} />
+      )}
+      {isVertexBased && conflictParams.length > 0 && (
+        <WarningBubble message={m["generation.zone_override_conflict_warning"]()} onInfo={() => setConflictInfoOpen(true)} />
+      )}
+      {isVertexBased && conflictInfoOpen && conflictParams.length > 0 && (
+        <ZoneOverrideConflictModal params={conflictParams} onClose={() => setConflictInfoOpen(false)} />
+      )}
 
       {isVertexBased && vertexSettingsPanelOpen && (
         <VertexBasedSettingsPanel onClose={() => setVertexSettingsPanelOpen(false)} />

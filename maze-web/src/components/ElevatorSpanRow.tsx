@@ -10,12 +10,14 @@ interface Props {
   onMinChange: (v: number) => void;
   onMaxChange: (v: number) => void;
   disabled?: boolean;
+  /** Trailing control at the row's end (e.g. the zone override add button). */
+  trailing?: React.ReactNode;
 }
 
 /** Elevator floor-count range (GitHub issue #337) — two plain integer text inputs on one row,
  *  not sliders: the range is small and unbounded upward, and a slider pair for min/max is
  *  awkward to read/operate compared to just typing the two numbers. */
-export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled }: Props) {
+export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled, trailing }: Props) {
   return (
     <div style={styles.row}>
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{m["generation.elevator_span"]()}</span>
@@ -44,6 +46,7 @@ export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled }
           if (Number.isFinite(value)) onMaxChange(value);
         }}
       />
+      {trailing}
     </div>
   );
 }

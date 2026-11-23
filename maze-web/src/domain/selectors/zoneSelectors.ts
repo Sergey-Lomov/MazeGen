@@ -58,7 +58,7 @@ export function isZoneKindShown(kind: ZoneKind, showAuto: boolean, showManual: b
 
 /** Regions of the zones `include` accepts, restricted to one floor (an index in `floors`). Colours
  *  are taken from the whole zone list, so no filter ever recolours a zone. */
-function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean, colorOverrides: Readonly<Record<number, number>>): ZoneRegions {
+function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean, colorOverrides: Readonly<Record<number, number>>, forcedColor?: number): ZoneRegions {
   const palette = zoneColors(zones, colorOverrides);
   const nodes: NodeDto[] = [];
   const groups: ZoneRegions["groups"] = [];
@@ -71,7 +71,7 @@ function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Z
       nodes.push({ id, x, y, i: id });
       ids.push(id);
     }
-    if (ids.length > 0) groups.push({ regionGroups: [ids], color: palette[index] });
+    if (ids.length > 0) groups.push({ regionGroups: [ids], color: forcedColor ?? palette[index] });
   });
   return { nodes, groups };
 }
@@ -99,9 +99,9 @@ export function buildZoneHoverRegion(zones: Zone[], zoneId: number, floorIndex: 
 }
 
 /** `buildZoneHoverRegion` for several zones at once (the hover of a zone group's card). */
-export function buildZonesHoverRegion(zones: Zone[], zoneIds: readonly number[], floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}): ZoneRegions | null {
+export function buildZonesHoverRegion(zones: Zone[], zoneIds: readonly number[], floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}, forcedColor?: number): ZoneRegions | null {
   const wanted = new Set(zoneIds);
-  const regions = collectZoneRegions(zones, floorIndex, (zone) => wanted.has(zone.id), colorOverrides);
+  const regions = collectZoneRegions(zones, floorIndex, (zone) => wanted.has(zone.id), colorOverrides, forcedColor);
   return regions.groups.length === 0 ? null : regions;
 }
 

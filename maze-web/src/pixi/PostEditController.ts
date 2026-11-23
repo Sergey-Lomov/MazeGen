@@ -25,6 +25,7 @@ import {
 } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, postEditToolForShortcut } from "./toolShortcuts";
 import { isTypingTarget } from "./domUtils";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -57,6 +58,7 @@ function isPostEditModalOpen(state: ReturnType<typeof useMazeStore.getState>): b
 
 
 export class PostEditController extends BaseController {
+  private releaseEscape: () => void = () => {};
   private renderer: PostEditRenderer;
 
   private confirmDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -120,17 +122,26 @@ export class PostEditController extends BaseController {
         return;
       }
     }
-    if (e.code === "Escape") {
-      if (this.hasArmedElement) this.cancelPointerGesture();
-      state.cancelPostEditEntityPick();
-      state.cancelPostEditConnectionSettings();
-      this.cancelPendingTeleport();
-      state.cancelPostEditVerticalPassagePlacement();
-      state.cancelPostEditElevatorPlacement();
-      state.cancelPostEditSplitTarget();
-      state.cancelPostEditEntityDelete();
-      state.cancelPostEditReset();
-    }
+  };
+
+  private onEscape = () => {
+    const state = useMazeStore.getState();
+    const pending = this.hasArmedElement || state.postEditEntityPickPrompt !== null
+      || state.postEditConnectionSettingsPrompt !== null || state.postEditTeleportPendingFrom !== null
+      || state.postEditVerticalPassagePending !== null || state.postEditElevatorPending !== null
+      || state.postEditSplitTargetPrompt !== null || state.postEditEntityDeletePrompt !== null
+      || state.postEditResetPrompt !== null;
+    if (!pending) return false;
+    if (this.hasArmedElement) this.cancelPointerGesture();
+    state.cancelPostEditEntityPick();
+    state.cancelPostEditConnectionSettings();
+    this.cancelPendingTeleport();
+    state.cancelPostEditVerticalPassagePlacement();
+    state.cancelPostEditElevatorPlacement();
+    state.cancelPostEditSplitTarget();
+    state.cancelPostEditEntityDelete();
+    state.cancelPostEditReset();
+    return true;
   };
 
   constructor(
@@ -141,6 +152,7 @@ export class PostEditController extends BaseController {
     super(getViewport, onViewportPan);
     this.renderer = renderer;
     window.addEventListener("keydown", this.onKeyDown);
+    this.releaseEscape = claimEscape(this.onEscape, escapePriority.transient);
     // A carried or dragged element belongs to the floor it was picked up on (GitHub issue #748):
     // switching floors cancels the gesture instead of dropping it on another floor's coordinates.
     this.unsubscribeFloor = useMazeStore.subscribe((state, prev) => {
@@ -1174,6 +1186,7 @@ export class PostEditController extends BaseController {
 
   destroy(): void {
     window.removeEventListener("keydown", this.onKeyDown);
+    this.releaseEscape();
     this.unsubscribeFloor();
     if (this.confirmDebounceTimer !== null) {
       clearTimeout(this.confirmDebounceTimer);

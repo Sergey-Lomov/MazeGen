@@ -16,7 +16,7 @@ describe("zones and zone groups (GitHub issue #1048)", () => {
     });
     const file = reparse(state);
     expect(file.zones).toEqual({
-      zones: state.zones, nextZoneId: 9, groups: state.zoneGroups, nextGroupId: 6, colorOverrides: { "4": 0xff0000 },
+      zones: state.zones, nextZoneId: 9, groups: state.zoneGroups, nextGroupId: 6, colorOverrides: { "4": 0xff0000 }, generationOverrides: [], nextOverrideId: 1,
     });
   });
 
@@ -89,7 +89,7 @@ describe("zones and zone groups (GitHub issue #1048)", () => {
   it("accepts a minimal section with only zones", () => {
     const raw = toJson(makeState());
     raw.zones = { zones: [zone(2)] };
-    expect(parseAndValidate(raw).zones).toEqual({ zones: [zone(2)], nextZoneId: 3, groups: [], nextGroupId: 0, colorOverrides: {} });
+    expect(parseAndValidate(raw).zones).toEqual({ zones: [zone(2)], nextZoneId: 3, groups: [], nextGroupId: 0, colorOverrides: {}, generationOverrides: [], nextOverrideId: 0 });
   });
 
   it("rejects malformed zones naming the path", () => {

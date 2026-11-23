@@ -1,4 +1,5 @@
 ﻿import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
+import { zoneOverrideWarningCount } from "../domain/zoneOverrides";
 import React, { useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize2, Bug } from "lucide-react";
@@ -131,11 +132,16 @@ export function computeGenerationCard(
   splitPatternMode: boolean,
   splitChance: number,
   patternCount: number,
+  zoneOverrideWarnings = 0,
 ): GenerationCardData {
   if (!tessellationConfirmed) return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
 
   const splitPatternsMissing = method === "custom_vertex_based" && splitPatternMode && splitChance > 0 && patternCount === 0;
   if (splitPatternsMissing) return { status: "warning", comment: m["status.split_patterns_missing"]() };
+
+  // Zone overrides (GitHub issue #1038) only exist for the custom generator; one with no zones left, or one that
+  // sets a parameter another sets on the same cell, is worth a look before generating.
+  if (method === "custom_vertex_based" && zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.zone_overrides_warning"]() };
 
   return { status: "set", comment: m["status.ready_to_generate"]() };
 }
@@ -172,6 +178,8 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const floorFields = useMazeStore((s) => s.floorFields);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const zones = useMazeStore((s) => s.zones);
+  const zoneGroups = useMazeStore((s) => s.zoneGroups);
+  const zoneOverrides = useMazeStore((s) => s.zoneOverrides);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -362,6 +370,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
 
   const { status: generationStatus, comment: generationComment } = computeGenerationCard(
     tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length,
+    zoneOverrideWarningCount(zoneOverrides, zones, zoneGroups),
   );
 
   return (

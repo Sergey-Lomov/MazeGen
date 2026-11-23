@@ -119,6 +119,12 @@ GitHub issue #1048. Optional section `zones?: ProjectFileZones` (`types.ts`): `z
 section loads with no zones and no groups, so `CURRENT_VERSION` is unchanged. Everything else of the zones
 state (toggles, hidden zones, panels, drafts, hover) is transient and reset on load.
 
+Generation parameter overrides (GitHub issue #1038, `Specs/generation.md`) are saved in the same section as
+`generationOverrides` (`ZoneOverride`: id, `zoneIds`, `groupIds`, `params` keyed by wire parameter name) and
+`nextOverrideId`, and the section is written when any override exists. Both are optional on load (absent: no
+overrides). `validateZones` rejects an unknown parameter key and a duplicate override id, and drops zone and group
+ids that name nothing (automatic ids are kept).
+
 On load `validateZones` (`validateZones.ts`) checks the structure only and rejects, naming the path, a bad cell,
 kind or id and a duplicate zone or group id. Cells of floors or points no longer in the field are kept and dropped
 at use (`filterZonesToField`), so they never break loading. Group members naming no zone and colour overrides of

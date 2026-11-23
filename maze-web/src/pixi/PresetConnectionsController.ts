@@ -15,6 +15,7 @@ import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnecti
 import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, presetToolForShortcut } from "./toolShortcuts";
 import { isTypingTarget } from "./domUtils";
+import { claimEscape, escapePriority } from "../keyboard/escapeResponder";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -31,6 +32,7 @@ function splitKeyOf(point: [number, number], level: number | undefined): string 
 }
 
 export class PresetConnectionsController extends BaseController {
+  private releaseEscape: () => void = () => {};
   private renderer: PresetConnectionsRenderer;
   private draggingTeleportEndpoint: PresetTeleportEndpointHit | null = null;
   private teleportDragMoved = false;
@@ -75,17 +77,26 @@ export class PresetConnectionsController extends BaseController {
         return;
       }
     }
-    if (e.code === "Escape") {
-      if (this.hasArmedElement) this.cancelPointerGesture();
-      this.cancelPendingTeleport();
-      state.cancelPresetVerticalPassagePlacement();
-      state.cancelPresetElevatorPlacement();
-      state.cancelPresetSplitTarget();
-      state.cancelPresetEntityDelete();
-      state.cancelPresetEntityPick();
-      state.cancelPresetConnectionSettings();
-      state.cancelPresetLockSettings();
-    }
+  };
+
+  private onEscape = () => {
+    const state = useMazeStore.getState();
+    const pending = this.hasArmedElement || state.presetTeleportPendingFrom !== null
+      || state.presetVerticalPassagePending !== null || state.presetElevatorPending !== null
+      || state.presetSplitTargetPrompt !== null || state.presetEntityDeletePrompt !== null
+      || state.presetEntityPickPrompt !== null || state.presetConnectionSettingsPrompt !== null
+      || state.presetLockSettingsPrompt !== null;
+    if (!pending) return false;
+    if (this.hasArmedElement) this.cancelPointerGesture();
+    this.cancelPendingTeleport();
+    state.cancelPresetVerticalPassagePlacement();
+    state.cancelPresetElevatorPlacement();
+    state.cancelPresetSplitTarget();
+    state.cancelPresetEntityDelete();
+    state.cancelPresetEntityPick();
+    state.cancelPresetConnectionSettings();
+    state.cancelPresetLockSettings();
+    return true;
   };
 
   constructor(
@@ -96,6 +107,7 @@ export class PresetConnectionsController extends BaseController {
     super(getViewport, onViewportPan);
     this.renderer = renderer;
     window.addEventListener("keydown", this.onKeyDown);
+    this.releaseEscape = claimEscape(this.onEscape, escapePriority.transient);
     // A carried or dragged element belongs to the floor it was picked up on (GitHub issue #748):
     // switching floors cancels the gesture instead of dropping it on another floor's coordinates.
     this.unsubscribeFloor = useMazeStore.subscribe((state, prev) => {
@@ -923,6 +935,7 @@ export class PresetConnectionsController extends BaseController {
 
   destroy(): void {
     window.removeEventListener("keydown", this.onKeyDown);
+    this.releaseEscape();
     this.unsubscribeFloor();
   }
 }

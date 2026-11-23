@@ -4,3 +4,5 @@ pkg/
 tsconfig.tsbuildinfo
 dev-out.log
 dev-err.log
+src/wasm/maze_wasm.js
+src/wasm/maze_wasm_bg.wasm

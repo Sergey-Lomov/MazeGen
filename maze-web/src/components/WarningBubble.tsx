@@ -1,6 +1,7 @@
 import * as m from "~/paraglide/messages";
 import { embeddedNotificationStyle, notificationPalette, type NotificationSeverity } from "./EmbeddedNotification";
 import type React from "react";
+import { typography } from "../styles/theme";
 
 interface Props {
   /** Bubble text — defaults to the experimental-strategy warning, the overwhelming majority of
@@ -20,24 +21,33 @@ interface Props {
    * bubble — used for a floor-badge row (GitHub issue #420's "which floor(s) is this on"
    * follow-up for Preset Connections' orphan-split warning, mirroring Analytics' issue bubbles). */
   children?: React.ReactNode;
+  /** Makes the whole bubble clickable and marks it with an info glyph in the severity colour, like the analytics issue bubbles. */
+  onInfo?: () => void;
 }
 
 /** Warning/error bubble shown under a strategy's description — also the shared style for any
  * other inline info/warning/critical notice (GitHub issue #340's "match IssuesBlock" follow-up),
  * so every such notice across the app looks consistent instead of each feature rolling its own. */
-export function WarningBubble({ message, severity = "warning", onMouseEnter, onMouseLeave, children }: Props) {
+export function WarningBubble({ message, severity = "warning", onMouseEnter, onMouseLeave, children, onInfo }: Props) {
   const palette = notificationPalette(severity);
   return (
     <div
+      className={onInfo ? "hoverable-tint" : undefined}
       style={{
         ...embeddedNotificationStyle,
         background: palette.bg, color: palette.text, borderColor: palette.text,
         ...(children ? { display: "flex", flexDirection: "column", gap: 4 } : {}),
       }}
+      onClick={onInfo}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {message ?? m["strategy.experimental_warning"]()}
+      {onInfo ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ flex: 1 }}>{message ?? m["strategy.experimental_warning"]()}</span>
+          <span style={{ ...typography.icon, flexShrink: 0, lineHeight: 1, color: palette.text }} aria-hidden="true">ℹ</span>
+        </div>
+      ) : (message ?? m["strategy.experimental_warning"]())}
       {children}
     </div>
   );

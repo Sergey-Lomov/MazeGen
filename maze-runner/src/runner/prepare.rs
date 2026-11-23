@@ -1,6 +1,8 @@
 use super::resolve_start;
 use super::tessellation_factory::{CellCodec, TessellationVisitor, build_tessellation};
-use crate::config::{GenerateConfig, build_generation_config, build_generation_source_mode};
+use crate::config::{
+    GenerateConfig, build_generation_config, build_generation_source_mode, build_zone_overrides,
+};
 use crate::topology_wire::install_topologies;
 use maze_core::{
     generation::GenerationConfig,
@@ -116,6 +118,8 @@ fn prepare<T: Tessellation>(
             &config.elements.cell_type_restrictions,
         )?,
     );
+    gen_config.zone_overrides =
+        build_zone_overrides(&config.zone_overrides, &field, cell_from_xy);
 
     Ok(Prepared {
         seed,

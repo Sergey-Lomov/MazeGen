@@ -8,9 +8,12 @@ interface Props {
   name?: string;
   id?: string;
   ariaLabel?: string;
+  /** Track height in px; the thumb scales with it. Defaults to the standard control row height. */
+  height?: number;
 }
 
-export function Switch({ checked, onChange, disabled, name = "switch", id, ariaLabel }: Props) {
+export function Switch({ checked, onChange, disabled, name = "switch", id, ariaLabel, height = controlRowHeight }: Props) {
+  const thumbSize = height - THUMB_INSET * 2;
   return (
     <label style={{ ...styles.wrap, ...(disabled ? styles.wrapDisabled : {}) }}>
       <input
@@ -23,8 +26,8 @@ export function Switch({ checked, onChange, disabled, name = "switch", id, ariaL
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span style={{ ...styles.track, ...(checked ? styles.trackOn : {}) }}>
-        <span style={{ ...styles.thumb, ...(checked ? styles.thumbOn : {}) }} />
+      <span style={{ ...styles.track, height, borderRadius: height / 2, ...(checked ? styles.trackOn : {}) }}>
+        <span style={{ ...styles.thumb, width: thumbSize, height: thumbSize, ...(checked ? { left: TRACK_WIDTH - THUMB_INSET - thumbSize } : {}) }} />
       </span>
     </label>
   );
@@ -32,7 +35,6 @@ export function Switch({ checked, onChange, disabled, name = "switch", id, ariaL
 
 const TRACK_WIDTH = 36;
 const THUMB_INSET = 2;
-const THUMB_SIZE = controlRowHeight - THUMB_INSET * 2;
 
 const styles: Record<string, React.CSSProperties> = {
   wrap: {
@@ -55,9 +57,7 @@ const styles: Record<string, React.CSSProperties> = {
   track: {
     display: "inline-block",
     width: TRACK_WIDTH,
-    height: controlRowHeight,
     background: ui.border.strong,
-    borderRadius: controlRowHeight / 2,
     position: "relative",
     transition: "background 0.2s",
     boxSizing: "border-box",
@@ -69,13 +69,8 @@ const styles: Record<string, React.CSSProperties> = {
     position: "absolute",
     top: THUMB_INSET,
     left: THUMB_INSET,
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
     background: ui.text.inverse,
     borderRadius: "50%",
     transition: "left 0.2s",
-  },
-  thumbOn: {
-    left: TRACK_WIDTH - THUMB_INSET - THUMB_SIZE,
   },
 };

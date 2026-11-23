@@ -140,6 +140,98 @@ describe("initWasm", () => {
     compile.mockRestore();
   });
 
+  it("reuses a cached engine when the server validator is unchanged", async () => {
+    const { compileWasmModule } = await import("../wasm/wasmLoader");
+    const cache = {
+      match: vi.fn().mockResolvedValue(new Response(new Uint8Array([1]), { headers: { ETag: "engine-v1" } })),
+      put: vi.fn(),
+      delete: vi.fn(),
+    };
+    vi.stubGlobal("caches", { open: vi.fn().mockResolvedValue(cache) });
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { headers: { ETag: "engine-v1" } }));
+    vi.stubGlobal("fetch", fetch);
+    const compiled = {} as WebAssembly.Module;
+    const compile = vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiled);
+
+    await expect(compileWasmModule()).resolves.toBe(compiled);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: "HEAD", cache: "no-cache" });
+    expect(cache.put).not.toHaveBeenCalled();
+    compile.mockRestore();
+  });
+
+  it("replaces a cached engine when its validator has changed", async () => {
+    const { compileWasmModule } = await import("../wasm/wasmLoader");
+    const cached = new Response(new Uint8Array([1]), { headers: { ETag: "engine-v1" } });
+    let staged: Response | undefined;
+    let committed: Response | undefined;
+    const cache = {
+      match: vi.fn(async (request: URL) => request.searchParams.has("__maze_engine_staging") ? staged : cached),
+      put: vi.fn(async (request: URL, response: Response) => {
+        if (request.searchParams.has("__maze_engine_staging")) staged = response;
+        else committed = response;
+      }),
+      delete: vi.fn(),
+    };
+    vi.stubGlobal("caches", { open: vi.fn().mockResolvedValue(cache) });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { headers: { ETag: "engine-v2" } }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([2]), { headers: { ETag: "engine-v2" } }));
+    vi.stubGlobal("fetch", fetch);
+    const compiled = {} as WebAssembly.Module;
+    const compile = vi.spyOn(WebAssembly, "compile").mockImplementation(async (bytes) => {
+      expect([...new Uint8Array(bytes as ArrayBuffer)]).toEqual([2]);
+      return compiled;
+    });
+
+    await expect(compileWasmModule()).resolves.toBe(compiled);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: "HEAD", cache: "no-cache" });
+    expect(fetch.mock.calls[1][1]).toMatchObject({ cache: "no-cache" });
+    expect(cache.put).toHaveBeenCalledTimes(2);
+    expect(cache.delete).toHaveBeenCalledTimes(1);
+    expect([...new Uint8Array(await committed!.arrayBuffer())]).toEqual([2]);
+    compile.mockRestore();
+  });
+
+  it("discards a staged engine when compilation fails", async () => {
+    const { compileWasmModule } = await import("../wasm/wasmLoader");
+    const cache = {
+      match: vi.fn().mockResolvedValue(undefined),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(true),
+    };
+    vi.stubGlobal("caches", { open: vi.fn().mockResolvedValue(cache) });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array([1]))));
+    const compile = vi.spyOn(WebAssembly, "compile").mockRejectedValue(new WebAssembly.CompileError("bad binary"));
+
+    await expect(compileWasmModule()).rejects.toMatchObject({ failure: "invalidBinary" });
+
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(cache.delete).toHaveBeenCalledTimes(1);
+    compile.mockRestore();
+  });
+
+  it("uses the last successful engine when the validator cannot be reached", async () => {
+    const { compileWasmModule } = await import("../wasm/wasmLoader");
+    const cache = {
+      match: vi.fn().mockResolvedValue(new Response(new Uint8Array([1]), { headers: { ETag: "engine-v1" } })),
+      put: vi.fn(),
+      delete: vi.fn(),
+    };
+    vi.stubGlobal("caches", { open: vi.fn().mockResolvedValue(cache) });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Offline")));
+    const compiled = {} as WebAssembly.Module;
+    const compile = vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiled);
+
+    await expect(compileWasmModule()).resolves.toBe(compiled);
+
+    expect(cache.put).not.toHaveBeenCalled();
+    compile.mockRestore();
+  });
+
   it("reports an unknown total when the response has no content length", async () => {
     const { initWasm } = await import("../wasm/wasmLoader");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2]))));
