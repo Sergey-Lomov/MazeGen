@@ -162,6 +162,21 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     flexShrink: 0,
   },
+  // Rule/stage toolbars use a 2 px cluster gap; add 4 px after the switch for a 6 px separation.
+  toolbarToggleWrap: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+    // Separate the enable switch from the action-icon cluster in both rule and stage headers.
+    marginRight: spacing.itemGap,
+  },
+  // Check/strategy action pairs use the same 6 px separation as rule/stage toolbars.
+  rowActionCluster: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: spacing.itemGap + spacing.elementsGap,
+  },
   ruleCard: {
     display: "flex",
     flexDirection: "column",

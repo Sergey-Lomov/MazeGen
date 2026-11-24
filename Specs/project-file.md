@@ -6,6 +6,9 @@ are the Save / Load buttons in the `FeaturesPanel` footer (`maze-web/src/compone
 
 ## Format and extension
 
+Nested quality strategies persist their own `collapsed` UI state. A missing flag in an older file
+defaults to collapsed, matching newly created nested strategies.
+
 - Content: pretty-printed JSON of `ProjectFile` (`types.ts`), versioned by `CURRENT_VERSION`.
   Version bumps are breaking — no migration of older versions.
 - Extension: `PROJECT_FILE_EXTENSION = ".maze"` (`types.ts`). The content is still plain JSON; the

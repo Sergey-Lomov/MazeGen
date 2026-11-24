@@ -57,6 +57,8 @@ export interface NestedStrategyState {
   strategyId: string;
   params: Record<string, string>;
   nested: NestedStrategyState[];
+  /** UI-only nested-panel state. Missing legacy entries default to collapsed. */
+  collapsed?: boolean;
 }
 
 /** Every entry in `list` filling `slotId`, in list order — that order is this slot's own

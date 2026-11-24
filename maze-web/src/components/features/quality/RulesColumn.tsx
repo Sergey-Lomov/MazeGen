@@ -185,7 +185,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         )}
         <div style={styles.ruleCardTools}>
           <Tooltip content={slot.ruleDisabled ? m["quality.enable_rule"]() : m["quality.disable_rule"]()}><div
-            style={styles.toggleWrap}
+            style={styles.toolbarToggleWrap}
           >
             <Switch checked={!slot.ruleDisabled} onChange={() => toggleRuleDisabled(slot.ruleId)} />
           </div></Tooltip>
@@ -397,7 +397,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 )}
                 <div style={styles.stageToolbar}>
                   <Tooltip content={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}><div
-                    style={styles.toggleWrap}
+                    style={styles.toolbarToggleWrap}
                   >
                     <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
                   </div></Tooltip>

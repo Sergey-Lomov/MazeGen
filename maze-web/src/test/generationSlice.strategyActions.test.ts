@@ -58,7 +58,7 @@ describe("mazeStore generation strategy actions", () => {
     useMazeStore.getState().setStrategy("g1", "reduce_scc_count");
     const rule = useMazeStore.getState().rules.find((g) => g.id === "g1");
     expect(rule?.nestedStrategies).toEqual([
-      { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] },
+      { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [], collapsed: true },
     ]);
   });
 
@@ -152,6 +152,21 @@ describe("mazeStore generation strategy actions", () => {
     ]);
   });
 
+  it("toggles one nested strategy panel without changing its siblings", () => {
+    const rule = {
+      ...ruleWithReduceSccCount(),
+      nestedStrategies: [
+        { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [], collapsed: true },
+        { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [], collapsed: false },
+      ],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+
+    useMazeStore.getState().toggleNestedStrategyCollapsed("g1", [{ slotId: "merge_target", index: 0 }]);
+
+    expect(useMazeStore.getState().rules[0].nestedStrategies.map((nested) => nested.collapsed)).toEqual([false, false]);
+  });
+
   it("setNestedStrategyParam at a depth-2 path updates the correct nested node", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
@@ -186,7 +201,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = useMazeStore.getState().rules.find((g) => g.id === "g1");
     expect(rule?.nestedStrategies).toEqual([
       { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] },
-      { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] },
+      { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [], collapsed: true },
     ]);
   });
 

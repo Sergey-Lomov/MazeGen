@@ -3,6 +3,21 @@ import { parseAndValidate, serializeProject } from "../store/projectExport";
 import { makeState, toJson } from "./projectExportKit";
 
 describe("serializeProject / parseAndValidate round-trip: underlay and settings", () => {
+  it("round-trips nested strategy panel state and defaults legacy entries to collapsed", () => {
+    const state = makeState();
+    state.rules[0].nestedStrategies = [{
+      slotId: "merge_target", strategyId: "strategy_b", params: {}, collapsed: false,
+      nested: [{ slotId: "child", strategyId: "strategy_c", params: {}, collapsed: true, nested: [] }],
+    }];
+    const raw = toJson(state);
+
+    expect(parseAndValidate(raw).quality.rules[0].nestedStrategies[0]).toMatchObject({ collapsed: false });
+    expect(parseAndValidate(raw).quality.rules[0].nestedStrategies[0].nested[0]).toMatchObject({ collapsed: true });
+
+    delete raw.quality.rules[0].nestedStrategies[0].collapsed;
+    expect(parseAndValidate(raw).quality.rules[0].nestedStrategies[0].collapsed).toBe(true);
+  });
+
   it("round-trips the synchronized editor underlay", () => {
     const serialized = serializeProject(makeState({
       showBackgroundImage: true,

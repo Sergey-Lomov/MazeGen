@@ -256,6 +256,8 @@ export interface GenerationActions {
    * the priority rank there), but not restricted to one — a no-op if there's no sibling in that
    * direction (already first/last). */
   moveNestedStrategy: (ruleId: string, path: PathSegment[], direction: "up" | "down") => void;
+  /** Flips one nested strategy panel's UI-only collapsed state. */
+  toggleNestedStrategyCollapsed: (ruleId: string, path: PathSegment[]) => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
   /** Flips the rule card's `collapsed` — UI-only, does not mark the config stale. */

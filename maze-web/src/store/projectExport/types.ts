@@ -149,6 +149,8 @@ export interface ProjectFileNestedStrategy {
   strategyId: string;
   params: Record<string, string>;
   nested: ProjectFileNestedStrategy[];
+  /** UI-only nested-panel state; absent legacy entries load collapsed. */
+  collapsed?: boolean;
 }
 
 export interface ProjectFileQcRule {
