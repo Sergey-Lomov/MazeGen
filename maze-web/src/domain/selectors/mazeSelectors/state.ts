@@ -101,9 +101,12 @@ const PIPELINE_ONLY_ISSUE_KINDS = ["repair_limit_reached"];
  * for both the bubble list (`AnalyticsFeature`) and the card status (`FeaturesPanel`) — they must
  * agree on what counts as "this maze has issues". */
 export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAnalytics">): IssueDto[] {
+  const postEditIssues = s.postEditAnalytics?.issues;
   return [
-    ...s.issues.filter((i) => PIPELINE_ONLY_ISSUE_KINDS.includes(i.kind)),
-    ...(s.postEditAnalytics?.issues ?? s.issues),
+    // When post-edit analytics is absent, `s.issues` is already the displayed source. Prepending
+    // its pipeline-only entries would render each one twice.
+    ...(postEditIssues ? s.issues.filter((i) => PIPELINE_ONLY_ISSUE_KINDS.includes(i.kind)) : []),
+    ...(postEditIssues ?? s.issues),
   ];
 }
 

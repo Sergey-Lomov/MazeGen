@@ -50,7 +50,7 @@ Analytics always operates on the post-edited graph, not the raw generated graph.
 | Data | Source |
 |---|---|
 | `statistics` | `postEditAnalytics?.statistics ?? state.statistics` — `MazeStatisticsDto`, see `graph-analytics.md` |
-| `warnings`/`issues` | `postEditAnalytics?.issues ?? state.issues`, via `selectAnalyticsIssues` |
+| `warnings`/`issues` | `postEditAnalytics?.issues ?? state.issues`, via `selectAnalyticsIssues`; pipeline-only issues such as `repair_limit_reached` are carried from `state.issues` only when a post-edit snapshot exists (the raw fallback already contains them) |
 | `routeInfo` | `postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo` |
 | `floors` | `state.floors` (live UI state, not part of `postEditAnalytics`) |
 | `edges` (canvas) | `postEditEdgesToDto(state.postEditEdges)` — confirmed post-edit edges snapshot |
