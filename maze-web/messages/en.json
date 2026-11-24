@@ -2152,6 +2152,7 @@
   "post_edit.reset_to_generation": "Reset to generation",
   "post_edit.confirm_regenerate": "Post-edit changes will be discarded on re-generation. Continue?",
   "post_edit.manage_split_nodes": "Manage split nodes: {coords}",
+  "post_edit.split_focus_cell": "Focus cell",
   "post_edit.manage_split_nodes_tool": "Split nodes",
   "post_edit.split_node_label": "Node {slotId}",
   "post_edit.split_node_label_short": "N{slotId}",

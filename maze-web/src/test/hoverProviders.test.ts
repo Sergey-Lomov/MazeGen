@@ -7,6 +7,7 @@ import { TILE_SIZE } from "../domain/constants";
 import { MazeScene, shouldCancelFieldEditGesture, TESSELLATION_CONFIG_BY_CARD } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 function fakeViewport(x: number, y: number, scale = 1): Container {
@@ -198,6 +199,27 @@ describe("zoom reset controls", () => {
     expect(viewport.scale.set).toHaveBeenCalledWith(1.25);
     expect(MazeScene.prototype.getViewportScale.call(scene)).toBe(1.25);
     expect(syncLayersToViewport).toHaveBeenCalledOnce();
+  });
+
+  it("centers the requested active-floor cell at 250% zoom", () => {
+    const state = useMazeStore.getState();
+    const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
+    useMazeStore.setState({
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldConfig: cfg },
+      },
+    });
+    const setViewportTransform = vi.fn();
+    const scene = {
+      app: { screen: { width: 800, height: 600 } },
+      setViewportTransform,
+    } as unknown as MazeScene;
+    const center = getCellCenter(2, 3, cfg);
+
+    MazeScene.prototype.focusCell.call(scene, [2, 3]);
+
+    expect(setViewportTransform).toHaveBeenCalledWith(400 - 2.5 * center.x, 300 - 2.5 * center.y, 2.5);
   });
 
   it("routes each interactive card to its controller and falls back to default pan", () => {

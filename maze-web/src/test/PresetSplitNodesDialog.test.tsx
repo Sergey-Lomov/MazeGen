@@ -1,13 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { PresetSplitNodesDialog } from "../components/features/PresetSplitNodesDialog";
 import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../domain/presetEndpoint";
 import { baseStoreState } from "./storeTestHelpers";
+import { setCellFocusApplier } from "../pixi/viewportScaleBridge";
 
 beforeEach(() => {
+  setCellFocusApplier(null);
   useMazeStore.setState({
     ...baseStoreState(),
     presetSplitPoints: { "2,2": [0] },
@@ -25,6 +27,16 @@ beforeEach(() => {
 });
 
 describe("PresetSplitNodesDialog", () => {
+  it("focuses the edited cell through the shared canvas command", () => {
+    const focus = vi.fn();
+    setCellFocusApplier(focus);
+    render(<PresetSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Focus cell" }));
+
+    expect(focus).toHaveBeenCalledWith([2, 2]);
+  });
+
   it("shows a preset generation source in the node's elements", () => {
     render(<PresetSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
 

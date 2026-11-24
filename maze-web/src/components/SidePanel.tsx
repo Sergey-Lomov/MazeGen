@@ -73,6 +73,8 @@ function pointFromEvent(event: Event): { x: number; y: number } | null {
 
 interface Props {
   title: string;
+  /** Optional compact actions placed beside the close control in the panel chrome. */
+  headerActions?: React.ReactNode;
   /** Stable panel name. Reopening this panel while it is still mounted beneath another one raises
    * this same instance (see `sidePanelStack.ts`). */
   stackKey?: string;
@@ -115,7 +117,7 @@ interface Props {
  *  mounted one is actually shown. Closing it unmounts that instance and pops it off the stack, so
  *  the next one down becomes visible again — restoring what was underneath rather than clearing
  *  the whole slot. */
-export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
+export function SidePanel({ title, headerActions, stackKey, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
@@ -431,7 +433,10 @@ export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overla
           <span style={typography.title}>{title}</span>
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
         </div>
-        <CloseIconButton onClick={onClose} />
+        <div style={styles.headerActions}>
+          {headerActions}
+          <CloseIconButton onClick={onClose} />
+        </div>
       </div>
       {showWarnings && (
         <div style={styles.warningsStrip}>
@@ -520,6 +525,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 2,
     minWidth: 0,
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+    flexShrink: 0,
   },
   subtitle: {
     ...typography.caption,

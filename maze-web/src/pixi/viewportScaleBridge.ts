@@ -29,3 +29,16 @@ export function setPhysicalZoomApplier(fn: ((targetViewportScale: number) => voi
 export function applyPhysicalZoom(targetViewportScale: number): void {
   physicalZoomApplier?.(targetViewportScale);
 }
+
+/** Focuses one authored cell in the live editor viewport. This follows the same imperative bridge
+ * pattern as the export controls: split-node panels are mounted far from `App`'s `MazeScene`, and
+ * the command needs neither store state nor a reactive subscription. */
+let cellFocusApplier: ((point: readonly [number, number]) => void) | null = null;
+
+export function setCellFocusApplier(fn: ((point: readonly [number, number]) => void) | null): void {
+  cellFocusApplier = fn;
+}
+
+export function focusCell(point: readonly [number, number]): void {
+  cellFocusApplier?.(point);
+}

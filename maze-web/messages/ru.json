@@ -2143,6 +2143,7 @@
   "post_edit.reset_to_generation": "Сбросить всё",
   "post_edit.confirm_regenerate": "Изменения постобработки будут сброшены при повторной генерации. Продолжить?",
   "post_edit.manage_split_nodes": "Управление split-узлами: {coords}",
+  "post_edit.split_focus_cell": "Фокусировать ячейку",
   "post_edit.manage_split_nodes_tool": "Split-узлы",
   "post_edit.split_node_label": "Узел {slotId}",
   "post_edit.split_node_label_short": "N{slotId}",
