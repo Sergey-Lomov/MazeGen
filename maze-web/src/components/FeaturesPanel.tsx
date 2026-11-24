@@ -1,6 +1,6 @@
 ﻿import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 import { zoneOverrideWarningCount } from "../domain/zoneOverrides";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
@@ -160,6 +160,51 @@ export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { 
   return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
 }
 
+/** Field-derived card state, selected as primitives: a cell edit replaces `floorFields`, and the panel
+ *  must re-render only when one of these values actually changes. */
+function selectFieldDerived(s: ReturnType<typeof useMazeStore.getState>) {
+  const orderedFloorFields = s.floors.map((f) => s.floorFields[f.id]);
+  const fieldStatus = computeFieldStatus(s.tessellationConfirmed, orderedFloorFields);
+  const resolveFieldAt = resolveFieldAtOf({
+    floors: s.floors,
+    floorFields: s.floorFields,
+    tessellationKind: s.tessellationKind,
+    tessellationParams: s.tessellationParams,
+    hexOrientation: s.hexOrientation,
+    triOrientation: s.triOrientation,
+    smoothPrimitives: s.smoothPrimitives,
+  });
+  const invalidMarkers = computeInvalidMarkers(s.presetStart, s.presetFinish, resolveFieldAt);
+  const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0) + (computeInvalidEndpoint(s.presetGenSource, resolveFieldAt) ? 1 : 0);
+  const presetInvalidCount = listedInvalidConnections(s.presetConnections, s.presetSplitPoints, computeInvalidKeys(s.presetConnections, resolveFieldAt)).length
+    + computeInvalidTeleportIds(s.presetTeleports, resolveFieldAt).size
+    + computeInvalidVerticalPassageIds(s.presetVerticalPassages, resolveFieldAt).size
+    + computeInvalidElevatorIds(s.presetElevators, resolveFieldAt).size
+    + invalidMarkerCount
+    + computeInvalidLockedNodeKeys(s.lockedNodes, resolveFieldAt).size
+    + listedInvalidSplitKeys(s.presetSplitPoints, computeInvalidSplitPoints(s.presetSplitPoints, resolveFieldAt)).length;
+  return { fieldStatus, presetInvalidCount };
+}
+
+/** The Field Setup card. It selects its own subtitle: the subtitle carries the cell count, which changes on
+ *  every cell edit, and selecting it in `FeaturesPanel` would re-render the whole panel per edit. */
+function FieldSetupCard({ status, comment, expanded, onOpen, children }: {
+  status: FeatureStatus;
+  comment: string;
+  expanded: boolean;
+  onOpen: () => void;
+  children: React.ReactNode;
+}) {
+  const subtitle = useMazeStore((s) => s.tessellationConfirmed
+    ? fieldSetupSubtitle(s.tessellationKind, s.floors.map((f) => s.floorFields[f.id]))
+    : undefined);
+  return (
+    <FeatureCard title={m["field.title"]()} status={status} comment={comment} subtitle={subtitle} expanded={expanded} onOpen={onOpen}>
+      {children}
+    </FeatureCard>
+  );
+}
+
 export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }: {
   onRefit: () => void;
   onExportPng: (settings: PngExportSettings) => Promise<Blob | null>;
@@ -168,14 +213,10 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const openCard = useMazeStore((s) => s.openCard);
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
 
-  const floors = useMazeStore((s) => s.floors);
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
-  const tessellationParams = useMazeStore((s) => s.tessellationParams);
-  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
-  const floorFields = useMazeStore((s) => s.floorFields);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const zones = useMazeStore((s) => s.zones);
   const zoneGroups = useMazeStore((s) => s.zoneGroups);
@@ -183,12 +224,9 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
-  const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
   const presetElevators = useMazeStore((s) => s.presetElevators);
-  const lockedNodes = useMazeStore((s) => s.lockedNodes);
-  const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
 
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
@@ -276,53 +314,13 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     return label;
   }
 
-  const orderedFloorFields = useMemo(() => floors.map((f) => floorFields[f.id]), [floors, floorFields]);
-
-  const fieldStatus = computeFieldStatus(tessellationConfirmed, orderedFloorFields);
+  const { fieldStatus, presetInvalidCount } = useMazeStore(useShallow(selectFieldDerived));
   const fieldSetupComment = fieldStatus === "unavailable"
     ? m["status.confirm_tessellation_first"]()
     : fieldStatus === "critical"
     ? m["status.field_no_nodes"]()
     : m["status.field_configured"]();
 
-  const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
-    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
-  );
-  const presetInvalidKeys = useMemo(
-    () => computeInvalidKeys(presetConnections, resolveFieldAt),
-    [presetConnections, resolveFieldAt],
-  );
-  const presetInvalidTeleportIds = useMemo(
-    () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
-    [presetTeleports, resolveFieldAt],
-  );
-  const presetInvalidVerticalPassageIds = useMemo(
-    () => computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt),
-    [presetVerticalPassages, resolveFieldAt],
-  );
-  const presetInvalidElevatorIds = useMemo(
-    () => computeInvalidElevatorIds(presetElevators, resolveFieldAt),
-    [presetElevators, resolveFieldAt],
-  );
-  const presetInvalidMarkers = useMemo(
-    () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
-    [presetStart, presetFinish, resolveFieldAt],
-  );
-  const presetInvalidGenSource = useMemo(
-    () => computeInvalidEndpoint(presetGenSource, resolveFieldAt),
-    [presetGenSource, resolveFieldAt],
-  );
-  const presetInvalidLockedKeys = useMemo(
-    () => computeInvalidLockedNodeKeys(lockedNodes, resolveFieldAt),
-    [lockedNodes, resolveFieldAt],
-  );
-  const presetInvalidSplitKeys = useMemo(
-    () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
-    [presetSplitPoints, resolveFieldAt],
-  );
-  const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0) + (presetInvalidGenSource ? 1 : 0);
-  const presetInvalidCount = listedInvalidConnections(presetConnections, presetSplitPoints, presetInvalidKeys).length + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount + presetInvalidLockedKeys.size + listedInvalidSplitKeys(presetSplitPoints, presetInvalidSplitKeys).length;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   // Always green once available: zones have no invalid state, even with none defined.
@@ -386,18 +384,14 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
       >
         <BasicConfigFeature />
       </FeatureCard>
-      <FeatureCard
-        title={m["field.title"]()}
+      <FieldSetupCard
         status={fieldStatus}
         comment={fieldSetupComment}
-        subtitle={tessellationConfirmed
-          ? fieldSetupSubtitle(tessellationKind, orderedFloorFields)
-          : undefined}
         expanded={openCard === "field_setup"}
         onOpen={() => handleToggle("field_setup")}
       >
         <FieldSetupFeature />
-      </FeatureCard>
+      </FieldSetupCard>
       <FeatureCard
         title={m["zones.title"]()}
         status={zonesStatus}

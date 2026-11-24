@@ -34,18 +34,18 @@ const CLIPBOARD_MODIFIER = typeof navigator !== "undefined" && /Mac|iPhone|iPad|
 
 /** Add / Remove / Select modes and the shape, polygon, connected area, mirror, copy and paste tools. */
 export function FieldToolsSection({ leadingGap = true }: { leadingGap?: boolean } = {}) {
-  const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
+  // Primitives derived from the config: a custom field's config object is rebuilt on every cell edit.
+  const reflectAvailable = useMazeStore((s) => fieldOperationAvailable(s.floorFields[s.activeFloorId].fieldConfig.tessellation, "reflect"));
+  const copyBlock = useMazeStore((s) => fieldClipboardBlock("copy", s.floorFields[s.activeFloorId].fieldConfig.tessellation, s.fieldHasSelection, s.fieldClipboard !== null));
+  const pasteBlock = useMazeStore((s) => fieldClipboardBlock("paste", s.floorFields[s.activeFloorId].fieldConfig.tessellation, s.fieldHasSelection, s.fieldClipboard !== null));
   const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
   const setFieldOperation = useMazeStore((s) => s.setFieldOperation);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
-  const fieldHasSelection = useMazeStore((s) => s.fieldHasSelection);
-  const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
   const zoneEditing = useMazeStore((s) => zoneEditActive(s));
   const combineOpen = useMazeStore((s) => s.zoneCombine !== null);
   const toggleCombine = useMazeStore((s) => s.toggleZoneCombine);
-  const reflectAvailable = fieldOperationAvailable(fieldConfig.tessellation, "reflect");
 
   function renderClipboardTool(tool: "copy" | "paste", block: FieldClipboardBlock | null) {
     const description = block === "tessellation" ? m["field.clipboard.tessellation_disabled"]()
@@ -109,8 +109,8 @@ export function FieldToolsSection({ leadingGap = true }: { leadingGap?: boolean 
               {primitiveIcon(tool.primitive)}
             </ToolIconButton>;
           })}
-          {renderClipboardTool("copy", fieldClipboardBlock("copy", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
-          {renderClipboardTool("paste", fieldClipboardBlock("paste", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
+          {renderClipboardTool("copy", copyBlock)}
+          {renderClipboardTool("paste", pasteBlock)}
           {zoneEditing && (
             <ToolIconButton
               selected={combineOpen}
@@ -130,7 +130,7 @@ export function FieldToolsSection({ leadingGap = true }: { leadingGap?: boolean 
 
 /** The smoothing switch with its info dialog. The hold-`S` hint exists only in a custom editor. */
 export function SmoothingToggleRow({ customEditor }: { customEditor: boolean }) {
-  const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
+  const exactCells = useMazeStore((s) => requiresExactCells(s.floorFields[s.activeFloorId].fieldConfig.shape));
   // The zone editor has its own switch, off by default, apart from the field's.
   const zoneEditing = useMazeStore((s) => zoneEditActive(s));
   const smoothPrimitives = useMazeStore((s) => smoothingOf(s));
@@ -138,7 +138,6 @@ export function SmoothingToggleRow({ customEditor }: { customEditor: boolean }) 
   const smoothInverted = useMazeStore((s) => s.smoothInverted);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
   const [smoothingInfoOpen, setSmoothingInfoOpen] = useState(false);
-  const exactCells = requiresExactCells(fieldConfig.shape);
   const row = (
     <ToggleRow
       label={m["field.smooth_primitives"]()}

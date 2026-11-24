@@ -170,7 +170,10 @@ export class GenerationRenderer {
         state.debugValueToggles !== prev.debugValueToggles ||
         state.showKruskalDsuGroups !== prev.showKruskalDsuGroups;
 
-      if (dataChanged && !redrawn) {
+      // A hidden layer is redrawn by `syncVisibility` when it is shown again, so a data change
+      // while it is hidden (every field edit) needs no drawing.
+      const visible = state.openCard === "generation" && state.showMaze;
+      if (dataChanged && !redrawn && visible) {
         this.renderAll(state);
       }
 

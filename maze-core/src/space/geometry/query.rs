@@ -74,13 +74,30 @@ pub(super) fn cells_in_region<T: Tessellation + ?Sized>(
         .collect();
     let matching = |&cell: &T::CellId| matches(tessellation, cell, region, &region_edges, mode);
     match scope {
-        // A cell-set scope is bounded by itself: examine its cells, whatever the region's size.
+        // A cell-set scope is bounded by itself, whatever the region's size. A region covering a
+        // small part of the set examines only the candidates of its bounding box (a field of many
+        // cells would otherwise be scanned whole); a box holding more candidates than the set has
+        // cells falls back to scanning the set.
         CellScope::Cells(cells) => {
             debug_assert!(
                 cells.windows(2).all(|w| w[0] < w[1]),
                 "CellScope::Cells must be sorted without duplicates"
             );
-            Ok(cells.iter().copied().filter(matching).collect())
+            let (min, max) = bounds_of(region);
+            let margin = Point::new(GEOM_EPS, GEOM_EPS);
+            match tessellation.candidate_cells(min - margin, max + margin, cells.len()) {
+                Some(candidates) => {
+                    let mut found: Vec<T::CellId> = candidates
+                        .into_iter()
+                        .filter(|cell| scope.includes(cell))
+                        .filter(matching)
+                        .collect();
+                    found.sort();
+                    found.dedup();
+                    Ok(found)
+                }
+                None => Ok(cells.iter().copied().filter(matching).collect()),
+            }
         }
         CellScope::Space => {
             let (min, max) = bounds_of(region);

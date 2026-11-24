@@ -104,6 +104,18 @@ describe("GenerationRenderer redraw count (GitHub issue #174)", () => {
     expect(redraws()).toBe(1);
   });
 
+  it("does not draw on a data change while the layer is hidden, and draws once when it is shown", () => {
+    useMazeStore.setState(baseState({ openCard: "field", _generatedNodes: NODES, _generatedEdges: EDGES } as never));
+    renderer = new GenerationRenderer(new Container());
+    renders.mockClear();
+
+    useMazeStore.setState({ _generatedEdges: [...EDGES] });
+    expect(renders).not.toHaveBeenCalled();
+
+    useMazeStore.setState({ openCard: "generation" });
+    expect(redraws()).toBe(1);
+  });
+
   it("does not draw while the layer is hidden and nothing relevant changed", () => {
     useMazeStore.setState(baseState({ openCard: "field" } as never));
     renderer = new GenerationRenderer(new Container());
