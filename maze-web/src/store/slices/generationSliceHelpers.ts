@@ -72,6 +72,7 @@ export function buildDefaultNestedStrategies(strategyId: string, availableStrate
         strategyId: candidate.id,
         params,
         nested: buildDefaultNestedStrategies(candidate.id, availableStrategies, depth + 1),
+        collapsed: true,
       };
     })
     .filter((n): n is NestedStrategyState => n !== undefined);

@@ -785,6 +785,15 @@ describe("rule problems (GitHub issue #1044)", () => {
     expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
   });
 
+  it("clears an unavailable forbidden-cell-type problem when that param is edited", () => {
+    useMazeStore.setState({ rules: [flaggedRule({
+      checks: [{ localId: 0, typeId: "check_a", params: { forbid_cell_type_hexagon: "false" }, disabled: false }],
+      problems: [{ code: "forbidden_cell_type_unavailable", scope: "check", localId: 0, paramId: "forbid_cell_type_hexagon" }],
+    })] });
+    useMazeStore.getState().setCheckParam("g1", 0, "forbid_cell_type_hexagon", "false");
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
   it("never resolves a cannot_apply problem by editing", () => {
     const problems = [{ code: "irregular_tessellation" as const, scope: "check" as const, localId: 0 }];
     useMazeStore.setState({ rules: [flaggedRule({ problems })] });

@@ -9,7 +9,9 @@ import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { SidePanel } from "../SidePanel";
 import { useSidePanelOpen } from "../sidePanelStack";
-import { RegionClassLegendModal, ScoreInfoModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
+import { NodeShapeStatisticsModal, RegionClassLegendModal, ScoreInfoModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
+import { nodeShapeStatisticsAsync } from "../../wasm/mazeService";
+import { nodeShapeStatisticsRequest } from "./nodeShapeStatistics";
 import { StatRow, formatMs, formatScore, GraphSection, CellsSection, SidesSection, SubsectionTitle, ElementsSection, VerticalSection, StatGroup } from "./AnalyticsSections";
 import { styles } from "./analyticsStyles";
 import type { MazeStatisticsDto } from "../../wasm/types";
@@ -154,6 +156,18 @@ export function AnalyticsFeature() {
   const [timingReportOpen, setTimingReportOpen] = React.useState(false);
   const [detailedReportOpen, setDetailedReportOpen] = useSidePanelOpen("analytics-detailed-report");
   const [scoreInfoOpen, setScoreInfoOpen] = React.useState(false);
+  const [nodeShapeStatsOpen, setNodeShapeStatsOpen] = React.useState(false);
+  const [nodeShapeStats, setNodeShapeStats] = React.useState<import("../../wasm/types").NodeShapeCountDto[] | null>(null);
+
+  function openNodeShapeStatistics() {
+    const request = nodeShapeStatisticsRequest(useMazeStore.getState());
+    if (request === null) return;
+    setNodeShapeStats(null);
+    setNodeShapeStatsOpen(true);
+    nodeShapeStatisticsAsync(request)
+      .then(setNodeShapeStats)
+      .catch((error) => console.error("Node shape statistics unavailable", error));
+  }
 
   const showGridOverlay = useMazeStore((s) => s.showGridOverlay);
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
@@ -278,6 +292,9 @@ export function AnalyticsFeature() {
               }}>
                 {m["analytics.detailed_report_button"]()}
               </Button>
+              <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={openNodeShapeStatistics}>
+                {m["analytics.node_shape_stats_button"]()}
+              </Button>
             </div>
           )}
         </>
@@ -291,6 +308,10 @@ export function AnalyticsFeature() {
           nodes={nodes}
           onClose={() => setDetailedReportOpen(false)}
         />
+      )}
+
+      {nodeShapeStatsOpen && (
+        <NodeShapeStatisticsModal counts={nodeShapeStats} cfg={fieldConfig} onClose={() => setNodeShapeStatsOpen(false)} />
       )}
 
       {/* Timing block — generation runs only, see GitHub issue #56 */}

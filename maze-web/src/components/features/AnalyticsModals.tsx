@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { ruleIsSendable } from "../../store/qcDerivedProblems";
 import { Modal } from "../Modal";
+import { Button } from "../Button";
+import { Inline, Stack } from "../Layout";
 import { canvas } from "../../domain/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
 import { tileNodesForTopology } from "../../domain/splitPatternTile";
@@ -13,6 +15,10 @@ import { StatRow, SubsectionTitle, formatMs } from "./AnalyticsSections";
 import { styles, messageFor } from "./analyticsStyles";
 import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
 import { originCellOf } from "../../domain/splitPatternTile";
+import { NodeShapeIcon } from "../dialogs/NodeShapeIcon";
+import { nodeShapeCellTypeLabel, nodeShapeLabel } from "./nodeShapeLimits";
+import { nodeShapesOf } from "./nodeShapeVocabulary";
+import type { NodeShapeCountDto } from "../../wasm/types";
 import { useLocale } from "../../i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
@@ -63,6 +69,65 @@ export function SplitPatternStatsModal({ groups, tileCount, nodes, cfg, onClose 
           );
         })}
       </div>
+    </Modal>
+  );
+}
+
+/** On-demand count view for the same `TypedShape` values the shape-limits QC check uses. */
+export function NodeShapeStatisticsModal({ counts, cfg, onClose }: {
+  counts: NodeShapeCountDto[] | null;
+  cfg: ReturnType<typeof activeFloorTessellationOf>;
+  onClose: () => void;
+}) {
+  const vocabulary = React.useMemo(() => nodeShapesOf(cfg.tessellation), [cfg.tessellation]);
+  const grouped = new Map<string, NodeShapeCountDto[]>();
+  for (const count of counts ?? []) {
+    const entries = grouped.get(count.cell_type) ?? [];
+    entries.push(count);
+    grouped.set(count.cell_type, entries);
+  }
+  // A tessellation without sample cells (e.g. an irregular one) has no vocabulary entry, but
+  // the core still returns its actual `cell` counts. Keep those rows visible without an icon.
+  const vocabularyKeys = new Set(vocabulary.map((type) => type.cellType));
+  const cellTypeKeys = [
+    ...vocabulary.filter((type) => grouped.has(type.cellType)).map((type) => type.cellType),
+    ...[...grouped.keys()].filter((key) => !vocabularyKeys.has(key)),
+  ];
+  const [selected, setSelected] = useState(cellTypeKeys[0] ?? "");
+  const selectedCellType = cellTypeKeys.includes(selected) ? selected : (cellTypeKeys[0] ?? "");
+  const current = vocabulary.find((type) => type.cellType === selectedCellType);
+  const entries = grouped.get(selectedCellType) ?? [];
+
+  return (
+    <Modal title={m["analytics.node_shape_stats_title"]()} size="compact" onClose={onClose}>
+      {counts === null ? <div style={styles.legendDesc}>{m["analytics.node_shape_stats_loading"]()}</div> : (
+        <Stack gap="sectionGap">
+          {cellTypeKeys.length > 1 && (
+            <Inline gap="sectionGap">
+              {cellTypeKeys.map((cellType) => (
+                <Button
+                  key={cellType}
+                  variant={cellType === selectedCellType ? "toggle-selected" : "toggle"}
+                  onClick={() => setSelected(cellType)}
+                >
+                  {nodeShapeCellTypeLabel(cellType)}
+                </Button>
+              ))}
+            </Inline>
+          )}
+          {selectedCellType && (
+            <div style={styles.nodeShapeStatsGrid}>
+              {entries.map((entry) => (
+                <React.Fragment key={entry.shape}>
+                  {current && <NodeShapeIcon shape={entry.shape} cfg={cfg} cell={current.exampleCell} faceRanks={current.faceRanks} />}
+                  <span style={styles.nodeShapeStatsText}>{nodeShapeLabel(entry.shape, current?.shapes)}</span>
+                  <span style={styles.nodeShapeStatsText}>{entry.count}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </Stack>
+      )}
     </Modal>
   );
 }

@@ -2,8 +2,8 @@ use maze_core_macros::Dto;
 use serde::{Deserialize, Serialize};
 
 pub use crate::dto_analytics_config::{
-    AnalyticsRuleGroupConfig, ComputeAnalyticsConfig, PostEditEdgeDto, PostEditEndpointDto,
-    VerticalEdgeDto,
+    AnalyticsRuleGroupConfig, ComputeAnalyticsConfig, NodeShapeStatisticsRequest, PostEditEdgeDto,
+    PostEditEndpointDto, VerticalEdgeDto,
 };
 pub use crate::dto_issues::{
     CrossElementPayloadEntryDto, IssueDto, IssueEdgeGroupPayloadDto,
@@ -67,6 +67,15 @@ pub struct NavEdgeDto {
     pub to: u32,
     /// Maze NodeIds along this corridor, inclusive of both endpoints.
     pub path: Vec<u32>,
+}
+
+/// One count in the shape-aware cell statistics dialog (GitHub issue #1085). The pair of keys is
+/// exactly `TypedShape`: `cell_type` is the shape template and `shape` is `NodeShape::key()`.
+#[derive(Serialize, Dto)]
+pub struct NodeShapeCountDto {
+    pub cell_type: String,
+    pub shape: String,
+    pub count: usize,
 }
 
 /// One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,

@@ -92,14 +92,16 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
           {strategy ? strategy.label : m["strategy.no_fix.label"]()}
         </span>
         {strategy?.experimental && <WarningIcon />}
-        {strategy && (
-          <Tooltip content={slot.strategyUnavailable ? undefined : slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
-            style={styles.toggleWrap}
-          >
-            <Switch checked={!inactive} disabled={slot.strategyUnavailable} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
-          </div></Tooltip>
-        )}
-        <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
+        <div style={styles.rowActionCluster}>
+          {strategy && (
+            <Tooltip content={slot.strategyUnavailable ? undefined : slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
+              style={styles.toggleWrap}
+            >
+              <Switch checked={!inactive} disabled={slot.strategyUnavailable} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
+            </div></Tooltip>
+          )}
+          <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
+        </div>
       </div>
       {strategy && (strategy.params.length > 0 || strategy.nestedSlots.length > 0) && (
         <div style={styles.ruleStrategyParams}>

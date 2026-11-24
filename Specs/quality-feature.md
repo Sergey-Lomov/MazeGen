@@ -584,7 +584,10 @@ The tag lives on three descriptor levels, with two different scopes of effect:
   the key set (`validate_cell_type_params`, also run on the browser path in `maze-wasm/src/runner.rs`):
   a `"true"` param naming a key the tessellation lacks is a config error. On a tessellation switch,
   `qcTessellationFilter` resets such params to `"false"` (core types are resolved lazily, only when
-  some param carries this tag), since the hidden row could not be cleared by the user.
+  some param carries this tag), since the hidden row could not be cleared by the user. An enabled
+  param reset this way flags its affected check `forbidden_cell_type_unavailable`
+  (`needs_reconfiguration`) until the user edits that param. The problem text names the unavailable
+  type, derived from its `forbid_cell_type_<key>` param id and localized by `cell_type.<key>`.
 
 `isEntityVisible(visibility, ctx)` with `ctx = { floorCount, cellTypeKeys }` (`ParamFields.tsx`;
 `useVisibilityContext()` reads it from the store) is the single interpreter for every
@@ -655,7 +658,7 @@ itself when a check is added or enabled.
 
 ```typescript
 type QcProblemCategory = "needs_reconfiguration" | "cannot_apply";
-type QcProblemCode = "patterns_dropped" | "patterns_emptied" | "limits_reset"   // needs_reconfiguration
+type QcProblemCode = "patterns_dropped" | "patterns_emptied" | "limits_reset" | "forbidden_cell_type_unavailable" // needs_reconfiguration
                    | "irregular_tessellation" | "cell_sides_exceed";            // cannot_apply
 interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: number; paramId?: string }
 ```
@@ -665,7 +668,9 @@ interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: nu
 - **Sources** (`qcForTessellation`, `store/slices/qcTessellationFilter.ts`): any pattern dropped from a pattern list
   (check param, rule-level param, strategy/nested split config) is `patterns_dropped`; a non-empty list that lost every
   pattern is kept as `[]` and flagged `patterns_emptied` (an empty list means "any split tile", so the owner must not run
-  until reviewed); configured node shape limits reset to none are `limits_reset`; a check failing its
+  until reviewed); configured node shape limits reset to none are `limits_reset`; an enabled
+  `forbid_cell_type_<key>` reset because the new tessellation lacks `key` is
+  `forbidden_cell_type_unavailable` on its check and param; a check failing its
   `CheckDescriptor.requires` is `cannot_apply`. Rule-level pattern lists flag every check consuming them
   (`applies_to`) and the rule's strategy when it does. Nothing is removed.
 - **Unavailable check carries only its availability problem.** A check flagged `cannot_apply` is not reconfigurable, so no

@@ -4,9 +4,15 @@ mod snapshot_dto;
 
 pub use snapshot::build_analytics_snapshot;
 
-use crate::dto::{ComputeAnalyticsConfig, MazeSnapshot};
+use crate::dto::{
+    ComputeAnalyticsConfig, MazeSnapshot, NodeShapeCountDto, NodeShapeStatisticsRequest,
+};
 use crate::generation_config::{self, GenerateConfig};
-use maze_core::{Maze, graph::Graph, space::Tessellation};
+use maze_core::{
+    Maze,
+    graph::{EdgeKind, Graph, node_shape::nodes_by_shape},
+    space::Tessellation,
+};
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
@@ -26,6 +32,72 @@ pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
     let cfg: ComputeAnalyticsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
     dispatch_compute_analytics(cfg)
+}
+
+/// Counts the displayed maze's typed node shapes only when its dialog opens (GitHub issue #1085).
+/// It intentionally shares `nodes_by_shape` with the quality-control shape-limit check.
+#[wasm_bindgen]
+pub fn node_shape_statistics(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: NodeShapeStatisticsRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let tessellation_config = request.tessellation.clone();
+    build_tessellation(&tessellation_config, NodeShapeStatisticsVisitor { request })
+        .map_err(|e| JsValue::from_str(&e))?
+}
+
+struct NodeShapeStatisticsVisitor {
+    request: NodeShapeStatisticsRequest,
+}
+
+impl TessellationVisitor for NodeShapeStatisticsVisitor {
+    type Output = Result<JsValue, JsValue>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        let request = self.request;
+        if request.nodes.is_empty() || request.level_fields.is_empty() {
+            return Err(JsValue::from_str(
+                "nodes and level_fields must not be empty",
+            ));
+        }
+        let (mut field, _, _, _) = build_field_from_nodes(
+            &tessellation,
+            &request.nodes,
+            request.level_fields.len(),
+            &|[x, y]| Some((codec.from_xy)(x, y)),
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+        install_topologies(
+            &mut field,
+            &request.topology,
+            tessellation.as_ref(),
+            |x, y| Some((codec.from_xy)(x, y)),
+            &request.tessellation,
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        for edge in request.edges {
+            let kind = match edge.kind.as_str() {
+                "basic" => EdgeKind::Basic,
+                "teleport" => EdgeKind::Teleport,
+                "vertical_passage" => EdgeKind::VerticalPassage,
+                "elevator" => EdgeKind::Elevator,
+                other => return Err(JsValue::from_str(&format!("unknown edge kind: {other}"))),
+            };
+            graph.build_initial_edge(edge.from as u64, edge.to as u64, kind);
+        }
+        let counts: Vec<NodeShapeCountDto> = nodes_by_shape(&graph, &field)
+            .into_iter()
+            .map(|(typed, nodes)| NodeShapeCountDto {
+                cell_type: typed.cell_type,
+                shape: typed.shape.key(),
+                count: nodes.len(),
+            })
+            .collect();
+        serde_wasm_bindgen::to_value(&counts).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
 }
 
 fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, JsValue> {

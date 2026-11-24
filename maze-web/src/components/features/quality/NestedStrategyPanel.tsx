@@ -9,6 +9,7 @@ import { WarningIcon } from "../../WarningIcon";
 import { DeleteIconButton } from "../../DeleteIconButton";
 import { EditIconButton } from "../../EditIconButton";
 import { IconActionButton } from "../../IconActionButton";
+import { CollapseButton } from "../../CollapseButton";
 import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
 import { ui, typography, spacing, indent } from "../../../styles/theme";
@@ -235,6 +236,7 @@ interface EntryRowProps {
 //   depth + 1  — the nested strategy's own params / further-nested slots
 function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, showPriority, showThreshold, interval, onMaxSizeCommit, maxSizeAdjustment, rank, canMoveUp, canMoveDown, removable, depth, selection, onSelect }: EntryRowProps) {
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
+  const toggleNestedStrategyCollapsed = useMazeStore((s) => s.toggleNestedStrategyCollapsed);
   const removeNestedStrategy = useMazeStore((s) => s.removeNestedStrategy);
   const moveNestedStrategy = useMazeStore((s) => s.moveNestedStrategy);
   const rawNested = useMazeStore((s) => findRawNested(s.rules.find((r) => r.id === ruleId), path));
@@ -242,6 +244,8 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
   const [dialogOpen, setDialogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.type === "nested_strategy" && selection.ruleId === ruleId && pathsEqual(selection.path, path);
+  const collapsed = rawNested?.collapsed ?? true;
+  const hasCollapsibleContent = node.params.length > 0 || (depth < MAX_NESTED_STRATEGY_DEPTH && node.strategy.nestedSlots.length > 0);
   const maxSizeInputId = `nested-strategy-max-size-${ruleId}-${path.map((p) => `${p.slotId}-${p.index}`).join("-")}`;
   const weightInputId = `nested-strategy-weight-${ruleId}-${path.map((p) => `${p.slotId}-${p.index}`).join("-")}`;
 
@@ -340,7 +344,19 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             onSelect({ type: "nested_strategy", ruleId, path });
           }}
         >
-          <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
+          <Inline gap="itemGap" justify="space-between" style={{ borderRadius: 3 }}>
+            <span style={styles.collapseWrap} onClick={(e) => e.stopPropagation()}>
+              <CollapseButton
+                collapsed={collapsed}
+                onToggle={() => toggleNestedStrategyCollapsed(ruleId, path)}
+                collapseTitle={m["quality.collapse_nested_strategy"]()}
+                expandTitle={m["quality.expand_nested_strategy"]()}
+                style={styles.collapseBtn}
+                disabled={!hasCollapsibleContent}
+                disabledTitle={m["quality.nested_strategy.no_nested_settings"]()}
+                iconSize={14}
+              />
+            </span>
             <span style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</span>
             <span style={styles.strategyName}>
               {resolveStrategyLabel(node.strategy.id)}
@@ -354,7 +370,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
               />
             )}
           </Inline>
-          {node.params.length > 0 && (
+          {!collapsed && node.params.length > 0 && (
             // No `stopPropagation` wrapper here — `ParamFields` itself stops propagation only on
             // its actual controls (input/select/switch), so empty space around them (labels,
             // gaps) still falls through to this block's own click-to-select handler above.
@@ -363,7 +379,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             </div>
           )}
         </div>
-        {depth < MAX_NESTED_STRATEGY_DEPTH && node.strategy.nestedSlots.map((childSlotDesc) => (
+        {!collapsed && depth < MAX_NESTED_STRATEGY_DEPTH && node.strategy.nestedSlots.map((childSlotDesc) => (
           <div key={childSlotDesc.slotId} style={{ ...styles.indented, marginLeft: indent.tree }}>
             <NestedStrategyPanel
               ruleId={ruleId}
@@ -470,6 +486,21 @@ const styles = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
     textAlign: "right" as const,
+  },
+  collapseBtn: {
+    background: "none",
+    border: "none",
+    color: ui.text.tertiary,
+    padding: 0,
+    cursor: "default",
+    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  collapseWrap: {
+    display: "flex",
+    alignItems: "center",
   },
   // Up/down priority-reorder buttons — same shape as `DeleteIconButton`, disabled (not hidden) at
   // either end of the sibling list so the row's width stays stable as rank changes.

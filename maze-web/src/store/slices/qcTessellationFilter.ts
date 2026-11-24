@@ -102,6 +102,7 @@ function filterParams(
       }
     } else if (p.visibility?.type === "cell_type") {
       value = filterCellTypeParam(raw, p.visibility.key, cellTypes());
+      if (value !== raw) report("forbidden_cell_type_unavailable", p.id);
     }
     if (value !== raw && value !== undefined) {
       if (next === params) next = { ...params };

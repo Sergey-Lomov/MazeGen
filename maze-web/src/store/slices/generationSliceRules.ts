@@ -11,7 +11,7 @@ import {
 type RulesSliceKeys =
   | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "toggleCheckDisabled" | "removeCheckFromRule"
   | "setStrategy" | "clearStrategy" | "setNestedStrategy" | "setNestedStrategyParam" | "addNestedStrategy"
-  | "removeNestedStrategy" | "moveNestedStrategy" | "toggleStrategyDisabled" | "toggleRuleDisabled"
+  | "removeNestedStrategy" | "moveNestedStrategy" | "toggleNestedStrategyCollapsed" | "toggleStrategyDisabled" | "toggleRuleDisabled"
   | "toggleRuleCollapsed" | "renameRule" | "setRuleZoneScope" | "removeRule" | "moveRule"
   | "reorderRule" | "moveRuleToNewStage";
 
@@ -156,7 +156,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       );
       const params = { ...(descriptor ? defaultParamsFor(descriptor) : {}), ...kept };
       const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
-      return [{ slotId: target.slotId, strategyId, params, nested }];
+      return [{ slotId: target.slotId, strategyId, params, nested, ...(target.collapsed !== undefined ? { collapsed: target.collapsed } : {}) }];
     };
     return {
       rules: state.rules.map((g) => g.id === ruleId ? withoutProblems({ ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, transform) }, (p) => p.scope === "nested") : g),
@@ -187,6 +187,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       strategyId: candidate.id,
       params: defaultParamsFor(candidate),
       nested: buildDefaultNestedStrategies(candidate.id, state.availableStrategies),
+      collapsed: true,
     };
     function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
       if (remainingPath.length === 1) return [...list, newEntry];
@@ -217,6 +218,18 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       ? { ...g, nestedStrategies: moveNestedAt(g.nestedStrategies, path, direction) }
       : g),
     debugStale: debugStaleOf(state),
+  })),
+
+  toggleNestedStrategyCollapsed: (ruleId, path) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? {
+          ...g,
+          nestedStrategies: updateNestedAt(g.nestedStrategies, path, (target) => [{
+            ...target,
+            collapsed: !(target.collapsed ?? true),
+          }]),
+        }
+      : g),
   })),
 
   toggleStrategyDisabled: (ruleId) => set((state) => ({

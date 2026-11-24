@@ -285,6 +285,10 @@ describe("qcForTessellation: cell_type-scoped params", () => {
     expect(result.rules[0].checks[0].params).toEqual({
       forbid_cell_type_square: "true", forbid_cell_type_hexagon: "false",
     });
+    expect(result.rules[0].problems).toEqual([
+      { code: "forbidden_cell_type_unavailable", scope: "check", localId: 0, paramId: "forbid_cell_type_hexagon" },
+    ]);
+    expect(qcForTessellation({ ...state, rules: result.rules }, tessellationConfigOf("square_octagon")).rules).toBe(result.rules);
   });
 
   it("returns the same references when every forbidden type exists", () => {

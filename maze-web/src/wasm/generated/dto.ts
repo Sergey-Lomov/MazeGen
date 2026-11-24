@@ -61,6 +61,16 @@ export interface NavEdgeDto {
 }
 
 /**
+ * One count in the shape-aware cell statistics dialog (GitHub issue #1085). The pair of keys is
+ * exactly `TypedShape`: `cell_type` is the shape template and `shape` is `NodeShape::key()`.
+ */
+export interface NodeShapeCountDto {
+  cell_type: string;
+  shape: string;
+  count: number;
+}
+
+/**
  * One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
  * check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
  * (check/strategy) node.
@@ -721,5 +731,30 @@ export interface ComputeAnalyticsConfig {
   preset_start?: { point: [number, number]; slot?: number; level?: number };
   /** The project's `preset_finish` marker — see `preset_start`. */
   preset_finish?: { point: [number, number]; slot?: number; level?: number };
+}
+
+/**
+ * One directed edge from the displayed maze graph, for the on-demand node-shape statistics
+ * dialog. This deliberately accepts the snapshot's already-resolved node ids rather than the
+ * post-edit draft endpoint language: the dialog describes the maze currently on screen.
+ */
+export interface NodeShapeStatisticsEdgeDto {
+  from: number;
+  to: number;
+  /** "basic" | "teleport" | "vertical_passage" | "elevator". */
+  kind: "basic" | "teleport" | "vertical_passage" | "elevator";
+}
+
+/**
+ * Input for the on-demand node-shape statistics dialog (GitHub issue #1085). The graph is sent
+ * as rendered so its shape classification stays identical to `node_shape_limits`, including
+ * split nodes and every directed edge kind.
+ */
+export interface NodeShapeStatisticsRequest {
+  tessellation: WasmTessellationConfig;
+  level_fields: [number, number][][];
+  topology?: (WireTopology | null)[];
+  nodes: NodeDto[];
+  edges: NodeShapeStatisticsEdgeDto[];
 }
 
