@@ -3284,6 +3284,7 @@
   "quality.problem_patterns_dropped": "Some split patterns were dropped: their shapes are not in the new tessellation. Review the pattern list.",
   "quality.problem_patterns_emptied": "Every split pattern was dropped, so the pattern list is empty. Choose the patterns again.",
   "quality.problem_limits_reset": "The tessellation change reset the node shape limits. Set them again.",
+  "quality.problem_forbidden_cell_type_unavailable": "The rule was configured using the {cell_type} cell type, which is unavailable in the current tessellation.",
   "quality.problem_irregular_tessellation": "The tessellation has irregular cells, so this check cannot work. Delete it.",
   "quality.problem_cell_sides_exceed": "The tessellation has cells with too many sides, so this check cannot work. Delete it.",
   "quality.problem_irregular_tessellation_strategy": "The tessellation has irregular cells, so this strategy cannot work. Choose another one.",

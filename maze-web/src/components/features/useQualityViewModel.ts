@@ -152,7 +152,7 @@ export function buildProblems(problems: QcProblem[], producedBy: CheckVM[], rule
     if (seen.has(key)) continue;
     seen.add(key);
     result.push({
-      text: resolveProblemText(p.code, p.scope),
+      text: resolveProblemText(p.code, p.scope, p.paramId),
       checkLabel: !shared && p.scope === "check" ? producedBy.find((c) => c.localId === p.localId)?.label : undefined,
     });
   }
