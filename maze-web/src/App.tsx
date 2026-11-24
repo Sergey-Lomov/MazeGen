@@ -48,10 +48,12 @@ export function App() {
   const qualityOpen = openCard === "quality";
   const floorCount = useMazeStore((s) => s.floors.length);
   const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
-  const field = useMazeStore((s) => s.floorFields[s.activeFloorId]);
+  // Select only the two flags: the whole floor field object changes on every cell edit and would re-render the app.
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const zoneEditing = useMazeStore((s) => zoneEditActive(s));
-  const showMirrorPanel = ((openCard === "field_setup" && field.fieldEditMode === "custom") || zoneEditing)
-    && field.fieldPrimitive === "mirror";
+  const showMirrorPanel = ((openCard === "field_setup" && fieldEditMode === "custom") || zoneEditing)
+    && fieldPrimitive === "mirror";
 
   useEffect(() => {
     loadRegistry();

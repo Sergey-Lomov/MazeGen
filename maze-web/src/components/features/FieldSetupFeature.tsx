@@ -32,15 +32,20 @@ type ConfirmPending = "switchToDefault" | "clearField" | null;
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const selectedShape = useMazeStore((s) => s.floorFields[s.activeFloorId].selectedShape);
-  const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
-  const translateAvailable = fieldOperationAvailable(fieldConfig.tessellation, "translate");
+  // A custom field's config is rebuilt on every cell edit, so a custom editor must not subscribe to it
+  // (it would re-render this whole section per edit). Only the default editor renders from the config.
+  const fieldConfig = useMazeStore((s) => {
+    const field = s.floorFields[s.activeFloorId];
+    return field.fieldEditMode === "custom" ? null : field.fieldConfig;
+  });
+  const translateAvailable = useMazeStore((s) => fieldOperationAvailable(s.floorFields[s.activeFloorId].fieldConfig.tessellation, "translate"));
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const setSelectedShape = useMazeStore((s) => s.setSelectedShape);
   const setFieldConfig = useMazeStore((s) => s.setFieldConfig);
   const setFieldConfigsForFloors = useMazeStore((s) => s.setFieldConfigsForFloors);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
-  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
+  const hasFieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints.size > 0);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const centerFieldPoints = useMazeStore((s) => s.centerFieldPoints);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
@@ -63,11 +68,12 @@ export function FieldSetupFeature() {
   const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
 
   const isCustom = fieldEditMode === "custom";
-  const printableConfig = !isCustom && isPredefinedFieldConfig(fieldConfig)
+  const printableConfig = !isCustom && fieldConfig && isPredefinedFieldConfig(fieldConfig)
     ? fieldConfig
     : null;
 
   function setField(field: string, value: number): InputNormalizationReason | void {
+    if (!fieldConfig) return;
     // The compact layout of a box or polyhedron is always by faces.
     const { shape } = fieldConfig;
     const forced = isSwitchedShape(shape) && field === "net" && value === compactNetOf(fieldConfig.tessellation, shape) ? { mode: 1 } : {};
@@ -83,7 +89,7 @@ export function FieldSetupFeature() {
   function handleSwitchToDefault() {
     // The generation-loss dialog (store) already covers the loss of custom shape changes.
     const generationLossDialogShown = hasGeneration(useMazeStore.getState());
-    if (isCustom && fieldPoints.size > 0 && !generationLossDialogShown) {
+    if (isCustom && hasFieldPoints && !generationLossDialogShown) {
       setConfirmPending("switchToDefault");
     } else {
       setFieldEditMode("default");
@@ -101,6 +107,7 @@ export function FieldSetupFeature() {
   }
 
   function renderShapeSelect() {
+    if (!fieldConfig) return null;
     return (
       <label style={styles.label}>
         {m["field.shape"]()}
@@ -117,6 +124,7 @@ export function FieldSetupFeature() {
   }
 
   function renderParams() {
+    if (!fieldConfig) return null;
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
     const values = shape as unknown as Record<string, number>;
@@ -250,7 +258,7 @@ export function FieldSetupFeature() {
           </Button>
           <Button
             variant="secondary"
-            disabled={fieldEditLocked || fieldPoints.size === 0 || !translateAvailable}
+            disabled={fieldEditLocked || !hasFieldPoints || !translateAvailable}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={centerFieldPoints}
           >
@@ -306,9 +314,9 @@ export function FieldSetupFeature() {
       )}
       {paperLayoutDialogOpen && (
         <PaperLayoutDialog
-          config={fieldConfig}
+          config={activeFieldConfigNow()}
           onApply={(input) => {
-            setPrintFieldSizing(input, { tessellation: fieldConfig.tessellation });
+            setPrintFieldSizing(input, { tessellation: activeFieldConfigNow().tessellation });
             setShowPaperLayout(true);
           }}
           onClose={() => setPaperLayoutDialogOpen(false)}
@@ -316,6 +324,12 @@ export function FieldSetupFeature() {
       )}
     </Stack>
   );
+}
+
+/** The active floor's current field config, read on demand: the section does not subscribe to it in a custom editor. */
+function activeFieldConfigNow(): FieldConfig {
+  const state = useMazeStore.getState();
+  return state.floorFields[state.activeFloorId].fieldConfig;
 }
 
 function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string {
