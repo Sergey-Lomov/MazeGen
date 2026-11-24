@@ -332,10 +332,21 @@ describe("export floor labels", () => {
     expect(settings.floorLabelType).toBe("letters");
     expect(settings.floorLabel.labelType).toBe("letters");
     expect(settings.elevatorBadges.labelType).toBe("letters");
-    expect(settings.teleportFloorBadge.labelType).toBe("letters");
-    expect(settings.links.filter((link) => link.source === "floorLabelType").map((link) => link.target)).toEqual([
+    // Teleport badge keeps its own Arabic default; its link is disabled by default (#1061).
+    expect(settings.teleportFloorBadge.labelType).toBe("arabic");
+    const labelLinks = settings.links.filter((link) => link.source === "floorLabelType");
+    expect(labelLinks.map((link) => link.target)).toEqual([
       "teleportFloorBadge.labelType", "elevatorBadges.labelType", "floorLabel.labelType",
     ]);
+    expect(labelLinks.map((link) => link.enabled)).toEqual([false, true, true]);
+  });
+
+  it("keeps the teleport badge label link disabled by default in vector-by-corridors mode", () => {
+    const labelLinks = DEFAULT_VECTOR_BY_CORRIDORS_LINKS.filter((link) => link.source === "floorLabelType");
+    expect(labelLinks.map((link) => [link.target, link.enabled])).toEqual([
+      ["teleportFloorBadge.labelType", false], ["elevatorBadges.labelType", true], ["floorLabel.labelType", true],
+    ]);
+    expect(BASE_CORRIDORS_SETTINGS.teleportFloorBadge.labelType).toBe("arabic");
   });
 
   it("keeps floor-label text size independent from shared style links", () => {
