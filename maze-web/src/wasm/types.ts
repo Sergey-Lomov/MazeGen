@@ -33,6 +33,8 @@ export type {
   VerticalEdgeDto,
   AnalyticsRuleGroupConfig,
   ComputeAnalyticsConfig,
+  NodeShapeStatisticsRequest,
+  NodeShapeCountDto,
   MazeSnapshot,
 } from "./generated/dto";
 

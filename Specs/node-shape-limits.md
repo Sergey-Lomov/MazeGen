@@ -211,6 +211,10 @@ occurrence order and drops duplicates). Different checks flagging different shap
   the vocabulary coming from `features/nodeShapeSiblings` (a registry `nodeShapeVocabulary` fills with the applied
   tessellation's shapes, so `issueRegistry` and the store do not import each other; unregistered = full labels); the description lists one bullet per entry, e.g. "Dead end: count 7, above the allowed 5".
   The limits dialog (`NodeShapeLimitsDialog`) edits a draft: the confirm button applies it, closing cancels.
+  Analytics also exposes an on-demand “Cell shape statistics” dialog (GitHub issue #1085). It counts
+  the currently displayed graph with the same core `nodes_by_shape` classifier as this check, then
+  groups each `TypedShape` count by cell type and shape. The request runs only when the dialog is
+  opened; it is not added to generation or the ordinary analytics snapshot.
 
 ## Repair strategy (`NodeShapeRebalanceStrategy`, GitHub issue #1025)
 

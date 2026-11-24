@@ -75,4 +75,11 @@ export const styles: Record<string, React.CSSProperties> = {
   previewTile: { width: 56, height: 56, flexShrink: 0 },
   patternStatsInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   patternStatsTitle: { ...typography.body, fontWeight: "bold" as const },
+  // The same compact three-column layout as NodeShapeLimitsEditor: a shared count column stays
+  // vertically aligned, while the compact dialog keeps the result visually centred.
+  nodeShapeStatsGrid: {
+    display: "grid", gridTemplateColumns: "auto auto auto", justifyContent: "center",
+    alignItems: "center", columnGap: spacing.sectionGap, rowGap: spacing.sectionGap,
+  },
+  nodeShapeStatsText: { ...typography.body, whiteSpace: "nowrap" as const },
 };

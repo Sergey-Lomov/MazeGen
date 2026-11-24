@@ -1,3 +1,4 @@
+use crate::dto::NodeDto;
 use crate::generation_config::TessellationConfig;
 use maze_core_macros::Dto;
 use serde::Deserialize;
@@ -169,4 +170,31 @@ pub struct ComputeAnalyticsConfig {
     #[serde(default)]
     #[dto(ts_type = "{ point: [number, number]; slot?: number; level?: number }")]
     pub preset_finish: Option<crate::generation_config::PresetEndpointDto>,
+}
+
+/// One directed edge from the displayed maze graph, for the on-demand node-shape statistics
+/// dialog. This deliberately accepts the snapshot's already-resolved node ids rather than the
+/// post-edit draft endpoint language: the dialog describes the maze currently on screen.
+#[derive(Deserialize, Dto)]
+pub struct NodeShapeStatisticsEdgeDto {
+    pub from: u32,
+    pub to: u32,
+    /// "basic" | "teleport" | "vertical_passage" | "elevator".
+    #[dto(ts_type = "\"basic\" | \"teleport\" | \"vertical_passage\" | \"elevator\"")]
+    pub kind: String,
+}
+
+/// Input for the on-demand node-shape statistics dialog (GitHub issue #1085). The graph is sent
+/// as rendered so its shape classification stays identical to `node_shape_limits`, including
+/// split nodes and every directed edge kind.
+#[derive(Deserialize, Dto)]
+pub struct NodeShapeStatisticsRequest {
+    #[dto(ts_type = "WasmTessellationConfig")]
+    pub tessellation: TessellationConfig,
+    pub level_fields: Vec<Vec<[i32; 2]>>,
+    #[serde(default)]
+    #[dto(ts_type = "(WireTopology | null)[]")]
+    pub topology: Vec<Option<maze_runner::topology_wire::TopologyDto>>,
+    pub nodes: Vec<NodeDto>,
+    pub edges: Vec<NodeShapeStatisticsEdgeDto>,
 }
