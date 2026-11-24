@@ -782,7 +782,14 @@ own rule cards (`ui.bg.panel`/`ui.border.default`/`radius.md`) so each link read
 entity, not a bare row. Edit/delete use the shared
 `EditIconButton`/`RemoveIconButton` components (see below). No summary line, no bulk sync/enable/
 disable-all actions; those were cut as duplicating the (now also removed) section-level "Synchronize"
-button and adding chrome around what's usually a short list.
+button and adding chrome around what's usually a short list. While the breadcrumb filter is empty,
+the cards are grouped into collapsible sections (`SectionHeader`, collapsed by default) by the
+target's top-level `group` segment (its own `label` when `group` is empty). While the filter is
+active (GitHub issue #1081) grouping is dropped: every matching card shows in one flat list, since
+matches would otherwise be scattered across sections; clearing the filter restores the sections. The
+scroll area's scrollbar sits flush with the dialog's right edge (`rowsScroll` cancels `dialogBody`'s
+right padding with a negative margin and re-adds it as padding), so the content keeps a gap from the
+scrollbar and stays aligned with the toolbar.
 
 **Breadcrumb filter (`BreadcrumbNav`, inside the same file).** Replaces an earlier free-text search
 box — the filter can only ever be an actual parameter address, built one level at a time, never an

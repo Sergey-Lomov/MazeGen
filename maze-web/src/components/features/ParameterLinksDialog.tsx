@@ -416,6 +416,38 @@ export function ParameterLinksDialog<P extends string>({
     return next;
   });
 
+  const renderRow = (link: ParamLink<P>) => (
+    <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
+      <div style={styles.rowLine}>
+        <span style={styles.linkLabel}>
+          <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.target)} />
+        </span>
+        <Switch
+          checked={link.enabled}
+          onChange={(enabled) => onSetLinkEnabled(link.target, enabled)}
+          ariaLabel={m["image_export.param_links.enabled_toggle"]()}
+        />
+        <EditIconButton
+          title={m["image_export.param_links.edit_link_title"]()}
+          onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
+        />
+        <DeleteIconButton
+          title={m["image_export.param_links.remove_link"]()}
+          onClick={() => onRemoveLink(link.target)}
+        />
+      </div>
+      <div style={styles.rowLine}>
+        <span style={styles.valueLabel}>
+          {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))}
+          {registry[link.target].type === "color" && (
+            <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
+          )}
+          {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
+        </span>
+      </div>
+    </div>
+  );
+
   return (
     <>
     <Modal
@@ -444,46 +476,20 @@ export function ParameterLinksDialog<P extends string>({
             </div>
             <div style={styles.toolbarDivider} />
             <div style={styles.rowsScroll}>
+              {filterPath.length > 0 ? (
+                <div style={styles.flatRows}>{visibleLinks.map(renderRow)}</div>
+              ) : (
               <div style={styles.linkSections}>
                 {[...linkSections.entries()].map(([section, sectionLinks]) => (
                   <div key={section} style={styles.linkSection}>
                     <SectionHeader label={section} expanded={expandedSections.has(section)} onToggle={() => toggleSection(section)} />
                     {expandedSections.has(section) && <div style={styles.rows}>
-                      {sectionLinks.map((link) => (
-                  <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
-                    <div style={styles.rowLine}>
-                      <span style={styles.linkLabel}>
-                        <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.target)} />
-                      </span>
-                      <Switch
-                        checked={link.enabled}
-                        onChange={(enabled) => onSetLinkEnabled(link.target, enabled)}
-                        ariaLabel={m["image_export.param_links.enabled_toggle"]()}
-                      />
-                      <EditIconButton
-                        title={m["image_export.param_links.edit_link_title"]()}
-                        onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
-                      />
-                      <DeleteIconButton
-                        title={m["image_export.param_links.remove_link"]()}
-                        onClick={() => onRemoveLink(link.target)}
-                      />
-                    </div>
-                    <div style={styles.rowLine}>
-                      <span style={styles.valueLabel}>
-                        {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))}
-                        {registry[link.target].type === "color" && (
-                          <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
-                        )}
-                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
-                      </span>
-                    </div>
-                  </div>
-                      ))}
+                      {sectionLinks.map(renderRow)}
                     </div>}
                   </div>
                 ))}
               </div>
+              )}
             </div>
           </div>
         )
@@ -508,4 +514,3 @@ export function ParameterLinksDialog<P extends string>({
     </>
   );
 }
-
