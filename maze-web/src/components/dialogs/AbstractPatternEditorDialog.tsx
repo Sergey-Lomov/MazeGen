@@ -71,6 +71,7 @@ export function AbstractPatternEditorDialog({ pattern, onConfirm, onClose }: Pro
   const [draft, setDraft] = useState(pattern);
   const [activeNode, setActiveNode] = useState(0);
   const [activeKind, setActiveKind] = useState<PatternTool>("passage");
+  const [pendingRemove, setPendingRemove] = useState<NodeRef | null>(null);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -142,7 +143,6 @@ export function AbstractPatternEditorDialog({ pattern, onConfirm, onClose }: Pro
   const colorAt = splitPatternNodeColor;
   const tileNodes: TileFaceNode[] = tileNodesForPattern(draft, fieldConfig);
 
-  const [pendingRemove, setPendingRemove] = useState<NodeRef | null>(null);
   const nodeWarnings = nodeRefs.map(warningsForNode);
 
   function confirm() {
