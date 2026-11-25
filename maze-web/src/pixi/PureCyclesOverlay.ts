@@ -1,4 +1,3 @@
-import { Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "../domain/renderConstants";
@@ -63,14 +62,7 @@ export class PureCyclesOverlay extends BaseGraphRenderer {
       this.renderCrossFloorMarkers(markers, NODE_RADIUS, PURE_EDGE_COLOR, PURE_EDGE_COLOR, PURE_EDGE_COLOR);
     }
 
-    const g = new Graphics();
-    for (const nodeId of pureCycleNodeIds) {
-      const pos = nodePos.get(nodeId);
-      if (!pos) continue;
-      g.circle(pos.x, pos.y, NODE_RADIUS);
-      g.fill({ color: PURE_NODE_COLOR, alpha: PURE_NODE_ALPHA });
-    }
-    this.nodesContainer.addChild(g);
+    this.drawNodeDots(pureCycleNodeIds, nodePos, PURE_NODE_COLOR, PURE_NODE_ALPHA);
   }
 
   clear(): void {

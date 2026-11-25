@@ -30,6 +30,7 @@ const stateOf = (topology: WireTopology | null, extra: Partial<MazeState> = {}):
   floorTopology: { f0: topology },
   nodes,
   edges: [],
+  navEdges: [],
   hoveredIssueLoopEdges: null,
   ...extra,
 } as unknown as MazeState);
@@ -58,8 +59,10 @@ describe("seam selectors", () => {
   it("collect what the issue highlight needs from the unscoped lists", () => {
     warmCartesianCache(field, cylinder);
     const edges = [{ from: 0, to: 1, kind: "basic" }, { from: 1, to: 2, kind: "elevator" }];
-    const data = selectIssueHighlightData(stateOf(cylinder, { edges } as Partial<MazeState>), { nodes, edges: [] }, field);
+    const navEdges = [{ from: 1, to: 2, path: [1, 2] }];
+    const data = selectIssueHighlightData(stateOf(cylinder, { edges, navEdges } as Partial<MazeState>), { nodes, edges: [] }, field);
     expect([...data.crossFloorEdgeKeys!]).toEqual(["1->2"]);
+    expect(data.navEdges).toBe(navEdges);
     expect(data.resolveNodeCell!(3)).toEqual([nodes[3].x, nodes[3].y]);
     expect(data.activeFloorIndex).toBe(0);
     expect(data.seam).toBeDefined();
