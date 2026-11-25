@@ -70,7 +70,7 @@ type SplitOneWayStyle = { color: number; thickness: number; width: number; join:
  * skipped entirely — their own follow-up sub-issue, same as `VectorByCorridorsSettings`' own doc
  * comment. */
 export class VectorByCorridorsRenderer implements ModeRenderer {
-  getTeleportConnectorPaths(): readonly { edge: import("../../domain/renderers/types").TeleportEdge; points: readonly number[] }[] {
+  getTeleportConnectorPaths(): readonly import("../renderers/teleportConnectorRouting").ConnectorEditPath[] {
     this.renderAll(useMazeStore.getState());
     return this.teleports.renderers.flatMap((renderer) => renderer.getConnectorPaths());
   }

@@ -101,11 +101,13 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   };
   return (
     <SidePanel title={m["image_export.teleport_connector_editor.title"]()} stackKey="image-export-teleport-connectors" onClose={() => { hover([]); onClose(); }}>
-      <SectionHeader
-        label={<span className={warnings.length > 0 ? "problem-section-attention" : undefined}>{resolveExportWarningsSectionTitle(warnings.length)}</span>}
-        expanded={warningsExpanded}
-        onToggle={() => setSectionExpanded(WARNINGS_SECTION_ID, !warningsExpanded)}
-      />
+      <div style={styles.warningsHeader}>
+        <SectionHeader
+          label={<span className={warnings.length > 0 ? "problem-section-attention" : undefined}>{resolveExportWarningsSectionTitle(warnings.length)}</span>}
+          expanded={warningsExpanded}
+          onToggle={() => setSectionExpanded(WARNINGS_SECTION_ID, !warningsExpanded)}
+        />
+      </div>
       {warningsExpanded && warnings.length > 0 && (
         <div style={styles.warnings}>{warnings.map((warning) => <ExportWarningBubble key={warning.key} warning={warning} />)}</div>
       )}
@@ -207,6 +209,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.panel, border: `1px solid ${ui.border.default}`, color: ui.text.tertiary, cursor: "default",
   },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
+  // Taller than the bare header row, which centers its chevron and label inside it.
+  warningsHeader: { display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 32 },
   warnings: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px`, display: "flex", flexDirection: "column", gap: spacing.groupGap },

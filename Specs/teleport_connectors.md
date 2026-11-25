@@ -65,8 +65,20 @@ de Casteljau construction, preserving the drawn path; deleting an interior node 
 remaining segment controls. A manual path never receives an automatic bend choice or corridor offset.
 Its intermediate points are
 nevertheless supplied to the automatic router's avoidance set, so subsequent automatic connectors
-do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
-not route through seams.
+do not cut through a manual bend. A manual path replaces the connector's routed path, so a connector
+that goes through a seam (GitHub issue #1094) is authored in the unfolded frame of the routing above:
+the editor edits the whole uncut path (`RoutedConnector.unfolded`, ending on the unfolded target) as
+one path, and the stored path is cut at the glued face like an automatic one, so both pieces are kept.
+The editor draws every point on the side of the seam where its part of the connector is drawn
+(`connectorSeamFrame.ts`): the points from `UnfoldedPath.firstFar` on — judged by position along the
+path against the cut, not by geometry — are shown at their partner-side position (`toPartner`), a curve
+handle on its anchor's side, and a drag or an inserted point is mapped back (`fromPartner`). The segment
+that crosses the seam (at `UnfoldedPath.cutAt`) is hit-tested as its two drawn pieces. The ends of a manual seam path are kept as
+authored (not snapped back to the markers), so an end dragged off its marker leaves a gap and raises
+`teleport_connector_endpoint_detached` (judged on the first piece's start and the partner piece's end), as
+without a seam; a manual path that no longer crosses the face is drawn as authored, without the straight fallback. Only a connector with a manual path skips the automatic router; every other
+connector is still routed through its seam. A path stored before this rule, in display coordinates,
+does not cross the face and falls back to the straight two pieces.
 
 A manual path whose teleport pair no longer exists among the maze's teleport edges (the teleport was
 deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops it whenever the store's
