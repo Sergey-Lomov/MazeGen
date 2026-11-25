@@ -416,10 +416,6 @@ function paramMax(kind: TessellationKind, shape: PresetFieldShapeName, name: str
   return 200;
 }
 
-function cellsLabel(count: number): string {
-  return count === 1 ? m["field.cell"]({ count }) : m["field.cells"]({ count });
-}
-
 interface FloorFieldSummary {
   fieldEditMode: "default" | "custom";
   fieldPoints: Set<number>;
@@ -440,11 +436,13 @@ function floorShapeLabel(kind: TessellationKind, field: FloorFieldSummary): stri
 
 export function fieldSetupSubtitle(kind: TessellationKind, floorFields: FloorFieldSummary[]): string {
   const totalCount = floorFields.reduce((sum, f) => sum + floorCellCount(f), 0);
-  const countStr = totalCount > 0 ? ` · ${cellsLabel(totalCount)}` : "";
+  const countStr = totalCount > 0 ? ` · ${m["field.cell_count"]({ count: totalCount })}` : "";
 
-  const labels = new Set(floorFields.map((f) => floorShapeLabel(kind, f)));
-  const shape = labels.size === 1 ? [...labels][0] : m["field.different_shapes"]();
-  return `${shape}${countStr}`;
+  // One floor: its shape. Several floors: their count instead (the shapes may differ per floor).
+  const lead = floorFields.length === 1
+    ? floorShapeLabel(kind, floorFields[0])
+    : m["field.floor_count"]({ count: floorFields.length });
+  return `${lead}${countStr}`;
 }
 
 export function configCellCount(cfg: FieldConfig): number {
