@@ -571,6 +571,10 @@ function tryValidateParamLink<P extends string>(v: unknown): ParamLink<P> | null
   };
 }
 
+/** Link paths that no longer exist (the shared `markerTextSize`, removed in GitHub issue #1092).
+ *  Links touching them are dropped on load so the rest of a custom link graph survives. */
+const REMOVED_LINK_PATHS: ReadonlySet<string> = new Set(["markerTextSize"]);
+
 /** Validates a persisted `links` array (GitHub issue #651) — `null`/absent means "untouched since
  *  load (or saved before this issue existed)", read back as `fallback` (the mode's current
  *  `DEFAULT_*_LINKS`) so a project file always picks up a later change to that default set rather
@@ -587,7 +591,9 @@ export function validateLinks<P extends string>(v: unknown, path: string, fallba
   } catch {
     return fallback;
   }
-  const links = arr.map(tryValidateParamLink<P>).filter((l): l is ParamLink<P> => l !== null);
+  const links = arr
+    .map(tryValidateParamLink<P>)
+    .filter((l): l is ParamLink<P> => l !== null && !REMOVED_LINK_PATHS.has(l.source) && !REMOVED_LINK_PATHS.has(l.target));
   try {
     validateLinkGraph(links, registry);
   } catch {
@@ -753,7 +759,6 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
     floorLabel: validateFloorLabelSettings(obj.floorLabel, `${path}.floorLabel`, d.floorLabel),
@@ -968,7 +973,6 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
     floorLabel: validateFloorLabelSettings(obj?.floorLabel, `${path}.floorLabel`, d.floorLabel),
