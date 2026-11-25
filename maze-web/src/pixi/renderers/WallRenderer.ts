@@ -164,6 +164,7 @@ export class WallRenderer {
     extraWallsNoCap?: Point[],
     randomColorMode: RandomWallColorMode = "off",
     randomColorContext?: { floorColor: number; backgroundColor: number },
+    zoneWallStyle?: (edge: WallEdge) => WallStyleOverride | undefined,
   ): void {
     this.g.clear();
     if (!cfg) return;
@@ -171,13 +172,24 @@ export class WallRenderer {
     // Edges on a field border name a cell outside the field; load them in one batch.
     prefetchCellGeometries(data.edges.flatMap((edge) => (edge.face === undefined ? [edge.a, edge.b] : [edge.a])), cfg);
     const solidSegs: SharedEdge[] = [];
+    // Solid walls inside a zone that overrides the wall style (GitHub issue #1040), grouped by that style.
+    const zoneSolidSegs = new Map<string, { style: WallStyleOverride; segs: SharedEdge[] }>();
     const oneWays: { cx: number; cy: number; dx: number; dy: number }[] = [];
     for (const edge of data.edges) {
       const seg = this.getEdgeSegment(edge, cfg);
       if (!seg) continue;
 
       if (edge.style === "solid") {
-        solidSegs.push(seg);
+        // Random wall colours replace the wall colour altogether, so zone styles apply only without them.
+        const zoneStyle = solidStyleOverride && randomColorMode === "off" ? zoneWallStyle?.(edge) : undefined;
+        if (zoneStyle) {
+          const key = `${zoneStyle.color ?? ""}/${zoneStyle.width ?? ""}`;
+          const group = zoneSolidSegs.get(key) ?? { style: { ...solidStyleOverride, ...zoneStyle }, segs: [] };
+          group.segs.push(seg);
+          zoneSolidSegs.set(key, group);
+        } else {
+          solidSegs.push(seg);
+        }
       } else {
         const styleBase = WALL_STYLES[edge.style];
         tracePath(this.g, seg.path);
@@ -226,72 +238,92 @@ export class WallRenderer {
         }
       }
     } else {
-      const width = solidStyleOverride?.width ?? WALL_THICKNESS;
-      const color = solidStyleOverride?.color ?? WALL_STYLES.solid.color;
-      const join = solidStyleOverride?.join ?? WALL_STYLES.solid.join;
-      const realCap = solidStyleOverride?.cap ?? WALL_STYLES.solid.cap;
-      const allPaths = [...solidSegs.map((s) => s.polyline.map(([x, y]) => ({ x, y }))), ...(extraWalls ?? [])];
-      const noCapKeys = new Set((extraWallsNoCap ?? []).map(pointKeyOf));
-      if (randomColorMode === "per_segment" && randomColorContext) {
-        let segmentIndex = 0;
-        for (const path of allPaths) {
-          for (let i = 1; i < path.length; i++) {
-            const segmentColor = randomContrastingWallColor(segmentIndex++, randomColorContext.floorColor, randomColorContext.backgroundColor);
-            const cap = realCap === "round" || (
-              !noCapKeys.has(pointKeyOf(path[i - 1])) && !noCapKeys.has(pointKeyOf(path[i]))
-            ) ? realCap : "butt";
-            this.g.moveTo(path[i - 1].x, path[i - 1].y).lineTo(path[i].x, path[i].y)
-              .stroke({ width, color: segmentColor, join, cap });
-          }
-        }
-        for (const { cx, cy, dx, dy } of oneWays) {
-          this.drawOneWayIndicator(cx, cy, dx, dy, oneWayStyleOverride);
-        }
-        return;
-      }
-      const chainedPaths = chainPathsAtSharedVertices(allPaths);
-      // A chained path's own two outer ends land either on a genuine free end (degree 1 — nothing
-      // else meets it there) or a T-/triple-junction (degree >= 3 — other unrelated paths converge
-      // at an angle). For the miter/square style, a protruding cap has no shared join with those
-      // other paths and pokes across them, visibly creating a star bulge at triple-points (GitHub
-      // issue #319 follow-up). The rounded Vector-by-walls style intentionally keeps round caps at
-      // every endpoint. `"butt"` never protrudes, so square-ended paths still patch each individual
-      // free end separately. Synthetic no-cap points remain protected for square caps, while round
-      // caps intentionally follow the Vector-by-walls setting's "all endpoints" behavior.
-      const degrees = vertexDegrees(allPaths);
-      // Synthetic clip-cut points (GitHub issue #319 follow-up, `SplitJunctionRenderer`'s
-      // `noCapPoints`) can coincidentally round to the same vertex key as an unrelated real
-      // wallFace end nearby, making them look like a genuine degree-1 free end when they aren't
-      // one — never give those a protruding square cap regardless of what `degrees` says about
-      // them. Round Vector-by-walls caps intentionally remain rounded.
-      for (const [pathIndex, path] of chainedPaths.entries()) {
-        const startFree = degrees.get(pointKeyOf(path[0])) === 1 && !noCapKeys.has(pointKeyOf(path[0]));
-        const endFree = degrees.get(pointKeyOf(path[path.length - 1])) === 1 && !noCapKeys.has(pointKeyOf(path[path.length - 1]));
-        const bothFree = startFree && endFree;
-        const strokeCap = realCap === "round" || bothFree ? realCap : "butt";
-
-        this.g.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
-        const strokeColor = randomColorMode === "per_pass" && randomColorContext
-          ? randomContrastingWallColor(pathIndex, randomColorContext.floorColor, randomColorContext.backgroundColor)
-          : color;
-        this.g.stroke({ width, color: strokeColor, join, cap: strokeCap });
-
-        if (!bothFree && realCap === "square") {
-          for (const [isFree, p, neighbor] of [
-            [startFree, path[0], path[1]],
-            [endFree, path[path.length - 1], path[path.length - 2]],
-          ] as const) {
-            if (!isFree) continue;
-            const [p0, p1, p2, p3] = computeSquareCapPatch(p, neighbor, width);
-            this.g.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).lineTo(p2.x, p2.y).lineTo(p3.x, p3.y).closePath().fill(strokeColor);
-          }
-        }
+      this.strokeSolidWalls(solidSegs, solidStyleOverride, extraWalls, extraWallsNoCap, randomColorMode, randomColorContext, oneWays, oneWayStyleOverride);
+      // That mode has drawn the one-way indicators already and takes no zone styles.
+      if (randomColorMode === "per_segment" && randomColorContext) return;
+      for (const { style, segs } of zoneSolidSegs.values()) {
+        this.strokeSolidWalls(segs, style, undefined, undefined, randomColorMode, randomColorContext, [], oneWayStyleOverride);
       }
     }
 
     for (const { cx, cy, dx, dy } of oneWays) {
       this.drawOneWayIndicator(cx, cy, dx, dy, oneWayStyleOverride);
+    }
+  }
+
+  /** Strokes the solid walls with a style: chained at shared vertices, so the corners join. A `"per_segment"` random
+   *  colour mode strokes each segment alone and draws the one-way indicators itself, as it is the last thing drawn. */
+  private strokeSolidWalls(
+    solidSegs: SharedEdge[],
+    solidStyleOverride: WallStyleOverride | undefined,
+    extraWalls: Point[][] | undefined,
+    extraWallsNoCap: Point[] | undefined,
+    randomColorMode: RandomWallColorMode,
+    randomColorContext: { floorColor: number; backgroundColor: number } | undefined,
+    oneWays: { cx: number; cy: number; dx: number; dy: number }[],
+    oneWayStyleOverride: OneWayStyleOverride | undefined,
+  ): void {
+    const width = solidStyleOverride?.width ?? WALL_THICKNESS;
+    const color = solidStyleOverride?.color ?? WALL_STYLES.solid.color;
+    const join = solidStyleOverride?.join ?? WALL_STYLES.solid.join;
+    const realCap = solidStyleOverride?.cap ?? WALL_STYLES.solid.cap;
+    const allPaths = [...solidSegs.map((s) => s.polyline.map(([x, y]) => ({ x, y }))), ...(extraWalls ?? [])];
+    const noCapKeys = new Set((extraWallsNoCap ?? []).map(pointKeyOf));
+    if (randomColorMode === "per_segment" && randomColorContext) {
+      let segmentIndex = 0;
+      for (const path of allPaths) {
+        for (let i = 1; i < path.length; i++) {
+          const segmentColor = randomContrastingWallColor(segmentIndex++, randomColorContext.floorColor, randomColorContext.backgroundColor);
+          const cap = realCap === "round" || (
+            !noCapKeys.has(pointKeyOf(path[i - 1])) && !noCapKeys.has(pointKeyOf(path[i]))
+          ) ? realCap : "butt";
+          this.g.moveTo(path[i - 1].x, path[i - 1].y).lineTo(path[i].x, path[i].y)
+            .stroke({ width, color: segmentColor, join, cap });
+        }
+      }
+      for (const { cx, cy, dx, dy } of oneWays) {
+        this.drawOneWayIndicator(cx, cy, dx, dy, oneWayStyleOverride);
+      }
+      return;
+    }
+    const chainedPaths = chainPathsAtSharedVertices(allPaths);
+    // A chained path's own two outer ends land either on a genuine free end (degree 1 — nothing
+    // else meets it there) or a T-/triple-junction (degree >= 3 — other unrelated paths converge
+    // at an angle). For the miter/square style, a protruding cap has no shared join with those
+    // other paths and pokes across them, visibly creating a star bulge at triple-points (GitHub
+    // issue #319 follow-up). The rounded Vector-by-walls style intentionally keeps round caps at
+    // every endpoint. `"butt"` never protrudes, so square-ended paths still patch each individual
+    // free end separately. Synthetic no-cap points remain protected for square caps, while round
+    // caps intentionally follow the Vector-by-walls setting's "all endpoints" behavior.
+    const degrees = vertexDegrees(allPaths);
+    // Synthetic clip-cut points (GitHub issue #319 follow-up, `SplitJunctionRenderer`'s
+    // `noCapPoints`) can coincidentally round to the same vertex key as an unrelated real
+    // wallFace end nearby, making them look like a genuine degree-1 free end when they aren't
+    // one — never give those a protruding square cap regardless of what `degrees` says about
+    // them. Round Vector-by-walls caps intentionally remain rounded.
+    for (const [pathIndex, path] of chainedPaths.entries()) {
+      const startFree = degrees.get(pointKeyOf(path[0])) === 1 && !noCapKeys.has(pointKeyOf(path[0]));
+      const endFree = degrees.get(pointKeyOf(path[path.length - 1])) === 1 && !noCapKeys.has(pointKeyOf(path[path.length - 1]));
+      const bothFree = startFree && endFree;
+      const strokeCap = realCap === "round" || bothFree ? realCap : "butt";
+
+      this.g.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
+      const strokeColor = randomColorMode === "per_pass" && randomColorContext
+        ? randomContrastingWallColor(pathIndex, randomColorContext.floorColor, randomColorContext.backgroundColor)
+        : color;
+      this.g.stroke({ width, color: strokeColor, join, cap: strokeCap });
+
+      if (!bothFree && realCap === "square") {
+        for (const [isFree, p, neighbor] of [
+          [startFree, path[0], path[1]],
+          [endFree, path[path.length - 1], path[path.length - 2]],
+        ] as const) {
+          if (!isFree) continue;
+          const [p0, p1, p2, p3] = computeSquareCapPatch(p, neighbor, width);
+          this.g.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).lineTo(p2.x, p2.y).lineTo(p3.x, p3.y).closePath().fill(strokeColor);
+        }
+      }
     }
   }
 

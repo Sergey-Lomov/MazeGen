@@ -32,6 +32,23 @@ export interface ZoneOverride {
   params: Partial<Record<ZoneOverrideParamKey, number>>;
 }
 
+/** The render mode whose settings an export zone override changes. */
+export type ExportOverrideMode = "walls" | "corridors";
+
+/** A value of an export parameter: a colour (0xRRGGBB), a size, a switch or the id of an option. */
+export type ExportOverrideValue = number | boolean | string;
+
+/** Export parameters set inside some zones and groups only (GitHub issue #1040). The parameters are named by their path
+ *  in the mode's settings (`wallColor`, `startMarker.fillColor`). Where overrides of one mode overlap on a parameter
+ *  with different values, the export feature warns. */
+export interface ExportZoneOverride {
+  id: number;
+  mode: ExportOverrideMode;
+  zoneIds: number[];
+  groupIds: number[];
+  params: Record<string, ExportOverrideValue>;
+}
+
 /** The zone or group an override applies to. */
 export interface ZoneOverrideTarget {
   kind: "zone" | "group";
@@ -43,6 +60,11 @@ export interface ZonesState {
   zoneOverrides: ZoneOverride[];
   /** The id the next added override gets. Only grows. */
   nextZoneOverrideId: number;
+  /** Zone overrides of the export parameters (GitHub issue #1040), in insertion order. */
+  exportZoneOverrides: ExportZoneOverride[];
+  nextExportZoneOverrideId: number;
+  /** The zone or group whose settings the export panel shows and edits; `null` for the global ones. */
+  exportOverrideContext: ZoneOverrideTarget | null;
   /** Zone groups of the project, in insertion order. */
   zoneGroups: ZoneGroup[];
   /** The id the next added group gets. Only grows, so an id of a deleted group is never reused. */
@@ -115,6 +137,11 @@ export interface ZonesActions {
   setZoneOverrideTarget: (overrideId: number, target: ZoneOverrideTarget) => void;
   /** Sets a parameter of an override; `null` takes it out (back to the global value). Span bounds stay ordered. */
   setZoneOverrideParam: (overrideId: number, key: ZoneOverrideParamKey, value: number | null) => void;
+  /** Writes parameters into the export override of one zone or group (created when missing): a value sets a parameter,
+   *  `null` takes it out; an override left empty is dropped (GitHub issue #1040). */
+  setExportZoneParams: (mode: ExportOverrideMode, target: ZoneOverrideTarget, changes: Record<string, ExportOverrideValue | null>) => void;
+  removeExportZoneOverride: (id: number) => void;
+  setExportOverrideContext: (target: ZoneOverrideTarget | null) => void;
   setZoneGroupsPanelOpen: (open: boolean) => void;
   setZoneGroupsListMode: (mode: ZonesListMode) => void;
   /** Opens a new empty unnamed group in the group panel as a draft; it joins the list on "Done"; does nothing while a new group is being edited. */

@@ -161,7 +161,6 @@ export class MazeScene {
     // highlights and shapes read over the zones.
     this.syncedLayers = [
       this.zonesContainer,
-      this.zoneHoverContainer,
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
@@ -169,6 +168,8 @@ export class MazeScene {
       this.tessellationContainer,
       this.analyticsContainer,
       this.imageExportContainer,
+      // The hover of a zone or group named in a settings row (GitHub issue #1038, #1040) reads over the export image too.
+      this.zoneHoverContainer,
       this.cutLinesContainer,
       this.imageExportFrameContainer,
     ];

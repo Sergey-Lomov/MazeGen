@@ -14,6 +14,7 @@ import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { patchPaths, type PatchGroup } from "../parameterLinkSchema";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
+import { zoneAwareSet } from "../exportZoneContext";
 import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
@@ -201,6 +202,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
   linkIconVisibility: "linked",
+  showZoneOverrideButtons: true,
+  showZoneProblems: true,
+  zoneOverrideDisplay: "onRequest",
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   floorLabelModeChosen: false,
   vectorByCorridorsSectionsExpanded: {},
@@ -374,6 +378,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
   setShowColorWarnings: (show) => set({ showColorWarnings: show, hoveredExportWarningKey: null }),
   setLinkIconVisibility: (v) => set({ linkIconVisibility: v }),
+  setShowZoneOverrideButtons: (show) => set({ showZoneOverrideButtons: show }),
+  setShowZoneProblems: (show) => set({ showZoneProblems: show }),
+  setZoneOverrideDisplay: (display) => set({ zoneOverrideDisplay: display }),
   setVectorByCorridorsBackground: (color) => set(corridorsParam("background", color)),
   setVectorByCorridorsShowGrid: (v) => set(corridorsParam("showGrid", v)),
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
@@ -589,4 +596,4 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setHoveredExportWarningKey: (key) => set({ hoveredExportWarningKey: key }),
 });
 
-export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExportState & ImageExportActions> = (set) => buildImageExportSlice(set);
+export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExportState & ImageExportActions> = (set) => buildImageExportSlice(zoneAwareSet(set));

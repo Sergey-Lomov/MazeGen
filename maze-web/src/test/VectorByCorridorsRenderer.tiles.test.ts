@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { buildCorridorSegments, shortestCorridorFaceAcrossFloors } from "../domain/selectors/mazeSelectors";
 import type { FieldConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
+import { getCellCenter } from "../domain/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 import { settingsA, settingsB, baseState, stableCfg, tilesOf, tileAt, corridorsOf, turn, makeRenderer, useRendererReset } from "./vbcKit";
 
@@ -114,6 +115,44 @@ describe("VectorByCorridorsRenderer tiles", () => {
     // Only the free end's cell gets a tile; the split cell is drawn by `drawSplitPassages`.
     expect(tilesOf(renderer).map((tile) => tile.offset)).toEqual([{ x: 0, y: 20 }]);
     expect(tilesOf(renderer)[0].graphics.context.fill).toHaveBeenCalledWith(0xffffff);
+  });
+
+  it("tints the cells of a zone with the zone's own corridor colour (GitHub issue #1040)", () => {
+    const a = getCellCenter(0, 0, stableCfg);
+    const b = getCellCenter(1, 0, stableCfg);
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce([{ v0: a, v1: b, fromNode: 1, toNode: 2 }] as never);
+    mockStore.current = baseState({
+      nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 1, y: 0 }],
+      zones: [{ id: 1, name: "Z", kind: "manual", cells: [[0, 0, 0]] }],
+      exportZoneOverrides: [{ id: 1, mode: "corridors", zoneIds: [1], groupIds: [], params: { color: 0x123456 } }],
+    });
+    const renderer = makeRenderer();
+    expect(tileAt(renderer, a).graphics.tint).toBe(0x123456);
+    expect(tileAt(renderer, b).graphics.tint).toBe(settingsA.color);
+  });
+
+  it("shapes the cells of a zone with the zone's own junction radius and keeps the rest (GitHub issue #1040)", () => {
+    const a = getCellCenter(0, 0, stableCfg);
+    const b = getCellCenter(1, 0, stableCfg);
+    const segments = [{ v0: a, v1: b, fromNode: 1, toNode: 2 }] as never;
+    const nodes = [{ id: 1, x: 0, y: 0 }, { id: 2, x: 1, y: 0 }];
+    const state = (params: Record<string, unknown>) => baseState({
+      nodes,
+      zones: [{ id: 1, name: "Z", kind: "manual", cells: [[0, 0, 0]] }],
+      exportZoneOverrides: [{ id: 1, mode: "corridors", zoneIds: [1], groupIds: [], params }],
+    });
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce(segments);
+    mockStore.current = state({ color: 0x123456 });
+    const renderer = makeRenderer();
+    const plainKeys = [tileAt(renderer, a).key, tileAt(renderer, b).key];
+
+    // Recolour only: both cells keep their shape.
+    expect([tileAt(renderer, a).key, tileAt(renderer, b).key]).toEqual(plainKeys);
+
+    const renderAll = (next: unknown) => (renderer as unknown as { renderAll: (s: unknown) => void }).renderAll(next);
+    renderAll(state({ junctionRadius: settingsA.junctionRadius + 4 }));
+    expect(tileAt(renderer, a).key).not.toBe(plainKeys[0]);
+    expect(tileAt(renderer, b).key).toBe(plainKeys[1]);
   });
 
   it("rebuilds tiles in place when the shape settings change, keeping each cell's object", () => {

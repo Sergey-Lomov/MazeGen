@@ -10,6 +10,7 @@ import { splitSlotColor } from "../../domain/colorUtils";
 import { canvas } from "../../domain/colorTokens";
 import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { ExportWarningsSection } from "./ExportWarningsSection";
+import { ExportZoneContextBar, useEffectiveWallsSettings, useOtherContextOverrides, useZoneRowContext } from "./ExportZoneOverrides";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { WaypointOpeningSubsection } from "./WaypointOpeningSubsection";
@@ -20,7 +21,7 @@ import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection } from "./TeleportSettingsSection";
-import { useExportPanelModel } from "./useExportPanelModel";
+import { useExportPanelModel, useZoneWallsWarnings } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { TopologySettingsSection } from "./TopologySettingsSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
@@ -55,8 +56,11 @@ import * as m from "~/paraglide/messages";
  * which uses a brighter standalone default — GitHub issue #292). Section layout (row gap, divider
  * between sections) mirrors `AnalyticsFeature`'s collapsible sections. */
 export function VectorByWallsSettingsPanel() {
-  const settings = useMazeStore((s) => s.vectorByWallsSettings);
+  const settings = useEffectiveWallsSettings();
+  const zone = useZoneRowContext("walls", settings.links);
+  const otherOverrides = useOtherContextOverrides("walls");
   const showColorWarnings = useMazeStore((s) => s.showColorWarnings);
+  const zoneWarnings = useZoneWallsWarnings();
   const setShowColorWarnings = useMazeStore((s) => s.setShowColorWarnings);
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
@@ -167,12 +171,14 @@ export function VectorByWallsSettingsPanel() {
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate, zone, otherOverrides } as unknown as LinkContextValue<string>}>
     <ColorVisibilityProvider value={colorVisibility}>
     <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
+      <ExportZoneContextBar mode="walls" />
       <ExportWarningsSection
         warnings={exportWarnings}
+        zoneWarnings={zoneWarnings}
         expanded={isExpanded("warnings")}
         onToggle={() => toggleSection("warnings")}
         showColorWarnings={showColorWarnings}
@@ -184,7 +190,7 @@ export function VectorByWallsSettingsPanel() {
         expanded={isExpanded("settings")}
         onToggle={() => toggleSection("settings")}
       />
-      {isExpanded("settings") && (
+      {isExpanded("settings") && !zone && (
         <SettingsSection
           onResetAll={resetAllSettings}
           settings={settings}
@@ -280,6 +286,7 @@ export function VectorByWallsSettingsPanel() {
             checked={settings.randomWallColorMode !== "off"}
             onChange={(enabled) => setRandomWallColorMode(enabled ? "per_pass" : "off")}
             linkTarget={null}
+            zonePath="randomWallColorMode"
             unsupportedHint={m["link_status.unsupported_hint_random_wall_colors"]()}
           />
           {PC.tilesWall.isVisible(colorVisibility) ? (
@@ -302,6 +309,7 @@ export function VectorByWallsSettingsPanel() {
               ]}
               onChange={setRandomWallColorMode}
               linkTarget={null}
+              zonePath="randomWallColorMode"
             />
           )}
           <LinkedSelectRow

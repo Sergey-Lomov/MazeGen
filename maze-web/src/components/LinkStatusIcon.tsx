@@ -26,11 +26,14 @@ function LinkStatusTooltip({
   header,
   lines,
   hint,
+  locked,
 }: {
   status: LinkStatus;
   header: string;
   lines: { text: string; disabled: boolean }[];
   hint: string;
+  /** The hint says editing is unavailable: muted like disabled links, set off by an empty line. */
+  locked: boolean;
 }) {
   return (
     <>
@@ -40,7 +43,7 @@ function LinkStatusTooltip({
           {line.text}
         </span>
       ))}
-      <span style={styles.tooltipHint}>{hint}</span>
+      {hint !== "" && <span style={locked ? styles.tooltipHintLocked : styles.tooltipHint}>{hint}</span>}
     </>
   );
 }
@@ -108,6 +111,8 @@ export function LinkStatusIcon<P extends string>({
   activePaths,
   onToggleLink,
   alwaysVisible = false,
+  readOnly = false,
+  zoneToggle,
 }: {
   target: P | null;
   links: ParamLink<P>[];
@@ -126,6 +131,10 @@ export function LinkStatusIcon<P extends string>({
   onToggleLink?: () => void;
   /** Ignores `linkIconVisibility` — the icon always renders (group mode, GitHub issue #729). */
   alwaysVisible?: boolean;
+  /** Shows the link state only: a click changes nothing, the tooltip hint says so (zone context, GitHub issue #1040), except that `zoneToggle` lets a click switch a driving link for the zone. */
+  readOnly?: boolean;
+  /** With `readOnly`, a click on a field with a driving link turns that link on or off for the zone alone. */
+  zoneToggle?: (enabled: boolean) => void;
 }) {
   const storeVisibility = useMazeStore((s) => s.linkIconVisibility);
   const visibility = alwaysVisible ? "always" : storeVisibility;
@@ -184,6 +193,10 @@ export function LinkStatusIcon<P extends string>({
   }
 
   function handleClick() {
+    if (readOnly) {
+      if (zoneToggle && incoming !== null) zoneToggle(!incoming.enabled);
+      return;
+    }
     if (onToggleLink) {
       if (incoming !== null) onToggleLink();
     } else if (incoming === null) {
@@ -216,8 +229,11 @@ export function LinkStatusIcon<P extends string>({
     const line = m["link_status.outgoing_line"]({ target: hierarchicalLabel(link.target) }) + linkModifiersSuffix(link);
     tooltipLines.push({ text: link.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`, disabled: !link.enabled });
   }
-  let hint: string;
-  if (onToggleLink) {
+  let hint = "";
+  const zoneToggleable = readOnly && zoneToggle !== undefined && incoming !== null;
+  if (zoneToggleable) hint = incoming.enabled ? m["link_status.hint_zone_break"]() : m["link_status.hint_zone_restore"]();
+  else if (readOnly) hint = m["link_status.hint_locked"]();
+  else if (onToggleLink) {
     hint = incoming === null
       ? m["link_status.hint_group_no_link"]()
       : incoming.enabled
@@ -226,7 +242,7 @@ export function LinkStatusIcon<P extends string>({
   } else if (incoming === null) hint = m["link_status.hint_click_to_link"]();
   else if (incoming.enabled) hint = m["link_status.hint_click_to_edit"]();
   else hint = m["link_status.hint_click_to_enable"]();
-  const tooltip = <LinkStatusTooltip status={status} header={header} lines={tooltipLines} hint={hint} />;
+  const tooltip = <LinkStatusTooltip status={status} header={header} lines={tooltipLines} hint={hint} locked={readOnly && !zoneToggleable} />;
 
   // Rule 4: the chain glyph itself is disabled-colored whenever there's no *active* link driving
   // this field — either no link at all, or a driving link that exists but is disabled (override).
@@ -309,5 +325,6 @@ const styles: Record<string, React.CSSProperties> = {
   tooltipLink: { display: "block", color: ui.text.primary },
   tooltipLinkDisabled: { display: "block", color: ui.text.disabled },
   tooltipUnsupportedHeader: { display: "block", color: ui.text.error },
+  tooltipHintLocked: { display: "block", marginTop: "1.2em", color: ui.text.disabled },
   tooltipHint: { display: "block", marginTop: 2, color: ui.text.tertiary },
 };

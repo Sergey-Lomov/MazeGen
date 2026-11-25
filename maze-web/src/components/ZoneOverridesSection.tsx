@@ -56,29 +56,20 @@ export function ZoneOverrideControls({ paramKeys, globalValues, expanded, onTogg
   );
 }
 
-/** List of the zone overrides of one parameter, under that parameter's row; absent while collapsed or without any. Each
- *  row is a bubble naming the zone (in its colour) or the group (blue, prefixed) and the value used inside it; hovering
- *  the bubble lights the zone or the group's zones on the canvas, a click picks another target. */
-export function ZoneOverridesSection({ paramKeys, integer, expanded, onRequest }: { paramKeys: ZoneOverrideParamKey[]; integer?: boolean; expanded: boolean; onRequest: (request: ZoneOverridePickRequest) => void }) {
-  const overrides = useMazeStore((s) => s.zoneOverrides);
+/** What the override rows of both kinds (generation and export) share: the bubbles naming an override's zones and
+ *  groups, the canvas highlight on hover and the jump to a floor holding the target. */
+export function useOverrideTargets() {
   const zones = useMazeStore((s) => s.zones);
   const groups = useMazeStore((s) => s.zoneGroups);
   const floors = useMazeStore((s) => s.floors);
   const colorOverrides = useMazeStore((s) => s.zoneColorOverrides);
-  const removeZoneOverride = useMazeStore((s) => s.removeZoneOverride);
-  const setParam = useMazeStore((s) => s.setZoneOverrideParam);
   const setHover = useMazeStore((s) => s.setHoveredZone);
   const setHoverGroup = useMazeStore((s) => s.setHoveredZoneGroup);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const setActiveFloorId = useMazeStore((s) => s.setActiveFloorId);
-
-  const first = paramKeys[0];
-  const rows = overrides.filter((o) => o.params[first] !== undefined);
-  if (!expanded || rows.length === 0) return null;
-  const conflicts = zoneOverrideConflicts(overrides, zones, groups);
   const palette = zoneColors(zones, colorOverrides);
 
-  const targets = (o: ZoneOverride): { key: string; label: string; colors: { bg: string; text: string }; target: ZoneOverrideTarget }[] => [
+  const targets = (o: Pick<ZoneOverride, "zoneIds" | "groupIds">): { key: string; label: string; colors: { bg: string; text: string }; target: ZoneOverrideTarget }[] => [
     ...groups.filter((g) => o.groupIds.includes(g.id)).map((g) => ({
       key: `g${g.id}`,
       label: `${m["zones.group_prefix"]()} ${zoneGroupDisplayName(g)}`,
@@ -104,6 +95,24 @@ export function ZoneOverridesSection({ paramKeys, integer, expanded, onRequest }
     setHover(target?.kind === "zone" ? target.id : null);
     setHoverGroup(target?.kind === "group" ? target.id : null);
   };
+  return { targets, showTarget, hover };
+}
+
+/** List of the zone overrides of one parameter, under that parameter's row; absent while collapsed or without any. Each
+ *  row is a bubble naming the zone (in its colour) or the group (blue, prefixed) and the value used inside it; hovering
+ *  the bubble lights the zone or the group's zones on the canvas, a click picks another target. */
+export function ZoneOverridesSection({ paramKeys, integer, expanded, onRequest }: { paramKeys: ZoneOverrideParamKey[]; integer?: boolean; expanded: boolean; onRequest: (request: ZoneOverridePickRequest) => void }) {
+  const overrides = useMazeStore((s) => s.zoneOverrides);
+  const zones = useMazeStore((s) => s.zones);
+  const groups = useMazeStore((s) => s.zoneGroups);
+  const removeZoneOverride = useMazeStore((s) => s.removeZoneOverride);
+  const setParam = useMazeStore((s) => s.setZoneOverrideParam);
+  const { targets, showTarget, hover } = useOverrideTargets();
+
+  const first = paramKeys[0];
+  const rows = overrides.filter((o) => o.params[first] !== undefined);
+  if (!expanded || rows.length === 0) return null;
+  const conflicts = zoneOverrideConflicts(overrides, zones, groups);
 
   return (
     <div style={styles.body}>

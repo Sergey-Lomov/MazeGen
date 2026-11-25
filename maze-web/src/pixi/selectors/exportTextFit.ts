@@ -170,15 +170,33 @@ export function pushTextOverflowWarnings(warnings: ExportWarning[], entries: rea
 export function computeTextFitItemsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
+  owns?: TextFitOwner,
 ): Record<TextFitKind, TextFitItem[]> {
-  return trackedMemo("textFitItems", [nodes, edges, floors, cfg, start, finish], settings, (tracked) => (
-    computeTextFitItems(nodes, edges, floors, cfg, tracked, start, finish)
+  return trackedMemo("textFitItems", [nodes, edges, floors, cfg, start, finish, owns], settings, (tracked) => (
+    computeTextFitItems(nodes, edges, floors, cfg, tracked, start, finish, owns)
   ));
+}
+
+/** Which labels one fit pass counts (GitHub issue #1040): `owns(floorIndex, cells)` says whether the cells a label stands on
+ *  belong to the part of the maze being fitted. A label with no cell (the floor label) is always counted. */
+export type TextFitOwner = (floorIndex: number, cells: readonly (readonly [number, number])[]) => boolean;
+
+/** The font size `settings` configures for the labels of `kind`. */
+export function textSizeOf(kind: TextFitKind, settings: TextFitSettings): number {
+  switch (kind) {
+    case "start": return settings.startMarker.textSize ?? DEFAULT_MARKER_TEXT_SIZE;
+    case "finish": return settings.finishMarker.textSize ?? DEFAULT_MARKER_TEXT_SIZE;
+    case "elevator": return settings.elevatorBadges.textSize;
+    case "teleport": return settings.teleportFloorBadge.textSize;
+    case "markerIndex": return settings.markerIndex.textSize;
+    case "floorLabel": return settings.floorLabel.textSize;
+  }
 }
 
 function computeTextFitItems(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
+  owns?: TextFitOwner,
 ): Record<TextFitKind, TextFitItem[]> {
   const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [], floorLabel: [] };
   const resolveNodeLevel = selectNodeLevelResolver(nodes);
@@ -197,6 +215,12 @@ function computeTextFitItems(
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
     for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title, teleportGroups)) {
+      if (owns && entry.kind !== "floorLabel") {
+        const cells: (readonly [number, number])[] = entry.cells
+          ? entry.cells.map((cell) => [cell.x, cell.y] as const)
+          : entry.nodes.flatMap((id) => { const node = nodeById.get(id); return node ? [[node.x, node.y] as const] : []; });
+        if (!owns(index, cells)) continue;
+      }
       result[entry.kind].push({
         text: entry.text, font: entry.font, shape: entry.shape, plateSize: entry.plateSize,
         plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,

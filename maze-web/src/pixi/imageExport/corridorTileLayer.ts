@@ -65,6 +65,11 @@ export class CorridorTileLayer {
     for (const tile of this.tiles.values()) tile.graphics.tint = color;
   }
 
+  /** Tints every tile with the colour `colorOf` names for its cell (zones draw their cells in their own colour). */
+  setTintBy(colorOf: (cellId: string | number) => number): void {
+    for (const [cellId, tile] of this.tiles) tile.graphics.tint = colorOf(cellId);
+  }
+
   destroy(): void {
     for (const tile of this.tiles.values()) tile.graphics.destroy();
     for (const context of this.contexts.values()) context.destroy();

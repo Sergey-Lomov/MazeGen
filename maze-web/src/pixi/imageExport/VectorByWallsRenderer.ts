@@ -17,7 +17,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
 import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
-import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
+import { VerticalConnectionRenderer, type VerticalConnectionRenderData } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, buildWaypointOpenings, isOpeningWall, openingGapReach } from "../../domain/selectors/mazeSelectors";
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
@@ -31,6 +31,8 @@ import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../../domain/renderers/types";
+import { buildExportZoneValues } from "../../store/exportZoneOverrides";
+import { VariantPool, ZoneVariants } from "./zoneVariants";
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "../../domain/imageExport/exportMargins";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
@@ -308,7 +310,7 @@ export class VectorByWallsRenderer {
     // The base renderer can be in a backdrop-only pass while a cut sheet is displayed. Refreshing
     // its plan here keeps the editor independent of that presentation pass.
     this.renderAll(useMazeStore.getState());
-    return this.teleports.getConnectorPaths();
+    return this.teleports.renderers.flatMap((renderer) => renderer.getConnectorPaths());
   }
   private readonly mazeContent: Container;
   private readonly trimMask = new Graphics();
@@ -329,24 +331,27 @@ export class VectorByWallsRenderer {
   private readonly coordinateWarning: CoordinateWarningHighlight;
   /** Optional grid overlay inside the filled maze cells, below walls and markers. */
   private readonly innerGridContainer: Container;
-  private readonly innerGrid: GridRenderer;
+  /** One grid per settings variant (GitHub issue #1040): a zone can give its cells another inner grid colour. */
+  private readonly innerGrids: VariantPool<GridRenderer>;
   private innerGridCells: readonly [number, number][] = [];
+  private innerGridLayers: { color: number; cells: [number, number][] }[] = [];
 
   private readonly glueTabRenderer: GlueTabRenderer;
   private readonly backgroundGrid: BackgroundGridLayer<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
-  private readonly floor: CellFillRenderer;
-  private readonly closedCells: CellFillRenderer;
-  private readonly walls: WallRenderer;
+  // The layers below draw once per settings variant (GitHub issue #1040), each over the elements its variant owns.
+  private readonly floor: VariantPool<CellFillRenderer>;
+  private readonly closedCells: VariantPool<CellFillRenderer>;
+  private readonly walls: VariantPool<WallRenderer>;
   /** Arrows of the start/finish openings (GitHub issue #330), drawn over the walls in the walls container. */
   private readonly openings: WaypointOpeningRenderer;
-  private readonly splitJunctions: SplitJunctionRenderer;
-  private readonly teleports: TeleportRenderer;
+  private readonly splitJunctions: VariantPool<SplitJunctionRenderer>;
+  private readonly teleports: VariantPool<TeleportRenderer>;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #347)
    *  — never shared with a future floor-aware `GenerationRenderer`'s own instance. */
-  private readonly verticalConnections: VerticalConnectionRenderer;
+  private readonly verticalConnections: VariantPool<VerticalConnectionRenderer>;
   private readonly markers: WaypointsRenderer;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #471). */
-  private readonly markerIndex: MarkerIndexRenderer;
+  private readonly markerIndex: VariantPool<MarkerIndexRenderer>;
   /** Marker index plates and elevator badges carried over a glued face (GitHub issue #981). */
   private readonly seamCopies: SeamCopyRenderer;
   private readonly floorLabel: FloorLabelRenderer;
@@ -424,16 +429,16 @@ export class VectorByWallsRenderer {
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
 
     this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
-    this.floor = new CellFillRenderer(this.floorContainer);
-    this.closedCells = new CellFillRenderer(this.closedCellsContainer);
-    this.innerGrid = new GridRenderer(this.innerGridContainer, "vector export inner grid");
-    this.walls = new WallRenderer(this.wallsContainer);
+    this.floor = new VariantPool(() => new CellFillRenderer(this.floorContainer));
+    this.closedCells = new VariantPool(() => new CellFillRenderer(this.closedCellsContainer));
+    this.innerGrids = new VariantPool(() => new GridRenderer(this.innerGridContainer, "vector export inner grid"));
+    this.walls = new VariantPool(() => new WallRenderer(this.wallsContainer));
     this.openings = new WaypointOpeningRenderer(this.wallsContainer);
-    this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
-    this.teleports = new TeleportRenderer(this.teleportContainer);
-    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
+    this.splitJunctions = new VariantPool(() => new SplitJunctionRenderer(this.splitJunctionContainer));
+    this.teleports = new VariantPool(() => new TeleportRenderer(this.teleportContainer));
+    this.verticalConnections = new VariantPool(() => new VerticalConnectionRenderer(this.verticalContainer));
     this.markers = new WaypointsRenderer(this.markersContainer);
-    this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
+    this.markerIndex = new VariantPool(() => new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer));
     this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer);
     // Inside the warning highlight container (shown with the renderer): above the boundary highlight, below the connector shapes.
@@ -462,7 +467,10 @@ export class VectorByWallsRenderer {
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors ||
         state.floorTopology !== prev.floorTopology ||
-        state.pngExportSettings.cuts !== prev.pngExportSettings.cuts;
+        state.pngExportSettings.cuts !== prev.pngExportSettings.cuts ||
+        state.exportZoneOverrides !== prev.exportZoneOverrides ||
+        state.zones !== prev.zones ||
+        state.zoneGroups !== prev.zoneGroups;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
       if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
@@ -503,11 +511,7 @@ export class VectorByWallsRenderer {
       this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
       // Hidden content (the backdrop pass of a cut sheet) needs no grid of its own.
       if (state.vectorByWallsSettings.showInnerGrid && this.renderPass !== "backdrop" && this.renderPass !== "overlay") {
-        this.innerGrid.render(
-          { viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor },
-          state.activeFieldConfig,
-          this.innerGridCells,
-        );
+        this.drawInnerGrid(state.activeFieldConfig);
       }
     }
   }
@@ -593,6 +597,13 @@ export class VectorByWallsRenderer {
     const { nodes, edges, start, finish } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
+    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+    // Zone overrides of the export parameters (GitHub issue #1040): an element draws with the settings of the cell that owns it.
+    const zoneValues = buildExportZoneValues(state.exportZoneOverrides, "walls", state.zones, state.zoneGroups, state.vectorByWallsSettings);
+    const variants = new ZoneVariants(state.vectorByWallsSettings, (cells) => zoneValues.settingsAt(activeFloorIndex, cells));
+    const cellOfNode = (id: number | null | undefined): [number, number][] => { const node = id == null ? undefined : nodeById.get(id); return node ? [[node.x, node.y]] : []; };
+    const cellOfPoint = (key: string): [number, number][] => { const [x, y] = key.split(",").map(Number); return Number.isFinite(x) && Number.isFinite(y) ? [[x, y]] : []; };
     this.innerGridCells = nodes.map((node): [number, number] => [node.x, node.y]);
     if (state.vectorByWallsSettings.trimWallsAtFaceBoundaries !== false) {
       const maskInputs = { nodes: state.nodes, floorId: state.activeFloorId, cfg, topology: state.floorTopology?.[state.activeFloorId] };
@@ -613,7 +624,9 @@ export class VectorByWallsRenderer {
     }
     this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
     if (state.vectorByWallsSettings.showInnerGrid) {
-      this.innerGrid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor }, cfg, this.innerGridCells);
+      const parts = variants.partition(this.innerGridCells, (cell) => [cell]);
+      this.innerGridLayers = parts.map((cells, variant) => ({ color: variants.list[variant].innerGridColor, cells }));
+      this.drawInnerGrid(cfg);
     }
     this.glueTabRenderer.render(selectExportGlueTabs(state, state.vectorByWallsSettings.glueTabs), state.vectorByWallsSettings.glueTabs);
     this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
@@ -621,11 +634,9 @@ export class VectorByWallsRenderer {
     // built from the *unscoped* node list, since `to` never survives the floor-scoping above.
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
     const verticalPairs = selectVerticalPassagePairSet(state.edges);
-    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: state.vectorByWallsSettings.floorColor, alpha: 1 }, cfg);
-
-    const nodeById = new Map(nodes.map(n => [n.id, n]));
+    const floorParts = variants.partition(cells, (cell) => [cell]);
+    this.floor.drawAll(Math.max(floorParts.length, 1), (renderer, variant) => renderer.render({ cells: variant === null ? [] : floorParts[variant] ?? [], color: variants.list[variant ?? 0].floorColor, alpha: 1 }, cfg));
 
     const splitNodeColors = state.vectorByWallsSettings.splitNodeColors;
     if (
@@ -682,67 +693,94 @@ export class VectorByWallsRenderer {
         verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges, state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs),
       };
     }
-    const wallStyle = buildWallStyle(state.vectorByWallsSettings);
-    const oneWayStyle = buildOneWayStyle(state.vectorByWallsSettings);
-    const splitStyle: SplitStyleOverride = { specialShapes: state.vectorByWallsSettings.splitSpecialShapes };
-    this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
-    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(
-      this.geometryCache.splitWallFaces,
-      this.geometryCache.splitSpecialShapes,
-      state.vectorByWallsSettings.splitSpecialShapes,
-    );
+    const global = state.vectorByWallsSettings;
+    const cache = this.geometryCache;
+    const closedParts = variants.partition(cache.closedCells, (cell) => [cell]);
+    this.closedCells.drawAll(closedParts.length, (renderer, variant) => renderer.render({ cells: variant === null ? [] : closedParts[variant] ?? [], color: variants.list[variant ?? 0].wallColor, alpha: 1 }, cfg));
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(cache.splitWallFaces, cache.splitSpecialShapes, global.splitSpecialShapes);
     // Start/finish external passages (GitHub issue #330): per mode, the chosen outer wall segment is left out and/or a pointer is drawn on it.
-    const openings = buildWaypointOpenings(state.vectorByWallsSettings, nodeById, start, finish, cells, cfg);
+    // Each endpoint takes the settings of the zone holding its cell (GitHub issue #1040), so a regeneration that moves it follows that zone.
+    const startVariant = variants.list[variants.of(cellOfNode(start))];
+    const finishVariant = variants.list[variants.of(cellOfNode(finish))];
+    const openings = buildWaypointOpenings({ startOpening: startVariant.startOpening, finishOpening: finishVariant.finishOpening }, nodeById, start, finish, cells, cfg);
     const cutOpenings = openings.filter((o) => openingCutsWall(o.mode));
-    this.walls.render(
-      { edges: cutOpenings.length === 0 ? this.geometryCache.wallEdges : this.geometryCache.wallEdges.filter((e) => !cutOpenings.some((o) => isOpeningWall(e, o.cell, o.outer))) },
-      cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints,
-      state.vectorByWallsSettings.randomWallColorMode,
-      { floorColor: state.vectorByWallsSettings.floorColor, backgroundColor: state.vectorByWallsSettings.background },
+    // A wall belongs to the cells on both its sides; a one-way wall to the cell it leads out of.
+    const wallOwner = (edge: WallEdge): [number, number][] => (edge.oneWayDir ? [edge.kind === "forward" ? edge.a : edge.b] : [edge.a, edge.b]);
+    const wallParts = variants.partition(
+      cutOpenings.length === 0 ? cache.wallEdges : cache.wallEdges.filter((e) => !cutOpenings.some((o) => isOpeningWall(e, o.cell, o.outer))),
+      wallOwner,
     );
+    this.walls.drawAll(Math.max(wallParts.length, 1), (renderer, variant) => {
+      const settings = variants.list[variant ?? 0];
+      renderer.render(
+        { edges: variant === null ? [] : wallParts[variant] ?? [] },
+        cfg, buildWallStyle(settings), buildOneWayStyle(settings),
+        // The split points' own wall shapes are drawn once, with the global style.
+        variant === 0 ? extraWalls : undefined, variant === 0 ? noCapPoints : undefined,
+        settings.randomWallColorMode,
+        { floorColor: settings.floorColor, backgroundColor: global.background },
+      );
+    });
     this.openings.render(openings.filter((o) => openingShowsPointer(o.mode)).map(({ kind, mode, outer, x, y, dx, dy }) => {
-      const { pattern, color, geometry, gapWidth, join } = kind === "start" ? state.vectorByWallsSettings.startOpening : state.vectorByWallsSettings.finishOpening;
+      const settings = kind === "start" ? startVariant : finishVariant;
+      const { pattern, color, geometry, gapWidth, join } = kind === "start" ? settings.startOpening : settings.finishOpening;
       return {
         x, y, dx, dy,
-        style: { ...oneWayStyle, pattern, color, ...resolveIndicatorMetrics(pattern, geometry, DEFAULT_MAZE_RENDER_STYLE.oneWay), gapWidth, join, cap: join === "miter" ? "square" : "round" },
+        style: { ...buildOneWayStyle(settings), pattern, color, ...resolveIndicatorMetrics(pattern, geometry, DEFAULT_MAZE_RENDER_STYLE.oneWay), gapWidth, join, cap: join === "miter" ? "square" : "round" },
         // The gap stops at the floor's edge (the wall's centre line); under a wall that stays it goes on to the wall's outer edge.
-        clip: { nx: outer.outward.x, ny: outer.outward.y, side: outer.polyline, reach: openingGapReach(mode, wallStyle.width ?? WALL_THICKNESS) },
+        clip: { nx: outer.outward.x, ny: outer.outward.y, side: outer.polyline, reach: openingGapReach(mode, buildWallStyle(settings).width ?? WALL_THICKNESS) },
       };
     }));
-    this.splitJunctions.render(
-      { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
-      wallStyle,
-      splitStyle,
-    );
-    const { startMarker, finishMarker, floorColor } = state.vectorByWallsSettings;
-    const verticalStyle = buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings);
-    // Marker positioning layer (GitHub issue #735) — several markers on one host get distinct slots;
-    // everything below draws from the laid-out copies, never the raw geometry-cache arrays.
-    const layout = layoutExportMarkers({
+    const passageParts = variants.partition(cache.splitPassages, (passage) => cellOfPoint(passage.pointKey));
+    const splitStyle: SplitStyleOverride = { specialShapes: global.splitSpecialShapes };
+    this.splitJunctions.drawAll(Math.max(passageParts.length, 1), (renderer, variant) => {
+      renderer.render(
+        { passages: variant === null ? [] : passageParts[variant] ?? [], wallFaces: variant === 0 ? cache.splitWallFaces : [], specialShapes: variant === 0 ? cache.splitSpecialShapes : [] },
+        buildWallStyle(variants.list[variant ?? 0]),
+        splitStyle,
+      );
+    });
+    const { floorColor } = global;
+    const verticalStyle = buildVerticalConnectionStyle(global, floorColor, global);
+    // Marker positioning layer (GitHub issue #735) � several markers on one host get distinct slots;
+    // everything below draws from the laid-out copies, never the raw geometry-cache arrays. The layout is global: a
+    // zone changes how an element looks, not where it sits.
+    const layoutWith = (verticalMarkers: VerticalConnectionMarker[]) => layoutExportMarkers({
       markers: buildMazeMarkers(
         nodeById, start, finish, cfg,
-        buildMarkerStyle(startMarker, floorColor),
-        buildMarkerStyle(finishMarker, floorColor),
+        buildMarkerStyle(startVariant.startMarker, startVariant.floorColor),
+        buildMarkerStyle(finishVariant.finishMarker, finishVariant.floorColor),
         edges,
       ),
-      teleportEdges: this.geometryCache.teleportEdges,
-      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
-      settings: state.vectorByWallsSettings,
+      teleportEdges: cache.teleportEdges,
+      verticalMarkers,
+      settings: global,
       verticalStyle,
       splitHostKeys: buildSplitHostKeys(nodeById, edges, cfg),
     });
+    const layout = layoutWith(cache.verticalConnectionMarkers);
+    // "Replace two-floor elevators with stairs" can differ per zone: the markers are built (and laid out) once per value in use.
+    const layoutByStairs = new Map<boolean, ReturnType<typeof layoutWith>>([[global.replaceTwoFloorElevatorsWithStairs, layout]]);
+    const layoutFor = (replaceWithStairs: boolean) => {
+      let found = layoutByStairs.get(replaceWithStairs);
+      if (!found) {
+        found = layoutWith(buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges, replaceWithStairs));
+        layoutByStairs.set(replaceWithStairs, found);
+      }
+      return found;
+    };
     const markerData = layout.markers;
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
       markers: markerData,
       verticalMarkers: layout.verticalMarkers,
-      oneWayWallEdges: this.geometryCache.wallEdges,
+      oneWayWallEdges: cache.wallEdges,
       cfg,
-      splitPassages: this.geometryCache.splitPassages,
+      splitPassages: cache.splitPassages,
     });
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, layout.teleportEdges);
-    const teleportStyle = buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor);
+    const teleportStyle = buildTeleportLineStyle(global, floorColor);
     // Marker size adaptation (GitHub issue #819): one scaler for every marker kind on this floor,
     // fitted against the laid-out positions (GitHub issue #735).
     const scaler = buildMarkerScaler(cfg, [
@@ -750,68 +788,86 @@ export class VectorByWallsRenderer {
       ...footprintsOfVertical(layout.verticalMarkers, verticalStyle),
       ...footprintsOfTeleports(layout.teleportEdges, teleportStyle),
     ]);
-    this.teleports.render({
-      edges: layout.teleportEdges,
-      scaler,
-      lineStyle: teleportStyle,
-      groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
-      groupOverrides: teleportGroupOverrides,
-      // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
-      // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
-      // so no tool-driven gating applies.
-      floorNavigable: true,
-      cfg,
-      waypoints: teleportWaypoints,
-      avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
-      fieldCells: cells,
-      mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
-      seam: state.vectorByWallsSettings.teleportThroughSeams !== false ? { cfg } : undefined,
-      manualPaths: state.vectorByWallsSettings.manualTeleportConnectorPaths,
+    // A teleport connector belongs to the cell it starts in.
+    const teleportParts = variants.partition(layout.teleportEdges, (edge) => cellOfNode(edge.fromNode));
+    this.teleports.drawAll(Math.max(teleportParts.length, 1), (renderer, variant) => {
+      const settings = variants.list[variant ?? 0];
+      renderer.render({
+        edges: variant === null ? [] : teleportParts[variant] ?? [],
+        scaler,
+        lineStyle: buildTeleportLineStyle(settings, settings.floorColor),
+        groupCustomization: global.teleportGroupCustomization,
+        groupOverrides: teleportGroupOverrides,
+        // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
+        // canvas (GitHub issue #478) � a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
+        // so no tool-driven gating applies.
+        floorNavigable: true,
+        cfg,
+        waypoints: teleportWaypoints,
+        avoidFieldExit: global.teleportAvoidFieldExit,
+        fieldCells: cells,
+        mergeTeleports: global.teleportMergeMode,
+        seam: global.teleportThroughSeams !== false ? { cfg } : undefined,
+        manualPaths: global.manualTeleportConnectorPaths,
+      });
     });
 
     const waypointData = { markers: markerData, scaler };
     this.markers.render(waypointData);
 
     let markerIndexPlates: ElevatorBadgeObstacle[] = [];
-    let markerIndexData: MarkerIndexRenderData | null = null;
-    if (state.vectorByWallsSettings.markerIndex.enabled) {
+    const markerIndexData: MarkerIndexRenderData[] = [];
+    // A zone can switch the plates on for its own cells (GitHub issue #1040), so the labels are also built when one sets that.
+    const zoneEnablesIndex = zoneValues.any && state.exportZoneOverrides.some((o) => o.mode === "walls" && "markerIndex.enabled" in o.params);
+    if (global.markerIndex.enabled || zoneEnablesIndex) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
         teleportStyle,
-        groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
-        mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+        groupCustomization: global.teleportGroupCustomization,
+        mergeTeleports: global.teleportMergeMode,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
       const projectGroups = getProjectTeleportGroups({
         nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
-        avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
-        mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+        avoidFieldExit: global.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+        mergeTeleports: global.teleportMergeMode,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, global.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       const shiftedLabels = shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales);
-      markerIndexPlates = shiftedLabels.map((label) => markerIndexPlateFootprint(label, state.vectorByWallsSettings.markerIndex));
-      markerIndexData = { ...indexLabels, labels: shiftedLabels, style: state.vectorByWallsSettings.markerIndex, floorColor };
-      this.markerIndex.render(markerIndexData);
-    } else {
-      this.markerIndex.clear();
+      // A plate belongs to the cell of the node it is anchored on.
+      const labelParts = variants.partition(shiftedLabels, (label) => cellOfNode(label.nodeId));
+      markerIndexPlates = labelParts.flatMap((labels, variant) => (variants.list[variant].markerIndex.enabled ? labels.map((label) => markerIndexPlateFootprint(label, variants.list[variant].markerIndex)) : []));
+      for (let variant = 0; variant < variants.list.length; variant++) {
+        const settings = variants.list[variant];
+        markerIndexData.push({ ...indexLabels, labels: settings.markerIndex.enabled ? labelParts[variant] ?? [] : [], style: settings.markerIndex, floorColor: settings.floorColor });
+      }
     }
+    this.markerIndex.drawAll(markerIndexData.length, (renderer, variant) => (variant === null ? renderer.clear() : renderer.render(markerIndexData[variant])));
 
-    const verticalData = {
-      markers: layout.verticalMarkers,
-      style: verticalStyle,
-      scaler,
-      // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
-      // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
-      interactive: true,
-      // Elevator floor badges keep clear of the index plates drawn above the markers (GitHub issue #964).
-      badgeObstacles: markerIndexPlates,
-    };
-    this.verticalConnections.render(verticalData);
+    // A vertical connection belongs to the cell of its node.
+    variants.partition(layout.verticalMarkers, (marker) => cellOfNode(marker.fromNode));
+    const verticalData: VerticalConnectionRenderData[] = [];
+    for (let variant = 0; variant < variants.list.length; variant++) {
+      const settings = variants.list[variant];
+      verticalData.push({
+        markers: layoutFor(settings.replaceTwoFloorElevatorsWithStairs).verticalMarkers.filter((marker) => variants.of(cellOfNode(marker.fromNode)) === variant),
+        style: buildVerticalConnectionStyle(settings, settings.floorColor, settings),
+        scaler,
+        // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
+        // issue #478) � always-on, same as `GenerationRenderer`'s read-only canvas.
+        interactive: true,
+        // Elevator floor badges keep clear of the index plates drawn above the markers (GitHub issue #964).
+        badgeObstacles: markerIndexPlates,
+      });
+    }
+    this.verticalConnections.drawAll(verticalData.length, (renderer, variant) => renderer.render(variant === null ? { ...verticalData[0], markers: [] } : verticalData[variant]));
     // The trim mask cuts the plates and badges at a glued face; what they lose is drawn on the other side (GitHub issue #981).
     this.seamCopies.render(
       cfg,
-      this.mazeContent.mask ? buildSeamCopySources({ markerIndex: markerIndexData, vertical: verticalData, waypoints: waypointData }) : [],
+      this.mazeContent.mask
+        ? verticalData.flatMap((vertical, variant) => buildSeamCopySources({ markerIndex: markerIndexData[variant] ?? null, vertical, waypoints: variant === 0 ? waypointData : null }))
+        : [],
     );
 
     this.floorLabel.render(
@@ -830,6 +886,15 @@ export class VectorByWallsRenderer {
    *  follow-up — a small marker-circle highlight read too weakly, cell fill is much clearer) — see
    *  `ExportWarningHighlight`'s own doc comment for the draw mechanics, shared with
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
+  /** Draws the inner grid, one grid per settings variant, over the viewport. */
+  private drawInnerGrid(cfg: FieldConfig): void {
+    const layers = this.innerGridLayers;
+    this.innerGrids.drawAll(layers.length, (grid, variant) => {
+      const layer = variant === null ? undefined : layers[variant];
+      grid.render({ viewport: this.viewport, color: layer?.color }, cfg, layer?.cells ?? []);
+    });
+  }
+
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey, hoveredTeleportNodeIds, hoveredTeleportCells } = state;
     if (!hoveredExportWarningKey) {
@@ -873,7 +938,7 @@ export class VectorByWallsRenderer {
     this.backgroundGrid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
-    this.innerGrid.destroy();
+    this.innerGrids.destroy();
     this.walls.destroy();
     this.openings.destroy();
     this.splitJunctions.destroy();

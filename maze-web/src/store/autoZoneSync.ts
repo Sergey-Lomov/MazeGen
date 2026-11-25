@@ -52,6 +52,7 @@ export function refreshAutoZones(store: StoreApi<MazeStore>): void {
     zoneGroups: withAutoGroups(state.zoneGroups, groups),
     hiddenZoneIds,
     ...(gone.length > 0 && state.hoveredZoneId !== null && gone.includes(state.hoveredZoneId) ? { hoveredZoneId: null } : {}),
+    ...(state.exportOverrideContext?.kind === "zone" && gone.includes(state.exportOverrideContext.id) ? { exportOverrideContext: null } : {}),
   });
 }
 

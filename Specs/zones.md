@@ -318,6 +318,10 @@ A zone or a group can scope one QC rule; see `Specs/quality-feature.md`, "Zone s
 group (`removeZoneGroup`) leaves the rules alone: a rule bound to it keeps the vanished id, warns and is not sent to core.
 The target picker (`ZoneTargetPicker`) is shared by the rule dialog and the generation overrides' side panel.
 
+## Export overrides (GitHub issue #1040)
+
+Zones and groups can give the "Vector by walls" and "Vector by corridors" exports their own parameter values; see `Specs/image-export.md`, "Zone overrides in export". `removeZone` / `removeZoneGroup` remove the id from every export override and reset the settings context if it named that zone or group. The target picker (`ZoneTargetPanel`) is also the export panel's context chooser.
+
 ## Web mirror
 
 `maze-web/src/wasm/mazeService.ts`: `Zone`, `ZoneKind`, `ZoneCellWire`, `normalizeZones`,

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useFieldHint } from "./FieldHint";
+import { notAllowedCursor } from "../styles/cursors";
 import { inputHintReason, type NormalizerResult } from "./inputNormalization";
 
 interface Props {
@@ -93,7 +94,7 @@ export function TextInput({ value, onChange, normalize = identity, isValid = alw
         type="text"
         name={name}
         id={id}
-        style={{ ...style, ...hint.fieldStyle }}
+        style={{ ...style, ...(disabled ? { cursor: notAllowedCursor } : {}), ...hint.fieldStyle }}
         value={draft}
         disabled={disabled}
         spellCheck={spellCheck}
