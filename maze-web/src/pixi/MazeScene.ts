@@ -40,6 +40,7 @@ import type { FeatureId, PngExportSettings } from "../store/storeTypes";
 import type { FieldPrimitive } from "../store/tessellationTypes";
 import type { FieldConfig } from "../fieldConfig";
 import { setCanvasLabelView } from "./renderers/canvasLabelResolution";
+import { getCellCenter } from "../domain/tessellationGeometry";
 
 type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldConfig;
 
@@ -699,6 +700,19 @@ export class MazeScene {
     const xs = points.map(([x]) => x), ys = points.map(([, y]) => y), pad = 30;
     const { x, y, scale } = fitBoundsViewport({ minX: Math.min(...xs) - pad, minY: Math.min(...ys) - pad, maxX: Math.max(...xs) + pad, maxY: Math.max(...ys) + pad }, this.app.screen.width, this.app.screen.height);
     this.setViewportTransform(x, y, scale);
+  }
+
+  /** Centers the active floor's given cell at the fixed 250% editor zoom. */
+  focusCell(point: readonly [number, number]): void {
+    const state = useMazeStore.getState();
+    const cfg = state.floorFields[state.activeFloorId].fieldConfig;
+    const center = getCellCenter(point[0], point[1], cfg);
+    const scale = 2.5;
+    this.setViewportTransform(
+      this.app.screen.width / 2 - scale * center.x,
+      this.app.screen.height / 2 - scale * center.y,
+      scale,
+    );
   }
 
   refit(): void {

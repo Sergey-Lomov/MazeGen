@@ -22,7 +22,7 @@ import type { FeatureId } from "./store/mazeStore";
 import { ui } from "./styles/theme";
 import { canvas } from "./domain/colorTokens";
 import { useLocale } from "./i18n/useLocale";
-import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
+import { setViewportScaleGetter, setPhysicalZoomApplier, setCellFocusApplier } from "./pixi/viewportScaleBridge";
 import { setColorSampler } from "./pixi/colorSampleBridge";
 import * as m from "~/paraglide/messages";
 
@@ -108,6 +108,7 @@ export function App() {
         sceneRef.current = new MazeScene(app);
         setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
         setPhysicalZoomApplier((scale) => sceneRef.current?.applyPrintPhysicalZoom(scale));
+        setCellFocusApplier((point) => sceneRef.current?.focusCell(point));
         setColorSampler({
           canvas: app.canvas,
           sampleAt: (clientX, clientY) => sceneRef.current?.sampleColorAt(clientX, clientY) ?? null,
@@ -126,6 +127,7 @@ export function App() {
       cancelled = true;
       setViewportScaleGetter(null);
       setPhysicalZoomApplier(null);
+      setCellFocusApplier(null);
       setColorSampler(null);
       sceneRef.current?.destroy();
       sceneRef.current = null;

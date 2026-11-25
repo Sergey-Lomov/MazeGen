@@ -12,8 +12,10 @@ import { resetNotifications } from "../notifications/notificationStore";
 import { noticeCodes } from "./notificationTestHelpers";
 import { SPLIT_BOUNDARY_FACE } from "../notifications/editRefusalNotifications";
 import { getTooltipControls } from "./tooltipTestUtils";
+import { setCellFocusApplier } from "../pixi/viewportScaleBridge";
 
 beforeEach(() => {
+  setCellFocusApplier(null);
   resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
@@ -39,6 +41,16 @@ beforeEach(() => {
 });
 
 describe("ManageSplitNodesDialog", () => {
+  it("focuses the edited cell through the shared canvas command", () => {
+    const focus = vi.fn();
+    setCellFocusApplier(focus);
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Focus cell" }));
+
+    expect(focus).toHaveBeenCalledWith([2, 2]);
+  });
+
   it("places current diagnostics in the standard collapsed warnings section", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
 

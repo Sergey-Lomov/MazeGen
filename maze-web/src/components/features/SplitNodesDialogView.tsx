@@ -19,7 +19,10 @@ import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
 import { splitShapeBinding } from "../../domain/splitShape";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
+import { focusCell } from "../../pixi/viewportScaleBridge";
 import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
+import { FlatIconButton } from "../FlatIconButton";
+import { Crosshair } from "lucide-react";
 
 /** One link (edge or teleport) from a node, resolved to a small display label — grouped into 3
  *  sections in the card (GitHub issue #234 follow-up): `required` (a decided passage/one-way,
@@ -243,6 +246,11 @@ export function SplitNodesDialogView<E>({
     <SidePanel
       title={title}
       stackKey={notificationSource === "post_edit" ? "post-edit-split-nodes" : "preset-split-nodes"}
+      headerActions={(
+        <FlatIconButton title={m["post_edit.split_focus_cell"]()} onClick={() => focusCell(point)}>
+          <Crosshair size={16} />
+        </FlatIconButton>
+      )}
       onClose={onClose}
       onTopChange={onTopChange}
     >
