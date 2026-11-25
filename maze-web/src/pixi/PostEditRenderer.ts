@@ -522,7 +522,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     for (const boundary of boundaryLinks ?? []) {
       const color = state.postEditHoveredEntity?.danger
         ? canvas.fieldEditor.danger
-        : boundary.style === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
+        : boundary.color ?? (boundary.style === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover);
       const span = boundary.style === "one_way"
         ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
         : WALL_HIGHLIGHT_SPAN;

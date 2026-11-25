@@ -20,6 +20,7 @@ export interface SplitNodesOrchestrationArgs<E> {
   semanticNames?: Array<{ full: string }> | null;
   fallbackTitle?: (rowIndex: number) => string;
   lockKindFor?: (endpoint: E) => SplitNodesRow<E>["lockKind"];
+  lockAutomaticFor?: (endpoint: E) => boolean;
   describeEndpoint: (endpoint: E) => string;
   linksFor: (endpoint: E) => LinkInfo<E>[];
   elementsFor: (endpoint: E) => ElementInfo<E>[];
@@ -53,7 +54,7 @@ export function resolveActiveSplitEndpoint<E>(activeSplitNode: Record<string, E>
  * hook owns stable slot ordering, row construction, palette/semantic labels, tile nodes, and the
  * blueprint list handed to `SplitNodesDialogView`. */
 export function useSplitNodesDialogOrchestration<E>({
-  point, cfg, slots, originalEndpoint, endpointForSlot, endpointKey, activeEndpoint, semanticNames, fallbackTitle, lockKindFor,
+  point, cfg, slots, originalEndpoint, endpointForSlot, endpointKey, activeEndpoint, semanticNames, fallbackTitle, lockKindFor, lockAutomaticFor,
   describeEndpoint, linksFor, elementsFor, facesOf,
 }: SplitNodesOrchestrationArgs<E>) {
   const rows = useMemo(() => {
@@ -72,8 +73,9 @@ export function useSplitNodesDialogOrchestration<E>({
       links: linksFor(endpoint),
       elements: elementsFor(endpoint),
       lockKind: lockKindFor?.(endpoint),
+      lockAutomatic: lockAutomaticFor?.(endpoint) ?? false,
     }));
-  }, [activeEndpoint, describeEndpoint, elementsFor, endpointForSlot, endpointKey, fallbackTitle, facesOf, linksFor, lockKindFor, originalEndpoint, semanticNames, slots]);
+  }, [activeEndpoint, describeEndpoint, elementsFor, endpointForSlot, endpointKey, fallbackTitle, facesOf, linksFor, lockAutomaticFor, lockKindFor, originalEndpoint, semanticNames, slots]);
 
   const tileNodes = useMemo<TileFaceNode[]>(
     () => rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) })),

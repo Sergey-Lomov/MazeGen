@@ -96,6 +96,7 @@ export interface PostEditBoundaryLink {
   from: PostEditHoverPoint;
   to: PostEditHoverPoint;
   style: "one_way" | "boundary";
+  color?: number;
 }
 
 /** Resolves a `point`/`points`-kind `PostEditHoveredEntity` to the maze node ids
@@ -151,7 +152,7 @@ export function buildHoveredEntityHighlight(
       const fromNode = nodes.find((n) => pointMatchesNode(entity.from, n));
       const toNode = nodes.find((n) => pointMatchesNode(entity.to, n));
       if (fromNode && toNode && (fromNode.level ?? 0) === activeLevel && (toNode.level ?? 0) === activeLevel) {
-        return { link: [], regionGroups: [], boundaryLinks: [{ from: entity.from, to: entity.to, style: entity.highlightStyle }] };
+        return { link: [], regionGroups: [], boundaryLinks: [{ from: entity.from, to: entity.to, style: entity.highlightStyle, color: entity.color }] };
       }
     }
     const { line, soloPoints } = buildLinkHoverHighlight(entity, nodes, activeLevel, cfg, seam);

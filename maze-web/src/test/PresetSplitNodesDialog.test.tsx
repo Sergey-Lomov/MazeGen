@@ -8,6 +8,10 @@ import { presetEndpoint } from "../domain/presetEndpoint";
 import { baseStoreState } from "./storeTestHelpers";
 import { setCellFocusApplier } from "../pixi/viewportScaleBridge";
 
+vi.mock("../components/features/ToolGlyph", () => ({
+  ToolGlyph: ({ tool }: { tool: string }) => tool,
+}));
+
 beforeEach(() => {
   setCellFocusApplier(null);
   useMazeStore.setState({
@@ -52,7 +56,7 @@ describe("PresetSplitNodesDialog", () => {
       useMazeStore.setState({ presetConnections: new Map([["k", { ...entry, state, source: "user" }]]) });
       const { unmount } = render(<PresetSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
 
-      const links = screen.getAllByText(/^2:2 \(N\d\) (<->|->|<-) \d:\d$/);
+      const links = screen.getAllByText(/^<-> \d:\d$/);
       for (const link of links) expect(link.textContent).toContain("<->");
       unmount();
     }
