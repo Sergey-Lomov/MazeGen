@@ -250,6 +250,9 @@ const stableCfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 
 function baseState(overrides: Record<string, unknown> = {}) {
   return {
+    zones: [],
+    zoneGroups: [],
+    exportZoneOverrides: [],
     openCard: "image_export",
     nodes: stableNodes,
     edges: stableEdges,
@@ -458,9 +461,25 @@ describe("VectorByWallsRenderer", () => {
     });
 
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
-    const floor = (renderer as unknown as { floor: { render: ReturnType<typeof vi.fn> } }).floor;
+    const floor = (renderer as unknown as { floor: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).floor.renderers[0];
 
     expect(floor.render).toHaveBeenCalledWith(expect.anything(), secondFloorCfg);
+  });
+
+  it("draws the cells of a zone with that zone's own settings (GitHub issue #1040)", () => {
+    const nodes: NodeDto[] = [
+      { id: 10, x: 0, y: 0, i: 0 },
+      { id: 11, x: 2, y: -1, i: 0 },
+    ];
+    currentState = baseState({
+      nodes,
+      zones: [{ id: 1, name: "Z1", kind: "manual", cells: [[0, 0, 0]] }],
+      exportZoneOverrides: [{ id: 1, mode: "walls", zoneIds: [1], groupIds: [], params: { floorColor: 0x123456 } }],
+    });
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    const [global, zoned] = (renderer as unknown as { floor: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).floor.renderers;
+    expect(global.render).toHaveBeenCalledWith({ cells: [[2, -1]], color: baseSettings().floorColor, alpha: 1 }, stableCfg);
+    expect(zoned.render).toHaveBeenCalledWith({ cells: [[0, 0]], color: 0x123456, alpha: 1 }, stableCfg);
   });
 
   it("keeps the original background grid separate from the optional inner grid", () => {
@@ -472,7 +491,7 @@ describe("VectorByWallsRenderer", () => {
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
     const asAny = renderer as unknown as {
       backgroundGrid: InstanceType<typeof BackgroundGridLayer>;
-      innerGrid: { render: ReturnType<typeof vi.fn> };
+      innerGrids: { renderers: { render: ReturnType<typeof vi.fn> }[] };
     };
     const backgroundGrid = asAny.backgroundGrid;
     const background = (backgroundGrid as unknown as { grid: { render: ReturnType<typeof vi.fn> } }).grid;
@@ -481,11 +500,11 @@ describe("VectorByWallsRenderer", () => {
       { viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 }, color: baseSettings().gridColor },
       stableCfg,
     );
-    expect(asAny.innerGrid.render).not.toHaveBeenCalled();
+    expect(asAny.innerGrids.renderers).toEqual([]);
 
     currentState = baseState({ nodes, vectorByWallsSettings: baseSettings({ showInnerGrid: true, innerGridColor: 0xabcdef }) });
     const innerRenderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
-    const innerGrid = (innerRenderer as unknown as { innerGrid: { render: ReturnType<typeof vi.fn> } }).innerGrid;
+    const innerGrid = (innerRenderer as unknown as { innerGrids: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).innerGrids.renderers[0];
     expect(innerGrid.render).toHaveBeenCalledWith(
       { viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 }, color: 0xabcdef },
       stableCfg,
@@ -557,8 +576,8 @@ describe("VectorByWallsRenderer", () => {
   it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {
     currentState = baseState();
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
-    const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
-    const verticalConnections = (renderer as unknown as { verticalConnections: { render: ReturnType<typeof vi.fn> } }).verticalConnections;
+    const teleports = (renderer as unknown as { teleports: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).teleports.renderers[0];
+    const verticalConnections = (renderer as unknown as { verticalConnections: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).verticalConnections.renderers[0];
     expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({ floorNavigable: true }));
     expect(verticalConnections.render).toHaveBeenCalledWith(expect.objectContaining({ interactive: true }));
   });

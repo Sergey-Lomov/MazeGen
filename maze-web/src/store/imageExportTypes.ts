@@ -16,6 +16,10 @@ export type RenderModeId = "vector_by_walls" | "vector_by_corridors";
  * `ImageExportState.linkIconVisibility`'s own doc comment. */
 export type LinkIconVisibility = "always" | "linked" | "never";
 
+/** Where the export panel shows the zone overrides of other contexts under a parameter (GitHub issue #1040): not at all, as rows
+ *  always, or as a list a button under the row opens. */
+export type ZoneOverrideDisplay = "none" | "always" | "onRequest";
+
 /** Registry id of a maze image-export output format (see `exportFormatRegistry.ts`) — one entry
  * per row in the Image Export feature card's format list, below the render-mode switcher. */
 export type ExportFormatId = "png";
@@ -1043,6 +1047,12 @@ export interface ImageExportState {
    *  `"never"` hides it everywhere (the old reset-only behavior is gone — hiding the icon just
    *  removes the entry point, it does not disable the underlying link mechanism). */
   linkIconVisibility: LinkIconVisibility;
+  /** Whether each colour and thickness row shows the button adding a zone override of that parameter (GitHub issue #1040). On by default. */
+  showZoneOverrideButtons: boolean;
+  /** Whether the export problems of the zone overrides join the "Problems" section, each beside the zone it belongs to (GitHub issue #1040). On by default. */
+  showZoneProblems: boolean;
+  /** How the overrides of the other contexts show under a parameter (GitHub issue #1040). By request by default. */
+  zoneOverrideDisplay: ZoneOverrideDisplay;
   vectorByWallsSettings: VectorByWallsSettings;
   /** Whether both renderers' `floorLabel.labelMode` has been chosen from the floor titles yet
    * (GitHub issue #747). False until the Image Export card is first opened; that open (or a
@@ -1132,6 +1142,9 @@ export interface ImageExportActions {
   setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowColorWarnings: (show: boolean) => void;
   setLinkIconVisibility: (v: LinkIconVisibility) => void;
+  setShowZoneOverrideButtons: (show: boolean) => void;
+  setShowZoneProblems: (show: boolean) => void;
+  setZoneOverrideDisplay: (display: ZoneOverrideDisplay) => void;
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;

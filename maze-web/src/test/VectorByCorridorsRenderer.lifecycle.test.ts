@@ -169,23 +169,20 @@ describe("VectorByCorridorsRenderer lifecycle and rendering", () => {
     makeRenderer();
     vi.mocked(buildCorridorSegments).mockClear();
 
-    // `color`-only change — `thickness` stays the same as `settingsA`'s own (unlike `settingsB`,
-    // which also changes `thickness`, itself now a geometry-cache key since GitHub issue #314's
-    // split-connector corridor-width division depends on it).
     const nextState = baseState({ vectorByCorridorsSettings: { ...settingsA, color: 0x999999 } });
     mockStore.subscribeCallback?.(nextState);
 
     expect(buildCorridorSegments).not.toHaveBeenCalled();
   });
 
-  it("a thickness-only change rebuilds geometry (split-connector corridor-width division depends on it, GitHub issue #314)", () => {
+  it("a thickness-only change keeps the segments (split points are rebuilt per thickness, GitHub issue #314)", () => {
     makeRenderer();
     vi.mocked(buildCorridorSegments).mockClear();
 
     const nextState = baseState({ vectorByCorridorsSettings: settingsB });
     mockStore.subscribeCallback?.(nextState);
 
-    expect(buildCorridorSegments).toHaveBeenCalledTimes(1);
+    expect(buildCorridorSegments).not.toHaveBeenCalled();
   });
 
   it("a data change while the image-export card is closed does not re-render", () => {

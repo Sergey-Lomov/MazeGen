@@ -265,7 +265,8 @@ export class ZonesRenderer extends BaseFieldRenderer {
 
 /** The zone and group list hover (GitHub issue #1038) outside the zones card, where `ZonesRenderer` is hidden: the
  *  generation settings name zones and groups in their value rows and light them on the canvas while hovered. Inside the
- *  zones card the hover is `ZonesRenderer`'s own layer, so this one stays empty there. */
+ *  zones card the hover is `ZonesRenderer`'s own layer, so this one stays empty there. The zones are drawn as the zones
+ *  card draws a visible zone: translucent, with the thin border. */
 export class ZoneHoverOverlay {
   private readonly region: RegionHighlightRenderer;
   private readonly unsubscribe: () => void;
@@ -294,14 +295,14 @@ export class ZoneHoverOverlay {
     this.region.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],
-      groups: (hover?.groups ?? []).map((g) => ({ ...g, fillAlpha: HOVER_FILL_ALPHA, borderColor: brightColor(g.color) })),
+      groups: (hover?.groups ?? []).map((g) => ({ ...g, fillAlpha: COMPONENT_MASK_ALPHA, borderColor: brightColor(g.color) })),
       color: 0,
       width: 0,
       alpha: 0,
       cfg,
       skipPerimeter: true,
-      borderWidth: HOVER_BORDER_WIDTH,
-      inset: regionInset(HOVER_BORDER_WIDTH),
+      borderWidth: ZONE_BORDER_WIDTH,
+      inset: regionInset(ZONE_BORDER_WIDTH),
     });
   }
 

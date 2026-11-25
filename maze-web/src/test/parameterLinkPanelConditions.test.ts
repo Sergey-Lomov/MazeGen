@@ -93,6 +93,10 @@ const ALLOWED_CONDITIONS: Record<string, string> = {
   "TeleportSettingsSection.tsx: teleportGroups.length > 0": "the group list is shown only when there are groups",
   "TopologySettingsSection.tsx: onTrimWallsAtFaceBoundaries": "the caller opts into the row (only 'Vector by walls' trims walls)",
   "VectorByWallsSettingsPanel.tsx: PC.tilesWall.isVisible(colorVisibility)": "the colour-visibility registry decides whether the tile wall colour is drawn",
+  "VectorByWallsSettingsPanel.tsx: !zone": "the global-only Settings section is hidden inside a zone context",
+  "LinkedRows.tsx: canEdit": "a parameter the zone context cannot override is disabled",
+  "LinkedRows.tsx: zone.overridden.has(path)": "the row shows whether the zone sets the parameter itself",
+  "LinkedRows.tsx: zoneRow?.disabled": "inside a zone context a global-only parameter is disabled",
   "WaypointOpeningSubsection.tsx: faces.length > 1": "the side select is offered only when the cell touches several outer sides",
 };
 

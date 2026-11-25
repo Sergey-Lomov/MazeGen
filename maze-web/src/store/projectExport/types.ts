@@ -2,10 +2,10 @@ import type { FieldShape, PresetFieldShape, TessellationKind } from "../../field
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
 import type { Crease } from "../creases";
 import type { Zone } from "../../wasm/mazeService";
-import type { ZoneGroup, ZoneOverride } from "../zonesTypes";
+import type { ExportZoneOverride, ZoneGroup, ZoneOverride } from "../zonesTypes";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
 import type { PresetEndpoint } from "../../domain/presetEndpoint";
-import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
+import type { FeatureId, RenderModeId, LinkIconVisibility, ZoneOverrideDisplay, BackgroundImageLayerMode } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation, QcProblem, QcZoneScopeTarget } from "../storeTypes";
 import type { ParamLink } from "../parameterLinks";
@@ -87,6 +87,12 @@ export interface ProjectFileImageExport {
   showColorWarnings: boolean;
   /** GitHub issue #652 follow-up — see `ImageExportState.linkIconVisibility`'s own doc comment. */
   linkIconVisibility: LinkIconVisibility;
+  /** GitHub issue #1040 — see `ImageExportState.showZoneOverrideButtons`; absent in older files (on). */
+  showZoneOverrideButtons: boolean;
+  /** GitHub issue #1040 — see `ImageExportState.showZoneProblems`; absent in older files (on). */
+  showZoneProblems: boolean;
+  /** GitHub issue #1040 — see `ImageExportState.zoneOverrideDisplay`; absent in older files (by request). */
+  zoneOverrideDisplay: ZoneOverrideDisplay;
   vectorByCorridorsSettings: VectorByCorridorsSettings;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
@@ -207,6 +213,9 @@ export interface ProjectFileZones {
   /** Per-zone generation parameter overrides (GitHub issue #1038); absent in files saved before them. */
   generationOverrides?: ZoneOverride[];
   nextOverrideId?: number;
+  /** Per-zone export parameter overrides (GitHub issue #1040); absent in files saved before them. */
+  exportOverrides?: ExportZoneOverride[];
+  nextExportOverrideId?: number;
 }
 
 export interface ProjectFile {

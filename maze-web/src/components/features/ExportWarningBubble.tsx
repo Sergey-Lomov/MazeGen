@@ -33,7 +33,7 @@ export function resolveWarningFloorLevels(warning: Pick<ExportWarning, "crossFlo
  *  component (not folded into `IssueBubble`) since `ExportWarning` is a distinct type from
  *  `IssueDto` — see `exportWarnings.ts`'s doc comment on why these are a separate concern from QC
  *  issues. */
-export function ExportWarningBubble({ warning, interactive = true }: { warning: ExportWarning; interactive?: boolean }) {
+export function ExportWarningBubble({ warning, interactive = true, footer, details }: { warning: ExportWarning; interactive?: boolean; footer?: React.ReactNode; details?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const setHoveredExportWarningKey = useMazeStore((s) => s.setHoveredExportWarningKey);
   const message = resolveExportWarningMessage(warning.id);
@@ -79,11 +79,14 @@ export function ExportWarningBubble({ warning, interactive = true }: { warning: 
         {/* `hoverable-tint`'s brightness filter on the outer bubble div would also wash out these
           * badges' own deliberately fixed bg/text contrast -- `hoverable-tint-counter` cancels it
           * back out, same convention `IssueBubble` uses for its own `IssueFloorBadges`. */}
+        {/* The footer (zone badges, GitHub issue #1040) takes its own line at the bottom left, above the floor badges. */}
+        {footer !== undefined && <div className="hoverable-tint-counter" style={styles.footer}>{footer}</div>}
         <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} className="hoverable-tint-counter" />
       </div>
       {interactive && open && (
         <Modal title={message} onClose={() => setOpen(false)}>
           <p style={styles.description}>{description}</p>
+          {details !== undefined && <div style={styles.modalFooter}>{details}</div>}
         </Modal>
       )}
     </>
@@ -98,6 +101,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.itemGap / 2,
     cursor: "default",
   },
+  footer: { display: "flex", flexWrap: "wrap", gap: spacing.itemGap / 2 },
+  // One empty line below the description.
+  modalFooter: { ...muted(typography.body), marginTop: "1.5em" },
   topRow: {
     display: "flex",
     alignItems: "center",

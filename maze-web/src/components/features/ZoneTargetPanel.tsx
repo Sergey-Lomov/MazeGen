@@ -112,13 +112,16 @@ interface ZoneTargetPanelProps {
   onPick: (target: ZoneOverrideTarget) => void;
   onClose: () => void;
   stackKey?: string;
+  /** Shown under the list, e.g. a button leaving the zone context. */
+  footer?: React.ReactNode;
 }
 
 /** Side panel around the picker, for a zone override. */
-export function ZoneTargetPanel({ title, onPick, onClose, stackKey = "zone-target" }: ZoneTargetPanelProps) {
+export function ZoneTargetPanel({ title, onPick, onClose, stackKey = "zone-target", footer }: ZoneTargetPanelProps) {
   return (
     <SidePanel title={title} stackKey={stackKey} onClose={onClose}>
       <ZoneTargetPicker onPick={(target) => onPick(target)} />
+      {footer !== undefined && <div style={panelStyles.footer}>{footer}</div>}
     </SidePanel>
   );
 }
@@ -128,6 +131,7 @@ const panelStyles: Record<string, React.CSSProperties> = {
   toggle: { padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
   list: { display: "flex", flexDirection: "column", borderTop: `1px solid ${ui.border.default}` },
   empty: { ...disabled(typography.body), textAlign: "center", padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
+  footer: { padding: spacing.groupGap, borderTop: `1px solid ${ui.border.default}` },
 };
 
 const embeddedStyles: Record<string, React.CSSProperties> = {

@@ -7,12 +7,16 @@ import type { ParamDescriptor } from "../../store/parameterLinks";
 import { isGateOpen, type GateName } from "../../store/parameterLinkRules";
 import type { LinkMode } from "../../store/parameterLinkSchema";
 import { computeActivePaths, type ParamActivityContext } from "../../store/parameterLinksActivity";
-import { computeTextFitItemsAcrossFloors, type ExportWarning } from "../../pixi/selectors/exportWarnings";
+import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors, type ExportWarning } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/exportStyleBuilders";
-import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/textFit";
+import { requiredTextPlateDimensions } from "../../pixi/textFit";
+import { computeTextFitGroups, fitAcrossGroups } from "./textFitScopes";
+import { activeExportContext } from "../../store/exportZoneContext";
 import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../domain/renderConstants";
 import { hasCellAreaSpread } from "../../domain/markerScale";
 import { maxSplitNodeCount } from "../../domain/selectors/mazeSelectors";
+import { exportModeSupportsZones, settingsWithOverride } from "../../store/exportZoneOverrides";
+import type { ExportOverrideMode, ExportZoneOverride } from "../../store/zonesTypes";
 import { computeTopologyWarnings } from "../../pixi/selectors/topologyWarnings";
 import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
@@ -27,10 +31,8 @@ type ComputeWarnings<S extends ExportSettings> = (
   settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
 ) => ExportWarning[];
 
-/** The mode's own warnings of the whole project (`computeWarnings`) and the effective endpoints they were judged with.
- *  Split out so a panel that needs a narrower set (the teleport connector editor, GitHub issue #952) doesn't derive the topology
- *  warnings, text fit, teleport groups and color visibility too. */
-export function useModeWarnings<S extends ExportSettings>(settings: S, computeWarnings: ComputeWarnings<S>) {
+/** The project data every mode warning pass is judged with. */
+function useWarningInputs() {
   const rawNodes = useMazeStore((s) => s.nodes);
   const rawEdges = useMazeStore((s) => s.edges);
   const rawStart = useMazeStore((s) => s.start);
@@ -57,12 +59,49 @@ export function useModeWarnings<S extends ExportSettings>(settings: S, computeWa
   const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
   // Text overflow is judged against the loaded fonts: a font that lands after the first measurement re-runs the warnings.
   const metricsKey = useTextMetricsKey();
+  return { rawNodes, rawEdges, floors, cfg, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey };
+}
+
+/** The mode's own warnings of the whole project (`computeWarnings`) and the effective endpoints they were judged with.
+ *  Split out so a panel that needs a narrower set (the teleport connector editor, GitHub issue #952) doesn't derive the topology
+ *  warnings, text fit, teleport groups and color visibility too. */
+export function useModeWarnings<S extends ExportSettings>(settings: S, computeWarnings: ComputeWarnings<S>) {
+  const { rawNodes, rawEdges, floors, cfg, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey } = useWarningInputs();
   const modeWarnings = useMemo(
     () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey],
   );
   return { modeWarnings, rawEffectiveEndpoints };
+}
+
+/** `useZoneModeWarnings` of "Vector by walls" with its global settings and the "show zone problems" switch. */
+export function useZoneWallsWarnings() {
+  const settings = useMazeStore((s) => s.vectorByWallsSettings);
+  const enabled = useMazeStore((s) => s.showZoneProblems);
+  return useZoneModeWarnings("walls", settings, computeVectorByWallsWarningsAcrossFloors, enabled);
+}
+
+/** `useZoneModeWarnings` of "Vector by corridors" with its global settings and the "show zone problems" switch. */
+export function useZoneCorridorsWarnings() {
+  const settings = useMazeStore((s) => s.vectorByCorridorsSettings);
+  const enabled = useMazeStore((s) => s.showZoneProblems);
+  return useZoneModeWarnings("corridors", settings, computeVectorByCorridorsWarningsAcrossFloors, enabled);
+}
+
+/** The mode warnings of every zone override of `mode` (GitHub issue #1040): the whole project judged with the global
+ *  `settings` plus that override's parameters. Empty while `enabled` is off, and for a mode without a zone context. */
+export function useZoneModeWarnings<S extends ExportSettings>(mode: ExportOverrideMode, settings: S, computeWarnings: ComputeWarnings<S>, enabled: boolean) {
+  const { rawNodes, rawEdges, floors, cfg, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey } = useWarningInputs();
+  const overrides = useMazeStore((s) => s.exportZoneOverrides);
+  return useMemo<{ override: ExportZoneOverride; warnings: ExportWarning[] }[]>(
+    () => (!enabled || !exportModeSupportsZones(mode) ? [] : overrides.filter((o) => o.mode === mode).map((override) => ({
+      override,
+      warnings: computeWarnings(rawNodes, rawEdges, floors, cfg, settingsWithOverride(mode, settings, override), rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
+    }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enabled, mode, overrides, rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey],
+  );
 }
 
 /** `useModeWarnings` plus the topology warnings: every export warning of the project. */
@@ -114,16 +153,26 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
   // size control, so `fitAll` only covers the shared style label controls.
   const textFitMetricsKey = useTextMetricsKey();
+  // A label is fitted against the plate it sits on: the open zone's labels in a zone's context, every zone's variant in the global one (GitHub issue #1040).
+  const zones = useMazeStore((s) => s.zones);
+  const zoneGroups = useMazeStore((s) => s.zoneGroups);
+  const exportZoneOverrides = useMazeStore((s) => s.exportZoneOverrides);
+  const zoneTarget = useMazeStore(activeExportContext);
   const textFit = useMemo<TextFitContextValue>(() => {
-    const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
+    const zoned = exportModeSupportsZones(mode);
+    const groups = computeTextFitGroups({
+      nodes: rawNodes, edges: rawEdges, floors, cfg, start: rawEffectiveEndpoints.start, finish: rawEffectiveEndpoints.finish,
+      settings, mode, overrides: zoned ? exportZoneOverrides : [], zones, groups: zoneGroups, target: zoned ? zoneTarget : null,
+    });
+    const floorItems = groups[0].items.floorLabel;
     return {
-      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
-      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
-      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
-      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
+      fitFor: (kind) => fitAcrossGroups(groups, [kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
+      fitAll: () => fitAcrossGroups(groups, ["start", "finish", "elevator", "teleport", "markerIndex"]),
+      fitFloorLabelWidth: () => requiredTextPlateDimensions(floorItems, settings.floorLabel.textSize)?.width ?? null,
+      fitFloorLabelHeight: () => requiredTextPlateDimensions(floorItems, settings.floorLabel.textSize)?.height ?? null,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, textFitMetricsKey]);
+  }, [rawNodes, rawEdges, floors, cfg, settings, mode, exportZoneOverrides, zones, zoneGroups, zoneTarget, rawEffectiveEndpoints, textFitMetricsKey]);
 
   // Group customization lists every teleport connection group of the whole project, cross floor
   // pairs included (GitHub issue #484), so switching floors never changes the customizable set.

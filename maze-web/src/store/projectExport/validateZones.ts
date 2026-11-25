@@ -1,6 +1,6 @@
 import type { ProjectFileZones } from "./types";
 import type { Zone, ZoneCellWire, ZoneKind } from "../../wasm/mazeService";
-import type { ZoneGroup, ZoneOverride, ZoneOverrideParamKey } from "../zonesTypes";
+import type { ExportZoneOverride, ZoneGroup, ZoneOverride, ZoneOverrideParamKey } from "../zonesTypes";
 import { ZONE_OVERRIDE_PARAM_KEYS, ZONE_OVERRIDE_SWITCH_KEYS } from "../../domain/zoneOverrides";
 import { assertArray, assertNumber, assertObject, assertString } from "./validatePrimitives";
 import { isAutoGroupId, isAutoZoneId } from "../../domain/autoZones";
@@ -88,11 +88,41 @@ export function validateZones(raw: unknown, path: string): ProjectFileZones {
     };
   });
 
+  const exportOverrideIds = new Set<number>();
+  const exportOverrides = assertArray(obj.exportOverrides ?? [], `${path}.exportOverrides`).map((o, i): ExportZoneOverride => {
+    const where = `${path}.exportOverrides[${i}]`;
+    const item = assertObject(o, where);
+    const id = assertId(item.id, `${where}.id`);
+    if (exportOverrideIds.has(id)) throw new Error(`${path}.exportOverrides: duplicate override id ${id}`);
+    exportOverrideIds.add(id);
+    const ids = (key: "zoneIds" | "groupIds") => [...new Set(assertArray(item[key], `${where}.${key}`).map((n, k) => assertId(n, `${where}.${key}[${k}]`)))];
+    const paramsObj = assertObject(item.params ?? {}, `${where}.params`);
+    const mode = item.mode;
+    if (mode !== "walls" && mode !== "corridors") throw new Error(`${where}.mode: expected "walls" or "corridors"`);
+    const params: ExportZoneOverride["params"] = {};
+    for (const [key, value] of Object.entries(paramsObj)) {
+      if (typeof value !== "number" && typeof value !== "boolean" && typeof value !== "string") throw new Error(`${where}.params.${key}: expected a number, boolean or string`);
+      params[key] = value;
+    }
+    return {
+      id,
+      mode,
+      zoneIds: ids("zoneIds").filter((z) => zoneIds.has(z) || isAutoZoneId(z)),
+      groupIds: ids("groupIds").filter((g) => groupIds.has(g) || isAutoGroupId(g)),
+      params,
+    };
+  });
+
   const maxZone = Math.max(-1, ...zoneIds);
   const maxGroup = Math.max(-1, ...groupIds);
   const maxOverride = Math.max(-1, ...overrideIds);
+  const maxExportOverride = Math.max(-1, ...exportOverrideIds);
   return {
     generationOverrides,
+    ...(exportOverrides.length > 0 ? {
+      exportOverrides,
+      nextExportOverrideId: Math.max(maxExportOverride + 1, obj.nextExportOverrideId == null ? 0 : assertId(obj.nextExportOverrideId, `${path}.nextExportOverrideId`)),
+    } : {}),
     nextOverrideId: Math.max(maxOverride + 1, obj.nextOverrideId == null ? 0 : assertId(obj.nextOverrideId, `${path}.nextOverrideId`)),
     zones,
     nextZoneId: Math.max(maxZone + 1, obj.nextZoneId == null ? 0 : assertId(obj.nextZoneId, `${path}.nextZoneId`)),

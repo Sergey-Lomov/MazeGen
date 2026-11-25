@@ -124,6 +124,11 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     zoneColorOverrides: {},
     showColorWarnings: true,
     linkIconVisibility: "linked",
+    showZoneOverrideButtons: true,
+    showZoneProblems: true,
+    zoneOverrideDisplay: "onRequest",
+    exportZoneOverrides: [],
+    nextExportZoneOverrideId: 1,
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }

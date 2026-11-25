@@ -5,6 +5,7 @@ import { LabelFontRow } from "./LabelFontRow";
 import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
+import { ToggleRow } from "../ToggleRow";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
 import { SectionHeader } from "../SectionHeader";
@@ -18,7 +19,7 @@ import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
 import { MarkerLayoutRows } from "./MarkerLayoutRows";
 import type { MarkerLayoutMode } from "../../domain/selectors/mazeSelectors/markerLayout";
-import type { LinkIconVisibility, MarkerLayoutSettingsFields, SharedStyleSourceFields } from "../../store/imageExportTypes";
+import type { LinkIconVisibility, ZoneOverrideDisplay, MarkerLayoutSettingsFields, SharedStyleSourceFields } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
@@ -76,6 +77,11 @@ export function SettingsSection<P extends LinkPath>({
   const [infoOpen, setInfoOpen] = useState(false);
   const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
   const setLinkIconVisibility = useMazeStore((s) => s.setLinkIconVisibility);
+  const showZoneOverrideButtons = useMazeStore((s) => s.showZoneOverrideButtons);
+  const setShowZoneOverrideButtons = useMazeStore((s) => s.setShowZoneOverrideButtons);
+  const zoneOverrideDisplay = useMazeStore((s) => s.zoneOverrideDisplay);
+  const setZoneOverrideDisplay = useMazeStore((s) => s.setZoneOverrideDisplay);
+  const [displayInfoOpen, setDisplayInfoOpen] = useState(false);
 
   return (
     <div style={styles.block}>
@@ -89,6 +95,22 @@ export function SettingsSection<P extends LinkPath>({
         ]}
         onChange={setLinkIconVisibility}
       />
+      <ToggleRow
+        label={m["image_export.zone_overrides.show_buttons"]()}
+        checked={showZoneOverrideButtons}
+        onChange={setShowZoneOverrideButtons}
+      />
+      <SelectRow
+        label={m["image_export.zone_overrides.display_label"]()}
+        value={zoneOverrideDisplay}
+        options={[
+          { value: "none" as ZoneOverrideDisplay, label: m["image_export.zone_overrides.display_none"]() },
+          { value: "always" as ZoneOverrideDisplay, label: m["image_export.zone_overrides.display_always"]() },
+          { value: "onRequest" as ZoneOverrideDisplay, label: m["image_export.zone_overrides.display_on_request"]() },
+        ]}
+        onChange={setZoneOverrideDisplay}
+        info={() => setDisplayInfoOpen(true)}
+      />
       <Inline gap="rowGap" align="stretch">
         <Button variant="secondary" layoutStyle={styles.manageLinksButton} onClick={() => setLinksDialogOpen(true)}>
           {m["image_export.param_links.manage_links"]()}
@@ -101,6 +123,11 @@ export function SettingsSection<P extends LinkPath>({
         {m["image_export.vector_by_walls.shared_style_reset_all"]()}
       </Button>
       {infoOpen && <ParamLinksInfoModal onClose={() => setInfoOpen(false)} />}
+      {displayInfoOpen && (
+        <Modal title={m["image_export.zone_overrides.display_info_title"]()} onClose={() => setDisplayInfoOpen(false)}>
+          <div style={styles.infoText}>{m["image_export.zone_overrides.display_info_text"]()}</div>
+        </Modal>
+      )}
       {linksDialogOpen && (
         <ParameterLinksDialog
           registry={registry}

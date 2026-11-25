@@ -200,3 +200,16 @@ describe("WallRenderer.render", () => {
     expect(strokeCalls[strokeCalls.length - 1].args[0]).toMatchObject({ width: 5, color: 0xbbbbbb, join: "miter" });
   });
 });
+
+describe("WallRenderer zone wall styles (GitHub issue #1040)", () => {
+  it("strokes the walls a zone style reaches apart, with that style, and the rest with the base one", () => {
+    const renderer = new WallRenderer(new Container());
+    const base = { color: 0x111111, width: 4, join: "round" as const, cap: "round" as const };
+    renderer.render({ edges: cornerEdges() }, squareCfg, base, undefined, undefined, undefined, "off", undefined, (edge) => (edge.a[0] === 1 ? { color: 0xff0000, width: 9 } : undefined));
+    const g = (renderer as unknown as { g: { calls: { fn: string; args: unknown[] }[] } }).g;
+    const strokes = g.calls.filter((c) => c.fn === "stroke").map((c) => c.args[0] as { color: number; width: number });
+    expect(strokes).toHaveLength(2);
+    expect(strokes).toContainEqual(expect.objectContaining({ color: 0x111111, width: 4 }));
+    expect(strokes).toContainEqual(expect.objectContaining({ color: 0xff0000, width: 9 }));
+  });
+});

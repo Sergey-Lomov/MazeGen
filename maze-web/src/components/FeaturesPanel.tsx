@@ -1,5 +1,6 @@
 ﻿import { TESSELLATION_UI } from "../domain/geometry/tessellationUi";
 import { zoneOverrideWarningCount } from "../domain/zoneOverrides";
+import { exportOverrideWarningCount } from "../store/exportZoneOverrides";
 import React, { useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize2, Bug } from "lucide-react";
@@ -154,9 +155,11 @@ export interface ImageExportCardData {
 /// A stale/unknown activeRenderMode (e.g. a project file naming a since-removed mode — see
 /// `imageExportRegistry.ts`'s `resolveRenderMode`) falls back to the same "not selected" reading
 /// as `null` — never crashes, never silently pretends a mode is active.
-export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { label: () => string } | null): ImageExportCardData {
+export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { label: () => string } | null, zoneOverrideWarnings = 0): ImageExportCardData {
   if (!hasNodes) return { status: "unavailable", comment: m["status.post_edit_unavailable"]() };
   if (resolvedRenderMode === null) return { status: "warning", comment: m["status.render_mode_not_selected"]() };
+  // Export zone overrides (GitHub issue #1040): one with no zones left, or one setting a parameter differently on a shared cell.
+  if (zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.export_zone_overrides_warning"]() };
   return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
 }
 
@@ -221,6 +224,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const zones = useMazeStore((s) => s.zones);
   const zoneGroups = useMazeStore((s) => s.zoneGroups);
   const zoneOverrides = useMazeStore((s) => s.zoneOverrides);
+  const exportZoneOverrides = useMazeStore((s) => s.exportZoneOverrides);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -351,7 +355,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   );
 
   const resolvedRenderMode = activeRenderMode !== null ? resolveRenderMode(activeRenderMode) : null;
-  const imageExportCard = computeImageExportCard(nodes.length > 0, resolvedRenderMode);
+  const imageExportCard = computeImageExportCard(nodes.length > 0, resolvedRenderMode, exportOverrideWarningCount(exportZoneOverrides, zones, zoneGroups));
 
   // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
   // at all is the more fundamental gap, so its message takes priority when both are true.
