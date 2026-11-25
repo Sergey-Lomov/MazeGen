@@ -1,18 +1,17 @@
 import { Graphics } from "pixi.js";
-import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "../domain/renderConstants";
 import type { Pos } from "../domain/tessellationGeometry";
 import { buildNodePositions } from "../domain/splitNodeGeometry";
-import { drawDirectionArrow, splitWallAndLineEdges } from "./renderers/wallUtils";
+import { splitWallAndLineEdges } from "./renderers/wallUtils";
+import { fullyHighlightedNavEdges } from "./renderers/edgeUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
-import { TILE_SIZE } from "../domain/constants";
-import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "../domain/colorTokens";
-import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
+import { BaseGraphRenderer, buildCrossFloorMarkers, buildPathRenderEdges } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import type { IssueHighlightEdge } from "../store/postEditFullTypes";
-import { hopPieces, type SeamHopContext } from "../domain/graphSeams";
+import type { SeamHopContext } from "../domain/graphSeams";
 
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 1;
@@ -27,6 +26,8 @@ export interface IssueHighlightData {
    *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
    *  doc comment. `[]` falls back to the generic hub position. */
   allEdges: EdgeDto[];
+  /** Nav edges of the maze — a highlighted loop is drawn along them, so dots land on nav nodes only. */
+  navEdges: NavEdgeDto[];
   cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a highlighted edge whose other endpoint crosses to another floor
@@ -55,7 +56,7 @@ export interface IssueHighlightData {
 export class IssueHighlightOverlay extends BaseGraphRenderer {
   render(data: IssueHighlightData): void {
     this.resetContainers();
-    const { nodes, edges, allEdges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth, seam } = data;
+    const { nodes, edges, allEdges, navEdges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth, seam } = data;
     const hasEdges = edges != null && edges.length > 0;
     const highlightColor = canvas.coordinateWarning[edges?.[0]?.severity ?? "warning"];
 
@@ -83,31 +84,10 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
     const linePairs: [number, number][] = lineEdges.map((e) => [e.from, e.to]);
 
-    // A same-floor edge drawn as a line gets a mid-segment direction arrow when it's genuinely
-    // one-way — the reverse `to`→`from` absent from the base graph. Every edge kind counts here
-    // (a one-way teleport must show its arrow too), unlike `directedPairs` above which drops
-    // teleports only because they don't drive `buildNodePositions`. Matches how the Cycles overlay
-    // marks a one-way hop; a cross-floor edge has no on-floor line to mark and is handled by its
-    // badge stub instead.
-    const baseEdgeKeys = new Set(allEdges.map((e) => `${e.from},${e.to}`));
-    const g = new Graphics();
-    for (const [from, to] of linePairs) {
-      // A hop across a glue is two stubs ending at its contour, an ordinary one a single line.
-      for (const { path } of hopPieces(from, to, nodePos, seam)) {
-        const a = path[0];
-        const b = path[1];
-        g.moveTo(a.x, a.y);
-        g.lineTo(b.x, b.y);
-        g.stroke({ width: HIGHLIGHT_WIDTH, color: highlightColor, alpha: HIGHLIGHT_ALPHA });
-        if (baseEdgeKeys.has(`${from},${to}`) && !baseEdgeKeys.has(`${to},${from}`)) {
-          const len = Math.hypot(b.x - a.x, b.y - a.y);
-          if (len >= 1) {
-            drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, highlightColor, HIGHLIGHT_ALPHA);
-          }
-        }
-      }
-    }
-    this.edgesContainer.addChild(g);
+    // Same drawing as the Cycles overlay: each nav edge whose every hop is highlighted is one
+    // continuous contour between nav nodes, with dots at the nav nodes only.
+    const highlightedNavEdges = fullyHighlightedNavEdges(navEdges, linePairs);
+    this.drawEdges(buildPathRenderEdges(highlightedNavEdges, nodePos, navEdges, seam), highlightColor);
 
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
       // A cross-floor stub gets its direction arrow only when the underlying connection is
@@ -131,14 +111,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
       this.renderCrossFloorMarkers(markers, NODE_RADIUS, highlightColor, highlightColor, highlightColor, true, HIGHLIGHT_WIDTH);
     }
 
-    const nodesG = new Graphics();
-    for (const nodeId of touchedNodeIds(linePairs)) {
-      const pos = nodePos.get(nodeId);
-      if (!pos) continue;
-      nodesG.circle(pos.x, pos.y, NODE_RADIUS);
-      nodesG.fill({ color: highlightColor, alpha: HIGHLIGHT_ALPHA });
-    }
-    this.nodesContainer.addChild(nodesG);
+    this.drawNodeDots(highlightedNavEdges.flatMap((e) => [e.path[0], e.path[e.path.length - 1]]), nodePos, highlightColor, HIGHLIGHT_ALPHA);
   }
 
   clear(): void {
