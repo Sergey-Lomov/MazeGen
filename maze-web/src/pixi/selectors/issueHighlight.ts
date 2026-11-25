@@ -20,6 +20,7 @@ export function selectIssueHighlightData(
     nodes: scene.nodes,
     edges: state.hoveredIssueLoopEdges,
     allEdges: scene.edges,
+    navEdges: state.postEditAnalytics?.navEdges ?? state.navEdges,
     cfg,
     resolveNodeLevel: selectNodeLevelResolver(state.nodes),
     resolveNodeCell: (id) => {

@@ -11,8 +11,7 @@ import { Modal } from "../Modal";
 import { SectionHeader } from "../SectionHeader";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import { AutoFitButton } from "./TextFitContext";
-import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../domain/renderConstants";
+import { TEXT_MARGIN_RANGE } from "../../domain/renderConstants";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
@@ -242,17 +241,6 @@ export function SharedStyleSection<P extends LinkPath>({
       <SectionHeader label={m["image_export.vector_by_walls.shared_style_subsection_text"]()} expanded={isExpanded("shared_style_text")} onToggle={() => onToggle("shared_style_text")} />
       {isExpanded("shared_style_text") && <div style={styles.group}>
         <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} warningKinds={SHARED_TEXT_KINDS} />
-        <LinkedSliderRow
-          label={m["image_export.vector_by_walls.marker_text_size"]()}
-          value={settings.markerTextSize}
-          onChange={(markerTextSize) => onChange({ markerTextSize })}
-          min={TEXT_SIZE_RANGE.min}
-          max={TEXT_SIZE_RANGE.max}
-          step={TEXT_SIZE_RANGE.step}
-          format={(v) => String(Math.round(v * 10) / 10)}
-          linkTarget={"markerTextSize" as P}
-          trailingAction={<AutoFitButton all resolve={(ctx) => ctx.fitAll()} onApply={(markerTextSize) => onChange({ markerTextSize })} />}
-        />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_text_margin"]()}
           value={settings.markerTextMargin}

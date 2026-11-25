@@ -360,6 +360,19 @@ export abstract class BaseGraphRenderer {
     drawCrossFloorMarkers(this.edgesContainer, this.nodesContainer, markers, radius, lineColor, badgeColor, badgeBorderColor, lineWidth, undefined, nodeGapless);
   }
 
+  /** Draws one filled dot per node id at its position (ids without a position are skipped) —
+   *  shared by the overlays that mark an explicit node set (`PureCyclesOverlay`, `IssueHighlightOverlay`). */
+  protected drawNodeDots(nodeIds: Iterable<number>, nodePos: Map<number, Pos>, color: number, alpha: number): void {
+    const g = new Graphics();
+    for (const nodeId of nodeIds) {
+      const pos = nodePos.get(nodeId);
+      if (!pos) continue;
+      g.circle(pos.x, pos.y, NODE_RADIUS);
+      g.fill({ color, alpha });
+    }
+    this.nodesContainer.addChild(g);
+  }
+
   protected redrawNode(g: Graphics, r: number, color: number): void {
     g.clear();
     g.circle(0, 0, r);

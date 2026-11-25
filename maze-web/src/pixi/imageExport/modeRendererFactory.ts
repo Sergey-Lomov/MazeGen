@@ -4,7 +4,7 @@ import { VectorByCorridorsRenderer } from "./VectorByCorridorsRenderer";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import type { ExportMargin } from "../../domain/imageExport/exportMargins";
-import type { TeleportEdge } from "../../domain/renderers/types";
+import type { ConnectorEditPath } from "../renderers/teleportConnectorRouting";
 
 /** See `ModeRenderer.setRenderPass`. */
 export type RenderPass = "full" | "backdrop" | "content" | "overlay" | "foreground";
@@ -33,7 +33,7 @@ export interface ModeRenderer extends ViewportListener {
   readonly layers: { readonly content: Container; readonly overlay: Container; readonly highlight: Container };
   /** Whether the mode puts anything in its `"overlay"` pass; a cut export skips the empty pass. */
   readonly hasOverlay: boolean;
-  getTeleportConnectorPaths?(): readonly { edge: TeleportEdge; points: readonly number[] }[];
+  getTeleportConnectorPaths?(): readonly ConnectorEditPath[];
   destroy(): void;
 }
 

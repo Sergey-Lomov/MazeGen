@@ -1,6 +1,7 @@
 import type { TeleportEdge, TeleportLineStyle } from "../../domain/renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, type RoutedConnector } from "./teleportConnectorRouting";
+import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, type RoutedConnector, type UnfoldedPath } from "./teleportConnectorRouting";
+import type { WorldPoint } from "../../wasm/mazeService";
 import type { TeleportConnectorRouter, EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { getSeamModel } from "../../domain/selectors/seams";
 import { cutPolylineAtChain, shortestSeamCrossing } from "../selectors/seamUnfold";
@@ -31,9 +32,6 @@ export function routeTeleportConnectors(args: {
   seam?: { cfg: FieldConfig };
 }): RoutedConnector[] {
   const { edges, seam } = args;
-  // A manually authored path is already in display coordinates. Do not unfold/re-cut it through
-  // a seam: that would silently rewrite the user's geometry.
-  if (args.manualPaths && edges.some((edge) => manualConnectorPoints(edge, args.manualPaths) !== null)) return routeWholeConnectors(args);
   const model = seam ? getSeamModel(seam.cfg) : null;
   if (!seam || !model || model.isEmpty) return routeWholeConnectors(args);
 
@@ -48,12 +46,20 @@ export function routeTeleportConnectors(args: {
     const crossing = crossings[i];
     return crossing ? { ...edge, to: applyTransform(toDisplay, crossing.unfolded) } : edge;
   });
+  // A manual path of a seam-crossing connector replaces its routed path in this unfolded frame, so it
+  // is cut at the seam like an automatic one and keeps both pieces (GitHub issue #1094).
   const routed = routeWholeConnectors({ ...args, edges: unfoldedEdges });
 
   return routed.map((connector, i) => {
     const { from, to } = edges[i];
     const crossing = crossings[i];
     if (crossing) {
+      const manual = manualConnectorPoints(edges[i], args.manualPaths) !== null;
+      const mapPoint = (map: (p: WorldPoint) => WorldPoint) => (point: readonly [number, number]): [number, number] =>
+        applyTransform(toDisplay, map(applyTransform(toWorld, [point[0], point[1]])));
+      const unfold = (firstFar: number, cutAt?: [number, number]): UnfoldedPath => ({
+        points: connector.points, firstFar, cutAt, toPartner: mapPoint(crossing.toTarget), fromPartner: mapPoint(crossing.fromTarget),
+      });
       const polyline: [number, number][] = [];
       for (let k = 0; k + 1 < connector.points.length; k += 2) polyline.push(applyTransform(toWorld, [connector.points[k], connector.points[k + 1]]));
       const cut = cutPolylineAtChain(crossing.chains, polyline);
@@ -63,15 +69,20 @@ export function routeTeleportConnectors(args: {
         // mapped back; it ends exactly on the target (the unfolded end maps onto it).
         const after = cut.after.map(crossing.toTarget);
         const piece = flat(after);
-        piece.splice(piece.length - 2, 2, to[0], to[1]);
         const first = flat(cut.before);
-        first.splice(0, 2, from[0], from[1]);
-        return { points: first, partnerPoints: piece };
+        // A manual path keeps its authored ends: one moved off its marker leaves a gap, as without a seam.
+        if (!manual) {
+          piece.splice(piece.length - 2, 2, to[0], to[1]);
+          first.splice(0, 2, from[0], from[1]);
+        }
+        return { points: first, partnerPoints: piece, unfolded: unfold(cut.before.length - 1, applyTransform(toDisplay, cut.at)) };
       }
+      // A manual path that no longer crosses the face is drawn as authored, without the straight fallback.
+      if (manual) return { points: connector.points, unfolded: unfold(Infinity) };
       // The routed shape never crosses this face: the straight way through the seam.
       const at = applyTransform(toDisplay, crossing.at);
       const partnerAt = applyTransform(toDisplay, crossing.partnerAt);
-      return { points: [from[0], from[1], at[0], at[1]], partnerPoints: [partnerAt[0], partnerAt[1], to[0], to[1]] };
+      return { points: [from[0], from[1], at[0], at[1]], partnerPoints: [partnerAt[0], partnerAt[1], to[0], to[1]], unfolded: unfold(polyline.length - 1, at) };
     }
     return connector;
   });

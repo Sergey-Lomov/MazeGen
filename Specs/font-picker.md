@@ -156,8 +156,8 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   drives. The call site names them through `warningKinds` (`TextFitKind[]`, threaded `LabelFontRow` →
   `LinkedFontRow` → `FontRow` → `FontButton` → `FontPickerPanel`): a text style group passes its own
   kind (`TextStyleRows` reuses its `autoFitKind`; start and finish are separate kinds, both raise
-  `marker_text_overflow`), the floor label group `floorLabel`, and the Shared style font every kind its
-  text-size Auto-fit covers (start, finish, elevator, teleport, marker index; not floor labels). No
+  `marker_text_overflow`), the floor label group `floorLabel`, and the Shared style font every kind it
+  drives (start, finish, elevator, teleport, marker index; not floor labels). No
   `warningKinds`, or no open export settings panel (`openRenderModeSettings` null), means no section.
   The list comes from `computeActiveModeTextOverflowWarnings` (`pixi/selectors/activeModeWarnings.ts`, next to
   `computeActiveModeWarnings` the color picker uses) over the store settings of the open render mode. It

@@ -14,6 +14,10 @@ import { SPLIT_BOUNDARY_FACE } from "../notifications/editRefusalNotifications";
 import { getTooltipControls } from "./tooltipTestUtils";
 import { setCellFocusApplier } from "../pixi/viewportScaleBridge";
 
+vi.mock("../components/features/ToolGlyph", () => ({
+  ToolGlyph: ({ tool }: { tool: string }) => tool,
+}));
+
 beforeEach(() => {
   setCellFocusApplier(null);
   resetNotifications();
@@ -155,20 +159,22 @@ describe("ManageSplitNodesDialog", () => {
     expect(screen.getByText("Node 3")).toBeInTheDocument();
   });
 
-  it("Remove is disabled while the original node is active (defaults active)", () => {
+  it("shows a disabled delete action on the original node with an explanation", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("Remove")).toBeDisabled();
+    const removeButtons = screen.getAllByRole("button", { name: "Remove" });
+    expect(removeButtons).toHaveLength(3);
+    expect(removeButtons[0]).toBeDisabled();
+    expect(screen.getByText(/original node cannot be removed/i)).toBeInTheDocument();
   });
 
-  it("Remove is enabled once a slot becomes active", () => {
+  it("places a delete action on each removable node", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 2"));
-    expect(screen.getByText("Remove")).not.toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Remove" }).slice(1).every((button) => !button.hasAttribute("disabled"))).toBe(true);
   });
 
-  it("the currently active card shows an Active badge (defaults to the original node)", () => {
+  it("marks the active node with the shared ListCell indicator", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getAllByTestId("list-cell-current")).toHaveLength(1);
   });
 
   it("clicking a non-active card calls setActiveSplitNode", () => {
@@ -207,14 +213,14 @@ describe("ManageSplitNodesDialog", () => {
 
   it("clicking + Add node calls addSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Add node"));
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1, 2]);
   });
 
   it("clicking Remove (on the active slot) then confirming calls removeSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("Node 2"));
-    fireEvent.click(screen.getByText("Remove"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]);
     fireEvent.click(screen.getByText("Ok"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([1]);
   });
@@ -222,12 +228,12 @@ describe("ManageSplitNodesDialog", () => {
   it("clicking Remove then cancelling leaves the slot untouched", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("Node 2"));
-    fireEvent.click(screen.getByText("Remove"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]);
     fireEvent.click(screen.getByText("Cancel"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1]);
   });
 
-  it("shows a link bubble naming both this node and the other endpoint, with a Node N suffix on the split side", () => {
+  it("shows a typed link bubble naming the destination only", () => {
     useMazeStore.setState({
       postEditDraftEdges: {
         "n0-s0": { from: nodeEndpoint(0), to: splitEndpoint([2, 2], 0), kind: "basic" },
@@ -238,7 +244,15 @@ describe("ManageSplitNodesDialog", () => {
     // Every card's own coordinates ("2,2") lead the bubble, then the arrow, then the partner's —
     // slot 0's own side gets a compact "(N2)" suffix (row order: original = Node 1, slot 0 =
     // Node 2). The partner (0,0) is a plain node on a non-split point, so it gets no suffix.
-    expect(screen.getByText("2:2 (N2) <- 0:0")).toBeInTheDocument();
+    const bubble = screen.getByText("<- 0:0");
+    expect(bubble).toBeInTheDocument();
+    expect(bubble.parentElement).toHaveAttribute("aria-describedby");
+    expect(screen.getByText("Required")).toBeInTheDocument();
+
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().postEditHoveredEntity).toMatchObject({ kind: "link", highlightStyle: "boundary" });
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().postEditHoveredEntity).toBeNull();
   });
 
   it("shows the original node's own links, resolved by its real NodeId, not the point's coordinates", () => {
@@ -251,7 +265,7 @@ describe("ManageSplitNodesDialog", () => {
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // (2,2) is a split point, so its original node's own side gets a compact "(N1)" suffix too.
-    expect(screen.getByText("2:2 (N1) -> 1:0")).toBeInTheDocument();
+    expect(screen.getByText("-> 1:0")).toBeInTheDocument();
   });
 
   it("collapses a passage's matched forward+backward basic pair into a single <-> link", () => {
@@ -262,9 +276,9 @@ describe("ManageSplitNodesDialog", () => {
       },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("2:2 (N1) <-> 1:0")).toBeInTheDocument();
-    expect(screen.queryByText("2:2 (N1) -> 1:0")).not.toBeInTheDocument();
-    expect(screen.queryByText("2,2 (N1) <- 1,0")).not.toBeInTheDocument();
+    expect(screen.getByText("<-> 1:0")).toBeInTheDocument();
+    expect(screen.queryByText("-> 1:0")).not.toBeInTheDocument();
+    expect(screen.queryByText("<- 1:0")).not.toBeInTheDocument();
   });
 
   it("shows links for an auto-split node (GitHub issue #222) keyed by its real NodeId, not a split endpoint", () => {
@@ -283,7 +297,7 @@ describe("ManageSplitNodesDialog", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // The link belongs to slot 0 (node 6), not the original node — slot 0's own side gets its
     // compact "(N2)" suffix (row order: original = Node 1, slot 0 = Node 2).
-    expect(screen.getByText("2:2 (N2) -> 1:0")).toBeInTheDocument();
+    expect(screen.getByText("-> 1:0")).toBeInTheDocument();
     // Slot 0 (node 6) is also the run's start node — must resolve as such despite draftMeta
     // carrying a plain node endpoint, not a split one.
     expect(screen.getByText("Start")).toBeInTheDocument();
@@ -300,9 +314,9 @@ describe("ManageSplitNodesDialog", () => {
     // Original node's card (row "Node 1"): both nodes of the bubble belong to this split point,
     // so each side gets its compact "(N{N})" suffix — the original node included (slot 0 is not a
     // special node any more, GitHub issue #468).
-    expect(screen.getByText("2:2 (N1) -> 2:2 (N2)")).toBeInTheDocument();
+    expect(screen.getByText("-> 2:2 (N2)")).toBeInTheDocument();
     // Slot 0's card (row "Node 2"): same bubble seen from the other side.
-    expect(screen.getByText("2:2 (N2) <- 2:2 (N1)")).toBeInTheDocument();
+    expect(screen.getByText("<- 2:2 (N1)")).toBeInTheDocument();
   });
 
   it("applies a blueprint immediately, with no confirm, when clicked right after the panel opens", () => {
@@ -315,7 +329,7 @@ describe("ManageSplitNodesDialog", () => {
 
   it("asks for confirmation before applying a blueprint once the user has made a manual edit", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Add node")); // a manual edit on this point
+    fireEvent.click(screen.getByRole("button", { name: "Add node" })); // a manual edit on this point
     fireEvent.click(screen.getByTestId("blueprint-thumb-0"));
     expect(screen.getByText(/replace every existing node/i)).toBeInTheDocument();
     // Slots are untouched until the confirm is accepted.
@@ -342,7 +356,7 @@ describe("ManageSplitNodesDialog", () => {
     const applyPostEditToolAt = vi.fn();
     useMazeStore.setState({ applyPostEditToolAt });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByText("Wall")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Wall" }));
     const faceGroups = document.body.querySelectorAll("svg g");
     faceGroups.forEach((g) => fireEvent.click(g));
     expect(applyPostEditToolAt).toHaveBeenCalled();

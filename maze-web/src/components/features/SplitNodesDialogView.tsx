@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
-import { Button } from "../Button";
-import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
+import { Bubble, BubbleArrow, IdBubble, bubbleColors, type BubbleColors } from "../Bubble";
 import { TileFaceEditor } from "./TileFaceEditor";
 import type { TileFaceNode } from "../../domain/tileFace";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
@@ -12,17 +11,23 @@ import { Tooltip } from "../Tooltip";
 import { WarningsSection } from "../WarningsSection";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
-import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
 import { splitShapeBinding } from "../../domain/splitShape";
+import { canvas } from "../../domain/colorTokens";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { focusCell } from "../../pixi/viewportScaleBridge";
 import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
+import { AddIconButton } from "../AddIconButton";
 import { FlatIconButton } from "../FlatIconButton";
-import { Crosshair } from "lucide-react";
+import { EntityColorSwatch } from "../EntityColorSwatch";
+import { ListCell, ListCellAction } from "../ListCell";
+import { ToolIconButton } from "../ToolIconButton";
+import { ToolGlyph } from "./ToolGlyph";
+import { canRotateSplit } from "../../domain/splitShape";
+import { Focus, RotateCcw, RotateCw } from "lucide-react";
 
 /** One link (edge or teleport) from a node, resolved to a small display label — grouped into 3
  *  sections in the card (GitHub issue #234 follow-up): `required` (a decided passage/one-way,
@@ -37,6 +42,8 @@ export interface LinkInfo<E> {
   otherLabel: string;
   arrow: string;
   category: LinkCategory;
+  /** Geometric face index of this row's endpoint; keeps bubble position stable across edge kinds. */
+  faceIndex?: number;
   /** The link's partner endpoint — used to highlight this specific connection on the canvas while
    *  the bubble is hovered (GitHub issue #237), same coordinates the tile diagram/canvas renderer
    *  already resolve endpoints to. */
@@ -103,6 +110,7 @@ export interface SplitNodesRow<E> {
   links: LinkInfo<E>[];
   elements: ElementInfo<E>[];
   lockKind?: NodeLockKind;
+  lockAutomatic?: boolean;
 }
 
 interface Props<E> {
@@ -169,12 +177,34 @@ export const KIND_LABEL: Record<SplitEdgeKind, () => string> = {
 };
 
 const NOOP = () => {};
+const EDGE_TOOL_ORDER: SplitEdgeKind[] = ["wall", "passage", "undefined", "one_way"];
 
-const SECTION_LABEL: Record<LinkCategory, () => string> = {
-  required: () => m["post_edit.split_section_required"](),
-  undefined: () => m["post_edit.split_section_undefined"](),
-  forbidden: () => m["post_edit.split_section_forbidden"](),
-};
+function FilledLockIcon() {
+  return (
+    <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="currentColor" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+export function linkBubbleColors(category: LinkCategory): BubbleColors {
+  if (category === "required") return bubbleColors("neutral");
+  if (category === "forbidden") return bubbleColors("danger");
+  return { bg: ui.bg.panelAlt, text: ui.text.secondary };
+}
+
+function linkTooltip(category: LinkCategory): string {
+  if (category === "required") return m["post_edit.split_section_required"]();
+  if (category === "forbidden") return m["post_edit.split_section_forbidden"]();
+  return m["post_edit.split_section_undefined"]();
+}
+
+export function linkHighlightColor(category: LinkCategory): number {
+  if (category === "required") return canvas.debug.refHighlight;
+  if (category === "forbidden") return canvas.fieldEditor.danger;
+  return canvas.wall.default;
+}
 
 /** "Manage split nodes" dialog core (GitHub issue #221/#231, redesigned for #234): a large tile
  * diagram on the left, rendered in the field's own tessellation, showing every node's faces at
@@ -204,7 +234,6 @@ export function SplitNodesDialogView<E>({
   // confirmation. Picking a kind/making a card active doesn't count — neither changes the point's
   // actual data.
   const [hasManualEdit, setHasManualEdit] = useState(false);
-  const activeRow = rows.find((row) => row.active);
   const activeRowIndex = rows.findIndex((row) => row.active);
   const activeIndex = activeRowIndex === -1 ? null : activeRowIndex;
   const warnings = splitNodeDiagnostics(tileNodes);
@@ -240,27 +269,60 @@ export function SplitNodesDialogView<E>({
     if (wouldBreakNeighborShape?.(direction)) setPendingRotate(direction);
     else handleRotateNow(direction);
   };
+  const canRotate = allowFaceReassignmentRotation || canRotateSplit(cfg, point[0], point[1]);
+  const lockTitle = (kind: NodeLockKind, automatic: boolean) => `${kind === "both"
+    ? m["post_edit.split_lock_badge"]()
+    : kind === "in"
+      ? m["post_edit.split_lock_in_badge"]()
+      : m["post_edit.split_lock_out_badge"]()}${automatic ? ` (${m["preset.auto_lock"]()})` : ""}`;
+  const renderElement = (row: SplitNodesRow<E>, element: ElementInfo<E>, index: number) => (
+    <span key={`${element.title}:${element.entityId ?? index}`} style={styles.elementRow}
+      onMouseEnter={onHoverElement ? () => onHoverElement(row, element) : undefined}
+      onMouseLeave={onUnhoverElement}>
+      <span style={styles.elementText}>{element.title}</span>
+      {element.bubbles.map((bubble, j) => {
+        const floor = element.bubbleFloors?.[j];
+        const floorClickable = floor !== undefined && floor !== currentLevel;
+        return <span key={j} style={styles.bubbleGroup}>
+          {j === 0 && element.showArrow && <BubbleArrow>{element.arrow}</BubbleArrow>}
+          <Bubble
+            interactive={floorClickable}
+            onClick={floorClickable ? (event) => {
+              event.stopPropagation();
+              onUnhoverElement?.();
+              onUnhoverLink?.();
+              navigateToFloor(floor);
+            } : undefined}
+          >{bubble}</Bubble>
+        </span>;
+      })}
+      {element.entityId !== undefined && (
+        <IdBubble
+          id={element.entityId}
+          interactive={onEntityIdClick !== undefined}
+          className={onEntityIdClick ? "hoverable" : undefined}
+          onClick={onEntityIdClick ? (event) => { event.stopPropagation(); onEntityIdClick(element.entityId!); } : undefined}
+        />
+      )}
+    </span>
+  );
 
   return (
     <>
     <SidePanel
       title={title}
       stackKey={notificationSource === "post_edit" ? "post-edit-split-nodes" : "preset-split-nodes"}
-      headerActions={(
-        <FlatIconButton title={m["post_edit.split_focus_cell"]()} onClick={() => focusCell(point)}>
-          <Crosshair size={16} />
-        </FlatIconButton>
-      )}
+      headerActions={<FlatIconButton title={m["post_edit.split_focus_cell"]()} onClick={() => focusCell(point)}><Focus size={16} /></FlatIconButton>}
       onClose={onClose}
       onTopChange={onTopChange}
     >
       <div style={styles.warningsSection}>
         <WarningsSection warnings={warnings} testId="split-node-warnings" />
       </div>
-      <div style={styles.tileArea}>
+      <section style={styles.templatesSection}>
+        <span style={sharedStyles.sectionHeader}>{m["post_edit.split_blueprints_label"]()}</span>
         {blueprints && blueprints.length > 0 && (
-          <Stack gap="itemGap">
-            <span style={typography.body}>{m["post_edit.split_blueprints_label"]()}</span>
+          <>
             <div style={styles.blueprintStrip}>
               {fittedBlueprints.map(({ original, fitted }) => (
                 <Tooltip key={original.id} content={blueprintName(original)}><button
@@ -289,134 +351,101 @@ export function SplitNodesDialogView<E>({
               ))}
             </div>
             {anyDisabled && <span style={typography.caption}>{m["post_edit.split_blueprint_disabled_hint"]()}</span>}
-          </Stack>
+          </>
         )}
-        <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
-          {availableKinds.map((kind) => (
-            <Button
+      </section>
+      <section style={styles.tileArea}>
+        <span style={sharedStyles.sectionHeader}>{m["post_edit.split_editor_label"]()}</span>
+        <div style={styles.tools}>
+          {EDGE_TOOL_ORDER.filter((kind) => availableKinds.includes(kind)).map((kind) => (
+            <ToolIconButton
               key={kind}
-              variant={kind === activeKind ? "toggle-selected" : "toggle"}
+              selected={kind === activeKind}
+              title={KIND_LABEL[kind]()}
               onClick={() => onKindChange(kind)}
             >
-              {KIND_LABEL[kind]()}
-            </Button>
+              <ToolGlyph tool={kind === "undefined" ? "reset" : kind} />
+            </ToolIconButton>
           ))}
-        </Inline>
+          {canRotate && <>
+            <ToolIconButton selected={false} title={m["post_edit.split_rotate_ccw"]()} onClick={() => handleRotate(1)}><RotateCcw size={20} /></ToolIconButton>
+            <ToolIconButton selected={false} title={m["post_edit.split_rotate_cw"]()} onClick={() => handleRotate(-1)}><RotateCw size={20} /></ToolIconButton>
+          </>}
+        </div>
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
           allowFaceReassignmentRotation={allowFaceReassignmentRotation}
-          showFaceIndices notificationSource={notificationSource}
+          showRotateControls={false}
+          notificationSource={notificationSource}
         />
-      </div>
+      </section>
 
       <div style={styles.nodeListWrap}>
+        <div style={styles.nodesHeader}>
+          <span style={sharedStyles.sectionHeader}>{m["post_edit.split_nodes_label"]()}</span>
+          <AddIconButton title={m["post_edit.split_add_node"]()} onClick={handleAdd} />
+        </div>
         <div style={styles.nodeList}>
-          <Stack gap="itemGap">
             {rows.map((row) => (
-              <div
+              <ListCell
                 key={row.key}
-                style={{ ...styles.card, cursor: row.active ? "default" : "pointer" }}
+                style={{ cursor: row.active ? "default" : "pointer" }}
                 className={row.active ? undefined : "hoverable"}
                 onClick={row.active ? undefined : () => onSetActive(row.endpoint)}
-              >
-                {row.active && (
-                  <div style={styles.cardCorner}>
-                    <span style={styles.activeBadge}>{m["post_edit.split_active_badge"]()}</span>
+                current={row.active}
+                title={row.title}
+                titleAddon={<>
+                  <EntityColorSwatch color={row.color} />
+                  {row.lockKind && <Tooltip content={lockTitle(row.lockKind, row.lockAutomatic ?? false)}><span style={styles.lockIcon}><FilledLockIcon /></span></Tooltip>}
+                </>}
+                details={row.links.length > 0 && (
+                  <div style={styles.linkBubbles}>
+                    {[...row.links].sort((a, b) => (a.faceIndex ?? Infinity) - (b.faceIndex ?? Infinity) || a.otherLabel.localeCompare(b.otherLabel)).map((link, i) => (
+                      <Tooltip key={`${link.faceIndex ?? "other"}:${link.otherLabel}:${i}`} content={linkTooltip(link.category)} focusable={false}>
+                        <Bubble
+                          colors={linkBubbleColors(link.category)}
+                          onMouseEnter={onHoverLink ? () => onHoverLink(row, link) : undefined}
+                          onMouseLeave={onUnhoverLink}
+                        >
+                          {link.arrow} {link.otherLabel}
+                        </Bubble>
+                      </Tooltip>
+                    ))}
                   </div>
                 )}
-                <div style={styles.titleLine}>
-                  <span style={{ ...styles.colorDot, background: row.color }} />
-                  <span style={typography.body}>{row.title}</span>
-                  {row.lockKind && <span style={{ ...styles.badge, ...styles.lockBadge }}>{row.lockKind === "both" ? m["post_edit.split_lock_badge"]() : row.lockKind === "in" ? m["post_edit.split_lock_in_badge"]() : m["post_edit.split_lock_out_badge"]()}</span>}
-                </div>
-                <div>
-                  {(["required", "undefined", "forbidden"] as const).map((category) => {
-                    const links = row.links.filter((l) => l.category === category);
-                    if (links.length === 0) return null;
-                    return (
-                      <div key={category} style={styles.linksSection}>
-                        <span style={typography.body}>{SECTION_LABEL[category]()}</span>
-                        <div style={styles.linksCell}>
-                          {links.map((link, i) => (
-                              <Bubble
-                                key={i}
-                                onMouseEnter={onHoverLink ? () => onHoverLink(row, link) : undefined}
-                                onMouseLeave={onUnhoverLink}
-                              >
-                                {row.ownLabel} {link.arrow} {link.otherLabel}
-                              </Bubble>
-                            ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                actionsPlacement="title"
+                actions={<ListCellAction
+                  action="delete"
+                  title={m["post_edit.split_remove"]()}
+                  description={!row.removable ? m["post_edit.split_remove_original_hint"]() : undefined}
+                  danger
+                  disabled={!row.removable}
+                  onAction={() => setPendingRemove(row)}
+                />}
+              >
                   {row.elements.length > 0 && (
                     <div style={styles.elementsSection}>
-                      <span style={typography.body}>{m["post_edit.split_section_elements"]()}</span>
-                      <div style={styles.elementsCell}>
-                        {row.elements.map((element, i) => (
-                          <span key={`${element.title}:${element.entityId ?? i}`} style={styles.elementRow}
-                            onMouseEnter={onHoverElement ? () => onHoverElement(row, element) : undefined}
-                            onMouseLeave={onUnhoverElement}>
-                            <span style={styles.elementTitle}>{element.title}</span>
-                            {element.bubbles.map((bubble, j) => {
-                              const floor = element.bubbleFloors?.[j];
-                              const floorClickable = floor !== undefined && floor !== currentLevel;
-                              return (
-                              <span key={j} style={styles.bubbleGroup}>
-                                {j === 0 && element.showArrow && <BubbleArrow>{element.arrow}</BubbleArrow>}
-                                <Bubble
-                                  interactive={floorClickable}
-                                  onClick={floorClickable ? (event) => {
-                                    event.stopPropagation();
-                                    onUnhoverElement?.();
-                                    onUnhoverLink?.();
-                                    navigateToFloor(floor);
-                                  } : undefined}
-                                >{bubble}</Bubble>
-                              </span>
-                              );
-                            })}
-                            {element.entityId !== undefined && (
-                              <IdBubble
-                                id={element.entityId}
-                                interactive={onEntityIdClick !== undefined}
-                                className={onEntityIdClick ? "hoverable" : undefined}
-                                onClick={onEntityIdClick ? (event) => { event.stopPropagation(); onEntityIdClick(element.entityId!); } : undefined}
-                              />
-                            )}
-                          </span>
-                        ))}
-                      </div>
+                      {row.elements.length === 1 ? (
+                        <span style={styles.elementsLine}>
+                          <span style={styles.elementTitle}>{m["post_edit.split_section_contains"]()}</span>
+                          {renderElement(row, row.elements[0], 0)}
+                        </span>
+                      ) : (
+                        <>
+                          <span style={styles.elementTitle}>{m["post_edit.split_section_contains"]()}</span>
+                          <div style={styles.elementsCell}>{row.elements.map((element, i) => renderElement(row, element, i))}</div>
+                        </>
+                      )}
                     </div>
                   )}
-                </div>
-              </div>
+              </ListCell>
             ))}
-          </Stack>
         </div>
 
         {/* Fixed footer (GitHub issue #237 follow-up) — Add/Remove/Start/Finish controls stay
          * reachable regardless of how far the card list above is scrolled, instead of scrolling
          * off with it. */}
-        <div style={styles.nodeListFooter}>
-          <Stack gap="itemGap">
-            <Inline gap="itemGap">
-              <Button variant="primary" layoutStyle={{ flex: 1 }} onClick={handleAdd}>
-                {m["post_edit.split_add_node"]()}
-              </Button>
-              <Button
-                variant="destructive"
-                layoutStyle={{ flex: 1 }}
-                disabled={!activeRow?.removable}
-                onClick={() => activeRow && setPendingRemove(activeRow)}
-              >
-                {m["post_edit.split_remove"]()}
-              </Button>
-            </Inline>
-          </Stack>
-        </div>
       </div>
     </SidePanel>
     {pendingRemove !== null && (
@@ -485,68 +514,26 @@ export const dialogPanelStyles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflowY: "auto",
   },
-  nodeListFooter: {
-    flex: "0 0 auto",
-    padding: spacing.groupGap,
-    borderTop: `1px solid ${ui.border.default}`,
-  },
   // One bordered card per node — the whole card (except its corner controls) is a click target
   // that activates the node. `position: relative` anchors `cardCorner`. Deliberately no
   // `paddingRight` reservation on the card itself — padding on a flex column narrows every
   // child's content box, including `linksCell`, which pushes link bubbles onto extra wrapped
   // lines even when the corner had nothing above the links row to collide with.
-  card: {
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    gap: spacing.itemGap,
-    padding: spacing.itemGap,
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.md,
-  },
   // Top-right corner — Remove button (removable cards only) to the left of the Active badge (when
   // active). Absolutely positioned so it doesn't consume card width the title/links rows would
   // otherwise wrap around.
-  cardCorner: {
-    position: "absolute",
-    top: spacing.itemGap,
-    right: spacing.itemGap,
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.itemGap,
-  },
-  titleLine: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-    flexWrap: "wrap",
-    paddingRight: 28,
-  },
-  colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    flexShrink: 0,
-    display: "inline-block",
-  },
-  activeBadge: {
-    ...typography.control,
-    fontSize: 11,
-    padding: "0 6px",
-    border: `1px solid ${ui.accent.base}`,
-    background: ui.accent.base,
-    color: ui.text.inverse,
-    borderRadius: radius.sm,
-    whiteSpace: "nowrap",
-  },
 };
 
 const styles: Record<string, React.CSSProperties> = {
   ...dialogPanelStyles,
+  templatesSection: { display: "flex", flexDirection: "column", gap: spacing.groupGap, padding: spacing.sectionGap, borderBottom: `1px solid ${ui.border.default}` },
+  tools: { display: "flex", justifyContent: "center", flexWrap: "wrap", gap: spacing.itemGap },
+  nodesHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap, padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
+  linkBubbles: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.itemGap / 2, minWidth: 0 },
+  lockIcon: { display: "flex", color: ui.text.secondary },
   // Separate the warnings header from the panel chrome; SidePanel's body has no intrinsic top
   // padding, so without this inset the header row touches the panel header.
-  warningsSection: { paddingTop: spacing.groupGap },
+  warningsSection: { paddingTop: spacing.groupGap, paddingRight: spacing.groupGap },
   // `WarningsSection` owns the breathing room above its divider. Do not add a second top inset
   // here: blueprints should begin directly after that section rather than reading as a new pane.
   tileArea: { ...dialogPanelStyles.tileArea, paddingTop: 0 },
@@ -559,6 +546,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.itemGap,
     overflowX: "auto",
     paddingBottom: 2,
+    paddingLeft: indent.tree,
   },
   blueprintThumb: {
     flex: "0 0 auto",
@@ -570,35 +558,12 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.panelAlt,
     cursor: "pointer",
   },
-  // `marginTop` is a fixed value (not conditional on `row.active`) — a per-card conditional here
-  // previously made active/inactive cards different heights, causing every card's layout to shift
-  // on every active-node change (GitHub issue #234 follow-up).
-  linksSection: {
-    marginTop: spacing.groupGap,
-  },
-  linksCell: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap,
-    paddingLeft: indent.tree,
-    marginTop: 2,
-  },
-  badge: {
-    ...typography.control,
-    fontSize: 11,
-    padding: "0 6px",
-    borderRadius: radius.sm,
-    whiteSpace: "nowrap",
-  },
-  elementsSection: {
-    display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap,
-  },
+  nodeList: { ...dialogPanelStyles.nodeList, padding: 0, paddingLeft: indent.tree },
+  elementsSection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap },
+  elementsLine: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.itemGap / 2 },
   elementsCell: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2, paddingLeft: indent.tree },
   elementRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.rowGap },
+  elementText: muted(typography.body),
   elementTitle: { ...muted(typography.body), whiteSpace: "nowrap" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.rowGap },
-  lockBadge: {
-    background: ui.text.secondary,
-    color: ui.bg.app,
-  },
 };

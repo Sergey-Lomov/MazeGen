@@ -132,6 +132,15 @@ Their genuinely common presentation is shared through `EntityChoiceDialog`, `Ele
 for slot ordering, row/tile construction, node colors, semantic labels, and blueprint preparation;
 their endpoint resolution, link/entity assembly, mutations, and hover behavior remain adapters.
 
+Both panels present Templates, Editor, and Nodes as consecutive sections. The Editor uses the same
+icon glyphs and ordering as preset edge tools; rotation controls sit in that tool row, while Focus
+is a flat header action. Its tile diagram has no face-number labels and keeps only a small hit-zone
+inset. Node rows are `ListCell`s with their color swatch and lock indicator in the title, a disabled
+delete action on the original node, and a per-row delete action on every removable node. Connection
+bubbles appear beneath the title, are kept in geometric face order, show only their direction and
+destination, use blue/gray/red palettes for required/undefined/forbidden states, and disclose that
+state on hover. Hovering a bubble highlights the corresponding boundary segment in the same color.
+
 ### Enter/Space confirmation coverage (GitHub issue #638)
 
 `onConfirm` is wired — matching the visible confirm button's own handler and `disabled`/enabled guard — on: `ConfirmModal`, `AlertModal` (OK), `ScreenDpiCalibrationModal`, `FieldPrintSizingDialog`, `PostEditElevatorFloorDialog`, `PresetElevatorFloorDialog`, `CopyFloorDialog`, and `ItemSelectDialog`'s consumers that have a confirm action of their own (`StrategySelectDialog`, `NewRuleStrategyDialog`, `NestedStrategySelectDialog`, `CheckSelectDialog`, `AddCheckToRuleDialog`, `IssueSelectDialog`, `AlgorithmSelectDialog`).

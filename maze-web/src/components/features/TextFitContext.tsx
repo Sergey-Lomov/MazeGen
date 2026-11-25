@@ -13,8 +13,6 @@ import { ToolTooltip } from "../ToolIconButton";
 export interface TextFitContextValue {
   /** Largest size at which every label of this size control fits its plate. */
   fitFor: (kind: TextFitKind) => number | null;
-  /** Smallest of the shared-style per-kind fits; floor labels use their independent size control. */
-  fitAll: () => number | null;
   /** Required floor-label backplate dimensions at its current font size, across every floor. */
   fitFloorLabelWidth: () => number | null;
   fitFloorLabelHeight: () => number | null;
@@ -31,10 +29,9 @@ export function useTextFit(): TextFitContextValue | null {
 /** Borderless icon (`Maximize2`, the same glyph as the canvas "Fit to screen" button) that applies a computed font size through the field's own `onChange`, so it
  *  counts as a manual edit (the field's incoming link is detached by the store setter). Disabled
  *  with an explanatory tooltip when there is nothing to fit. */
-export function AutoFitButton({ resolve, onApply, all = false, tooltipTitle, tooltipDescription }: {
+export function AutoFitButton({ resolve, onApply, tooltipTitle, tooltipDescription }: {
   resolve: (ctx: TextFitContextValue) => number | null;
   onApply: (size: number) => void;
-  all?: boolean;
   /** Overrides the generic text-size tooltip for a control with a different fitting direction. */
   tooltipTitle?: string;
   tooltipDescription?: string;
@@ -45,7 +42,7 @@ export function AutoFitButton({ resolve, onApply, all = false, tooltipTitle, too
   const label = m["image_export.vector_by_walls.text_autofit_button"]();
   const description = size === null
     ? m["image_export.vector_by_walls.text_autofit_nothing"]()
-    : tooltipDescription ?? (all ? m["image_export.vector_by_walls.text_autofit_all_tooltip"]() : m["image_export.vector_by_walls.text_autofit_tooltip"]());
+    : tooltipDescription ?? m["image_export.vector_by_walls.text_autofit_tooltip"]();
   const disabled = size === null;
   return (
     <ToolTooltip title={tooltipTitle ?? m["image_export.vector_by_walls.text_autofit_primary"]()} description={description}><span

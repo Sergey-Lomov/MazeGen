@@ -38,25 +38,14 @@ interface Props {
    * Used only by the radial post-edit split editor: this moves real split-node connections to the
    * next/previous face rather than declaring the cell geometrically rotation-invariant. */
   allowFaceReassignmentRotation?: boolean;
-  /** Draws a pale index (`faces_of` position) outside each physical face. Off by default — small
-   *  previews would only be cluttered by it. */
-  showFaceIndices?: boolean;
   /** Owning editor for boundary-face refusal feedback. Omitted by read-only previews. */
   notificationSource?: EditRefusalSource;
 }
 
-/** Face-index label geometry, as fractions of the tile's larger dimension. */
-const FACE_INDEX_OFFSET_FACTOR = 0.04;
-const FACE_INDEX_FONT_FACTOR = 0.09;
-const FACE_INDEX_PAD_FACTOR = 0.14;
-const FACE_INDEX_OPACITY = 0.55;
+const FACE_HIT_PAD_FACTOR = 0.09;
 /** Extends each face's node-anchor-to-boundary hit wedge slightly past the tile boundary, making
  * the active node's connector and face equally forgiving click targets. */
 const FACE_HIT_ZONE_OUTSET_FACTOR = 0.08;
-/** Digit glyph box in em: advance width per character, and cap height (the baseline sits half of it
- *  below the label's visual center). */
-const FACE_INDEX_GLYPH_WIDTH = 0.6;
-const FACE_INDEX_GLYPH_HEIGHT = 0.72;
 
 /** Large single-tile diagram, rendered in the field's own tessellation — shows every node's
  * faces at once, each in its own color (mirrors the canvas's per-slot split-passage coloring),
@@ -78,7 +67,7 @@ const FACE_INDEX_GLYPH_HEIGHT = 0.72;
  * segment. */
 export function TileFaceEditor({
   point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate,
-  showRotateControls = true, allowFaceReassignmentRotation = false, showFaceIndices = false, notificationSource,
+  showRotateControls = true, allowFaceReassignmentRotation = false, notificationSource,
 }: Props) {
   const diagram = getTileDiagram(point[0], point[1], cfg);
   if (!diagram) return null;
@@ -95,13 +84,12 @@ export function TileFaceEditor({
   // full-size) SVG viewport. Rotate buttons no longer live inside this SVG (GitHub issue #234
   // follow-up — moved to plain HTML buttons below the diagram), so the viewBox no longer needs
   // the extra side padding they used to require.
-  const pad = Math.max(w, h) * FACE_INDEX_PAD_FACTOR;
+  // Retain a small inset for the deliberately oversized face hit zones, so the editable tile uses
+  // as much of the panel as possible without clipping a click target at its perimeter.
+  const pad = Math.max(w, h) * FACE_HIT_PAD_FACTOR;
   const viewBox = `${minX - pad} ${minY - pad} ${w + pad * 2} ${h + pad * 2}`;
   const polygonPoints = vertices.map(v => `${v.x},${v.y}`).join(" ");
   const strokeWidth = Math.max(w, h) * 0.05;
-  const faceIndexOffset = Math.max(w, h) * FACE_INDEX_OFFSET_FACTOR;
-  const faceIndexFontSize = Math.max(w, h) * FACE_INDEX_FONT_FACTOR;
-  const centroid = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   const center = { x: 0, y: 0 };
 
   const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) =>
@@ -239,30 +227,6 @@ export function TileFaceEditor({
             <polyline key={`n${side.index}`} points={sidePoints(side.polyline)} fill="none"
               stroke={ui.border.default} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           ) : null;
-        })}
-        {/* Pale per-face index just outside each physical face's midpoint, so two faces lying on
-         * one straight line (e.g. the halves of a brick tessellation's long side) read as distinct. */}
-        {showFaceIndices && sides.map((side) => {
-          const mx = (side.v0.x + side.v1.x) / 2, my = (side.v0.y + side.v1.y) / 2;
-          const dx = side.v1.x - side.v0.x, dy = side.v1.y - side.v0.y;
-          const len = Math.hypot(dx, dy) || 1;
-          let nx = dy / len, ny = -dx / len;
-          if (nx * (mx - centroid.x) + ny * (my - centroid.y) < 0) { nx = -nx; ny = -ny; }
-          // Glyph box half-extent along the normal, so the gap to the side is the same for every
-          // side angle (a fixed offset from the glyph's center leaves a tilted side's label closer).
-          const label = String(side.index);
-          const halfW = faceIndexFontSize * FACE_INDEX_GLYPH_WIDTH * label.length / 2;
-          const halfH = faceIndexFontSize * FACE_INDEX_GLYPH_HEIGHT / 2;
-          // A convex side bulges past its chord, so the label also clears the farthest outward point.
-          const bulge = Math.max(0, ...side.polyline.map((p) => (p.x - mx) * nx + (p.y - my) * ny));
-          const dist = faceIndexOffset + bulge + Math.abs(nx) * halfW + Math.abs(ny) * halfH;
-          return (
-            <text key={`i${side.index}`} x={mx + nx * dist} y={my + ny * dist}
-              textAnchor="middle" dy={`${FACE_INDEX_GLYPH_HEIGHT / 2}em`} fontSize={faceIndexFontSize} fontWeight="600"
-              fill={ui.text.tertiary} opacity={FACE_INDEX_OPACITY} style={{ pointerEvents: "none", userSelect: "none" }}>
-              {label}
-            </text>
-          );
         })}
         {/* Per-node groups, in `connectors`' own draw order (active node last) — each node's
          * connector and every one of its own face segments render together, so the active node's

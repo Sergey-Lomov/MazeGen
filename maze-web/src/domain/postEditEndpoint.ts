@@ -64,7 +64,7 @@ export type PostEditHoveredEntity =
   // `highlightMode` controls whether the cell highlight is inset (ordinary) or outset (split
   // entities, whose highlight must expand beyond the cell rather than shrink inside it).
   | ({ kind: "point" } & PostEditHoverPoint & { danger?: boolean; highlightMode?: "inset" | "outset" })
-  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint; highlightStyle?: "line" | "one_way" | "boundary"; danger?: boolean; highlightMode?: "inset" | "outset" }
+  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint; highlightStyle?: "line" | "one_way" | "boundary"; color?: number; danger?: boolean; highlightMode?: "inset" | "outset" }
   | { kind: "points"; points: PostEditHoverPoint[]; danger?: boolean; highlightMode?: "inset" | "outset" };
 
 /** Resolves a `PostEditEndpoint` to the `PostEditHoverPoint` `PostEditHoveredEntity` needs — a

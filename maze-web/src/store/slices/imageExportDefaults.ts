@@ -92,7 +92,6 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerBorderColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderColor,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
-  markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
   markerTextMargin: DEFAULT_TEXT_MARGIN,
   floorLabelType: "letters",
 };
@@ -380,7 +379,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "floorLabelType",
+    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextMargin", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
@@ -444,7 +443,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "floorLabelType",
+    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextMargin", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

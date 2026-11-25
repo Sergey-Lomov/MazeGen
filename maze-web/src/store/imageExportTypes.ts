@@ -690,9 +690,6 @@ export interface SharedStyleSourceFields {
   markerBorderColor: number;
   markerBorderWidth: number;
   gapWidth: number;
-  /** Shared label font size (px, GitHub issue #707) — drives every caption/badge text
-   *  style through disabled-by-default links; the "Auto-fit" button picks the size. */
-  markerTextSize: number;
   markerTextMargin: number;
   /** Shared floor-number format for floor, elevator and teleport labels. */
   floorLabelType: IndexLabelStyle;
