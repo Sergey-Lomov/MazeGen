@@ -15,7 +15,7 @@ import { formatTargetLabel } from "../../domain/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../domain/fieldEditUtils";
 import { rotateSplitPointBreaksNeighborShape } from "../../domain/postEditRotation";
-import { SplitNodesDialogView, createRequiredLinksTracker, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, linkHighlightColor, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { buildPostEditPointEntities, postEditNodesAt } from "../../domain/postEditPointEntities";
 import type { TileFace, TileFaceKind } from "../../domain/tileFace";
 import { splitNodeLabel } from "../../domain/splitNodeLabels";
@@ -248,6 +248,13 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // `node` endpoint elsewhere on the maze (not this point's original node) has no label at all,
   // just its coordinates.
   const describeEndpoint = (ep: PostEditEndpoint): string => postEditTargetLabel(splitLabelContext, ep, nodeById, false);
+  const faceIndexFor = (from: PostEditEndpoint, to: PostEditEndpoint) => {
+    const fromPoint = resolveEndpointToHoverPoint(from, nodeById);
+    const toPoint = resolveEndpointToHoverPoint(to, nodeById);
+    if (!fromPoint || !toPoint || (fromPoint.level ?? 0) !== (toPoint.level ?? 0)) return undefined;
+    const index = resolveFaceNeighbors(cfg, fromPoint.point, inFieldCells).findIndex((neighbor) => neighbor?.[0] === toPoint.point[0] && neighbor[1] === toPoint.point[1]);
+    return index >= 0 ? index : undefined;
+  };
 
   // Groups a node's edges/teleports by partner, collapsing a passage's two directed `basic`
   // entries (A->B and B->A — see `applyPostEditEdgeTool`'s "passage" branch, which always writes
@@ -266,7 +273,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
         else if (endpointsMatch(e.to, ep)) mark(e.from, "in");
       }
     }
-    return [...finalize(), ...forbidden];
+    return [...finalize(), ...forbidden].map((link) => ({ ...link, faceIndex: faceIndexFor(ep, link.otherEndpoint) }));
   };
 
   const activeEndpoint = resolveActiveSplitEndpoint(activeSplitNode, key, originalEndpoint);
@@ -334,7 +341,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onHoverLink={(row, link) => {
         const from = resolveEndpointToHoverPoint(row.endpoint, nodeById);
         const to = resolveEndpointToHoverPoint(link.otherEndpoint, nodeById);
-        if (from && to) setPostEditHoveredEntity({ kind: "link", from, to });
+        if (from && to) setPostEditHoveredEntity({ kind: "link", from, to, highlightStyle: "boundary", color: linkHighlightColor(link.category) });
       }}
       onUnhoverLink={() => setPostEditHoveredEntity(null)}
       onHoverElement={(_row, element) => {

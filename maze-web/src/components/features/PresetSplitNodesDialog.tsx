@@ -10,7 +10,7 @@ import { splitNodeSemanticNames } from "../../domain/splitNodeNames";
 import { splitShapeBinding } from "../../domain/splitShape";
 import { presetTargetLabel, type PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import { formatTargetLabel } from "../../domain/targetLabel";
-import { SplitNodesDialogView, createRequiredLinksTracker, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, linkHighlightColor, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { buildPresetPointEntities } from "../../domain/pointEntities";
 import type { TileFace } from "../../domain/tileFace";
 import { splitNodeLabel } from "../../domain/splitNodeLabels";
@@ -159,6 +159,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     const epLevel = ep.level ?? level ?? 0;
     return presetTargetLabel(presetSplitLabelContext, ep, epLevel !== (level ?? 0));
   };
+  const faceIndexFor = (from: PresetEndpoint, to: PresetEndpoint) => {
+    if ((from.level ?? 0) !== (to.level ?? 0)) return undefined;
+    const index = resolveFaceNeighbors(cfg, from.point, inFieldCells).findIndex((neighbor) => neighbor?.[0] === to.point[0] && neighbor[1] === to.point[1]);
+    return index >= 0 ? index : undefined;
+  };
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
   // post-edit's `links` (a passage's two directed entries become one "<->" link).
@@ -203,7 +208,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       if (decidedPartners.has(presetEndpointKey(neighborEndpoint))) continue;
       undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "<->", category: "undefined" });
     }
-    return [...finalize(), ...undecided, ...forbidden];
+    return [...finalize(), ...undecided, ...forbidden].map((link) => ({ ...link, faceIndex: faceIndexFor(ep, link.otherEndpoint) }));
   };
 
   // Node color by row order (original node first, then each slot in slotId order) — same
@@ -215,6 +220,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     fallbackTitle: (rowIndex) => splitNodeLabel(rowIndex === 0 ? undefined : slots[rowIndex - 1]),
     lockKindFor: (endpoint) => lockedNodes.get(presetEndpointKey(endpoint))
       ?? (autoLockedNodes.has(presetEndpointKey(endpoint)) ? "both" : undefined),
+    lockAutomaticFor: (endpoint) => !lockedNodes.has(presetEndpointKey(endpoint)) && autoLockedNodes.has(presetEndpointKey(endpoint)),
     describeEndpoint, linksFor: links, elementsFor, facesOf,
   });
 
@@ -260,7 +266,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
         presetConnections, point, slots, direction, cfg, inFieldCells, splitPoints, activeSplitNode, level,
       )}
       notificationSource="preset_connections"
-      onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
+      onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint, highlightStyle: "boundary", color: linkHighlightColor(link.category) })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
       onHoverElement={(_row, element) => {
         const endpoints = element.hoverEndpoints;
