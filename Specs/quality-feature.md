@@ -651,10 +651,17 @@ type TessellationRequirement =
 
 `QcRuleState.problems?: QcProblem[]` (absent = none) flags what a tessellation change broke instead of silently
 deleting or altering it. A rule with at least one problem is **problematic**: its card is outlined yellow and lists
-every problem (explanation only, the category is internal; naming the member check when check-scoped); it stays
+every problem (the category is internal; naming the member check when check-scoped; a `needs_reconfiguration` one carries a close button, see below); it stays
 problematic until the last problem is gone. A rule with no active checks — empty, or every check disabled — is also
 problematic (derived, never stored; `hasNoActiveChecks`): its card shows `quality.problem_no_checks`, and it clears
 itself when a check is added or enabled.
+
+A `needs_reconfiguration` problem is shown with a close button (`quality.dismiss_problem`): the user accepts the current
+settings as they are. `dismissRuleProblems(ruleId, problems)` drops exactly those stored problems (a rule-level pattern
+problem collapsed into one entry drops all its consumers' problems together), so the owning checks/strategy reach core
+again, like after an edit of the param. `cannot_apply` problems and the derived ones (no active checks, empty limits, zone
+scope without zones) have no close button: they clear only by fixing or deleting. The problem stays a `warning`, not
+`info`, because until it is dismissed or fixed the owner does not run. The close button is `WarningBubble`'s paired `onDismiss`/`dismissTitle` props (orange like the warning, compact 18 px so it sits 4 px from the top and right edge; text lines are 18 px so a one-line problem has the same 4 px below it).
 
 ```typescript
 type QcProblemCategory = "needs_reconfiguration" | "cannot_apply";
@@ -668,7 +675,7 @@ interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: nu
 - **Sources** (`qcForTessellation`, `store/slices/qcTessellationFilter.ts`): any pattern dropped from a pattern list
   (check param, rule-level param, strategy/nested split config) is `patterns_dropped`; a non-empty list that lost every
   pattern is kept as `[]` and flagged `patterns_emptied` (an empty list means "any split tile", so the owner must not run
-  until reviewed); configured node shape limits reset to none are `limits_reset`; an enabled
+  until reviewed); configured node shape limits whose cell type or shape the new tessellation lacks are dropped (the others stay) and flagged `limits_reset`; an enabled
   `forbid_cell_type_<key>` reset because the new tessellation lacks `key` is
   `forbidden_cell_type_unavailable` on its check and param; a check failing its
   `CheckDescriptor.requires` is `cannot_apply`. Rule-level pattern lists flag every check consuming them
@@ -698,7 +705,7 @@ interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: nu
 - **Empty node-shape limits** (derived like the no-checks warning, never stored): an enabled `node_shape_limits` check with no
   limits set never reports anything, so the rule card shows a warning labeled with the check and the rule counts as
   problematic (`emptyLimitsCheckIds`, `qcDerivedProblems.ts`). Not shown for a check that already carries a problem — a
-  reset by a tessellation change (`limits_reset`) or "cannot apply" — so one cause gives one warning.
+  dropped by a tessellation change (`limits_reset`) or "cannot apply" — so one cause gives one warning.
 - **Disabled owners** (`visibleProblems`, `isRuleProblematic`, `ruleHasOwnProblem` in `qcRuleTypes.ts`): a problem whose owner
   is disabled goes away — a disabled check's own problems, and strategy- and nested-scope problems while the strategy is
   disabled (`disabled`). A rule left with no problems is healthy. `ruleDisabled` hides nothing: its warnings stay shown,

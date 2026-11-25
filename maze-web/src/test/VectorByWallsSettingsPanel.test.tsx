@@ -186,6 +186,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
+      showZoneOverrideButtons: false,
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",

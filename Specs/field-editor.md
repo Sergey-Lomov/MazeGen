@@ -10,7 +10,7 @@ Two parallel mechanisms for custom fields exist:
 The custom field is entered through the field edit mode (`setFieldEditMode("custom")`), which sets `isEditingField = true` and exposes `freeFieldPoints[kind]` as `fieldPoints`. Points are drawn directly on the canvas at any time. The preset shape selection (`selectedShape`) is kept while editing and applies again in default mode.
 
 ### Card-based editing (FieldSetupFeature)
-Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be confirmed first. A "Floors" button at the bottom of the card opens the floor list side panel (`Specs/floors.md`).
+Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be confirmed first. A "Floors" button at the bottom of the card opens the floor list side panel (`Specs/floors.md`). The card subtitle (`fieldSetupSubtitle`) is `<shape> · <size> · Cells: <N>` for a single floor and `Floors: <count> · Cells: <N>` (`field.floor_count`, `field.cell_count`; total cells of all floors) for several floors, with no shape then; the `Cells` part is omitted when there are no cells; it follows floors being added or removed (GitHub issue #1090).
 
 Two sub-modes toggled inside the card:
 

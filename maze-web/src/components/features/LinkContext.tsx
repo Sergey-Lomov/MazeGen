@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { GateName } from "../../store/parameterLinkRules";
+import type { OtherContextOverrides } from "./OtherContextOverrides";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 
 /** Per-render-mode link context (GitHub issue #652 follow-up) — `VectorByWallsSettingsPanel`/
@@ -21,6 +22,22 @@ export interface LinkContextValue<P extends string> {
   /** Whether the named schema condition holds for the panel's current maze and settings — what the panel's
    *  sections and unlinked rows ask instead of repeating the condition (`useGate`). */
   gate: (name: GateName) => boolean;
+  /** Set while the panel works in a zone context (GitHub issue #1040): every row then edits that zone's own value. */
+  zone?: ZoneRowContext | null;
+  /** The overrides of the other contexts to show under a parameter (GitHub issue #1040); `null` while that display is off. */
+  otherOverrides?: OtherContextOverrides | null;
+}
+
+/** What a settings row needs to work in the zone context. */
+export interface ZoneRowContext {
+  /** The parameters the zone sets itself. */
+  overridden: ReadonlySet<string>;
+  /** Whether the zone can set the parameter: the image draws it, or a link carries it on to something it draws. */
+  canOverride: (path: string) => boolean;
+  /** Takes the parameter out of the zone, back to the inherited value. */
+  reset: (path: string) => void;
+  /** Turns the link driving the parameter on or off for the zone alone. */
+  toggleLink: (path: string, enabled: boolean) => void;
 }
 
 const LinkContext = createContext<LinkContextValue<string> | null>(null);

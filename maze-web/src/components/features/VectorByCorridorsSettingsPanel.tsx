@@ -3,12 +3,12 @@ import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { VerticalArrowStyle } from "../../domain/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
-import { SelectRow } from "../SelectRow";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
 import { TextFitContextProvider } from "./TextFitContext";
 import { CategoryInfoModal } from "../CategoryInfoModal";
 import { SectionHeader } from "../SectionHeader";
+import { ExportZoneContextBar, useEffectiveCorridorsSettings, useOtherContextOverrides, useZoneRowContext } from "./ExportZoneOverrides";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
@@ -16,7 +16,7 @@ import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection } from "./TeleportSettingsSection";
-import { useExportPanelModel } from "./useExportPanelModel";
+import { useExportPanelModel, useZoneCorridorsWarnings } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { TopologySettingsSection } from "./TopologySettingsSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
@@ -56,7 +56,10 @@ const MAX_SPLIT_GAP_WIDTH = 10;
  * convention as the Waypoints section's `MarkerSettingsGroup`. Bottom warnings section mirrors
  * `VectorByWallsSettingsPanel`'s own layout so both panels stay visually consistent. */
 export function VectorByCorridorsSettingsPanel() {
-  const settings = useMazeStore((s) => s.vectorByCorridorsSettings);
+  const settings = useEffectiveCorridorsSettings();
+  const zone = useZoneRowContext("corridors", settings.links);
+  const otherOverrides = useOtherContextOverrides("corridors");
+  const zoneWarnings = useZoneCorridorsWarnings();
   const showColorWarnings = useMazeStore((s) => s.showColorWarnings);
   const setShowColorWarnings = useMazeStore((s) => s.setShowColorWarnings);
   const setBackground = useMazeStore((s) => s.setVectorByCorridorsBackground);
@@ -159,12 +162,14 @@ export function VectorByCorridorsSettingsPanel() {
   } = useExportPanelModel(settings, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, "corridors", computeVectorByCorridorsWarningsAcrossFloors);
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate, zone, otherOverrides } as unknown as LinkContextValue<string>}>
     <ColorVisibilityProvider value={colorVisibility}>
     <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
+      <ExportZoneContextBar mode="corridors" />
       <ExportWarningsSection
         warnings={exportWarnings}
+        zoneWarnings={zoneWarnings}
         expanded={isExpanded("warnings")}
         onToggle={() => toggleSection("warnings")}
         showColorWarnings={showColorWarnings}
@@ -261,7 +266,7 @@ export function VectorByCorridorsSettingsPanel() {
           />
           {/* The rendering mode only chooses how round joins are drawn; miter always draws lines. */}
           {gate("roundJoin") && (
-            <SelectRow
+            <LinkedSelectRow
               label={m["image_export.vector_by_corridors.render_style"]()}
               value={settings.renderStyle}
               options={[
@@ -270,6 +275,8 @@ export function VectorByCorridorsSettingsPanel() {
               ]}
               onChange={setRenderStyle}
               info={() => setRenderStyleInfoOpen(true)}
+              linkTarget={null}
+              zonePath="renderStyle"
             />
           )}
           {/* Only the round-join contour engine reads the junction radius. */}

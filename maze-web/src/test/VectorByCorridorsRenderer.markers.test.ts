@@ -107,7 +107,7 @@ describe("VectorByCorridorsRenderer markers, teleports and one-way chevrons", ()
   it("renders teleports via its own TeleportRenderer, styled from vectorByCorridorsSettings with the corridor's own color as floorColor", () => {
     vi.mocked(buildMazeMarkers).mockReturnValueOnce([{ pos: [5, 5], color: 0x999, radius: 4 }]);
     const renderer = makeRenderer();
-    const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
+    const teleports = (renderer as unknown as { teleports: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).teleports.renderers[0];
     expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({
       edges: [],
       // floorColor is the corridor's own color here, not the canvas background (GitHub issue #313
@@ -124,15 +124,15 @@ describe("VectorByCorridorsRenderer markers, teleports and one-way chevrons", ()
   it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {
     mockStore.current = baseState();
     const renderer = makeRenderer();
-    const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
-    const verticalConnections = (renderer as unknown as { verticalConnections: { render: ReturnType<typeof vi.fn> } }).verticalConnections;
+    const teleports = (renderer as unknown as { teleports: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).teleports.renderers[0];
+    const verticalConnections = (renderer as unknown as { verticalConnections: { renderers: { render: ReturnType<typeof vi.fn> }[] } }).verticalConnections.renderers[0];
     expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({ floorNavigable: true }));
     expect(verticalConnections.render).toHaveBeenCalledWith(expect.objectContaining({ interactive: true }));
   });
 
   it("destroy destroys its own TeleportRenderer and its container", () => {
     const renderer = makeRenderer();
-    const teleports = (renderer as unknown as { teleports: { destroy: ReturnType<typeof vi.fn> } }).teleports;
+    const teleports = (renderer as unknown as { teleports: { renderers: { destroy: ReturnType<typeof vi.fn> }[] } }).teleports.renderers[0];
     const teleportContainer = (renderer as unknown as { teleportContainer: { destroy: ReturnType<typeof vi.fn> } }).teleportContainer;
     renderer.destroy();
     expect(teleports.destroy).toHaveBeenCalled();

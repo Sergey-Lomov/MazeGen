@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { MazeStore, MazeState, ZonesState, ZonesActions } from "../storeTypes";
 import type { ZoneCellWire } from "../../wasm/mazeService";
 import type { ZoneGroup, ZoneOverride, ZoneOverrideTarget } from "../zonesTypes";
+import { withExportOverrideParams } from "../exportZoneOverrides";
 import { overrideWithoutGroup, overrideWithoutZone } from "../../domain/zoneOverrides";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { activeFieldCellKeys, activeFloorIndexOf, editedZoneOf, zonePointsOnFloor } from "../fieldEditTarget";
@@ -21,6 +22,8 @@ export const zonesProjectState = {
   zoneColorOverrides: {},
   zoneOverrides: [],
   nextZoneOverrideId: 1,
+  exportZoneOverrides: [],
+  nextExportZoneOverrideId: 1,
 } satisfies Partial<ZonesState>;
 
 /** Resting values of the zones UI state: modes, panels, drafts, hover and toggles. Loading a project resets them. */
@@ -47,6 +50,7 @@ export const zonesTransientUi = {
   zoneCombine: null,
   showOtherZones: true,
   zoneSmoothing: false,
+  exportOverrideContext: null,
 } satisfies Partial<ZonesState>;
 
 /** Every zones key at its resting value: the slice's initial state, and what tests reset the zones state to. */
@@ -84,10 +88,12 @@ function withoutZone(s: MazeState, id: number): Partial<MazeState> {
     ...(s.zoneGroupEditDraft ? { zoneGroupEditDraft: withoutZoneId(s.zoneGroupEditDraft, id) } : {}),
     hiddenZoneIds: s.hiddenZoneIds.filter((hidden) => hidden !== id),
     hoveredZoneId: s.hoveredZoneId === id ? null : s.hoveredZoneId,
+    ...(s.exportOverrideContext?.kind === "zone" && s.exportOverrideContext.id === id ? { exportOverrideContext: null } : {}),
     ...(s.zoneEditDraft?.id === id ? noZoneEdit : {}),
     ...(s.zoneCombine?.otherId === id ? { zoneCombine: { ...s.zoneCombine, otherId: null } } : {}),
     zoneColorOverrides: withoutKey(s.zoneColorOverrides, id),
     zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutZone(o, id)),
+    exportZoneOverrides: s.exportZoneOverrides.map((o) => overrideWithoutZone(o, id)),
   };
 }
 
@@ -104,7 +110,6 @@ const targetIds = (target: ZoneOverrideTarget): Pick<ZoneOverride, "zoneIds" | "
 function withOverrideChange(s: MazeState, id: number, change: (o: ZoneOverride) => ZoneOverride): Partial<MazeState> {
   return { zoneOverrides: s.zoneOverrides.map((o) => (o.id === id ? change(o) : o)) };
 }
-
 
 /** The patch that leaves the group editor discarding the draft: leaving any way but "Done" is a cancel. */
 function discardingGroupEdit(s: MazeState): Partial<MazeState> {
@@ -180,6 +185,10 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     return { ...o, params };
   })),
 
+  setExportZoneParams: (mode, target, changes) => set((s) => (targetExists(s, target) ? withExportOverrideParams(s, mode, target, changes) : {})),
+  removeExportZoneOverride: (id) => set((s) => ({ exportZoneOverrides: s.exportZoneOverrides.filter((o) => o.id !== id) })),
+  setExportOverrideContext: (target) => set((s) => (target === null || targetExists(s, target) ? { exportOverrideContext: target } : {})),
+
   // Closing the panel is a cancel of an unconfirmed group edit.
   setZoneGroupsPanelOpen: (open) => set((s) => (open ? { zoneGroupsPanelOpen: true } : { ...discardingGroupEdit(s), zoneGroupsPanelOpen: false, hoveredZoneId: null })),
   setZoneGroupsListMode: (mode) => set({ zoneGroupsListMode: mode, hoveredZoneId: null }),
@@ -196,7 +205,9 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
     zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
     zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutGroup(o, id)),
+    exportZoneOverrides: s.exportZoneOverrides.map((o) => overrideWithoutGroup(o, id)),
     ...(s.hoveredZoneGroupId === id ? { hoveredZoneGroupId: null } : {}),
+    ...(s.exportOverrideContext?.kind === "group" && s.exportOverrideContext.id === id ? { exportOverrideContext: null } : {}),
     ...(s.zonesFocusedGroupId === id ? { zonesFocusedGroupId: null } : {}),
     ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
   })),

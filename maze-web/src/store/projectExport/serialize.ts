@@ -56,7 +56,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     floorFields,
     floorTopology: state.floorTopology,
     ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
-    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.some((group) => !isAutoGroupId(group.id)) || state.zoneOverrides.length > 0
+    ...(state.zones.some((zone) => zone.kind !== "auto") || state.zoneGroups.some((group) => !isAutoGroupId(group.id)) || state.zoneOverrides.length > 0 || state.exportZoneOverrides.length > 0
       ? {
           zones: {
             zones: state.zones.filter((zone) => zone.kind !== "auto"),
@@ -66,6 +66,7 @@ export function serializeProject(state: MazeState): ProjectFile {
             colorOverrides: state.zoneColorOverrides,
             generationOverrides: state.zoneOverrides,
             nextOverrideId: state.nextZoneOverrideId,
+            ...(state.exportZoneOverrides.length > 0 ? { exportOverrides: state.exportZoneOverrides, nextExportOverrideId: state.nextExportZoneOverrideId } : {}),
           },
         }
       : {}),
@@ -173,6 +174,9 @@ export function serializeImageExport(state: MazeState): ProjectFileImageExport {
     vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
     showColorWarnings: state.showColorWarnings,
     linkIconVisibility: state.linkIconVisibility,
+    showZoneOverrideButtons: state.showZoneOverrideButtons,
+    showZoneProblems: state.showZoneProblems,
+    zoneOverrideDisplay: state.zoneOverrideDisplay,
     vectorByCorridorsSettings: state.vectorByCorridorsSettings,
     vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
     pngExportSettings: state.pngExportSettings,

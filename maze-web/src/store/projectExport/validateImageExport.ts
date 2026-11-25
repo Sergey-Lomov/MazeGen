@@ -9,7 +9,7 @@ import { CSS_FONT_WEIGHTS, DEFAULT_LABEL_FONT, type LabelFont } from "../../doma
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../domain/renderers/markerGlyph";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../domain/renderConstants";
-import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
+import type { RenderModeId, LinkIconVisibility, ZoneOverrideDisplay } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -800,6 +800,12 @@ export function optLinkIconVisibility(obj: Record<string, unknown> | null, key: 
   return typeof v === "string" && (KNOWN_LINK_ICON_VISIBILITIES as readonly string[]).includes(v) ? (v as LinkIconVisibility) : fallback;
 }
 
+const KNOWN_ZONE_OVERRIDE_DISPLAYS: ZoneOverrideDisplay[] = ["none", "always", "onRequest"];
+function optZoneOverrideDisplay(obj: Record<string, unknown> | null, key: string, fallback: ZoneOverrideDisplay): ZoneOverrideDisplay {
+  const v = obj?.[key];
+  return typeof v === "string" && (KNOWN_ZONE_OVERRIDE_DISPLAYS as string[]).includes(v) ? (v as ZoneOverrideDisplay) : fallback;
+}
+
 export const KNOWN_OUTPUT_MODES: PngExportOutputMode[] = ["digital", "print"];
 export const KNOWN_CANVAS_MODES: PngCanvasMode[] = ["edge_to_edge", "margin_px", "margin_cells", "fixed_size"];
 export const KNOWN_PRINT_DENSITIES: PrintDensity[] = ["screen_96", "draft_150", "print_300", "high_600"];
@@ -1018,6 +1024,9 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       : {},
     showColorWarnings: optBool(obj, "showColorWarnings", true),
     linkIconVisibility: optLinkIconVisibility(obj, "linkIconVisibility", "linked"),
+    showZoneOverrideButtons: optBool(obj, "showZoneOverrideButtons", true),
+    showZoneProblems: optBool(obj, "showZoneProblems", true),
+    zoneOverrideDisplay: optZoneOverrideDisplay(obj, "zoneOverrideDisplay", "onRequest"),
     vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`, vectorByCorridorsLinks),
     vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)

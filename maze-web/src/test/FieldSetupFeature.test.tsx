@@ -765,20 +765,14 @@ describe("FieldSetupFeature — floors panel field copy", () => {
 });
 
 describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", () => {
-  it("sums cell counts across floors, not just the first floor's", () => {
-    const floors = [
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }) }),
-    ];
-    expect(fieldSetupSubtitle("square", floors)).toContain("13");
+  it("shows the shape and the cell count for a single floor, without a floor count", () => {
+    const floors = [baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) })];
+    expect(fieldSetupSubtitle("square", floors)).toBe("Rect · 3×3 · Cells: 9");
   });
 
-  it("shows the shared shape label when all floors match", () => {
-    const floors = [
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
-    ];
-    expect(fieldSetupSubtitle("square", floors)).toContain("Rect");
+  it("omits the cell count when no floor has cells", () => {
+    const empty = () => baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set<number>() });
+    expect(fieldSetupSubtitle("square", [empty(), empty()])).toBe("Floors: 2");
   });
 
   it("labels a Cairo rectangle with its fundamental-square dimensions", () => {
@@ -788,27 +782,20 @@ describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", (
     expect(fieldSetupSubtitle("cairo", floors)).toContain("2×3");
   });
 
-  it("shows 'Different floor shapes' when floors' shapes/sizes differ", () => {
-    const floors = [
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }) }),
-    ];
-    expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
-  });
-
   it("sums custom-mode point counts across floors", () => {
     const floors = [
       baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set([1, 2]) }),
       baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set([3, 4, 5]) }),
     ];
-    expect(fieldSetupSubtitle("square", floors)).toContain("5");
+    expect(fieldSetupSubtitle("square", floors)).toBe("Floors: 2 · Cells: 5");
   });
 
-  it("treats a custom floor and a default floor as different shapes", () => {
-    const floors = [
-      baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set([1]) }),
-      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
-    ];
-    expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
+  it("shows the floor count and the total cell count instead of the shape for several floors (GitHub issue #1090)", () => {
+    const rect = (n: number) => baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: n, rows: n }) });
+    const same = fieldSetupSubtitle("square", [rect(3), rect(3), rect(3)]);
+    expect(same).toBe("Floors: 3 · Cells: 27");
+    const mixed = fieldSetupSubtitle("square", [rect(3), rect(5)]);
+    expect(mixed).toBe("Floors: 2 · Cells: 34");
+    expect(mixed).not.toContain("Rect");
   });
 });

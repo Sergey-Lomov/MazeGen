@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, ElementCellTypeRestrictions, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { FeatureId } from "./tessellationTypes";
-import type { QcRuleState, RepairStageState, PathSegment, QcZoneScopeTarget } from "./qcRuleTypes";
+import type { QcRuleState, QcProblem, RepairStageState, PathSegment, QcZoneScopeTarget } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
 
 /** A generation-run failure stored as data for generation state; the user-facing error is emitted
@@ -306,6 +306,9 @@ export interface GenerationActions {
   toggleStageDisabled: (stageId: string) => void;
   /** Flips the stage section's `collapsed` — UI-only, does not mark the config stale. */
   toggleStageCollapsed: (stageId: string) => void;
+  /** Accepts flagged settings as they are: drops the given `needs_reconfiguration` problems of `ruleId`
+   * (`cannot_apply` ones are ignored), so the owning checks/strategy reach core again. */
+  dismissRuleProblems: (ruleId: string, problems: QcProblem[]) => void;
   setStrategyParam: (ruleId: string, paramId: string, value: string) => void;
   /** Sets one rule-level parameter (e.g. `protect_route`) on `ruleId`'s own `params` — see
    * GitHub issue #253. */

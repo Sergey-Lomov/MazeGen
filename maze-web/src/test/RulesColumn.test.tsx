@@ -553,6 +553,20 @@ describe("RulesColumn", () => {
     vi.useRealTimers();
   });
 
+  it("shows a close button only on a dismissible problem, and clicking it clears that problem from the store", () => {
+    const dropped = { code: "patterns_dropped" as const, scope: "check" as const, localId: 0, paramId: "patterns" };
+    useMazeStore.setState({ rules: defaultRules().map((r) => ({ ...r, problems: [dropped] })) });
+    const dismiss = [dropped];
+    const slots: StrategySlotVM[] = [{
+      ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false,
+      problems: [{ text: "Patterns were dropped", dismiss }, { text: "Cannot work here" }],
+    }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Keep as is and dismiss" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Keep as is and dismiss" }));
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
   it("renders the stage toggle and card-level toggle (not a strategy toggle) when rule has no strategy", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);

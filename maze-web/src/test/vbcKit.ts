@@ -57,6 +57,9 @@ export function baseState(overrides: Record<string, unknown> = {}) {
     finish: null,
     postEditMeta: null,
     postEditDraftSplitPoints: {},
+    zones: [],
+    zoneGroups: [],
+    exportZoneOverrides: [],
     ...overrides,
   };
 }
