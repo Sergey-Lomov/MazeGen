@@ -11,6 +11,13 @@ export function getCellHighlightInset(wallThickness = WALL_THICKNESS): number {
   return wallThickness / 2 + 3;
 }
 
+/** Shared frame geometry for the cell selected in either split-node editor. It sits outside the
+ * cell's walls, so its caller can keep the frame above the grid without obscuring split content. */
+export const SPLIT_PANEL_TARGET_FRAME = {
+  inset: -getCellHighlightInset(),
+  borderWidth: 3,
+} as const;
+
 export type CellHighlightCornerStyle = "round" | "sharp";
 
 /** Drops consecutive coincident vertices (a flattened curved tile repeats the point where two

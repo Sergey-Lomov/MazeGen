@@ -202,8 +202,10 @@ occurrence order and drops duplicates). Different checks flagging different shap
   one `Application` per row, so a long list stays under the browser's context limit; a lost WebGL context drops the
   shared application and the next render builds a fresh one. A shape key is parsed in one place (`pixi/nodeShapeKey`,
   `parseNodeShapeKey`), shared by the labels and the icon tiles. The rule is named "Shape limits"
-  (ru "Лимиты форм"). The limits are tessellation-sensitive: `qcForTessellation` resets the `limits` param
-  to none when the tessellation changes and flags the check `limits_reset` (`needs_reconfiguration`, cleared by editing the limits). Irregular tessellations need their own handling later. The issue is listed under "General rules" in the add-rules dialog;
+  (ru "Лимиты форм"). The limits are tessellation-sensitive: `qcForTessellation` keeps, when the tessellation
+  changes, the limits whose cell type and shape the new tessellation also has (`domain/shapeTemplates` `nodeShapesOf`),
+  drops the rest, and flags the check `limits_reset` only when a configured limit was dropped (`needs_reconfiguration`,
+  cleared by editing the limits or dismissed). Irregular tessellations need their own handling later. The issue is listed under "General rules" in the add-rules dialog;
   its bubble highlights the nodes of all violations.
   The check records two details for the bubble: `shapes` (comma-separated violated `cell_type/shape_key`, shown in the
   title) and `violations` (`;`-separated `cell_type/shape_key:excess|deficit:count:limit`, where `limit` is the crossed
@@ -211,6 +213,10 @@ occurrence order and drops duplicates). Different checks flagging different shap
   the vocabulary coming from `features/nodeShapeSiblings` (a registry `nodeShapeVocabulary` fills with the applied
   tessellation's shapes, so `issueRegistry` and the store do not import each other; unregistered = full labels); the description lists one bullet per entry, e.g. "Dead end: count 7, above the allowed 5".
   The limits dialog (`NodeShapeLimitsDialog`) edits a draft: the confirm button applies it, closing cancels.
+  Analytics also exposes an on-demand “Cell shape statistics” dialog (GitHub issue #1085). It counts
+  the currently displayed graph with the same core `nodes_by_shape` classifier as this check, then
+  groups each `TypedShape` count by cell type and shape. The request runs only when the dialog is
+  opened; it is not added to generation or the ordinary analytics snapshot.
 
 ## Repair strategy (`NodeShapeRebalanceStrategy`, GitHub issue #1025)
 

@@ -499,7 +499,9 @@ export function validateNestedStrategy(v: unknown, path: string, depth = 0): Pro
   const nested = obj.nested != null
     ? assertArray(obj.nested, `${path}.nested`).map((n, i) => validateNestedStrategy(n, `${path}.nested[${i}]`, depth + 1))
     : [];
-  return { slotId, strategyId, params, nested };
+  // Older files lack this UI-only flag; match the default for newly created nested strategies.
+  const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : true;
+  return { slotId, strategyId, params, nested, collapsed };
 }
 
 // `name` is `null` (no custom name — VM resolves it to the issue kind's live-locale label, see

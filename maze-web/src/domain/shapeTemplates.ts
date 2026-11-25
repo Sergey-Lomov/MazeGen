@@ -1,6 +1,6 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
-import { getTessellationCellTypes, getTessellationShapes } from "../wasm/mazeService";
+import { getTessellationCellTypes, getTessellationNodeShapes, getTessellationShapes, type CellTypeShapes } from "../wasm/mazeService";
 import { originCellOf } from "./splitPatternTile";
 
 /// Shape template keys per tessellation config (`{ kind, params }` fully identifies the built
@@ -9,9 +9,22 @@ import { originCellOf } from "./splitPatternTile";
 const keysCache = new Map<string, string[]>();
 const cellTypeKeysCache = new Map<string, string[]>();
 const anchorShapeCache = new Map<string, string>();
+const nodeShapesCache = new Map<string, CellTypeShapes[]>();
 
 function configKey(tessellation: TessellationConfig): string {
   return JSON.stringify(tessellation);
+}
+
+/** Node shapes per cell type of `tessellation`, asked from core once per config (a config fully
+ *  identifies the built instance). */
+export function nodeShapesOf(tessellation: TessellationConfig): CellTypeShapes[] {
+  const key = configKey(tessellation);
+  let shapes = nodeShapesCache.get(key);
+  if (shapes === undefined) {
+    shapes = getTessellationNodeShapes(tessellation);
+    nodeShapesCache.set(key, shapes);
+  }
+  return shapes;
 }
 
 /** Shape template keys (core `ShapeDescriptor::key`) the tessellation `tessellation` builds

@@ -590,6 +590,7 @@ separately on every marker-like field that conceptually shares them:
 | `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportMarker.borderWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
 | `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportMarker.gapWidth`, `teleportConnectorGapWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
 | `labelFont` | bundled Roboto, bold | `textFont` (family and weight together) of start/finish captions, teleport-floor badges, elevator badges, marker indices and floor labels — **links enabled by default**; each text row can override it independently |
+| `floorLabelType` (root control, `IndexLabelStyle`) | letters | `teleportFloorBadge.labelType` (**link disabled by default** since #1061 — the teleport badge keeps its own `arabic` default), `elevatorBadges.labelType` and `floorLabel.labelType` (**links enabled by default**) |
 | `markerTextSize` (GitHub issue #707) | 17 px | `startMarker`/`finishMarker`, `teleportFloorBadge` and `elevatorBadges` `.textSize` — **all links disabled by default** (each kind keeps its own default size) |
 
 GitHub issue #707: the section's "Text" sub-section holds the shared font and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate or marker (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). Its custom tooltip uses a primary action label and a tertiary explanation of that fit rule. It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. Every text also has a "Margin" row (`textMargin`, 0–10 px in 0.5 steps (fractional values are used as-is), default 1; `TextStyleFields`, Shared style `markerTextMargin` linked to every `textMargin`, links disabled by default): the distance the glyph ink must keep from the plate edge. It drives overflow warnings and auto-fit for every text; rendering additionally uses it to inset left/right-aligned floor-label text. The shared size has the same button, applying the smallest fit over all four shared-style controls (start, finish, elevator, teleport); floor-label text is intentionally independent and is excluded from this calculation. Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
@@ -782,7 +783,14 @@ own rule cards (`ui.bg.panel`/`ui.border.default`/`radius.md`) so each link read
 entity, not a bare row. Edit/delete use the shared
 `EditIconButton`/`RemoveIconButton` components (see below). No summary line, no bulk sync/enable/
 disable-all actions; those were cut as duplicating the (now also removed) section-level "Synchronize"
-button and adding chrome around what's usually a short list.
+button and adding chrome around what's usually a short list. While the breadcrumb filter is empty,
+the cards are grouped into collapsible sections (`SectionHeader`, collapsed by default) by the
+target's top-level `group` segment (its own `label` when `group` is empty). While the filter is
+active (GitHub issue #1081) grouping is dropped: every matching card shows in one flat list, since
+matches would otherwise be scattered across sections; clearing the filter restores the sections. The
+scroll area's scrollbar sits flush with the dialog's right edge (`rowsScroll` cancels `dialogBody`'s
+right padding with a negative margin and re-adds it as padding), so the content keeps a gap from the
+scrollbar and stays aligned with the toolbar.
 
 **Breadcrumb filter (`BreadcrumbNav`, inside the same file).** Replaces an earlier free-text search
 box — the filter can only ever be an actual parameter address, built one level at a time, never an

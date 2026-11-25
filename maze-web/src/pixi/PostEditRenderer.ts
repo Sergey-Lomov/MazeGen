@@ -39,7 +39,7 @@ import { recordOnLevel } from "../domain/fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../domain/defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
-import { getCellHighlightInset } from "./cellHighlightGeometry";
+import { getCellHighlightInset, SPLIT_PANEL_TARGET_FRAME } from "./cellHighlightGeometry";
 import { emptyPostEditHoverState, sameHoverCell, sameHoverEdge, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -154,6 +154,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.hoverContainer);
     this.cellHoverContainer = new Container();
     this.root.addChild(this.cellHoverContainer);
+    // The outline stays above the grid; its external geometry keeps it clear of the walls and
+    // split result it identifies (GitHub issue #1078).
     this.root.addChild(this.splitPanelTargetContainer);
     this.teleportPreviewContainer = new Container();
     this.root.addChild(this.teleportPreviewContainer);
@@ -734,8 +736,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       cells: state.postEditFocusedPoint && !state.postEditFocusedPointCovered ? [state.postEditFocusedPoint] : [],
       color: canvas.fieldEditor.panelTarget,
       alpha: 0,
-      inset: 0,
-      borderWidth: 3,
+      ...SPLIT_PANEL_TARGET_FRAME,
     }, cfg);
     this.redrawHoveredEntity(state);
     // Reads only `sceneBase` inputs plus the hovered issue, which `onStoreChange` redraws on its own.
@@ -759,7 +760,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.entityLink = null;
     this.renderSeams();
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
-    this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
+    this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, ...SPLIT_PANEL_TARGET_FRAME }, cfg);
     this.linkHover.clear();
     this.entityHighlight.clear();
     this.issueHighlight.clear();

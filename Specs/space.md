@@ -483,7 +483,9 @@ Status (GitHub issue #759): implemented in `space::geometry`.
   `Err(RegionTooLarge)` when the region's bounding box holds more than `MAX_REGION_CANDIDATES`
   (250 000) candidate cells, before building any — an oversized request fails fast instead of
   stalling. Callers keep such requests within it (the web clamps selections, #761). With
-  `CellScope::Cells`, the query examines only the scope's cells, so any region size is accepted.
+  `CellScope::Cells`, any region size is accepted: the query examines the candidates of the
+  region's bounding box that belong to the scope, or scans the scope's cells when the box holds
+  more candidates than the scope has cells, so a small region over a large field stays cheap.
   `cell_at` has no limit (its box is a point).
 - **Scale between two positions.** A distance between two positions is divided by the **mean**
   of their `cell_scale`s (an edge position's scale is the mean of its two cells'). For the

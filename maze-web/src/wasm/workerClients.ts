@@ -6,7 +6,8 @@ import type { PrintSizingAnswer, PrintSizingRequest } from "../pixi/printSizingJ
 import { validateSnapshot, type GenerateMazeResult } from "./mazeGeneration";
 import type { GenerationRequest } from "./generationWorker";
 import type { AnalyticsRequest } from "./analyticsWorker";
-import type { GenerateConfig, ComputeAnalyticsConfig, MazeSnapshot } from "./types";
+import type { NodeShapeStatisticsWorkerRequest } from "./nodeShapeStatisticsWorker";
+import type { GenerateConfig, ComputeAnalyticsConfig, MazeSnapshot, NodeShapeStatisticsRequest, NodeShapeCountDto } from "./types";
 
 const generationPool = new WorkerPool<GenerationRequest, GenerateMazeResult>({
   create: () => new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" }),
@@ -18,6 +19,12 @@ const analyticsPool = new WorkerPool<AnalyticsRequest, unknown>({
   create: () => new Worker(new URL("./analyticsWorker.ts", import.meta.url), { type: "module" }),
   wasmModule: compileWasmModule,
   failureMessage: "Analytics worker failed",
+});
+
+const nodeShapeStatisticsPool = new WorkerPool<NodeShapeStatisticsWorkerRequest, NodeShapeCountDto[]>({
+  create: () => new Worker(new URL("./nodeShapeStatisticsWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
+  failureMessage: "Node shape statistics worker failed",
 });
 
 const printSizingPool = new WorkerPool<PrintSizingRequest, PrintSizingAnswer>({
@@ -53,10 +60,18 @@ export function computeAnalyticsAsync(config: ComputeAnalyticsConfig, reportBack
   return reportBackgroundActivity ? trackActivity("analytics", work) : work;
 }
 
+/** Calculates shape-aware cell statistics only on an explicit dialog open. */
+export function nodeShapeStatisticsAsync(request: NodeShapeStatisticsRequest): Promise<NodeShapeCountDto[]> {
+  // Only the latest dialog opening matters; do not let an older graph snapshot overwrite it.
+  nodeShapeStatisticsPool.cancelAll(new Error("Node shape statistics request superseded"));
+  return trackActivity("analytics", nodeShapeStatisticsPool.run({ request }).promise);
+}
+
 /** Terminates every worker. Called on page shutdown and on hot module replacement. */
 export function disposeWorkers(): void {
   generationPool.dispose();
   analyticsPool.dispose();
+  nodeShapeStatisticsPool.dispose();
   printSizingPool.dispose();
 }
 

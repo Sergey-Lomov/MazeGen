@@ -180,6 +180,10 @@ Every node has a delete action; deleting the last node is disabled with an expla
 footer contains only Confirm. Tooltips show the same tool shortcuts as the preset editor, and those
 shortcuts select the pattern editor's active tool: Wall `W`, Passage `P`, One-way `Alt+P`.
 
+The post-edit and preset split-node side panels have a header **Focus cell** action. It centers the
+edited cell in the main canvas and sets the viewport zoom to 250%; the action is available in both
+flows because they share `SplitNodesDialogView`.
+
 ### Diagnostics (node warning icons)
 
 The editor has no shared warnings section. A node's `ListCell` shows a `WarningIcon` after its

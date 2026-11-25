@@ -114,6 +114,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const visibility = useVisibilityContext();
   const unavailableOf = useCheckAvailability();
   const removeCheck = useMazeStore((s) => s.removeCheck);
+  const dismissRuleProblems = useMazeStore((s) => s.dismissRuleProblems);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
   const renameRule = useMazeStore((s) => s.renameRule);
@@ -185,7 +186,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         )}
         <div style={styles.ruleCardTools}>
           <Tooltip content={slot.ruleDisabled ? m["quality.enable_rule"]() : m["quality.disable_rule"]()}><div
-            style={styles.toggleWrap}
+            style={styles.toolbarToggleWrap}
           >
             <Switch checked={!slot.ruleDisabled} onChange={() => toggleRuleDisabled(slot.ruleId)} />
           </div></Tooltip>
@@ -204,13 +205,13 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
       </div>
       {slot.problems && (
         <div style={styles.ruleProblems}>
-          {slot.problems.map((problem, i) => (
-            <WarningBubble
-              key={i}
-              message={problem.checkLabel ? `${problem.checkLabel}: ${problem.text}` : problem.text}
-              severity="warning"
-            />
-          ))}
+          {slot.problems.map((problem, i) => {
+            const message = problem.checkLabel ? `${problem.checkLabel}: ${problem.text}` : problem.text;
+            const dismiss = problem.dismiss;
+            return dismiss
+              ? <WarningBubble key={i} message={message} severity="warning" onDismiss={() => dismissRuleProblems(slot.ruleId, dismiss)} dismissTitle={m["quality.dismiss_problem"]()} />
+              : <WarningBubble key={i} message={message} severity="warning" />;
+          })}
         </div>
       )}
       {!slot.collapsed && (
@@ -397,7 +398,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 )}
                 <div style={styles.stageToolbar}>
                   <Tooltip content={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}><div
-                    style={styles.toggleWrap}
+                    style={styles.toolbarToggleWrap}
                   >
                     <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
                   </div></Tooltip>

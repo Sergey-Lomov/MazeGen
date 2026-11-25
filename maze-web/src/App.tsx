@@ -22,7 +22,7 @@ import type { FeatureId } from "./store/mazeStore";
 import { ui } from "./styles/theme";
 import { canvas } from "./domain/colorTokens";
 import { useLocale } from "./i18n/useLocale";
-import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
+import { setViewportScaleGetter, setPhysicalZoomApplier, setCellFocusApplier } from "./pixi/viewportScaleBridge";
 import { setColorSampler } from "./pixi/colorSampleBridge";
 import * as m from "~/paraglide/messages";
 
@@ -48,10 +48,12 @@ export function App() {
   const qualityOpen = openCard === "quality";
   const floorCount = useMazeStore((s) => s.floors.length);
   const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
-  const field = useMazeStore((s) => s.floorFields[s.activeFloorId]);
+  // Select only the two flags: the whole floor field object changes on every cell edit and would re-render the app.
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const zoneEditing = useMazeStore((s) => zoneEditActive(s));
-  const showMirrorPanel = ((openCard === "field_setup" && field.fieldEditMode === "custom") || zoneEditing)
-    && field.fieldPrimitive === "mirror";
+  const showMirrorPanel = ((openCard === "field_setup" && fieldEditMode === "custom") || zoneEditing)
+    && fieldPrimitive === "mirror";
 
   useEffect(() => {
     loadRegistry();
@@ -106,6 +108,7 @@ export function App() {
         sceneRef.current = new MazeScene(app);
         setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
         setPhysicalZoomApplier((scale) => sceneRef.current?.applyPrintPhysicalZoom(scale));
+        setCellFocusApplier((point) => sceneRef.current?.focusCell(point));
         setColorSampler({
           canvas: app.canvas,
           sampleAt: (clientX, clientY) => sceneRef.current?.sampleColorAt(clientX, clientY) ?? null,
@@ -124,6 +127,7 @@ export function App() {
       cancelled = true;
       setViewportScaleGetter(null);
       setPhysicalZoomApplier(null);
+      setCellFocusApplier(null);
       setColorSampler(null);
       sceneRef.current?.destroy();
       sceneRef.current = null;

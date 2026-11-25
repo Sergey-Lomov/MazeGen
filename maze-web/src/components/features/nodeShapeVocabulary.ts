@@ -1,21 +1,8 @@
-import type { TessellationConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
-import { getTessellationNodeShapes, type CellTypeShapes } from "../../wasm/mazeService";
+import { nodeShapesOf } from "../../domain/shapeTemplates";
 import { registerNodeShapeSiblingsSource } from "./nodeShapeSiblings";
 
-const vocabularyCache = new Map<string, CellTypeShapes[]>();
-
-/** Node shapes per cell type of `tessellation`, asked from core once per config (a config fully
- *  identifies the built instance, same key `tessellationTraitsOf` uses). */
-export function nodeShapesOf(tessellation: TessellationConfig): CellTypeShapes[] {
-  const key = JSON.stringify(tessellation);
-  let shapes = vocabularyCache.get(key);
-  if (shapes === undefined) {
-    shapes = getTessellationNodeShapes(tessellation);
-    vocabularyCache.set(key, shapes);
-  }
-  return shapes;
-}
+export { nodeShapesOf };
 
 /** Every shape key of `cellType` on the maze's applied tessellation. Issues are dropped when the
  *  tessellation changes, so the applied one is the one they were found on. `undefined` when core

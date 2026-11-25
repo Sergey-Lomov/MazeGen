@@ -57,6 +57,8 @@ export interface NestedStrategyState {
   strategyId: string;
   params: Record<string, string>;
   nested: NestedStrategyState[];
+  /** UI-only nested-panel state. Missing legacy entries default to collapsed. */
+  collapsed?: boolean;
 }
 
 /** Every entry in `list` filling `slotId`, in list order — that order is this slot's own
@@ -140,6 +142,7 @@ export type QcProblemCode =
   | "patterns_dropped"
   | "patterns_emptied"
   | "limits_reset"
+  | "forbidden_cell_type_unavailable"
   | "irregular_tessellation"
   | "cell_sides_exceed";
 
@@ -147,6 +150,7 @@ export const QC_PROBLEM_CATEGORY: Record<QcProblemCode, QcProblemCategory> = {
   patterns_dropped: "needs_reconfiguration",
   patterns_emptied: "needs_reconfiguration",
   limits_reset: "needs_reconfiguration",
+  forbidden_cell_type_unavailable: "needs_reconfiguration",
   irregular_tessellation: "cannot_apply",
   cell_sides_exceed: "cannot_apply",
 };

@@ -616,6 +616,82 @@ fn arc_touches_and_crosses_lines() {
 }
 
 #[test]
+fn cell_scope_answers_like_the_space_query_restricted_to_the_scope() {
+    fn check<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
+        let mut scope = cells.to_vec();
+        scope.sort();
+        scope.dedup();
+        let cell = scope[scope.len() / 2];
+        let (min, max) = tessellation.boundary_path(cell).bounds();
+        let region = [
+            min - Point::new(0.3, 0.3),
+            Point::new(max.x + 0.3, min.y - 0.3),
+            max + Point::new(0.3, 0.3),
+            Point::new(min.x - 0.3, max.y + 0.3),
+        ];
+        for mode in [
+            RegionMode::Intersects,
+            RegionMode::Contained,
+            RegionMode::CenterInside,
+        ] {
+            let expected: Vec<T::CellId> = tessellation
+                .cells_in_region(&region, mode, CellScope::Space)
+                .unwrap()
+                .into_iter()
+                .filter(|found| scope.binary_search(found).is_ok())
+                .collect();
+            assert_eq!(
+                tessellation.cells_in_region(&region, mode, CellScope::Cells(&scope)),
+                Ok(expected),
+                "{mode:?}"
+            );
+        }
+    }
+    for_each_tessellation!(check);
+}
+
+#[test]
+fn small_region_in_a_large_cell_scope_matches_the_full_scan() {
+    // A scope far larger than the region's box takes the bounding-box candidate path.
+    let mut scope: Vec<SquarePoint> = (0..60)
+        .flat_map(|x| (0..60).map(move |y| SquarePoint { x, y }))
+        .collect();
+    scope.sort();
+    let region = [
+        Point::new(10.5, 10.5),
+        Point::new(13.2, 10.5),
+        Point::new(13.2, 12.2),
+        Point::new(10.5, 12.2),
+    ];
+    for mode in [
+        RegionMode::Intersects,
+        RegionMode::Contained,
+        RegionMode::CenterInside,
+    ] {
+        let expected: Vec<SquarePoint> = SquareTessellation
+            .cells_in_region(&region, mode, CellScope::Space)
+            .unwrap();
+        assert_eq!(
+            SquareTessellation.cells_in_region(&region, mode, CellScope::Cells(&scope)),
+            Ok(expected),
+            "{mode:?}"
+        );
+    }
+    // A region partly outside the scope yields only the scope's cells.
+    let edge_region = [
+        Point::new(-2.0, -2.0),
+        Point::new(1.5, -2.0),
+        Point::new(1.5, 1.5),
+        Point::new(-2.0, 1.5),
+    ];
+    let found = SquareTessellation
+        .cells_in_region(&edge_region, RegionMode::Intersects, CellScope::Cells(&scope))
+        .unwrap();
+    assert!(found.iter().all(|cell| scope.binary_search(cell).is_ok()));
+    assert!(found.contains(&SquarePoint { x: 0, y: 0 }));
+}
+
+#[test]
 fn oversized_region_is_rejected_unscoped_but_answered_within_a_cell_scope() {
     fn check<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
         let side = 10_000.0;

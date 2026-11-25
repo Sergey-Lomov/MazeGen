@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import type { QcProblem } from "../store/storeTypes";
+import { sendableChecks, type QcProblem } from "../store/storeTypes";
 import { baseStoreState, mockGenerateMazeResult, resetGenerationMocks, makeRule } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -785,6 +785,15 @@ describe("rule problems (GitHub issue #1044)", () => {
     expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
   });
 
+  it("clears an unavailable forbidden-cell-type problem when that param is edited", () => {
+    useMazeStore.setState({ rules: [flaggedRule({
+      checks: [{ localId: 0, typeId: "check_a", params: { forbid_cell_type_hexagon: "false" }, disabled: false }],
+      problems: [{ code: "forbidden_cell_type_unavailable", scope: "check", localId: 0, paramId: "forbid_cell_type_hexagon" }],
+    })] });
+    useMazeStore.getState().setCheckParam("g1", 0, "forbid_cell_type_hexagon", "false");
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
   it("never resolves a cannot_apply problem by editing", () => {
     const problems = [{ code: "irregular_tessellation" as const, scope: "check" as const, localId: 0 }];
     useMazeStore.setState({ rules: [flaggedRule({ problems })] });
@@ -807,6 +816,29 @@ describe("rule problems (GitHub issue #1044)", () => {
     });
     useMazeStore.getState().setRuleParam("g1", "split_patterns", "[]");
     expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
+  });
+
+  it("dismissing a needs_reconfiguration problem drops only that problem", () => {
+    const kept: QcProblem = { code: "limits_reset", scope: "check", localId: 0 };
+    const dismissed: QcProblem = { code: "patterns_dropped", scope: "check", localId: 0, paramId: "patterns" };
+    useMazeStore.setState({ rules: [flaggedRule({ problems: [dismissed, kept] })] });
+    useMazeStore.getState().dismissRuleProblems("g1", [dismissed]);
+    expect(useMazeStore.getState().rules[0].problems).toEqual([kept]);
+  });
+
+  it("dismissing never drops a cannot_apply problem", () => {
+    const problems: QcProblem[] = [{ code: "irregular_tessellation", scope: "check", localId: 0 }];
+    useMazeStore.setState({ rules: [flaggedRule({ problems })] });
+    useMazeStore.getState().dismissRuleProblems("g1", problems);
+    expect(useMazeStore.getState().rules[0].problems).toEqual(problems);
+  });
+
+  it("a dismissed check reaches core again", () => {
+    const problem: QcProblem = { code: "patterns_dropped", scope: "check", localId: 0, paramId: "patterns" };
+    useMazeStore.setState({ rules: [flaggedRule({ problems: [problem] })] });
+    expect(sendableChecks(useMazeStore.getState().rules[0]).map((c) => c.localId)).toEqual([1]);
+    useMazeStore.getState().dismissRuleProblems("g1", [problem]);
+    expect(sendableChecks(useMazeStore.getState().rules[0]).map((c) => c.localId)).toEqual([0, 1]);
   });
 
   it("changing the strategy resolves strategy-side problems and keeps check problems", () => {

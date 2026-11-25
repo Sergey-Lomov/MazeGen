@@ -62,20 +62,22 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
         onMouseLeave={() => onHoverChange(false)}
       >
         <span style={styles.cardLabel}>{check.cardLabel}</span>
-        <Tooltip content={check.unavailable ? undefined : check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}><div
-          style={styles.toggleWrap}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Switch checked={!inactive} disabled={check.unavailable} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
-        </div></Tooltip>
-        <DeleteIconButton
-          title={m["quality.remove"]()}
-          onClick={(e) => {
-            e.stopPropagation();
-            flushRef.current();
-            onRemove();
-          }}
-        />
+        <div style={styles.rowActionCluster}>
+          <Tooltip content={check.unavailable ? undefined : check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}><div
+            style={styles.toggleWrap}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Switch checked={!inactive} disabled={check.unavailable} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
+          </div></Tooltip>
+          <DeleteIconButton
+            title={m["quality.remove"]()}
+            onClick={(e) => {
+              e.stopPropagation();
+              flushRef.current();
+              onRemove();
+            }}
+          />
+        </div>
       </div>
       {check.params.length > 0 && (
         <div style={styles.ruleStrategyParams}>

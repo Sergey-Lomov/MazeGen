@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import { entriesForSlot } from "../storeTypes";
+import { entriesForSlot, QC_PROBLEM_CATEGORY } from "../storeTypes";
 import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
 import { NESTED_STRATEGY_MAX_SIZE_PARAM_ID, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
@@ -9,9 +9,9 @@ import {
 } from "./generationSliceHelpers";
 
 type RulesSliceKeys =
-  | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "toggleCheckDisabled" | "removeCheckFromRule"
+  | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "dismissRuleProblems" | "toggleCheckDisabled" | "removeCheckFromRule"
   | "setStrategy" | "clearStrategy" | "setNestedStrategy" | "setNestedStrategyParam" | "addNestedStrategy"
-  | "removeNestedStrategy" | "moveNestedStrategy" | "toggleStrategyDisabled" | "toggleRuleDisabled"
+  | "removeNestedStrategy" | "moveNestedStrategy" | "toggleNestedStrategyCollapsed" | "toggleStrategyDisabled" | "toggleRuleDisabled"
   | "toggleRuleCollapsed" | "renameRule" | "setRuleZoneScope" | "removeRule" | "moveRule"
   | "reorderRule" | "moveRuleToNewStage";
 
@@ -81,6 +81,16 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
         { ...g, checks: g.checks.map((c) => c.localId === localId ? { ...c, params: { ...c.params, [paramId]: value } } : c) },
         resolvedByEdit("check", paramId, localId),
       )
+      : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  // The user accepts the flagged settings as they are: the problems go away without an edit.
+  // Only `needs_reconfiguration` problems can be dismissed; `cannot_apply` stays until removal.
+  dismissRuleProblems: (ruleId, problems) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? withoutProblems(g, (p) => QC_PROBLEM_CATEGORY[p.code] === "needs_reconfiguration"
+        && problems.some((d) => d.code === p.code && d.scope === p.scope && d.localId === p.localId && d.paramId === p.paramId))
       : g),
     debugStale: debugStaleOf(state),
   })),
@@ -156,7 +166,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       );
       const params = { ...(descriptor ? defaultParamsFor(descriptor) : {}), ...kept };
       const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
-      return [{ slotId: target.slotId, strategyId, params, nested }];
+      return [{ slotId: target.slotId, strategyId, params, nested, ...(target.collapsed !== undefined ? { collapsed: target.collapsed } : {}) }];
     };
     return {
       rules: state.rules.map((g) => g.id === ruleId ? withoutProblems({ ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, transform) }, (p) => p.scope === "nested") : g),
@@ -187,6 +197,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       strategyId: candidate.id,
       params: defaultParamsFor(candidate),
       nested: buildDefaultNestedStrategies(candidate.id, state.availableStrategies),
+      collapsed: true,
     };
     function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
       if (remainingPath.length === 1) return [...list, newEntry];
@@ -217,6 +228,18 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       ? { ...g, nestedStrategies: moveNestedAt(g.nestedStrategies, path, direction) }
       : g),
     debugStale: debugStaleOf(state),
+  })),
+
+  toggleNestedStrategyCollapsed: (ruleId, path) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? {
+          ...g,
+          nestedStrategies: updateNestedAt(g.nestedStrategies, path, (target) => [{
+            ...target,
+            collapsed: !(target.collapsed ?? true),
+          }]),
+        }
+      : g),
   })),
 
   toggleStrategyDisabled: (ruleId) => set((state) => ({

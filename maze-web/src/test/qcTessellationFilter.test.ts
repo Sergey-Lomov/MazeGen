@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { qcForTessellation } from "../store/slices/qcTessellationFilter";
 import { selectTessellationWouldLoseData } from "../store/tessellationLoss";
-import { getTessellationShapes, getTessellationCellTypes } from "../wasm/mazeService";
+import { getTessellationShapes, getTessellationCellTypes, getTessellationNodeShapes } from "../wasm/mazeService";
 import type { CheckDescriptor, RuleParamDescriptor, StrategyDescriptor } from "../wasm/types";
 import type { QcRuleState } from "../store/storeTypes";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
@@ -10,7 +10,8 @@ import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   getTessellationTraits: vi.fn((config: { kind: string }) => ({ irregular: config.kind === "voronoi", maxCellSides: config.kind === "truncated_trihexagonal" ? 12 : 6 })),
-  getTessellationCellTypes: vi.fn(() => ({ keys: ["square", "octagon"] })) }));
+  getTessellationCellTypes: vi.fn(() => ({ keys: ["square", "octagon"] })),
+  getTessellationNodeShapes: vi.fn(() => [{ cellType: "regular:6", exampleCell: [0, 0], faceRanks: [], shapes: ["dead_end", "straight", "turn_60"] }]) }));
 
 const HEX = tessellationConfigOf("hex");
 
@@ -145,10 +146,33 @@ describe("qcForTessellation node shape limits", () => {
     availableChecks: [limitsCheck],
   });
 
-  it("resets configured limits to none", () => {
+  it("drops limits whose cell type the new tessellation lacks", () => {
     const result = qcForTessellation(state('{"regular:4":{"turn_90":{"min":1,"max":null}}}'), HEX);
     expect(result.rules[0].checks[0].params.limits).toBe("{}");
     expect(result.rules[0].problems).toEqual([{ code: "limits_reset", scope: "check", localId: 0, paramId: "limits" }]);
+  });
+
+  it("keeps the limits whose cell type and shape the new tessellation has, dropping the rest", () => {
+    const result = qcForTessellation(state(JSON.stringify({
+      "regular:4": { turn_90: { min: 1, max: null } },
+      "regular:6": { turn_60: { min: 2, max: null }, turn_120: { min: null, max: 3 } },
+    })), HEX);
+    expect(JSON.parse(result.rules[0].checks[0].params.limits)).toEqual({ "regular:6": { turn_60: { min: 2, max: null } } });
+    expect(result.rules[0].problems).toEqual([{ code: "limits_reset", scope: "check", localId: 0, paramId: "limits" }]);
+  });
+
+  it("drops every limit and flags it when core cannot give the node shapes", () => {
+    vi.mocked(getTessellationNodeShapes).mockImplementationOnce(() => { throw new Error("no shapes"); });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = qcForTessellation(state('{"regular:6":{"turn_60":{"min":2,"max":null}}}'), tessellationConfigOf("square"));
+    spy.mockRestore();
+    expect(result.rules[0].checks[0].params.limits).toBe("{}");
+    expect(result.rules[0].problems).toEqual([{ code: "limits_reset", scope: "check", localId: 0, paramId: "limits" }]);
+  });
+
+  it("keeps the same references and flags nothing when every limit survives", () => {
+    const kept = state('{"regular:6":{"turn_60":{"min":2,"max":null}}}');
+    expect(qcForTessellation(kept, HEX).rules).toBe(kept.rules);
   });
 
   it("keeps the same references when no limit is configured", () => {
@@ -285,6 +309,10 @@ describe("qcForTessellation: cell_type-scoped params", () => {
     expect(result.rules[0].checks[0].params).toEqual({
       forbid_cell_type_square: "true", forbid_cell_type_hexagon: "false",
     });
+    expect(result.rules[0].problems).toEqual([
+      { code: "forbidden_cell_type_unavailable", scope: "check", localId: 0, paramId: "forbid_cell_type_hexagon" },
+    ]);
+    expect(qcForTessellation({ ...state, rules: result.rules }, tessellationConfigOf("square_octagon")).rules).toBe(result.rules);
   });
 
   it("returns the same references when every forbidden type exists", () => {

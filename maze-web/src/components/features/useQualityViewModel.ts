@@ -101,6 +101,9 @@ export interface QcProblemVM {
   text: string;
   /** Label of the member check the problem belongs to; absent for a strategy-side problem. */
   checkLabel?: string;
+  /** Stored problems this entry stands for; present only when the user may dismiss it
+   * (`needs_reconfiguration`: accept the current settings as they are). */
+  dismiss?: QcProblem[];
 }
 
 /** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
@@ -144,16 +147,22 @@ function localizeParams(params: ParamDescriptor[], contextId?: string): ParamDes
 /** A problem on a rule-level param (a pattern list shared by several checks and the strategy) is one
  * problem of the rule, not one per consumer, so those collapse into a single unlabeled entry. */
 export function buildProblems(problems: QcProblem[], producedBy: CheckVM[], ruleParamIds: ReadonlySet<string>): QcProblemVM[] {
-  const seen = new Set<string>();
+  const groups = new Map<string, QcProblem[]>();
   const result: QcProblemVM[] = [];
   for (const p of problems) {
     const shared = p.paramId !== undefined && ruleParamIds.has(p.paramId);
     const key = shared ? `${p.code}|${p.paramId}` : `${p.code}|${p.scope}|${p.localId ?? ""}|${p.paramId ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const group = groups.get(key);
+    if (group) {
+      group.push(p);
+      continue;
+    }
+    const members = [p];
+    groups.set(key, members);
     result.push({
-      text: resolveProblemText(p.code, p.scope),
+      text: resolveProblemText(p.code, p.scope, p.paramId),
       checkLabel: !shared && p.scope === "check" ? producedBy.find((c) => c.localId === p.localId)?.label : undefined,
+      ...(QC_PROBLEM_CATEGORY[p.code] === "needs_reconfiguration" ? { dismiss: members } : {}),
     });
   }
   return result;

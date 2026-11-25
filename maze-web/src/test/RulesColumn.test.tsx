@@ -274,6 +274,45 @@ describe("RulesColumn", () => {
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "merge_target", index: 0 }] });
   });
 
+  it("expands and collapses an individual nested strategy's settings", () => {
+    const nested: StrategyVM = {
+      id: "nested", label: "Nested", handles: "k2", experimental: false, nestedSlots: [],
+      params: [{ id: "nested_weight", label: "Nested weight", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+    };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
+    };
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "slot_a", strategyId: "nested", params: {}, nested: [], collapsed: true }], collapsed: false }],
+    });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: topLevel, disabled: false, ruleDisabled: false, producedBy: [], params: {}, nestedStrategies: [{ slotId: "slot_a", strategy: nested, params: nested.params, nested: [] }], collapsed: false }];
+
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(screen.queryByDisplayValue("1")).not.toBeInTheDocument();
+    fireEvent.click(getTooltipControl("Show settings"));
+    expect(useMazeStore.getState().rules[0].nestedStrategies[0].collapsed).toBe(false);
+    expect(screen.getByDisplayValue("1")).toBeInTheDocument();
+    fireEvent.click(getTooltipControl("Collapse nested strategy"));
+    expect(useMazeStore.getState().rules[0].nestedStrategies[0].collapsed).toBe(true);
+    expect(screen.queryByDisplayValue("1")).not.toBeInTheDocument();
+  });
+
+  it("disables the nested-strategy chevron when there are no settings to show", () => {
+    const leaf: StrategyVM = { id: "leaf", label: "Leaf", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
+    };
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "slot_a", strategyId: "leaf", params: {}, nested: [], collapsed: true }], collapsed: false }],
+    });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: topLevel, disabled: false, ruleDisabled: false, producedBy: [], params: {}, nestedStrategies: [{ slotId: "slot_a", strategy: leaf, params: [], nested: [] }], collapsed: false }];
+
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(getTooltipControl("No nested settings")).toBeDisabled();
+  });
+
   it("a priority slot shows each entry's rank instead of a weight input, and clicking the up arrow reorders", () => {
     const first: StrategyVM = { id: "missing_loops_random", label: "missing_loops_random", handles: "k2", params: [], experimental: false, nestedSlots: [] };
     const second: StrategyVM = { id: "missing_loops_split", label: "missing_loops_split", handles: "k2", params: [], experimental: false, nestedSlots: [] };
@@ -354,7 +393,7 @@ describe("RulesColumn", () => {
       }];
     }
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "slot_a", strategyId: "teleport_region_merge", params: { min_distance: "1" }, nested: [] }], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [{ slotId: "slot_a", strategyId: "teleport_region_merge", params: { min_distance: "1" }, nested: [], collapsed: false }], collapsed: false }],
     });
     const { rerender } = render(<RulesColumn stages={wrapStage(slotsWith(strategyA))} selection={null} onSelect={vi.fn()} />);
     rerender(<RulesColumn stages={wrapStage(slotsWith(strategyB))} selection={null} onSelect={vi.fn()} />);
@@ -512,6 +551,20 @@ describe("RulesColumn", () => {
     act(() => { vi.runAllTimers(); });
     expect(useMazeStore.getState().rules[0].strategyParams.weight).toBe("5");
     vi.useRealTimers();
+  });
+
+  it("shows a close button only on a dismissible problem, and clicking it clears that problem from the store", () => {
+    const dropped = { code: "patterns_dropped" as const, scope: "check" as const, localId: 0, paramId: "patterns" };
+    useMazeStore.setState({ rules: defaultRules().map((r) => ({ ...r, problems: [dropped] })) });
+    const dismiss = [dropped];
+    const slots: StrategySlotVM[] = [{
+      ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false,
+      problems: [{ text: "Patterns were dropped", dismiss }, { text: "Cannot work here" }],
+    }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Keep as is and dismiss" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Keep as is and dismiss" }));
+    expect(useMazeStore.getState().rules[0].problems).toBeUndefined();
   });
 
   it("renders the stage toggle and card-level toggle (not a strategy toggle) when rule has no strategy", () => {

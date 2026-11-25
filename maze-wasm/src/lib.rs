@@ -20,7 +20,7 @@ use result::GenerateResult;
 use tessellation_dispatch::dispatch_generate;
 use wasm_bindgen::prelude::*;
 
-pub use analytics::compute_analytics;
+pub use analytics::{compute_analytics, node_shape_statistics};
 pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
 pub use field_ops::{

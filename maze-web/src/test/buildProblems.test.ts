@@ -24,6 +24,26 @@ describe("buildProblems (GitHub issue #1044)", () => {
     expect(result.map((p) => p.checkLabel)).toEqual(["Split shape"]);
   });
 
+  it("names the unavailable forbidden cell type", () => {
+    const problems: QcProblem[] = [{ code: "forbidden_cell_type_unavailable", scope: "check", localId: 0, paramId: "forbid_cell_type_hexagon" }];
+    const result = buildProblems(problems, [check(0, "Cell type")], new Set());
+    expect(result).toEqual([{ text: "The rule was configured using the hexagon cell type, which is unavailable in the current tessellation.", checkLabel: "Cell type", dismiss: problems }]);
+  });
+
+  it("lets the user dismiss a needs_reconfiguration problem, grouping a collapsed shared one", () => {
+    const problems: QcProblem[] = [
+      { code: "patterns_emptied", scope: "check", localId: 0, paramId: "split_patterns" },
+      { code: "patterns_emptied", scope: "strategy", paramId: "split_patterns" },
+    ];
+    const result = buildProblems(problems, [check(0, "A")], new Set(["split_patterns"]));
+    expect(result[0].dismiss).toEqual(problems);
+  });
+
+  it("never offers dismissal for a cannot_apply problem", () => {
+    const problems: QcProblem[] = [{ code: "irregular_tessellation", scope: "check", localId: 0 }];
+    expect(buildProblems(problems, [check(0, "A")], new Set())[0].dismiss).toBeUndefined();
+  });
+
   it("keeps same-code problems of different checks apart", () => {
     const problems: QcProblem[] = [
       { code: "patterns_emptied", scope: "check", localId: 0, paramId: "patterns" },
