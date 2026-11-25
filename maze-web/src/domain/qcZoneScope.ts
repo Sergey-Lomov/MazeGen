@@ -3,15 +3,29 @@ import type { ZoneScopeWire } from "../wasm/types";
 import type { ZoneGroup } from "../store/zonesTypes";
 import type { QcZoneScopeTarget, CheckInstance } from "../store/qcRuleTypes";
 import type { CheckDescriptor } from "../wasm/types";
+import { zonesHaveCells } from "./zoneOverrides";
 
 type ScopedRule = { zoneScope?: QcZoneScopeTarget };
 
-/** The rule is bound to a zone or group that no longer exists (GitHub issue #1039). Derived, never stored: the
- *  deleted zone's id is never reused, so the dangling target stays as the marker. */
+/** The rule is bound to a zone or group with nothing to scope to (GitHub issue #1039): it no longer exists, or it holds no
+ *  cell (an empty zone, or a group of such zones; GitHub issue #1034). Derived, never stored: the deleted zone's id is
+ *  never reused, so the dangling target stays as the marker. */
 export function zoneScopeHasNoZones(rule: ScopedRule, zones: readonly Zone[], groups: readonly ZoneGroup[]): boolean {
+  return zoneScopeProblem(rule, zones, groups) !== null;
+}
+
+/** Why the rule has nothing to scope to: its zone or group is `missing` (deleted), or it exists but is `empty`. `null`
+ *  for a rule with a target that has cells, and for a rule without a zone scope. */
+export function zoneScopeProblem(rule: ScopedRule, zones: readonly Zone[], groups: readonly ZoneGroup[]): "missing" | "empty" | null {
   const target = rule.zoneScope;
-  if (!target) return false;
-  return target.kind === "zone" ? !zones.some((z) => z.id === target.id) : !groups.some((g) => g.id === target.id);
+  if (!target) return null;
+  if (target.kind === "zone") {
+    if (!zones.some((z) => z.id === target.id)) return "missing";
+    return zonesHaveCells([target.id], zones) ? null : "empty";
+  }
+  const group = groups.find((g) => g.id === target.id);
+  if (!group) return "missing";
+  return zonesHaveCells(group.zoneIds, zones) ? null : "empty";
 }
 
 /** The rule's scopes on the wire: a zone is one scope (`zone:<id>`), a `union` group is one scope over all its

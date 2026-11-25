@@ -12,7 +12,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { exportParamConflicts } from "../../store/exportZoneOverrides";
 import type { ExportZoneOverride } from "../../store/zonesTypes";
 import { ExportZoneProblemBubble } from "./ExportZoneProblemBubble";
-import { overrideHasNoZones } from "../../domain/zoneOverrides";
+import { overrideProblem, emptyParamTargets } from "../../domain/zoneOverrides";
+import { ZoneIdChips } from "./ZoneProblemChips";
 import * as m from "~/paraglide/messages";
 
 /** The bottom "Warnings" section both `VectorByWallsSettingsPanel` and
@@ -51,10 +52,12 @@ export function ExportWarningsSection({
   const zones = useMazeStore((s) => s.zones);
   const groups = useMazeStore((s) => s.zoneGroups);
   const [conflictInfoOpen, setConflictInfoOpen] = useState(false);
-  const withoutZones = overrides.filter((o) => overrideHasNoZones(o, zones, groups)).length;
-  const conflicts = exportParamConflicts(overrides, zones, groups);
+  // The "show zone problems" switch hides every zone warning: the override ones (missing, empty, overlapping) as well.
+  const missingZones = showZoneProblems && overrides.some((o) => overrideProblem(o, zones, groups) === "missing");
+  const emptyParams = showZoneProblems ? emptyParamTargets(overrides, zones, groups, (o, path) => `${o.mode}:${path}`) : [];
+  const conflicts = showZoneProblems ? exportParamConflicts(overrides, zones, groups) : [];
   const conflicting = conflicts.length;
-  const warningCount = visibleWarnings.length + zoneProblems.length + (withoutZones > 0 ? 1 : 0) + conflicting;
+  const warningCount = visibleWarnings.length + zoneProblems.length + (missingZones ? 1 : 0) + emptyParams.length + conflicting;
   return (
     <>
       <SectionHeader
@@ -74,7 +77,12 @@ export function ExportWarningsSection({
       )}
       {expanded && warningCount > 0 && (
         <div style={styles.warningsBlock}>
-          {withoutZones > 0 && <WarningBubble message={m["image_export.zone_overrides.no_zones_warning"]()} />}
+          {missingZones && <WarningBubble message={m["image_export.zone_overrides.no_zones_warning"]()} />}
+          {emptyParams.map(({ key, path, sample, zoneIds, groupIds }) => (
+            <WarningBubble key={key} message={m["image_export.zone_overrides.empty_warning"]({ param: addressOf(sample.mode, path) })}>
+              <div style={styles.zoneBadges}><ZoneIdChips zoneIds={zoneIds} groupIds={groupIds} /></div>
+            </WarningBubble>
+          ))}
           {conflicts.map((conflict) => (
             <WarningBubble key={`${conflict.mode}:${conflict.path}`} message={m["image_export.zone_overrides.conflict_param"]({ param: addressOf(conflict.mode, conflict.path) })} onInfo={() => setConflictInfoOpen(true)}>
               <div style={styles.zoneBadges}>

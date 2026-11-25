@@ -3,7 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 import type { QcRuleState } from "../store/qcRuleTypes";
-import { buildZoneScopesWire, zoneScopeHasNoZones, zoneScopeUnsupported } from "../domain/qcZoneScope";
+import { buildZoneScopesWire, zoneScopeHasNoZones, zoneScopeProblem, zoneScopeUnsupported } from "../domain/qcZoneScope";
 import { problematicRuleCount, ruleIsSendable } from "../store/qcDerivedProblems";
 import { baseStoreState, makeRule } from "./storeTestHelpers";
 
@@ -46,6 +46,16 @@ describe("zone scope problem (GitHub issue #1039)", () => {
     expect(zoneScopeHasNoZones(scoped({ kind: "group", id: 99, mode: "union" }), zones, groups)).toBe(true);
     expect(zoneScopeHasNoZones(scoped({ kind: "zone", id: 1 }), zones, groups)).toBe(false);
     expect(zoneScopeHasNoZones(scoped({ kind: "group", id: 7, mode: "union" }), zones, groups)).toBe(false);
+    // Why it has nothing: deleted ("missing") or still there but without cells ("empty").
+    const hollowZones = [{ id: 1, name: "", kind: "manual" as const, cells: [] }];
+    expect(zoneScopeProblem(scoped({ kind: "zone", id: 99 }), hollowZones, [])).toBe("missing");
+    expect(zoneScopeProblem(scoped({ kind: "zone", id: 1 }), hollowZones, [])).toBe("empty");
+    expect(zoneScopeProblem(scoped({ kind: "group", id: 5, mode: "union" }), hollowZones, [{ id: 5, name: "", zoneIds: [] }])).toBe("empty");
+    expect(zoneScopeProblem({}, hollowZones, [])).toBeNull();
+    // A zone with no cell has nothing to scope to either, alone or as the only member of a group.
+    const hollow = [{ id: 1, name: "", kind: "manual" as const, cells: [] }];
+    expect(zoneScopeHasNoZones(scoped({ kind: "zone", id: 1 }), hollow, [{ id: 7, name: "", zoneIds: [1] }])).toBe(true);
+    expect(zoneScopeHasNoZones(scoped({ kind: "group", id: 7, mode: "union" }), hollow, [{ id: 7, name: "", zoneIds: [1] }])).toBe(true);
   });
 
   it("keeps such a rule out of the config and counts it as problematic", () => {

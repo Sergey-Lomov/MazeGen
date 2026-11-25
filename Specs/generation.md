@@ -366,12 +366,16 @@ row has two integer inputs; the "non-consecutive floors" row has a switch of the
 the canvas (`ZoneHoverOverlay` draws it outside the zones card); the target is changed with the edit icon left of the
 trash, which reopens the picker (`setZoneOverrideTarget`). The UI creates
 single-target, single-parameter overrides (the elevator span sets both bounds); a group covers several zones.
-Warnings (`domain/zoneOverrides.ts`): a row with no zone left (`overrideHasNoZones`), and two overrides that set the
-same parameter on a common cell (`zoneOverrideConflicts`; different parameters on overlapping zones are fine). A row
-with no zone left shows a warning "choose" bubble in place of its target; an overlapping row shows a `WarningIcon` after
-its target bubbles. In the generation feature a no-zones bubble and an "overlapping zones" bubble (the whole bubble is
-clickable and carries an info glyph; it opens `ZoneOverrideConflictModal`: an explanation and the list of affected parameters, `zoneOverrideConflictParams`; the short names that repeat across categories, such as "Chance", are prefixed with their category)
-are shown, and the card status turns to warning without details (`computeGenerationCard`). User-facing texts do not say which zone wins.
+Warnings (`domain/zoneOverrides.ts`): a row with nothing to act on (`overrideHasNoZones`; `overrideProblem` says `missing`, the
+zones or groups were deleted, or `empty`, they exist without cells), and two overrides that set the same parameter on a
+common cell (`zoneOverrideConflicts`; different parameters on overlapping zones are fine). A row with a problem shows one
+`WarningIcon` after its target bubbles, its tooltip listing every problem of the row: "Zone is empty" / "Group is empty",
+the zones are gone, the overlap. The generation feature card has a collapsible "Warnings (N)" section at the top (collapsed
+by default, custom generator only) with one bubble for deleted targets, one per parameter set on an empty zone or group
+("A special value of parameter "X" is set for an empty zone/group", the empty zones and groups as chips below, `emptyParamTargets`,
+`ZoneIdChips`) and one "overlapping zones" bubble (the whole bubble is clickable and carries an info glyph; it opens
+`ZoneOverrideConflictModal`: an explanation and the list of affected parameters, `zoneOverrideConflictParams`; the short names that repeat across categories, such as "Chance", are prefixed with their category). `N` is `zoneOverrideWarningCount`, the number of
+those bubbles, and the card status says "Warnings: N" (`computeGenerationCard`). User-facing texts do not say which zone wins.
 Clicking a zone or group bubble shows a floor that holds its cells, unless the active floor already does. Before a maze is
 generated, `GenerationRenderer` draws the field itself (floor fill, inner grid, outer walls) so the hovered zones have a
 backdrop.

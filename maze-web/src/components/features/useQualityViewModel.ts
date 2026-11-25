@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY, hasNoActiveChecks, strategyUnavailable, visibleProblems, type NestedStrategyState, type QcProblem } from "../../store/storeTypes";
 import { emptyLimitsCheckIds } from "../../store/qcDerivedProblems";
-import { zoneScopeHasNoZones } from "../../domain/qcZoneScope";
+import { zoneScopeProblem } from "../../domain/qcZoneScope";
 import { resolveProblemText, resolveNoChecksProblemText, resolveNoZonesProblemText, resolveLimitsEmptyProblemText } from "./qualityI18n/problems";
 import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 import { useLocale } from "../../i18n/useLocale";
@@ -244,7 +244,7 @@ export function useQualityViewModel(): QualityViewModel {
         .filter((c): c is CheckVM => c !== undefined);
       const shown = visibleProblems(r);
       const noChecks = hasNoActiveChecks(r);
-      const noZones = zoneScopeHasNoZones(r, zones, zoneGroups);
+      const noZones = zoneScopeProblem(r, zones, zoneGroups);
       const emptyLimits = emptyLimitsCheckIds(r, availableChecks)
         .map((localId) => ({ text: resolveLimitsEmptyProblemText(), checkLabel: producedBy.find((c) => c.localId === localId)?.label }));
       return {
@@ -264,7 +264,7 @@ export function useQualityViewModel(): QualityViewModel {
         ...(strategyUnavailable(r) ? { strategyUnavailable: true } : {}),
         ...(shown.length > 0 || noChecks || noZones || emptyLimits.length > 0 ? { problems: [
           ...(noChecks ? [{ text: resolveNoChecksProblemText() }] : []),
-          ...(noZones ? [{ text: resolveNoZonesProblemText() }] : []),
+          ...(noZones ? [{ text: resolveNoZonesProblemText(noZones) }] : []),
           ...emptyLimits,
           ...buildProblems(shown, producedBy, ruleParamIds),
         ] } : {}),

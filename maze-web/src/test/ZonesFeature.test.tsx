@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ZonesFeature } from "../components/features/ZonesFeature";
 import { useMazeStore } from "../store/mazeStore";
@@ -72,5 +72,98 @@ describe("ZonesFeature", () => {
     fireEvent.click(screen.getByText(m["zone_groups.add"]()));
     expect(panel(m["zone_groups.edit"]())).toBeVisible();
     expect(useMazeStore.getState().zoneGroupEditDraft?.id).toBe(1);
+  });
+});
+
+describe("ZonesFeature problems (GitHub issue #1034)", () => {
+  // A cell this far out is never a cell of the default field.
+  const farZone = { id: 1, name: "Far", kind: "manual" as const, cells: [[0, 9999, 9999]] as [number, number, number][] };
+  const { floors: initialFloors, activeFloorId: initialFloorId } = useMazeStore.getState();
+  beforeEach(() => useMazeStore.setState({ ...zonesInitialState, openCard: "zones" }));
+  afterEach(() => useMazeStore.setState({ floors: initialFloors, activeFloorId: initialFloorId }));
+
+  it("keeps the Warnings section collapsed at first and counts a zone with invalid cells, the empty zones and the unused ones", () => {
+    useMazeStore.setState({ zones: [farZone, { id: 2, name: "Idle", kind: "manual", cells: [] }], nextZoneId: 3 });
+    render(<ZonesFeature />);
+    expect(screen.getByText(m["common.warnings"]({ count: "3" }))).toBeInTheDocument();
+    expect(screen.queryByText(m["zones.warning_invalid_cells"]())).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "3" })));
+    // One bubble per kind, the zones as chips below; the count is the number of bubbles.
+    expect(screen.getByText(m["zones.warning_empty"]())).toBeInTheDocument();
+    expect(screen.getAllByTestId("zone-problem-chip").map((chip) => chip.textContent)).toEqual(["Far", "Idle", "Far", "Idle"]);
+    expect(screen.getByText(m["zones.warning_invalid_cells"]())).toBeInTheDocument();
+    expect(screen.getByText(m["zones.warning_unused"]())).toBeInTheDocument();
+  });
+
+  it("hovering the invalid cells warning lights those cells through the shared coordinate warning", () => {
+    useMazeStore.setState({ zones: [farZone], nextZoneId: 2 });
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "2" })));
+    fireEvent.mouseEnter(screen.getByText(m["zones.warning_invalid_cells"]()));
+    const hovered = useMazeStore.getState().hoveredCoordinateWarning;
+    expect(hovered?.targets).toEqual([{ point: [9999, 9999], level: 0 }]);
+    // The cells are drawn merged into one contour group.
+    expect(hovered?.groups).toEqual([{ targets: [{ point: [9999, 9999], level: 0 }], outset: false }]);
+    fireEvent.mouseLeave(screen.getByText(m["zones.warning_invalid_cells"]()));
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
+  });
+
+  it("hovering a zone chip of the invalid warning lights the zone and only that zone's cells outside the field", () => {
+    const nearFar = { id: 2, name: "Other", kind: "manual" as const, cells: [[0, 8888, 8888]] as [number, number, number][] };
+    useMazeStore.setState({ zones: [farZone, nearFar], nextZoneId: 3 });
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "2" })));
+    const chip = screen.getAllByTestId("zone-problem-chip")[0];
+    fireEvent.mouseEnter(chip);
+    expect(useMazeStore.getState().hoveredZoneId).toBe(1);
+    expect(useMazeStore.getState().hoveredCoordinateWarning?.targets).toEqual([{ point: [9999, 9999], level: 0 }]);
+    fireEvent.mouseLeave(chip);
+    expect(useMazeStore.getState().hoveredZoneId).toBeNull();
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
+  });
+
+  it("a zone used by an override is not reported as unused", () => {
+    useMazeStore.setState({ zones: [{ ...farZone, cells: [[0, 0, 0]] }], nextZoneId: 2, zoneOverrides: [{ id: 1, zoneIds: [1], groupIds: [], params: {} }], nextZoneOverrideId: 2 });
+    render(<ZonesFeature />);
+    expect(screen.getByText(m["common.warnings"]({ count: "0" }))).toBeInTheDocument();
+  });
+
+  it("warns about an empty manual group, naming it, but not about an automatic one", () => {
+    useMazeStore.setState({ zoneGroups: [{ id: 1, name: "Hollow", zoneIds: [] }, { id: 2 ** 30, name: "", zoneIds: [] }], nextZoneGroupId: 2 });
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "1" })));
+    expect(screen.getByText(m["zones.warning_empty"]())).toBeInTheDocument();
+    expect(screen.getByTestId("zone-problem-chip").textContent).toBe(m["zone_groups.bubble_label"]({ name: "Hollow" }));
+  });
+
+  it("hovering a zone chip lights the zone and a click goes to its lowest floor unless the active floor holds it", () => {
+    const floors = [{ id: "floor_0", title: "0", titleCustomized: false }, { id: "floor_1", title: "1", titleCustomized: false }, { id: "floor_2", title: "2", titleCustomized: false }];
+    useMazeStore.setState({ zones: [{ id: 1, name: "Up", kind: "manual", cells: [[1, 0, 0], [2, 0, 0]] }], nextZoneId: 2, floors, activeFloorId: "floor_0" } as never);
+    render(<ZonesFeature />);
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "1" })));
+    const chip = screen.getByTestId("zone-problem-chip");
+    fireEvent.mouseEnter(chip);
+    expect(useMazeStore.getState().hoveredZoneId).toBe(1);
+    fireEvent.mouseLeave(chip);
+    expect(useMazeStore.getState().hoveredZoneId).toBeNull();
+    fireEvent.click(chip);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_1");
+  });
+
+  it("disables Remove unavailable cells with nothing to remove, and removes the cells otherwise", () => {
+    useMazeStore.setState({ zones: [{ ...farZone, cells: [] }], nextZoneId: 2 });
+    const { unmount } = render(<ZonesFeature />);
+    expect(screen.getByText(m["zones.remove_invalid"]())).toBeDisabled();
+    unmount();
+
+    useMazeStore.setState({ zones: [farZone], nextZoneId: 2 });
+    render(<ZonesFeature />);
+    fireEvent.mouseEnter(screen.getByText(m["zones.remove_invalid"]()));
+    expect(useMazeStore.getState().hoveredCoordinateWarning).not.toBeNull();
+    fireEvent.click(screen.getByText(m["zones.remove_invalid"]()));
+    // The button turns disabled under the pointer, so the highlight must not wait for a mouse leave.
+    expect(useMazeStore.getState().hoveredCoordinateWarning).toBeNull();
+    expect(useMazeStore.getState().zones).toEqual([{ ...farZone, cells: [] }]);
+    expect(screen.getByText(m["zones.remove_invalid"]())).toBeDisabled();
   });
 });

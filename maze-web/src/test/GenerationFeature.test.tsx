@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
@@ -231,5 +231,37 @@ describe("GenerationFeature — registry load failure", () => {
 
     expect(screen.queryByRole("button", { name: m["generation.retry_registry_load"]() })).toBeNull();
     expect(screen.getByRole("button", { name: m["generation.generate"]() })).toBeEnabled();
+  });
+});
+
+describe("GenerationFeature: zone override warnings (GitHub issue #1034)", () => {
+  const hollow = { id: 1, name: "Hollow", kind: "manual" as const, cells: [] };
+  const override = { id: 1, zoneIds: [1], groupIds: [], params: { corridor_chance: 0.5 } };
+  const initial = useMazeStore.getState();
+  const zonesState = { zones: [hollow], nextZoneId: 2, zoneOverrides: [override], nextZoneOverrideId: 2 };
+  afterEach(() => useMazeStore.setState({ zones: initial.zones, zoneGroups: initial.zoneGroups, zoneOverrides: initial.zoneOverrides }));
+
+  it("has no Warnings section for a method without zone overrides", () => {
+    useMazeStore.setState({ ...zonesState });
+    render(<GenerationFeature canGenerate={true} />);
+    expect(screen.queryByTestId("generation-warnings")).not.toBeInTheDocument();
+  });
+
+  it("names a parameter set on an empty zone, in quotes, with the zone as a bubble; the count is the number of bubbles", () => {
+    useMazeStore.setState({ ...zonesState, initialConfig: { method: "custom_vertex_based" } });
+    render(<GenerationFeature canGenerate={true} />);
+    expect(screen.getByText(m["common.warnings"]({ count: "1" }))).toBeInTheDocument();
+    expect(screen.queryByTestId("zone-problem-chip")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "1" })));
+    expect(screen.getByText(m["generation.zone_override_empty_warning"]({ param: m["generation.corridor_chance"]() }))).toBeInTheDocument();
+    expect(screen.getByTestId("zone-problem-chip").textContent).toBe("Hollow");
+  });
+
+  it("tells a deleted zone from an empty one through its own bubble", () => {
+    useMazeStore.setState({ ...zonesState, zones: [], initialConfig: { method: "custom_vertex_based" } });
+    render(<GenerationFeature canGenerate={true} />);
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "1" })));
+    expect(screen.getByText(m["generation.zone_override_no_zones_warning"]())).toBeInTheDocument();
+    expect(screen.queryByTestId("zone-problem-chip")).not.toBeInTheDocument();
   });
 });

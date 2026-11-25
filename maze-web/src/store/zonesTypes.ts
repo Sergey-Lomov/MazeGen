@@ -174,6 +174,8 @@ export interface ZonesActions {
   /** Appends an empty manual zone named after its id and opens it in the zone editor. */
   addManualZone: () => void;
   removeZone: (id: number) => void;
+  /** Removes the cells outside the field from every manual zone (GitHub issue #1034), on every floor. Zones are kept, even when left empty. */
+  removeInvalidZoneCells: () => void;
   /** Opens a manual zone in the zone editor (as a draft), or confirms and closes the editor with `null`. */
   setZoneEditId: (id: number | null) => void;
   /** The zone editor's Groups section, all on the draft: put the zone in an existing group, take it out, or

@@ -11,6 +11,8 @@ import { encodePoint } from "../../domain/tessellationProjection";
 import { overridesWithDraft, zoneFloors, zonesWithDraft } from "../../domain/selectors/zoneSelectors";
 import { combineZoneCells } from "../../domain/selectors/zoneCombine";
 import { isAutoGroupId } from "../../domain/autoZones";
+import { invalidManualZones, withoutCells } from "../../domain/zoneProblems";
+import { resolveFieldAtOf } from "../storeHelpers";
 
 /** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
  *  the values of a new project and of a file without zones. */
@@ -275,6 +277,17 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     hoveredZoneId: null,
   })),
   removeZone: (id) => set((s) => withoutZone(s, id)),
+  removeInvalidZoneCells: () => set((s) => {
+    const invalid = invalidManualZones(s.zones, resolveFieldAtOf(s));
+    if (invalid.length === 0) return {};
+    const cells = new Map(invalid.map(({ zone, cells: outside }) => [zone.id, outside]));
+    // A zone being edited keeps its draft in step, or its "Done" would bring the cells back.
+    const draftCells = s.zoneEditDraft ? invalidManualZones([s.zoneEditDraft], resolveFieldAtOf(s)) : [];
+    return {
+      zones: withoutCells(s.zones, cells),
+      ...(s.zoneEditDraft && draftCells.length > 0 ? { zoneEditDraft: withoutCells([s.zoneEditDraft], new Map([[s.zoneEditDraft.id, draftCells[0].cells]]))[0] } : {}),
+    };
+  }),
   // `null` is "Done": the draft is confirmed. Opening another zone drops the unconfirmed draft.
   setZoneEditId: (id) => {
     let floorToShow: string | undefined;

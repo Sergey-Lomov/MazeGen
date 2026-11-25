@@ -21,6 +21,7 @@ import { typography, disabled, indent, spacing, ui } from "../../styles/theme";
 import { isAutoGroupId } from "../../domain/autoZones";
 import { CardDetails, ZoneCell } from "./ZonesPanel";
 import { startNewGroup } from "./zoneEditorActions";
+import { ZoneGroupProblemIcon } from "./ZoneProblemIcon";
 import * as m from "~/paraglide/messages";
 
 /** Zone groups list side panel (GitHub issue #1035): one cell per group with its name and zone count,
@@ -97,6 +98,7 @@ export function GroupCell({ group, onPick }: { group: ZoneGroup; onPick?: () => 
           : { onClick: () => showZonesOfGroup(group.id), style: { cursor: "pointer" } })}
         title={name}
         truncateTitle
+        titleAddon={<ZoneGroupProblemIcon group={group} />}
         actionsPlacement="title"
         actions={onPick || isAutoGroupId(group.id) ? undefined : (
           <>

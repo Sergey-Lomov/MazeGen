@@ -34,6 +34,8 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPa
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../domain/selectors/mazeSelectors";
 import { countManualZones } from "../domain/selectors/zoneSelectors";
+import { isAutoGroupId } from "../domain/autoZones";
+import { selectZoneProblems, zoneWarningCount } from "../store/zoneProblemsSelector";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -66,11 +68,31 @@ export function presetConnectionsSubtitle(
   return base;
 }
 
-export function zonesSubtitle(manualZoneCount: number): string {
-  if (manualZoneCount === 0) return m["zones.subtitle_none"]();
-  return manualZoneCount === 1
+/** "N manual zones", then " · N manual groups" while there are any, as the field card joins its parts. */
+export function zonesSubtitle(manualZoneCount: number, manualGroupCount = 0): string {
+  const zonePart = manualZoneCount === 0
+    ? m["zones.subtitle_none"]()
+    : manualZoneCount === 1
     ? m["zones.subtitle_count"]({ count: manualZoneCount })
     : m["zones.subtitle_count_plural"]({ count: manualZoneCount });
+  if (manualGroupCount === 0) return zonePart;
+  const groupPart = manualGroupCount === 1
+    ? m["zones.subtitle_groups"]({ count: manualGroupCount })
+    : m["zones.subtitle_groups_plural"]({ count: manualGroupCount });
+  return `${zonePart} · ${groupPart}`;
+}
+
+export interface ZonesCardData {
+  status: FeatureStatus;
+  comment: string | undefined;
+}
+
+/// Zone problems turn the status yellow; the comment is their number, the number of warning bubbles of the card.
+export function computeZonesCard(blocking: "unconfirmed" | "field" | null, problemCount: number): ZonesCardData {
+  if (blocking === "unconfirmed") return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
+  if (blocking === "field") return { status: "unavailable", comment: m["status.configure_field_first"]() };
+  if (problemCount > 0) return { status: "warning", comment: m["status.warnings_count"]({ count: problemCount }) };
+  return { status: "set", comment: undefined };
 }
 
 export function getTessellationKindLabel(kind: TessellationKind): string {
@@ -142,7 +164,7 @@ export function computeGenerationCard(
 
   // Zone overrides (GitHub issue #1038) only exist for the custom generator; one with no zones left, or one that
   // sets a parameter another sets on the same cell, is worth a look before generating.
-  if (method === "custom_vertex_based" && zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.zone_overrides_warning"]() };
+  if (method === "custom_vertex_based" && zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.warnings_count"]({ count: zoneOverrideWarnings }) };
 
   return { status: "set", comment: m["status.ready_to_generate"]() };
 }
@@ -159,7 +181,7 @@ export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { 
   if (!hasNodes) return { status: "unavailable", comment: m["status.post_edit_unavailable"]() };
   if (resolvedRenderMode === null) return { status: "warning", comment: m["status.render_mode_not_selected"]() };
   // Export zone overrides (GitHub issue #1040): one with no zones left, or one setting a parameter differently on a shared cell.
-  if (zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.export_zone_overrides_warning"]() };
+  if (zoneOverrideWarnings > 0) return { status: "warning", comment: m["status.warnings_count"]({ count: zoneOverrideWarnings }) };
   return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
 }
 
@@ -225,6 +247,8 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const zoneGroups = useMazeStore((s) => s.zoneGroups);
   const zoneOverrides = useMazeStore((s) => s.zoneOverrides);
   const exportZoneOverrides = useMazeStore((s) => s.exportZoneOverrides);
+  const showZoneProblems = useMazeStore((s) => s.showZoneProblems);
+  const zoneProblems = useMazeStore(selectZoneProblems);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -327,13 +351,9 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
 
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
-  // Always green once available: zones have no invalid state, even with none defined.
-  const zonesStatus: FeatureStatus = fieldBlocking ? "unavailable" : "set";
-  const zonesComment = !tessellationConfirmed
-    ? m["status.confirm_tessellation_first"]()
-    : fieldBlocking
-    ? m["status.configure_field_first"]()
-    : undefined;
+  // Green with no problems, even with no zones defined; invalid cells and unused manual zones turn it yellow (#1034).
+  const { status: zonesStatus, comment: zonesComment } = computeZonesCard(
+    !tessellationConfirmed ? "unconfirmed" : fieldBlocking ? "field" : null, zoneWarningCount(zoneProblems));
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
     : presetInvalidCount > 0
@@ -355,7 +375,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   );
 
   const resolvedRenderMode = activeRenderMode !== null ? resolveRenderMode(activeRenderMode) : null;
-  const imageExportCard = computeImageExportCard(nodes.length > 0, resolvedRenderMode, exportOverrideWarningCount(exportZoneOverrides, zones, zoneGroups));
+  const imageExportCard = computeImageExportCard(nodes.length > 0, resolvedRenderMode, showZoneProblems ? exportOverrideWarningCount(exportZoneOverrides, zones, zoneGroups) : 0);
 
   // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
   // at all is the more fundamental gap, so its message takes priority when both are true.
@@ -400,7 +420,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
         title={m["zones.title"]()}
         status={zonesStatus}
         comment={zonesComment}
-        subtitle={fieldBlocking ? undefined : zonesSubtitle(countManualZones(zones))}
+        subtitle={fieldBlocking ? undefined : zonesSubtitle(countManualZones(zones), zoneGroups.filter((g) => !isAutoGroupId(g.id)).length)}
         expanded={openCard === "zones"}
         onOpen={() => handleToggle("zones")}
       >

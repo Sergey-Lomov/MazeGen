@@ -19,8 +19,11 @@ import { ui, radius, typography, muted, spacing, indent } from "../../styles/the
 import { notAllowedCursor } from "../../styles/cursors";
 import { Switch } from "../Switch";
 import { WarningBubble } from "../WarningBubble";
-import { zoneOverrideConflicts, zoneOverrideConflictParams, overrideHasNoZones } from "../../domain/zoneOverrides";
-import { ZoneOverrideConflictModal } from "./ZoneOverrideConflictModal";
+import { zoneOverrideConflicts, zoneOverrideConflictParams, overrideProblem, emptyParamTargets, zoneOverrideWarningCount } from "../../domain/zoneOverrides";
+import { ZoneIdChips } from "./ZoneProblemChips";
+import { SectionHeader } from "../SectionHeader";
+import { ZoneOverrideConflictModal, zoneOverrideParamLabel } from "./ZoneOverrideConflictModal";
+import type { ZoneOverrideParamKey } from "../../store/zonesTypes";
 import { selectPostEditDirty } from "../../domain/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -57,6 +60,7 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
   const [conflictInfoOpen, setConflictInfoOpen] = useState(false);
+  const [warningsExpanded, setWarningsExpanded] = useState(false);
   const conflictParams = zoneOverrideConflictParams(zoneOverrideConflicts(zoneOverrides, zones, zoneGroups));
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
@@ -71,6 +75,10 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
+  // The warnings of the zone overrides, one bubble per kind; only the vertex based method has overrides.
+  const missingZones = zoneOverrides.some((o) => overrideProblem(o, zones, zoneGroups) === "missing");
+  const emptyParams = emptyParamTargets(zoneOverrides, zones, zoneGroups, (_, path) => path);
+  const warningCount = zoneOverrideWarningCount(zoneOverrides, zones, zoneGroups);
 
   function finishGeneration(token: number) {
     if (token !== generationToken.current) return;
@@ -143,6 +151,28 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   return (
     <div style={styles.root}>
+      {isVertexBased && (
+        <div data-testid="generation-warnings">
+          <SectionHeader
+            label={<span className={warningCount > 0 ? "problem-section-attention" : undefined}>{m["common.warnings"]({ count: String(warningCount) })}</span>}
+            expanded={warningsExpanded}
+            onToggle={() => setWarningsExpanded((value) => !value)}
+          />
+          {warningsExpanded && warningCount > 0 && (
+            <div style={styles.warningsBlock}>
+              {missingZones && <WarningBubble message={m["generation.zone_override_no_zones_warning"]()} />}
+              {emptyParams.map(({ key, zoneIds, groupIds }) => (
+                <WarningBubble key={key} message={m["generation.zone_override_empty_warning"]({ param: zoneOverrideParamLabel(key as ZoneOverrideParamKey) })}>
+                  <ZoneIdChips zoneIds={zoneIds} groupIds={groupIds} />
+                </WarningBubble>
+              ))}
+              {conflictParams.length > 0 && <WarningBubble message={m["generation.zone_override_conflict_warning"]()} onInfo={() => setConflictInfoOpen(true)} />}
+            </div>
+          )}
+        </div>
+      )}
+      {isVertexBased && <div style={styles.divider} />}
+
       {/* Seed block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.seed_section"]()}</span>
@@ -197,12 +227,6 @@ export function GenerationFeature({ canGenerate }: Props) {
         </div>
       </div>
 
-      {isVertexBased && zoneOverrides.some((o) => overrideHasNoZones(o, zones, zoneGroups)) && (
-        <WarningBubble message={m["generation.zone_override_no_zones_warning"]()} />
-      )}
-      {isVertexBased && conflictParams.length > 0 && (
-        <WarningBubble message={m["generation.zone_override_conflict_warning"]()} onInfo={() => setConflictInfoOpen(true)} />
-      )}
       {isVertexBased && conflictInfoOpen && conflictParams.length > 0 && (
         <ZoneOverrideConflictModal params={conflictParams} onClose={() => setConflictInfoOpen(false)} />
       )}
@@ -314,6 +338,13 @@ const styles: Record<string, React.CSSProperties> = {
   divider: {
     borderTop: `1px solid ${ui.border.default}`,
     margin: `${spacing.elementsGap}px 0`,
+  },
+  warningsBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.itemGap,
+    marginTop: spacing.itemGap,
+    paddingLeft: indent.tree,
   },
   btnRow: {
     display: "flex",

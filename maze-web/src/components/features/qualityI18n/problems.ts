@@ -16,9 +16,9 @@ export function resolveNoChecksProblemText(): string {
   return m["quality.problem_no_checks"]();
 }
 
-/** Text of a rule bound to zones that no longer exist (derived, never stored as a `QcProblem`). */
-export function resolveNoZonesProblemText(): string {
-  return m["quality.problem_no_zones"]();
+/** Text of a rule bound to a zone or group that no longer exists, or that has no cells (derived, never stored as a `QcProblem`). */
+export function resolveNoZonesProblemText(reason: "missing" | "empty"): string {
+  return reason === "missing" ? m["quality.problem_no_zones"]() : m["quality.problem_zones_empty"]();
 }
 
 /** Text of a node-shape-limits check with no limits set (derived, never stored as a `QcProblem`). */

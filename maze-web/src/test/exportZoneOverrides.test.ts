@@ -36,9 +36,9 @@ describe("export zone overrides (GitHub issue #1040)", () => {
     expect(exportOverrideConflicts([override(1, [1], { wallColor: 1 }), override(2, [3], { wallColor: 2 })], zones, groups).size).toBe(0);
   });
 
-  it("counts overrides with no zones or with a conflict", () => {
+  it("counts the warnings: gone zones once, each conflicting parameter once", () => {
     const list = [override(1, [1], { wallColor: 1 }), override(2, [2], { wallColor: 2 }), override(3, [99], { wallThickness: 4 }), override(4, [3], { wallThickness: 4 })];
-    expect(exportOverrideWarningCount(list, zones, groups)).toBe(3);
+    expect(exportOverrideWarningCount(list, zones, groups)).toBe(2);
   });
 
   const link = (source: string, target: string, enabled = true) => ({ id: `${source}>${target}`, source, target, enabled });
