@@ -226,6 +226,7 @@ export const PARAM_IDS = [
   "edge_scope",
   "edge_split",
   "elevator_stop_weight",
+  "elevator_stops_count_unit",
   "elevator_stops_skip",
   "elevator_stops_span",
   "entry_pick",

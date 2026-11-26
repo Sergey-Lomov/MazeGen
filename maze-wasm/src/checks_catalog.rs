@@ -1584,19 +1584,30 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
         },
         CheckDescriptor {
             id: "max_elevator_stops_per_floor",
-            label: "Maximum elevator stops per floor",
-            description: "Fires if a single floor's total elevator-stop count (across every elevator touching it) exceeds the configured maximum.",
+            label: "Maximum elevator stops",
+            description: "Fires if the total elevator-stop count (across every elevator), counted per floor or over the whole scope, exceeds the configured maximum.",
             issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
-            params: vec![ParamDescriptor {
-                id: "max_elevator_stops_per_floor",
-                label: "Max elevator stops per floor",
-                kind: ParamKindDto::Integer {
-                    default: MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT as i64,
-                    min: 0,
-                    max: 1_000_000,
+            params: vec![
+                ParamDescriptor {
+                    id: "max_elevator_stops_per_floor",
+                    label: "Max elevator stops",
+                    kind: ParamKindDto::Integer {
+                        default: MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT as i64,
+                        min: 0,
+                        max: 1_000_000,
+                    },
+                    visibility: None,
                 },
-                visibility: None,
-            }],
+                ParamDescriptor {
+                    id: "elevator_stops_count_unit",
+                    label: "Counting unit",
+                    kind: ParamKindDto::Enum {
+                        options: vec!["per_floor", "whole_scope"],
+                        default: "per_floor",
+                    },
+                    visibility: None,
+                },
+            ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
             requires: Vec::new(),
             zone_scope_unsupported: false,

@@ -452,6 +452,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max_elevator_stops_per_floor.label"] as MessageFn,
     description: m["param.max_elevator_stops_per_floor.description"] as MessageFn,
   },
+  elevator_stops_count_unit: {
+    label: m["param.elevator_stops_count_unit.label"] as MessageFn,
+    description: m["param.elevator_stops_count_unit.description"] as MessageFn,
+  },
   elevator_stops_skip: {
     label: m["param.elevator_stops_skip.label"] as MessageFn,
     description: m["param.elevator_stops_skip.description"] as MessageFn,
@@ -704,6 +708,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "teleport_floor_kind.any": m["param.teleport_floor_kind.option.any"] as MessageFn,
   "teleport_floor_kind.inter_floor": m["param.teleport_floor_kind.option.inter_floor"] as MessageFn,
   "teleport_floor_kind.same_floor": m["param.teleport_floor_kind.option.same_floor"] as MessageFn,
+  "elevator_stops_count_unit.per_floor": m["param.elevator_stops_count_unit.option.per_floor"] as MessageFn,
+  "elevator_stops_count_unit.whole_scope": m["param.elevator_stops_count_unit.option.whole_scope"] as MessageFn,
   "split_teleport_direction.incoming": m["param.split_teleport_direction.option.incoming"] as MessageFn,
   "split_teleport_direction.outgoing": m["param.split_teleport_direction.option.outgoing"] as MessageFn,
   "split_teleport_direction.bidirectional": m["param.split_teleport_direction.option.bidirectional"] as MessageFn,
@@ -813,6 +819,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing.explanation"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional.explanation"] as MessageFn,
   "direction.any": m["param.direction.option.any.explanation"] as MessageFn,
+  "elevator_stops_count_unit.per_floor": m["param.elevator_stops_count_unit.option.per_floor.explanation"] as MessageFn,
+  "elevator_stops_count_unit.whole_scope": m["param.elevator_stops_count_unit.option.whole_scope.explanation"] as MessageFn,
   "split_teleport_direction.incoming": m["param.split_teleport_direction.option.incoming.explanation"] as MessageFn,
   "split_teleport_direction.outgoing": m["param.split_teleport_direction.option.outgoing.explanation"] as MessageFn,
   "split_teleport_direction.bidirectional": m["param.split_teleport_direction.option.bidirectional.explanation"] as MessageFn,
