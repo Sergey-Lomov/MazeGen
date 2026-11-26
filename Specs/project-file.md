@@ -118,6 +118,10 @@ duplicate `id`, a non-numeric end and equal ends, naming the path; entries of un
 The store keeps it as `floorCreases` and clears it with the topology when the tessellation kind or
 params change.
 
+## Compositions (`compositions`)
+
+GitHub issue #1099. Required section `compositions: ProjectFileCompositions` (`types.ts`), specified in `Specs/composition.md`. Its introduction bumped `CURRENT_VERSION` to 7; a file of an older version fails with the usual `No migration for version <v>` error, and a version 7 file without the section is rejected. A project always has at least one composition.
+
 ## Zones (`zones`)
 
 GitHub issue #1048. Optional section `zones?: ProjectFileZones` (`types.ts`): `zones` (id, name, kind, cells as

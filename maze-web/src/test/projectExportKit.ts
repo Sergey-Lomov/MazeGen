@@ -5,6 +5,7 @@ import { buildPostEditBaseline } from "../store/slices/postEditBaselineBuilders"
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../domain/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
+import { defaultCompositionState } from "../store/slices/compositionSlice";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { WireTopology } from "../wasm/types";
 
@@ -110,6 +111,7 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     vectorByCorridorsSectionsExpanded: {},
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
     floorLabelModeChosen: true,
+    ...defaultCompositionState(),
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",

@@ -19,7 +19,7 @@ import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
   assertStringRecord, assertStringRecordRecord, optEnum, optNumber, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
-} from "./validatePrimitives";
+} from "../../validation/validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
 

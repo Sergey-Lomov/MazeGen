@@ -7,6 +7,8 @@ import { SeamArrowLayer } from "../seamArrowSync";
 import { exportSeamLayerShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
 import type { ConnectorEditPath } from "../renderers/teleportConnectorRouting";
+import { CompositionLayer } from "./CompositionLayer";
+import { compositionShowsMaze } from "../../composition/elementTypes";
 
 type CopyLayer = "content" | "overlay" | "highlight";
 const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay", "highlight"];
@@ -61,6 +63,8 @@ export class ImageExportRenderer implements ViewportListener {
   private lastCutInputs: unknown[] = [];
   private readonly seamArrowContainer = new Container();
   private readonly seamLayer: SeamArrowLayer;
+  /** The composition's elements, above the maze picture and below the seam arrows (GitHub issue #1099). */
+  private readonly compositionLayer: CompositionLayer;
   private unsubscribe: (() => void) | null = null;
   private lastViewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
 
@@ -69,6 +73,7 @@ export class ImageExportRenderer implements ViewportListener {
     this.container.addChild(this.sheet);
     for (const layer of COPY_LAYERS) this.sheet.addChild(this.layers[layer]);
     this.container.addChild(this.mask);
+    this.compositionLayer = new CompositionLayer(this.container);
     this.container.addChild(this.seamArrowContainer);
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.seamArrowContainer.visible = exportSeamLayerShown(useMazeStore.getState());
@@ -102,8 +107,10 @@ export class ImageExportRenderer implements ViewportListener {
   }
 
   private syncVisibility(activeMode: RenderModeId | null): void {
+    const showsMaze = compositionShowsMaze(useMazeStore.getState());
+    this.sheet.visible = showsMaze;
     for (const [mode, modeContainer] of this.modeContainers) {
-      modeContainer.visible = mode === activeMode;
+      modeContainer.visible = showsMaze && mode === activeMode;
     }
   }
 
@@ -179,13 +186,21 @@ export class ImageExportRenderer implements ViewportListener {
 
   private subscribe(): void {
     let prevMode = useMazeStore.getState().activeRenderMode;
+    let prevShowsMaze = compositionShowsMaze(useMazeStore.getState());
     this.unsubscribe = useMazeStore.subscribe((state) => {
       this.seamArrowContainer.visible = exportSeamLayerShown(state);
+      const showsMaze = compositionShowsMaze(state);
+      if (showsMaze !== prevShowsMaze) {
+        prevShowsMaze = showsMaze;
+        this.syncVisibility(state.activeRenderMode);
+        // The hidden picture skipped viewport updates, so bring it up to date when it comes back.
+        if (showsMaze) this.applyViewport();
+      }
       if (state.activeRenderMode !== prevMode) {
         prevMode = state.activeRenderMode;
         if (prevMode) this.ensureMode(prevMode);
         this.syncVisibility(prevMode);
-        if (prevMode) {
+        if (prevMode && showsMaze) {
           this.modeRenderers.get(prevMode)?.onViewportChanged(
             this.lastViewport.x, this.lastViewport.y, this.lastViewport.w, this.lastViewport.h, this.lastViewport.scale,
           );
@@ -197,6 +212,12 @@ export class ImageExportRenderer implements ViewportListener {
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.lastViewport = { x, y, w, h, scale };
+    // A picture hidden by the composition (no maze element) is not redrawn for the viewport.
+    if (compositionShowsMaze(useMazeStore.getState())) this.applyViewport();
+  }
+
+  private applyViewport(): void {
+    const { x, y, w, h, scale } = this.lastViewport;
     const activeMode = useMazeStore.getState().activeRenderMode;
     if (activeMode) this.modeRenderers.get(activeMode)?.onViewportChanged(x, y, w, h, scale);
     for (const copy of this.copies) copy.renderer.onViewportChanged(x, y, w, h, scale);
@@ -204,6 +225,7 @@ export class ImageExportRenderer implements ViewportListener {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.compositionLayer.destroy();
     this.seamLayer.destroy();
     this.seamArrowContainer.destroy();
     this.destroyCopies();

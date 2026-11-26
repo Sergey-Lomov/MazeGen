@@ -29,6 +29,7 @@ const NOT_TRANSIENT: Record<string, readonly string[]> = {
     "floors", "nextFloorNumber", "activeFloorId", "floorTopology", "floorCreases", "edgeMarkerOrder",
     "zones", "nextZoneId", "zoneGroups", "nextZoneGroupId", "zoneColorOverrides", "zoneOverrides", "nextZoneOverrideId",
     "exportZoneOverrides", "nextExportZoneOverrideId", "showZoneOverrideButtons", "showZoneProblems", "zoneOverrideDisplay",
+    "compositions", "activeCompositionId", "nextCompositionNumber", "nextElementNumber",
   ],
   "rebuilt by the regeneration and post-edit replay that loadProject runs": [
     "nodes", "edges", "start", "finish", "navNodes", "navEdges", "statistics", "issues", "error", "routeInfo",

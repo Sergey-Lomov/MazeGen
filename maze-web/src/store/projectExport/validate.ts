@@ -21,13 +21,14 @@ import type { FeatureId } from "../mazeStore";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertBoolRecord,
   optBool, optNumber, optEnum, optSection, validateFloors, validateSplitGeneration, assertUniqueIds, validatePairArray,
-} from "./validatePrimitives";
+} from "../../validation/validatePrimitives";
 import {
   validateFloorFieldConfig, validatePostEdit, validatePresetEndpoint, validatePresetConnectionEntry, validateQuality,
   validatePresetTeleportEntry, validatePresetVerticalPassageEntry, validatePresetElevatorEntry,
   validateNodeLockKind, validateSplitPoints,
 } from "./validateSections";
 import { validateZones } from "./validateZones";
+import { validateCompositions } from "./validateCompositions";
 import { validateImageExport } from "./validateImageExport";
 import type { BackgroundImageLayerMode } from "../tessellationTypes";
 
@@ -323,6 +324,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     backgroundImageManualPositioning,
     backgroundImageCropping,
     imageExport: validateImageExport(migrated.imageExport, "imageExport"),
+    compositions: validateCompositions(migrated.compositions, "compositions"),
     floors,
   };
 }

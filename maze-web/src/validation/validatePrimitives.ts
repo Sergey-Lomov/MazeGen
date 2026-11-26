@@ -1,4 +1,4 @@
-import type { SplitPattern } from "../../wasm/types";
+import type { SplitPattern } from "../wasm/types";
 
 // ─── Primitive asserts ───────────────────────────────────────────────────────
 

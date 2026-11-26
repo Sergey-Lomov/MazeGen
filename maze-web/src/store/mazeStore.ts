@@ -17,6 +17,7 @@ import { createFloorsSlice } from "./slices/floorsSlice";
 import { createTopologySlice } from "./slices/topologySlice";
 import { createZonesSlice } from "./slices/zonesSlice";
 import { createCoordinateWarningSlice } from "./slices/coordinateWarningSlice";
+import { createCompositionSlice } from "./slices/compositionSlice";
 import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installAutoZoneSync } from "./autoZoneSync";
@@ -61,6 +62,7 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
   ...createTopologySlice(...a),
   ...createZonesSlice(...a),
   ...createCoordinateWarningSlice(...a),
+  ...createCompositionSlice(...a),
 
   loadProject: async (file) => {
     const [set, get] = a;
@@ -291,6 +293,11 @@ export const useMazeStore = create<MazeStore>()((...a) => raisePanelsOnOpen(guar
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,
       floorLabelModeChosen: file.imageExport.floorLabelModeChosen,
+      // export compositions (GitHub issue #1099)
+      compositions: file.compositions.compositions,
+      activeCompositionId: file.compositions.activeCompositionId,
+      nextCompositionNumber: file.compositions.nextCompositionNumber,
+      nextElementNumber: file.compositions.nextElementNumber,
       // floors
       floors: file.floors.floors,
       nextFloorNumber: file.floors.nextFloorNumber,

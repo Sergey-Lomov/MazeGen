@@ -25,6 +25,7 @@ export const PANEL_OPENING_ACTIONS: PanelOpeningAction[] = [
   { name: "setExportTopologyOpen", keys: whenOpened("image-export-topology") },
   { name: "setOpenRenderModeSettings", keys: whenNotNull("image-export-render-mode") },
   { name: "setOpenExportFormatSettings", keys: whenNotNull("image-export-format") },
+  { name: "setCompositionPanelOpen", keys: whenOpened("composition") },
   { name: "setPostEditChangesOpen", keys: whenOpened("post-edit-changes") },
   { name: "setPostEditFocusedPoint", keys: whenNotNull("post-edit-split-nodes") },
   { name: "setPresetFocusedPoint", keys: whenNotNull("preset-split-nodes") },

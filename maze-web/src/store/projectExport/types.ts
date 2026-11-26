@@ -2,6 +2,7 @@ import type { FieldShape, PresetFieldShape, TessellationKind } from "../../field
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
 import type { Crease } from "../creases";
 import type { Zone } from "../../wasm/mazeService";
+import type { Composition } from "../../composition/compositionModel";
 import type { ExportZoneOverride, ZoneGroup, ZoneOverride } from "../zonesTypes";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../domain/fieldEditUtils";
 import type { PresetEndpoint } from "../../domain/presetEndpoint";
@@ -116,7 +117,7 @@ export interface ProjectFileFloors {
   floors: { id: string; title: string; titleCustomized?: boolean }[];
   nextFloorNumber: number;
   /** Active floor selection (GitHub issue #354) — absent in project files saved before this
-   * issue, defaulting to `floors[0].id` on load (see `validateFloors` in validatePrimitives.ts). */
+   * issue, defaulting to `floors[0].id` on load (see `validateFloors` in validation/validatePrimitives.ts). */
   activeFloorId: string;
 }
 
@@ -200,6 +201,15 @@ export interface ProjectFileQuality {
   stages: ProjectFileStage[];
   repairMaxIterations: number | null;
   repairTimeBudgetSecs: number | null;
+}
+
+/** Persisted export compositions (GitHub issue #1099, `Specs/composition.md`). Required: a project always has at
+ *  least one composition. The counters keep ids of removed compositions and elements from being reused. */
+export interface ProjectFileCompositions {
+  compositions: Composition[];
+  activeCompositionId: string;
+  nextCompositionNumber: number;
+  nextElementNumber: number;
 }
 
 /** Persisted zones state (`Specs/zones.md`). The counters keep ids of deleted zones and groups from being reused. */
@@ -295,13 +305,16 @@ export interface ProjectFile {
   /** Shared underlay source-image crop mode (GitHub issue #680). */
   backgroundImageCropping?: boolean;
   imageExport: ProjectFileImageExport;
+  /** Export compositions (GitHub issue #1099); required since version 7, older files are not loaded. */
+  compositions: ProjectFileCompositions;
   floors: ProjectFileFloors;
 }
 
 // v4 -> v5 (GitHub issue #564): stable ids for one-way edges/split points; `suppressGenerationPair`
 // and the `suppressPair(s)` fields removed; generation-baked vertical passages/elevators are now
 // full baseline draft entries. Breaking, no migration — same policy as v3 -> v4.
-export const CURRENT_VERSION = 6;
+// v6 -> v7 (GitHub issue #1099): required `compositions` section. Breaking, no migration.
+export const CURRENT_VERSION = 7;
 
 /** Project files are plain JSON saved under a dedicated extension, so the load dialog shows only
  *  project files (not debug configs or other JSON). */

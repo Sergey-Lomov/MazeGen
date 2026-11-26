@@ -2,7 +2,7 @@ import type { ProjectFileZones } from "./types";
 import type { Zone, ZoneCellWire, ZoneKind } from "../../wasm/mazeService";
 import type { ExportZoneOverride, ZoneGroup, ZoneOverride, ZoneOverrideParamKey } from "../zonesTypes";
 import { ZONE_OVERRIDE_PARAM_KEYS, ZONE_OVERRIDE_SWITCH_KEYS } from "../../domain/zoneOverrides";
-import { assertArray, assertNumber, assertObject, assertString } from "./validatePrimitives";
+import { assertArray, assertNumber, assertObject, assertString } from "../../validation/validatePrimitives";
 import { isAutoGroupId, isAutoZoneId } from "../../domain/autoZones";
 
 const ZONE_KINDS: readonly ZoneKind[] = ["auto", "manual"];

@@ -18,7 +18,7 @@ import { validateLinkGraph, linksMatchDefaults } from "../slices/parameterLinksE
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, type VectorByWallsParamPath, type VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { WAYPOINT_OPENING_MODES, type WaypointOpeningMode } from "../../domain/waypointOpeningMode";
 import { MARKER_LAYOUT_MODES, type MarkerLayoutMode } from "../../domain/selectors/mazeSelectors/markerLayout";
-import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
+import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "../../validation/validatePrimitives";
 
 // ─── Image Export (GitHub issue #295) ────────────────────────────────────────
 

@@ -1272,6 +1272,8 @@ Both output modes show a result-info block (image size in px for digital, sheet 
 
 `MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (which resolves to `activeFieldConfig`, as generation/post-edit/analytics do) and to `refit()`'s `showsMaze` gate. Image-export renderers therefore use the active floor's shape consistently for drawing, measured export margins, preview placement, and the exported PNG. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.
 
+`ImageExportRenderer` also owns the composition layer (GitHub issue #1099, `Specs/composition.md`). The maze picture (the active mode's renderer and the cut sheet) is drawn only while the active composition has a visible element of a type that renders the maze (`compositionShowsMaze`); until such a type exists the canvas shows only the composition's elements. The frame, cut-line, crease and warning overlays are not affected by this rule yet.
+
 ## Seams in export (GitHub issue #842)
 
 Topology seams (`Specs/topology.md`, "Seam rendering model") need no export code of their own: both vector modes read `buildMazeWalls` / `buildCorridorSegments`, which already resolve a glued face through the shared seam model (`getSeamModel`). Export never derives a partner, a correspondence or an orientation from coordinates, and every export format draws the same primitives as the canvas.

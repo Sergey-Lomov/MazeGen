@@ -12,7 +12,7 @@ import {
   type VisualPresetFile,
   type VisualPresetImageExport,
 } from "./types";
-import { assertObject, assertNumber } from "./validatePrimitives";
+import { assertObject, assertNumber } from "../../validation/validatePrimitives";
 import { validateImageExport } from "./validateImageExport";
 
 /** Drops the editor-only UI state the preset doesn't carry (see `VisualPresetImageExport`). */

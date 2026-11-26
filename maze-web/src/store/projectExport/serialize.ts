@@ -147,6 +147,12 @@ export function serializeProject(state: MazeState): ProjectFile {
     backgroundImageManualPositioning: state.backgroundImageManualPositioning ?? false,
     backgroundImageCropping: state.backgroundImageCropping ?? false,
     imageExport: serializeImageExport(state),
+    compositions: {
+      compositions: state.compositions,
+      activeCompositionId: state.activeCompositionId,
+      nextCompositionNumber: state.nextCompositionNumber,
+      nextElementNumber: state.nextElementNumber,
+    },
     floors: {
       floors: state.floors,
       nextFloorNumber: state.nextFloorNumber,

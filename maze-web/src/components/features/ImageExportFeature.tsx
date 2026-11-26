@@ -8,6 +8,7 @@ import { ui, inset, spacing } from "../../styles/theme";
 import { Stack } from "../Layout";
 import { SidePanel } from "../SidePanel";
 import { ExportTopologyPanel } from "./ExportTopologyPanel";
+import { CompositionPanel } from "./CompositionPanel";
 import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
@@ -41,6 +42,8 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const loadVisualPreset = useMazeStore((s) => s.loadVisualPreset);
   const presetInputRef = useRef<HTMLInputElement>(null);
+  const compositionPanelOpen = useMazeStore((s) => s.compositionPanelOpen);
+  const setCompositionPanelOpen = useMazeStore((s) => s.setCompositionPanelOpen);
   const exportTopologyOpen = useMazeStore((s) => s.exportTopologyOpen);
   const teleportConnectorEdit = useMazeStore((s) => s.teleportConnectorEdit);
   const finishTeleportConnectorEdit = useMazeStore((s) => s.finishTeleportConnectorEdit);
@@ -120,6 +123,16 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
+      <Button
+        variant="secondary"
+        layoutStyle={{ width: "100%" }}
+        onClick={() => setCompositionPanelOpen(true)}
+      >
+        {m["composition.title"]()}
+      </Button>
+
+      <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
+
       {EXPORT_FORMATS.map((format) => (
         <Stack key={format.id} gap="itemGap">
           {format.id === "png" && (
@@ -174,6 +187,7 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
         </SidePanel>
       )}
 
+      {compositionPanelOpen && <CompositionPanel />}
       {exportTopologyOpen && <ExportTopologyPanel />}
       {teleportConnectorEdit && <TeleportConnectorEditorPanel onClose={finishTeleportConnectorEdit} onFocusPath={onFocusTeleportConnector} />}
 

@@ -12,7 +12,7 @@ import {
   type ProjectFileQuality,
   type QualityPresetFile,
 } from "./types";
-import { assertObject, assertNumber } from "./validatePrimitives";
+import { assertObject, assertNumber } from "../../validation/validatePrimitives";
 import { validateQuality } from "./validateSections";
 
 /** A preset carries no zone scopes (GitHub issue #1039): zone ids belong to the project it was saved from. */
