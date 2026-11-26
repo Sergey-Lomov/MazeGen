@@ -26,6 +26,11 @@ export function resolveLimitsEmptyProblemText(): string {
   return m["quality.problem_limits_empty"]();
 }
 
+/** Text of a split-pattern-shape check without any templates (derived, never stored). */
+export function resolvePatternsEmptyProblemText(): string {
+  return m["quality.problem_patterns_empty"]();
+}
+
 /** Text of one rule problem (GitHub issue #1044): what happened and what the user can do. */
 export function resolveProblemText(code: QcProblemCode, scope: QcProblem["scope"] = "check", paramId?: string): string {
   const ofStrategy = scope === "strategy";

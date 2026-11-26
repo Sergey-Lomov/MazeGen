@@ -2,9 +2,9 @@ import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, QC_PROBLEM_CATEGORY, hasNoActiveChecks, strategyUnavailable, visibleProblems, type NestedStrategyState, type QcProblem } from "../../store/storeTypes";
-import { emptyLimitsCheckIds } from "../../store/qcDerivedProblems";
+import { emptyLimitsCheckIds, emptyPatternCheckIds } from "../../store/qcDerivedProblems";
 import { zoneScopeHasNoZones } from "../../domain/qcZoneScope";
-import { resolveProblemText, resolveNoChecksProblemText, resolveNoZonesProblemText, resolveLimitsEmptyProblemText } from "./qualityI18n/problems";
+import { resolveProblemText, resolveNoChecksProblemText, resolveNoZonesProblemText, resolveLimitsEmptyProblemText, resolvePatternsEmptyProblemText } from "./qualityI18n/problems";
 import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 import { useLocale } from "../../i18n/useLocale";
 
@@ -247,6 +247,9 @@ export function useQualityViewModel(): QualityViewModel {
       const noZones = zoneScopeHasNoZones(r, zones, zoneGroups);
       const emptyLimits = emptyLimitsCheckIds(r, availableChecks)
         .map((localId) => ({ text: resolveLimitsEmptyProblemText(), checkLabel: producedBy.find((c) => c.localId === localId)?.label }));
+      const emptyPatternIds = emptyPatternCheckIds(r, availableChecks);
+      const emptyPatterns = emptyPatternIds
+        .map((localId) => ({ text: resolvePatternsEmptyProblemText(), checkLabel: producedBy.find((c) => c.localId === localId)?.label }));
       return {
         ruleId: r.id,
         // `null` = no custom name — resolve live so a locale switch re-translates it, same as
@@ -262,10 +265,11 @@ export function useQualityViewModel(): QualityViewModel {
         params: r.params,
         collapsed: r.collapsed,
         ...(strategyUnavailable(r) ? { strategyUnavailable: true } : {}),
-        ...(shown.length > 0 || noChecks || noZones || emptyLimits.length > 0 ? { problems: [
+        ...(shown.length > 0 || noChecks || noZones || emptyLimits.length > 0 || emptyPatterns.length > 0 ? { problems: [
           ...(noChecks ? [{ text: resolveNoChecksProblemText() }] : []),
           ...(noZones ? [{ text: resolveNoZonesProblemText() }] : []),
           ...emptyLimits,
+          ...emptyPatterns,
           ...buildProblems(shown, producedBy, ruleParamIds),
         ] } : {}),
       };

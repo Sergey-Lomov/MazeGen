@@ -34,8 +34,33 @@ export function emptyLimitsCheckIds(
     .map((check) => check.localId);
 }
 
-/** Rules the feature card counts as problematic: stored problems, an empty rule, empty limits, or a zone scope
- *  with no zone left (GitHub issue #1039).
+/** Checks whose split-pattern template list is empty (GitHub issue #1095): without a declared
+ * template, a shape check never reports anything. Like empty node-shape limits, this is derived
+ * rather than persisted, and skips disabled or already-problematic checks to avoid duplicate
+ * warnings for one cause. */
+export function emptyPatternCheckIds(
+  rule: { checks: readonly CheckLike[]; problems?: QcProblem[] },
+  descriptors: readonly DescriptorLike[],
+): number[] {
+  return rule.checks
+    .filter((check) => {
+      if (check.disabled) return false;
+      if ((rule.problems ?? []).some((p) => p.scope === "check" && p.localId === check.localId)) return false;
+      if (check.typeId !== "split_pattern_shape") return false;
+      const param = descriptors.find((d) => d.id === check.typeId)?.params.find((p) => p.kind.type === "pattern_list");
+      if (!param) return false;
+      try {
+        const patterns: unknown = JSON.parse(check.params[param.id] ?? "[]");
+        return !Array.isArray(patterns) || patterns.length === 0;
+      } catch {
+        return true;
+      }
+    })
+    .map((check) => check.localId);
+}
+
+/** Rules the feature card counts as problematic: stored problems, an empty rule, empty limits or templates, or a zone scope
+ *  with no zone left (GitHub issues #1039, #1095).
  *  A disabled rule and the rules of a disabled stage are not counted. */
 export function problematicRuleCount(
   rules: readonly (ProblemRule & { id: string; checks: readonly CheckLike[]; zoneScope?: QcZoneScopeTarget })[],
@@ -46,5 +71,7 @@ export function problematicRuleCount(
 ): number {
   const inDisabledStage = new Set(stages.filter((s) => s.disabled).flatMap((s) => s.ruleIds));
   return rules.filter((r) => !inDisabledStage.has(r.id) && !r.ruleDisabled
-    && (isRuleProblematic(r) || zoneScopeHasNoZones(r, zones, groups) || emptyLimitsCheckIds(r, descriptors).length > 0)).length;
+    && (isRuleProblematic(r) || zoneScopeHasNoZones(r, zones, groups)
+      || emptyLimitsCheckIds(r, descriptors).length > 0
+      || emptyPatternCheckIds(r, descriptors).length > 0)).length;
 }

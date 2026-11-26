@@ -49,6 +49,26 @@ describe("useQualityViewModel", () => {
     expect(result.current.strategySlots[0].problems).toHaveLength(1);
   });
 
+  it("warns when the split-pattern shape check has no templates (GitHub issue #1095)", () => {
+    useMazeStore.setState({
+      availableChecks: [{
+        id: "split_pattern_shape", label: "Split pattern shape", description: "", issue_kinds: ["invalid_split_tile"],
+        params: [{ id: "patterns", label: "Patterns", kind: { type: "pattern_list", with_weights: false } }],
+      }],
+      rules: [{
+        id: "g1", name: "Rule 1", kind: "invalid_split_tile",
+        checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: "[]" }, disabled: false }],
+        nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false,
+      }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
+    });
+    const { result } = renderHook(() => useQualityViewModel());
+    expect(result.current.strategySlots[0].problems).toEqual([{
+      checkLabel: "Split pattern shape",
+      text: "No split templates are set, so the check never reports anything. Set templates or delete the check.",
+    }]);
+  });
+
   it("reflects a live toggleCheckDisabled call in the next render's CheckVM.disabled", () => {
     const { result, rerender } = renderHook(() => useQualityViewModel());
     expect(result.current.checks.find((c) => c.localId === 0)?.disabled).toBe(false);
