@@ -95,6 +95,26 @@ describe("ZonesFeature problems (GitHub issue #1034)", () => {
     expect(screen.getByText(m["zones.warning_unused"]())).toBeInTheDocument();
   });
 
+  it("a zone in a group is not unused, an unused group warns for itself, an empty or used one does not (GitHub issue #1093)", () => {
+    const inGroup = { id: 1, name: "Member", kind: "manual" as const, cells: [[0, 0, 0]] as [number, number, number][] };
+    useMazeStore.setState({
+      zones: [inGroup],
+      nextZoneId: 2,
+      zoneGroups: [{ id: 1, name: "Idle group", zoneIds: [1] }, { id: 2, name: "Used group", zoneIds: [1] }, { id: 3, name: "Hollow", zoneIds: [] }],
+      nextZoneGroupId: 4,
+      zoneOverrides: [{ id: 1, zoneIds: [], groupIds: [2], params: {} }],
+      nextZoneOverrideId: 2,
+    });
+    render(<ZonesFeature />);
+    // Unused groups + empty groups: two bubbles; no unused-zone bubble.
+    fireEvent.click(screen.getByText(m["common.warnings"]({ count: "2" })));
+    expect(screen.queryByText(m["zones.warning_unused"]())).not.toBeInTheDocument();
+    expect(screen.getByText(m["zones.warning_unused_groups"]())).toBeInTheDocument();
+    const chips = screen.getAllByTestId("zone-problem-chip").map((chip) => chip.textContent);
+    expect(chips).toContain(m["zone_groups.bubble_label"]({ name: "Idle group" }));
+    expect(chips).not.toContain(m["zone_groups.bubble_label"]({ name: "Used group" }));
+  });
+
   it("hovering the invalid cells warning lights those cells through the shared coordinate warning", () => {
     useMazeStore.setState({ zones: [farZone], nextZoneId: 2 });
     render(<ZonesFeature />);

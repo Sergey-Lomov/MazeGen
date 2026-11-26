@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { emptyManualGroups, emptyManualZones, invalidCellFloors, invalidCellTargets, invalidManualZones, unusedManualZones, withoutCells } from "../domain/zoneProblems";
+import { emptyManualGroups, emptyManualZones, invalidCellFloors, invalidCellTargets, invalidManualZones, unusedManualGroups, unusedManualZones, withoutCells } from "../domain/zoneProblems";
 import type { ResolveFieldAt } from "../domain/fieldEditUtils";
 import type { Zone } from "../wasm/mazeService";
 import type { ZoneGroup } from "../store/zonesTypes";
@@ -67,21 +67,33 @@ describe("unusedManualZones", () => {
   const groups: ZoneGroup[] = [{ id: 10, name: "G", zoneIds: [3] }, { id: 11, name: "H", zoneIds: [4] }];
   const ids = (list: Zone[]) => list.map((z) => z.id);
 
-  it("reports every manual zone nothing refers to, and no automatic zone", () => {
-    expect(ids(unusedManualZones(zones, groups, [], []))).toEqual([1, 2, 3, 4]);
+  it("reports every manual zone in no group and named by nothing, and no automatic zone", () => {
+    expect(ids(unusedManualZones(zones, groups, [], []))).toEqual([1, 2]);
   });
 
-  it("counts an override naming the zone, either directly or through a group", () => {
-    const overrides = [{ zoneIds: [1], groupIds: [] }, { zoneIds: [], groupIds: [10] }];
-    expect(ids(unusedManualZones(zones, groups, overrides, []))).toEqual([2, 4]);
+  it("counts membership in any group, used or not (GitHub issue #1093)", () => {
+    expect(ids(unusedManualZones(zones, groups, [], []))).not.toContain(3);
+    expect(ids(unusedManualZones(zones, groups, [], []))).not.toContain(4);
   });
 
-  it("counts a QC rule scope on the zone or on a group", () => {
-    const rules = [{ zoneScope: { kind: "zone" as const, id: 2 } }, { zoneScope: { kind: "group" as const, id: 11, mode: "union" as const } }, {}];
-    expect(ids(unusedManualZones(zones, groups, [noTargets], rules))).toEqual([1, 3]);
+  it("counts an override or a QC rule scope naming the zone", () => {
+    const rules = [{ zoneScope: { kind: "zone" as const, id: 2 } }, {}];
+    expect(ids(unusedManualZones(zones, groups, [{ zoneIds: [1], groupIds: [] }], rules))).toEqual([]);
+    expect(ids(unusedManualZones(zones, groups, [noTargets], rules))).toEqual([1]);
+  });
+});
+
+describe("unusedManualGroups (GitHub issue #1093)", () => {
+  const groups: ZoneGroup[] = [{ id: 10, name: "G", zoneIds: [3] }, { id: 11, name: "H", zoneIds: [4] }, { id: 12, name: "E", zoneIds: [] }, { id: 2 ** 30, name: "", zoneIds: [5] }];
+  const ids = (list: ZoneGroup[]) => list.map((g) => g.id);
+
+  it("reports a manual group nothing names, but not an empty or an automatic one", () => {
+    expect(ids(unusedManualGroups(groups, [], []))).toEqual([10, 11]);
   });
 
-  it("does not count membership in a group nothing uses", () => {
-    expect(ids(unusedManualZones(zones, groups, [{ zoneIds: [], groupIds: [] }], []))).toContain(3);
+  it("counts an override or a QC rule scope naming the group", () => {
+    const rules = [{ zoneScope: { kind: "group" as const, id: 11, mode: "union" as const } }, { zoneScope: { kind: "zone" as const, id: 10 } }];
+    expect(ids(unusedManualGroups(groups, [{ zoneIds: [], groupIds: [10] }], rules))).toEqual([]);
+    expect(ids(unusedManualGroups(groups, [noTargets], rules))).toEqual([10]);
   });
 });

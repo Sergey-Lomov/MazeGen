@@ -23,11 +23,11 @@ import * as m from "~/paraglide/messages";
 /** The zone problems (GitHub issue #1034), collapsed by default; its count is the number of its bubbles, as in the card status.
  *  One warning for the zones beyond the field: hovering it lights all their cells outside it on the current floor (merged
  *  into contours), hovering a zone chip lights that zone and its own cells outside; it has no floor badges, the
- *  chips go to the floors. One each for the empty zones and groups together and for the unused zones, naming them as bubbles below
+ *  chips go to the floors. One each for the empty zones and groups together, the unused zones and the unused groups, naming them as bubbles below
  *  (`ZoneProblemChips`). */
 function ZoneWarningsSection() {
   const problems = useMazeStore(selectZoneProblems);
-  const { invalid, unused, emptyZones, emptyGroups } = problems;
+  const { invalid, unused, unusedGroups, emptyZones, emptyGroups } = problems;
   const invalidWarning = useMemo(() => invalidCellsWarning(invalid), [invalid]);
   const [expanded, setExpanded] = useState(false);
   const count = zoneWarningCount(problems);
@@ -50,6 +50,9 @@ function ZoneWarningsSection() {
           )}
           {unused.length > 0 && (
             <WarningBubble message={m["zones.warning_unused"]()}><ZoneProblemChips zones={unused} /></WarningBubble>
+          )}
+          {unusedGroups.length > 0 && (
+            <WarningBubble message={m["zones.warning_unused_groups"]()}><ZoneProblemChips groups={unusedGroups} /></WarningBubble>
           )}
         </div>
       )}

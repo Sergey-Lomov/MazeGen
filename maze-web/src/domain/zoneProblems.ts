@@ -1,7 +1,7 @@
 import type { Zone } from "../wasm/mazeService";
 import type { ZoneGroup } from "../store/zonesTypes";
 import type { QcZoneScopeTarget } from "../store/qcRuleTypes";
-import { overrideZoneIds, type ZoneTargets } from "./zoneOverrides";
+import type { ZoneTargets } from "./zoneOverrides";
 import { zoneCellsOutsideField } from "./fieldValidity";
 import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import { coordinateWarningLevels, type CoordinateWarning } from "./coordinateWarning";
@@ -64,22 +64,32 @@ export function withoutCells(zones: readonly Zone[], cellsByZone: ReadonlyMap<nu
   });
 }
 
-/** The manual zones no feature uses: no generation override, export override or QC rule scope reaches them, directly
- *  or through a group. Membership in a group counts only while that group is used itself. */
+/** The manual zones nothing uses: they belong to no group and no generation override, export override or QC rule scope
+ *  names them. A zone in a group is used by that group, even an unused one: the group carries the warning then (GitHub
+ *  issue #1093, `unusedManualGroups`). */
 export function unusedManualZones(
   zones: readonly Zone[],
   groups: readonly ZoneGroup[],
   overrides: readonly ZoneTargets[],
   rules: readonly { zoneScope?: QcZoneScopeTarget }[],
 ): Zone[] {
-  const used = new Set<number>();
-  for (const override of overrides) for (const id of overrideZoneIds(override, zones, groups)) used.add(id);
-  for (const { zoneScope } of rules) {
-    if (!zoneScope) continue;
-    if (zoneScope.kind === "zone") used.add(zoneScope.id);
-    else for (const id of groups.find((g) => g.id === zoneScope.id)?.zoneIds ?? []) used.add(id);
-  }
+  const used = new Set<number>(groups.flatMap((g) => g.zoneIds));
+  for (const override of overrides) for (const id of override.zoneIds) used.add(id);
+  for (const { zoneScope } of rules) if (zoneScope?.kind === "zone") used.add(zoneScope.id);
   return zones.filter((zone) => zone.kind === "manual" && !used.has(zone.id));
+}
+
+/** The manual groups with zones that no generation override, export override or QC rule scope names (GitHub issue
+ *  #1093). An empty group is the empty warning's, so one cause gives one warning; automatic groups are never reported:
+ *  they only collect the automatic zones. */
+export function unusedManualGroups(
+  groups: readonly ZoneGroup[],
+  overrides: readonly ZoneTargets[],
+  rules: readonly { zoneScope?: QcZoneScopeTarget }[],
+): ZoneGroup[] {
+  const used = new Set<number>(overrides.flatMap((o) => o.groupIds));
+  for (const { zoneScope } of rules) if (zoneScope?.kind === "group") used.add(zoneScope.id);
+  return groups.filter((group) => !isAutoGroupId(group.id) && group.zoneIds.length > 0 && !used.has(group.id));
 }
 
 /** The manual zones with no cell on any floor. */

@@ -13,8 +13,9 @@ function roundPosition(round: number): number {
 
 /// The colour of glue `index`: `AUTO_HUE_BASE_COLOR` with its hue spread evenly round the wheel over `AUTO_COLOR_COUNT`
 /// colours (`hueGroupColors`); each further round of `AUTO_COLOR_COUNT` is a group shifted in lightness and hue. A hovered glue is lighter.
-export function glueColor(index: number, hovered = false): number {
-  return autoPalette(Math.floor(index / AUTO_COLOR_COUNT), hovered)[index % AUTO_COLOR_COUNT];
+/// `base` is the colour the scheme starts from: the zones start from their own (`ZONE_HUE_BASE_COLOR`).
+export function glueColor(index: number, hovered = false, base = AUTO_HUE_BASE_COLOR): number {
+  return autoPalette(Math.floor(index / AUTO_COLOR_COUNT), hovered, base)[index % AUTO_COLOR_COUNT];
 }
 
 /// The widest lightness range, either side of the base colour, a set of colours whose size is known may use: past it
@@ -25,15 +26,15 @@ const MAX_LIGHTNESS_SPAN = 30;
 /// from the start). Up to `AUTO_COLOR_COUNT` * 3 items it is `glueColor`. Beyond that the rounds are squeezed: their
 /// lightness step shrinks so the farthest round stays within `MAX_LIGHTNESS_SPAN` of the base, and their hue shift
 /// shrinks so that no two rounds fall on the same hues. Colours change when `total` crosses such a bound.
-export function autoColorAmong(index: number, total: number): number {
+export function autoColorAmong(index: number, total: number, base = AUTO_HUE_BASE_COLOR): number {
   const farthest = Math.ceil((Math.ceil(total / AUTO_COLOR_COUNT) - 1) / 2);
-  if (farthest <= 1) return glueColor(index);
+  if (farthest <= 1) return glueColor(index, false, base);
   const round = Math.floor(index / AUTO_COLOR_COUNT);
-  const key = `${round}:squeezed:${farthest}`;
+  const key = `${base}:${round}:squeezed:${farthest}`;
   let palette = cachedPalettes.get(key);
   if (!palette) {
     const steps = { lightness: Math.min(HUE_GROUP_LIGHTNESS_STEP, MAX_LIGHTNESS_SPAN / farthest), hue: 45 / (2 * farthest + 1) };
-    palette = hueGroupColors(AUTO_HUE_BASE_COLOR, AUTO_COLOR_COUNT, roundPosition(round), 0, steps);
+    palette = hueGroupColors(base, AUTO_COLOR_COUNT, roundPosition(round), 0, steps);
     cachedPalettes.set(key, palette);
   }
   return palette[index % AUTO_COLOR_COUNT];
@@ -41,11 +42,11 @@ export function autoColorAmong(index: number, total: number): number {
 
 /// The rounds' palettes, cached (a redraw asks for the same distribution once per arrow).
 const cachedPalettes = new Map<string, number[]>();
-function autoPalette(round: number, hovered: boolean): number[] {
-  const key = `${round}:${hovered}`;
+function autoPalette(round: number, hovered: boolean, base: number): number[] {
+  const key = `${base}:${round}:${hovered}`;
   let palette = cachedPalettes.get(key);
   if (!palette) {
-    palette = hueGroupColors(AUTO_HUE_BASE_COLOR, AUTO_COLOR_COUNT, roundPosition(round), hovered ? GLUE_HOVER_LIGHTNESS : 0);
+    palette = hueGroupColors(base, AUTO_COLOR_COUNT, roundPosition(round), hovered ? GLUE_HOVER_LIGHTNESS : 0);
     cachedPalettes.set(key, palette);
   }
   return palette;

@@ -354,7 +354,7 @@ settings panel each overridable parameter row ends with a flat `ListPlus` icon b
 override"). It opens the `ZoneOverrideTargetPanel` side panel with the parameter already known: a Zones / Groups
 switch, a search, a "Show automatic" switch (off by default) and the zone or group cells (`ZoneCell` / `GroupCell` in
 pick mode: the whole cell is the button). Hovering a zone cell lights the zone in its own colour on the canvas
-(`hoveredZoneId`), hovering a group cell lights all the group's zones in the info blue (`hoveredZoneGroupId`,
+(`hoveredZoneId`), hovering a group cell lights all the group's zones, each in its own colour (`hoveredZoneGroupId`,
 `ZonesRenderer`). Picking creates the override (`addZoneOverride(params, target)`) starting from the parameter's
 current global value.
 
@@ -362,7 +362,7 @@ While the parameter has overrides, a flat chevron button (`ZoneOverrideControls`
 (the expanded state is per parameter, collapsed by default); the buttons sit close to the value. Under the row, `ZoneOverridesSection` lists the overrides of that
 parameter when expanded; no separate section header. A row is narrow: a bubble (a zone in its own colour; a group blue,
 prefixed "Group"), a small number input (height 18, small font; a chance is typed as a percentage; the elevator span
-row has two integer inputs; the "non-consecutive floors" row has a switch of the same height, stored as 0/1, validated as 0 or 1 in the project file) and the shared neutral (grey) `DeleteIconButton` trash, no slider. Hovering the bubble lights the zone, or all zones of the group (info blue), on
+row has two integer inputs; the "non-consecutive floors" row has a switch of the same height, stored as 0/1, validated as 0 or 1 in the project file) and the shared neutral (grey) `DeleteIconButton` trash, no slider. Hovering the bubble lights the zone, or all zones of the group (each in its own colour), on
 the canvas (`ZoneHoverOverlay` draws it outside the zones card); the target is changed with the edit icon left of the
 trash, which reopens the picker (`setZoneOverrideTarget`). The UI creates
 single-target, single-parameter overrides (the elevator span sets both bounds); a group covers several zones.

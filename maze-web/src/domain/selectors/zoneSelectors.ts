@@ -3,7 +3,7 @@ import type { Zone, ZoneKind } from "../../wasm/mazeService";
 import { autoColorAmong, glueColor } from "../glueColor";
 import { brightColor, colorToRgb, rgbToColor } from "../colorMath";
 import { canvas } from "../colorTokens";
-import { COMPONENT_MASK_ALPHA } from "../renderConstants";
+import { COMPONENT_MASK_ALPHA, ZONE_HUE_BASE_COLOR } from "../renderConstants";
 import type { FloorState } from "../../store/floorsTypes";
 import { autoGroupName, autoZoneName } from "../autoZones";
 import * as m from "~/paraglide/messages";
@@ -17,8 +17,8 @@ export interface ZoneRegions {
   groups: { regionGroups: number[][]; color: number }[];
 }
 
-/** Colour of every zone, by position in the full zone list: the glues' scheme (`glueColor`), the
- *  hue spread evenly round the wheel from `AUTO_HUE_BASE_COLOR`. Everything that marks a zone on the
+/** Colour of every zone, by position in the full zone list: the glues' scheme (`glueColor`) from `ZONE_HUE_BASE_COLOR`, the
+ *  hue spread evenly round the wheel from `ZONE_HUE_BASE_COLOR`. Everything that marks a zone on the
  *  canvas or beside it takes its colour from here, so the zone reads the same everywhere. */
 export function zoneColors(zones: Zone[], overrides: Readonly<Record<number, number>> = {}): number[] {
   // The palette is fixed (`AUTO_COLOR_COUNT` colours), so a zone's colour depends on its position among the zones
@@ -30,7 +30,7 @@ export function zoneColors(zones: Zone[], overrides: Readonly<Record<number, num
   const seen: Record<ZoneKind, number> = { auto: 0, manual: 0 };
   return zones.map((zone) => {
     const index = seen[zone.kind]++;
-    return overrides[zone.id] ?? (zone.kind === "auto" ? autoColorAmong(index, autoCount) : glueColor(index));
+    return overrides[zone.id] ?? (zone.kind === "auto" ? autoColorAmong(index, autoCount, ZONE_HUE_BASE_COLOR) : glueColor(index, false, ZONE_HUE_BASE_COLOR));
   });
 }
 
@@ -58,7 +58,7 @@ export function isZoneKindShown(kind: ZoneKind, showAuto: boolean, showManual: b
 
 /** Regions of the zones `include` accepts, restricted to one floor (an index in `floors`). Colours
  *  are taken from the whole zone list, so no filter ever recolours a zone. */
-function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean, colorOverrides: Readonly<Record<number, number>>, forcedColor?: number): ZoneRegions {
+function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Zone) => boolean, colorOverrides: Readonly<Record<number, number>>): ZoneRegions {
   const palette = zoneColors(zones, colorOverrides);
   const nodes: NodeDto[] = [];
   const groups: ZoneRegions["groups"] = [];
@@ -71,7 +71,7 @@ function collectZoneRegions(zones: Zone[], floorIndex: number, include: (zone: Z
       nodes.push({ id, x, y, i: id });
       ids.push(id);
     }
-    if (ids.length > 0) groups.push({ regionGroups: [ids], color: forcedColor ?? palette[index] });
+    if (ids.length > 0) groups.push({ regionGroups: [ids], color: palette[index] });
   });
   return { nodes, groups };
 }
@@ -99,9 +99,9 @@ export function buildZoneHoverRegion(zones: Zone[], zoneId: number, floorIndex: 
 }
 
 /** `buildZoneHoverRegion` for several zones at once (the hover of a zone group's card). */
-export function buildZonesHoverRegion(zones: Zone[], zoneIds: readonly number[], floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}, forcedColor?: number): ZoneRegions | null {
+export function buildZonesHoverRegion(zones: Zone[], zoneIds: readonly number[], floorIndex: number, colorOverrides: Readonly<Record<number, number>> = {}): ZoneRegions | null {
   const wanted = new Set(zoneIds);
-  const regions = collectZoneRegions(zones, floorIndex, (zone) => wanted.has(zone.id), colorOverrides, forcedColor);
+  const regions = collectZoneRegions(zones, floorIndex, (zone) => wanted.has(zone.id), colorOverrides);
   return regions.groups.length === 0 ? null : regions;
 }
 

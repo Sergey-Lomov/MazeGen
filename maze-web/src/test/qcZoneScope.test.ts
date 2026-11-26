@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 import type { QcRuleState } from "../store/qcRuleTypes";
-import { buildZoneScopesWire, zoneScopeHasNoZones, zoneScopeProblem, zoneScopeUnsupported } from "../domain/qcZoneScope";
+import { anyRuleScopedTo, buildZoneScopesWire, parseZoneScopeId, zoneScopeHasNoZones, zoneScopeProblem, zoneScopeUnsupported } from "../domain/qcZoneScope";
 import { problematicRuleCount, ruleIsSendable } from "../store/qcDerivedProblems";
 import { baseStoreState, makeRule } from "./storeTestHelpers";
 
@@ -12,6 +12,17 @@ const zones = [zone(1, [[0, 0, 0], [0, 1, 0]]), zone(2, [[0, 1, 0], [0, 2, 0]]),
 const groups = [{ id: 7, name: "G", zoneIds: [1, 2] }];
 const checks = [{ localId: 0, typeId: "c", params: {}, disabled: false }];
 const scoped = (zoneScope: NonNullable<QcRuleState["zoneScope"]>): Pick<QcRuleState, "zoneScope"> => ({ zoneScope });
+
+describe("parseZoneScopeId (GitHub issue #1093)", () => {
+  it("reads the wire ids and rejects anything else", () => {
+    expect(parseZoneScopeId("zone:12")).toEqual({ kind: "zone", id: 12 });
+    expect(parseZoneScopeId("group:3")).toEqual({ kind: "group", id: 3 });
+    expect(parseZoneScopeId(null)).toBeNull();
+    expect(parseZoneScopeId(undefined)).toBeNull();
+    expect(parseZoneScopeId("zone:x")).toBeNull();
+    expect(parseZoneScopeId("floor:1")).toBeNull();
+  });
+});
 
 describe("zone scope wire (GitHub issue #1039)", () => {
   it("is absent for a rule without a zone scope", () => {
@@ -108,5 +119,100 @@ describe("zoneScopeUnsupported", () => {
   it("is clear for a rule of checks a zone can narrow, or without checks", () => {
     expect(zoneScopeUnsupported({ checks: [{ typeId: "max_dead_end_count" }] }, descriptors)).toBe(false);
     expect(zoneScopeUnsupported({ checks: [] }, descriptors)).toBe(false);
+  });
+});
+
+describe("analytics rebuild on confirming a zone or group (GitHub issue #1093)", () => {
+  const s = () => useMazeStore.getState();
+  const confirm = vi.fn();
+  beforeEach(() => {
+    confirm.mockClear();
+    useMazeStore.setState({
+      ...baseStoreState(),
+      ...zonesInitialState,
+      confirmPostEdit: confirm,
+      zones: [zone(1, [[0, 0, 0]]), zone(2, [[0, 1, 1]]), zone(3, [[0, 2, 2]])],
+      zoneGroups: [{ id: 7, name: "G", zoneIds: [1, 2] }, { id: 8, name: "H", zoneIds: [3] }],
+      rules: [makeRule({ id: "a" })],
+    });
+  });
+
+  it("anyRuleScopedTo matches by kind", () => {
+    const rules = [{ zoneScope: { kind: "zone" as const, id: 1 } }, { zoneScope: { kind: "group" as const, id: 7, mode: "union" as const } }, {}];
+    expect(anyRuleScopedTo(rules, [1], [])).toBe(true);
+    expect(anyRuleScopedTo(rules, [7], [])).toBe(false);
+    expect(anyRuleScopedTo(rules, [], [7])).toBe(true);
+    expect(anyRuleScopedTo(rules, [], [1])).toBe(false);
+  });
+
+  it("confirming a zone with a rule limited to it rebuilds once, only on Done", () => {
+    s().setRuleZoneScope("a", { kind: "zone", id: 1 });
+    s().setZoneEditId(1);
+    s().setZoneName("Renamed");
+    expect(confirm).not.toHaveBeenCalled();
+    s().commitZoneEdit();
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("deleting a zone a rule is limited to rebuilds, also through a group holding it", () => {
+    s().setRuleZoneScope("a", { kind: "zone", id: 1 });
+    s().removeZone(1);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    s().setRuleZoneScope("a", { kind: "group", id: 8, mode: "union" });
+    s().removeZone(3);
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("deleting an unreferenced zone or group does not rebuild", () => {
+    s().setRuleZoneScope("a", { kind: "zone", id: 1 });
+    s().removeZone(2);
+    s().removeZoneGroup(8);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("deleting a group a rule is limited to rebuilds", () => {
+    s().setRuleZoneScope("a", { kind: "group", id: 7, mode: "union" });
+    s().removeZoneGroup(7);
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirming through setZoneEditId(null) rebuilds too, cancelling does not", () => {
+    s().setRuleZoneScope("a", { kind: "zone", id: 1 });
+    s().setZoneEditId(1);
+    s().cancelZoneEdit();
+    expect(confirm).not.toHaveBeenCalled();
+    s().setZoneEditId(1);
+    s().setZoneEditId(null);
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rebuild for a zone no rule is limited to", () => {
+    s().setRuleZoneScope("a", { kind: "zone", id: 2 });
+    s().setZoneEditId(1);
+    s().commitZoneEdit();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds for a zone that leaves or joins a group a rule is limited to", () => {
+    s().setRuleZoneScope("a", { kind: "group", id: 7, mode: "union" });
+    s().setZoneEditId(3);
+    s().addZoneEditGroup(7);
+    s().commitZoneEdit();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    s().setZoneEditId(1);
+    s().commitZoneEdit();
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("confirming a group rebuilds only when a rule is limited to that group", () => {
+    s().setRuleZoneScope("a", { kind: "group", id: 7, mode: "iteration" });
+    s().setZoneGroupEditId(8);
+    s().commitZoneGroupEdit();
+    expect(confirm).not.toHaveBeenCalled();
+    s().setZoneGroupEditId(7);
+    s().addZonesToGroup(7, [3]);
+    expect(confirm).not.toHaveBeenCalled();
+    s().commitZoneGroupEdit();
+    expect(confirm).toHaveBeenCalledTimes(1);
   });
 });

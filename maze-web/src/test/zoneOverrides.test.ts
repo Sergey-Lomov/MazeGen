@@ -135,9 +135,9 @@ describe("zone override actions", () => {
 });
 
 describe("zone hover region (GitHub issue #1038)", () => {
-  it("takes the forced colour for every zone, else each zone's own", () => {
+  it("takes each zone's own colour, or its override", () => {
     const zs = [zone(1, [[0, 0, 0]]), zone(2, [[0, 1, 0]])];
-    expect(buildZonesHoverRegion(zs, [1, 2], 0, {}, 0x123456)?.groups.map((g) => g.color)).toEqual([0x123456, 0x123456]);
+    expect(buildZonesHoverRegion(zs, [1, 2], 0, { 1: 0x123456 })?.groups[0].color).toBe(0x123456);
     const own = buildZonesHoverRegion(zs, [1, 2], 0)?.groups.map((g) => g.color);
     expect(own?.[0]).not.toBe(own?.[1]);
   });

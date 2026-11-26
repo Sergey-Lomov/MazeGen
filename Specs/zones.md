@@ -52,7 +52,7 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
   over them each zone passing the toggles as a region (`RegionHighlightRenderer`). Zones are first
   cut to the field (`filterZonesToField`), so no cell outside it is drawn. A zone's colour comes from
   its position in the full zone list (`zoneColors`), so toggling never recolours. The scheme is the
-  glues' one (`distributeHueGroups` from `AUTO_HUE_BASE_COLOR`).
+  glues' one (`distributeHueGroups`) but starts from its own base colour, `ZONE_HUE_BASE_COLOR` (`#2b965b`, green).
 - Hover: the cell inspector text (`resolveCellInspection`) lists every zone holding the cell, in zone
   order, regardless of the toggles (`x:1, y:2 | Zone A, Zone B`; an unnamed zone shows as `#id`). A
   cell outside the field shows bare coordinates.
@@ -129,8 +129,8 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   with its floor badge, not the full row width, and keeps its vertical padding so adjacent lines touch; hovering a line highlights that zone and the edited one stops being highlighted
   (`hoveredZoneId` wins over the edited zone). An explicit colour
   (`zoneColorOverrides`, by zone id, the editor's `setZoneColor(color)` writes `zoneEditDraftColor`, `null` is automatic; "Done" moves it here) always wins over the
-  automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours shared with the
-  glues (`glueColor`): a zone takes the colour at its position in the list; every further round of 8 is a group
+  automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours of the glues' scheme (`glueColor`)
+  starting from the zones' own base colour `ZONE_HUE_BASE_COLOR` (`#2b965b`, not the glues' `AUTO_HUE_BASE_COLOR`): a zone takes the colour at its position in the list; every further round of 8 is a group
   of the glues' hue scheme (`hueGroupColors`, positions 0, +1, -1, +2, ...: lightness and hue shifted), so no two
   zones share a colour. Whatever the number of zones, adding a zone or colouring another one never moves the rest. Deleting the zone drops its override.
   Overrides are saved with the project like the zones.
@@ -331,9 +331,13 @@ or remove them. Derived by `domain/zoneProblems.ts`, memoized for the store in `
 
 - **Zone with invalid cells** (`invalidManualZones`): a manual zone holding cells that are not cells of their floor's
   field (a removed cell, a shrunk tessellation, a floor that no longer exists; `zoneCellsOutsideField`).
-- **Unused manual zone** (`unusedManualZones`): no generation override, export override or QC rule scope reaches the zone,
-  directly or through a group. Membership in a group counts only while the group itself is used. Automatic groups cannot
-  hold a manual zone.
+- **Unused manual zone** (`unusedManualZones`): the zone is in no group and no generation override, export override or QC rule
+  scope names it. Membership in any group counts as use, even of an unused group: that group carries the warning
+  (GitHub issue #1093).
+- **Unused manual group** (`unusedManualGroups`): a manual group holding zones that no generation override, export override or QC
+  rule scope names. An empty group is only the empty warning's, an automatic group is never reported. Shown as its own
+  `WarningBubble` "Manual groups are not used anywhere" naming the groups, counted as one more warning, and as a line of the group
+  card's problem icon.
 - **Empty zone** (`emptyManualZones`): a manual zone with no cell on any floor. **Empty group** (`emptyManualGroups`): a
   manual group holding no zone (the group editor refuses "Done" on one, but deleting its zones leaves it empty).
   One meaning of "nothing there" for every consumer (`zonesHaveCells`): the consumer-side "no zones left" warnings of

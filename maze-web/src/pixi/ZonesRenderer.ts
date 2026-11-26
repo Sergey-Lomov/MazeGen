@@ -16,7 +16,7 @@ import { brightColor } from "../domain/colorMath";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { previewZoneCombine } from "../domain/selectors/zoneCombine";
 import { FIELD_EDITOR_PREVIEW_COLORS } from "../domain/colorTokens";
-import { base, hexToNumber } from "../styles/palette";
+import { hexToNumber } from "../styles/palette";
 import { CoordinateWarningHighlight } from "./CoordinateWarningHighlight";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -221,12 +221,12 @@ export class ZonesRenderer extends BaseFieldRenderer {
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
     // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
-    // A hovered group (GitHub issue #1038) lights all its zones in the info blue, whatever their own colours.
+    // A hovered group (GitHub issue #1038) lights all its zones, each in its own colour.
     const hoveredGroup = state.hoveredZoneGroupId === null ? undefined : state.zoneGroups.find((g) => g.id === state.hoveredZoneGroupId);
     const shownIds = hoveredGroup ? hoveredGroup.zoneIds
       : state.hoveredZoneId !== null ? [state.hoveredZoneId]
       : state.zoneEditDraft ? [state.zoneEditDraft.id] : [];
-    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor), hoveredGroup ? hexToNumber(base.info) : undefined);
+    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor));
     this.hoverZone.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],
@@ -300,7 +300,7 @@ export class ZoneHoverOverlay {
     const ids = state.openCard === "zones" ? [] : group ? group.zoneIds : state.hoveredZoneId !== null ? [state.hoveredZoneId] : [];
     const hover = ids.length === 0
       ? null
-      : buildZonesHoverRegion(filterZonesToField(state.zones, resolveFieldAtOf(state)), ids, activeFloorIndex(state), state.zoneColorOverrides, group ? hexToNumber(base.info) : undefined);
+      : buildZonesHoverRegion(filterZonesToField(state.zones, resolveFieldAtOf(state)), ids, activeFloorIndex(state), state.zoneColorOverrides);
     this.region.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],

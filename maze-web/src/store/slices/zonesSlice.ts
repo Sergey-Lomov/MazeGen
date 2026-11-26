@@ -13,6 +13,7 @@ import { combineZoneCells } from "../../domain/selectors/zoneCombine";
 import { isAutoGroupId } from "../../domain/autoZones";
 import { invalidManualZones, withoutCells } from "../../domain/zoneProblems";
 import { resolveFieldAtOf } from "../storeHelpers";
+import { anyRuleScopedTo } from "../../domain/qcZoneScope";
 
 /** The zones state that is saved with the project (GitHub issue #1048) and set from the file by `loadProject`; these are
  *  the values of a new project and of a file without zones. */
@@ -165,6 +166,20 @@ function committingZoneEdit(s: MazeState): Partial<MazeState> {
   };
 }
 
+/** Whether confirming the group draft changes what a rule sees: some rule is limited to the group (GitHub issue #1093). */
+function groupCommitChangesRules(s: MazeState): boolean {
+  return s.zoneGroupEditDraft !== null && anyRuleScopedTo(s.rules, [], [s.zoneGroupEditDraft.id]);
+}
+
+/** Whether confirming the zone draft changes what a rule sees: some rule is limited to the zone, or to a group the zone is
+ *  or becomes a member of (GitHub issue #1093). */
+function zoneCommitChangesRules(s: MazeState): boolean {
+  const draft = s.zoneEditDraft;
+  if (!draft) return false;
+  const groupIds = [...s.zoneGroups.filter((g) => g.zoneIds.includes(draft.id)).map((g) => g.id), ...s.zoneEditDraftGroupIds];
+  return anyRuleScopedTo(s.rules, [draft.id], groupIds);
+}
+
 export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & ZonesActions> = (set, get) => ({
   ...zonesInitialState,
 
@@ -203,25 +218,39 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     zoneGroupEditIsNew: true,
     nextZoneGroupId: s.nextZoneGroupId + 1,
   })),
-  removeZoneGroup: (id) => set((s) => (isAutoGroupId(id) ? {} : {
-    zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
-    zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
-    zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutGroup(o, id)),
-    exportZoneOverrides: s.exportZoneOverrides.map((o) => overrideWithoutGroup(o, id)),
-    ...(s.hoveredZoneGroupId === id ? { hoveredZoneGroupId: null } : {}),
-    ...(s.exportOverrideContext?.kind === "group" && s.exportOverrideContext.id === id ? { exportOverrideContext: null } : {}),
-    ...(s.zonesFocusedGroupId === id ? { zonesFocusedGroupId: null } : {}),
-    ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
-  })),
+  removeZoneGroup: (id) => {
+    if (isAutoGroupId(id)) return;
+    const scoped = anyRuleScopedTo(get().rules, [], [id]);
+    set((s) => ({
+      zoneGroups: s.zoneGroups.filter((group) => group.id !== id),
+      zoneEditDraftGroupIds: s.zoneEditDraftGroupIds.filter((g) => g !== id),
+      zoneOverrides: s.zoneOverrides.map((o) => overrideWithoutGroup(o, id)),
+      exportZoneOverrides: s.exportZoneOverrides.map((o) => overrideWithoutGroup(o, id)),
+      ...(s.hoveredZoneGroupId === id ? { hoveredZoneGroupId: null } : {}),
+      ...(s.exportOverrideContext?.kind === "group" && s.exportOverrideContext.id === id ? { exportOverrideContext: null } : {}),
+      ...(s.zonesFocusedGroupId === id ? { zonesFocusedGroupId: null } : {}),
+      ...(s.zoneGroupEditId === id ? noGroupEdit : {}),
+    }));
+    if (scoped) void get().confirmPostEdit();
+  },
   // `null` is "Done": the draft is confirmed. Opening another group drops the unconfirmed draft.
-  setZoneGroupEditId: (id) => set((s) => {
-    if (id === null) return committingGroupEdit(s);
-    if (id === s.zoneGroupEditId || isAutoGroupId(id)) return {};
-    const group = s.zoneGroups.find((g) => g.id === id);
-    if (!group) return {};
-    return { ...discardingGroupEdit(s), zoneGroupEditId: id, zoneGroupEditDraft: group, zoneGroupEditIsNew: false };
-  }),
-  commitZoneGroupEdit: () => set((s) => committingGroupEdit(s)),
+  setZoneGroupEditId: (id) => {
+    const scoped = id === null && groupCommitChangesRules(get());
+    set((s) => {
+      if (id === null) return committingGroupEdit(s);
+      if (id === s.zoneGroupEditId || isAutoGroupId(id)) return {};
+      const group = s.zoneGroups.find((g) => g.id === id);
+      if (!group) return {};
+      return { ...discardingGroupEdit(s), zoneGroupEditId: id, zoneGroupEditDraft: group, zoneGroupEditIsNew: false };
+    });
+    if (scoped) void get().confirmPostEdit();
+  },
+  // Confirming is the moment the members change, so the analytics are rebuilt then, not on each draft step (GitHub issue #1093).
+  commitZoneGroupEdit: () => {
+    const scoped = groupCommitChangesRules(get());
+    set((s) => committingGroupEdit(s));
+    if (scoped) void get().confirmPostEdit();
+  },
   cancelZoneGroupEdit: () => set((s) => discardingGroupEdit(s)),
   setZoneGroupName: (id, name) => set((s) => withGroupChange(s, id, (g) => ({ ...g, name }))),
   addZonesToGroup: (groupId, zoneIds) => set((s) => {
@@ -276,7 +305,14 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     nextZoneId: s.nextZoneId + 1,
     hoveredZoneId: null,
   })),
-  removeZone: (id) => set((s) => withoutZone(s, id)),
+  // A rule bound to the deleted zone (or to a group holding it) changes its result, so the analytics are rebuilt (GitHub issue #1093).
+  removeZone: (id) => {
+    const s = get();
+    const groupIds = s.zoneGroups.filter((g) => g.zoneIds.includes(id)).map((g) => g.id);
+    const scoped = anyRuleScopedTo(s.rules, [id], groupIds);
+    set((state) => withoutZone(state, id));
+    if (scoped) void get().confirmPostEdit();
+  },
   removeInvalidZoneCells: () => set((s) => {
     const invalid = invalidManualZones(s.zones, resolveFieldAtOf(s));
     if (invalid.length === 0) return {};
@@ -291,6 +327,7 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
   // `null` is "Done": the draft is confirmed. Opening another zone drops the unconfirmed draft.
   setZoneEditId: (id) => {
     let floorToShow: string | undefined;
+    const scoped = id === null && zoneCommitChangesRules(get());
     set((s) => {
       if (id === null) return committingZoneEdit(s);
       if (id === s.zoneEditDraft?.id) return { hoveredZoneId: null };
@@ -311,8 +348,13 @@ export const createZonesSlice: StateCreator<MazeStore, [], [], ZonesState & Zone
     });
     // Through the floors slice, so the floor switch resets the per-floor drafts as any other switch does.
     if (floorToShow !== undefined) get().setActiveFloorId(floorToShow);
+    if (scoped) void get().confirmPostEdit();
   },
-  commitZoneEdit: () => set((s) => committingZoneEdit(s)),
+  commitZoneEdit: () => {
+    const scoped = zoneCommitChangesRules(get());
+    set((s) => committingZoneEdit(s));
+    if (scoped) void get().confirmPostEdit();
+  },
   addZoneEditGroup: (groupId) => set((s) => (
     !s.zoneEditDraft || isAutoGroupId(groupId) || s.zoneEditDraftGroupIds.includes(groupId) || !s.zoneGroups.some((g) => g.id === groupId)
       ? {}

@@ -28,8 +28,11 @@ export function ZoneProblemIcon({ zone }: { zone: Zone }) {
   return <ProblemIcon lines={lines} />;
 }
 
-/** Problem icon of a group card: the group has no zones. Its zones' problems are theirs, not the group's. */
+/** Problem icon of a group card: the group has no zones, or no feature uses it. Its zones' problems are theirs, not the group's. */
 export function ZoneGroupProblemIcon({ group }: { group: ZoneGroup }) {
-  const { emptyGroups } = useMazeStore(selectZoneProblems);
-  return <ProblemIcon lines={emptyGroups.some((g) => g.id === group.id) ? [m["zone_groups.problem_empty"]()] : []} />;
+  const { emptyGroups, unusedGroups } = useMazeStore(selectZoneProblems);
+  const lines: string[] = [];
+  if (emptyGroups.some((g) => g.id === group.id)) lines.push(m["zone_groups.problem_empty"]());
+  if (unusedGroups.some((g) => g.id === group.id)) lines.push(m["zone_groups.problem_unused"]());
+  return <ProblemIcon lines={lines} />;
 }

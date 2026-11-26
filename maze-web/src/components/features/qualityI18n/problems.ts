@@ -11,6 +11,12 @@ function unavailableForbiddenCellType(paramId: string | undefined): string {
   return resolveCellTypeLabel(key);
 }
 
+/** A rule problem as its warning shows it: under a check's label the text is joined as `label: reason`, with the
+ *  reason's first letter lowercased. */
+export function labelledProblemText(checkLabel: string | undefined, text: string): string {
+  return checkLabel ? `${checkLabel}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text;
+}
+
 /** Text of a rule that holds no checks at all (derived, never stored as a `QcProblem`). */
 export function resolveNoChecksProblemText(): string {
   return m["quality.problem_no_checks"]();
@@ -24,6 +30,11 @@ export function resolveNoZonesProblemText(reason: "missing" | "empty"): string {
 /** Text of a node-shape-limits check with no limits set (derived, never stored as a `QcProblem`). */
 export function resolveLimitsEmptyProblemText(): string {
   return m["quality.problem_limits_empty"]();
+}
+
+/** Text of a cell type check with no forbidden cell type selected (derived, never stored as a `QcProblem`). */
+export function resolveNoForbiddenCellTypeProblemText(): string {
+  return m["quality.problem_no_forbidden_cell_types"]();
 }
 
 /** Text of one rule problem (GitHub issue #1044): what happened and what the user can do. */
