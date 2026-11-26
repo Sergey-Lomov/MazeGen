@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildProblems, type CheckVM } from "../components/features/useQualityViewModel";
 import { labelledProblemText } from "../components/features/qualityI18n/problems";
-import { emptyLimitsCheckIds, noForbiddenCellTypeCheckIds, problematicRuleCount } from "../store/qcDerivedProblems";
+import { emptyLimitsCheckIds, emptyPatternCheckIds, noForbiddenCellTypeCheckIds, problematicRuleCount } from "../store/qcDerivedProblems";
 import { isRuleProblematic, ruleHasSendableChecks, sendableChecks, visibleProblems, type QcProblem } from "../store/storeTypes";
 
 const live = { localId: 0, disabled: false };
@@ -154,6 +154,31 @@ describe("emptyLimitsCheckIds (GitHub issue #1044)", () => {
 
   it("makes the rule count as problematic", () => {
     const rules = [{ id: "a", checks: [limitsCheck(0, "{}")] }, { id: "b", checks: [limitsCheck(0, set)] }];
+    expect(problematicRuleCount(rules, [], descriptors, [], [])).toBe(1);
+  });
+});
+
+describe("emptyPatternCheckIds (GitHub issue #1095)", () => {
+  const descriptors = [{ id: "split_pattern_shape", params: [{ id: "patterns", kind: { type: "pattern_list" as const, with_weights: false } }] }];
+  const patternCheck = (localId: number, patterns: string, disabled = false) => ({ localId, typeId: "split_pattern_shape", params: { patterns }, disabled });
+
+  it("flags missing, empty, and malformed template lists", () => {
+    expect(emptyPatternCheckIds({ checks: [patternCheck(0, "[]"), patternCheck(1, "invalid"), { localId: 2, typeId: "split_pattern_shape", params: {}, disabled: false }] }, descriptors)).toEqual([0, 1, 2]);
+  });
+
+  it("keeps configured, disabled, and already-problematic checks out", () => {
+    const problems: QcProblem[] = [{ code: "patterns_emptied", scope: "check", localId: 2, paramId: "patterns" }];
+    expect(emptyPatternCheckIds({ checks: [patternCheck(0, '[{}]'), patternCheck(1, "[]", true), patternCheck(2, "[]")], problems }, descriptors)).toEqual([]);
+  });
+
+  it("does not flag another check's optional pattern list", () => {
+    const optionalPatterns = { id: "optional_patterns", params: [{ id: "patterns", kind: { type: "pattern_list" as const, with_weights: false } }] };
+    const check = { localId: 0, typeId: "optional_patterns", params: { patterns: "[]" }, disabled: false };
+    expect(emptyPatternCheckIds({ checks: [check] }, [...descriptors, optionalPatterns])).toEqual([]);
+  });
+
+  it("makes a rule with missing templates problematic", () => {
+    const rules = [{ id: "a", checks: [patternCheck(0, "[]")] }, { id: "b", checks: [patternCheck(0, '[{}]')] }];
     expect(problematicRuleCount(rules, [], descriptors, [], [])).toBe(1);
   });
 });

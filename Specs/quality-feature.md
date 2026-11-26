@@ -649,6 +649,8 @@ type TessellationRequirement =
 
 ## Rule problems (GitHub issue #1044)
 
+An enabled `split_pattern_shape` check with an empty or malformed `patterns` list is a derived, non-persisted problem (GitHub issue #1095): it cannot validate any split tile, so its card shows a warning and the Quality feature counts the rule as problematic. This rule applies only to `split_pattern_shape`; empty pattern lists on other split-related checks and strategies retain their documented default semantics.
+
 `QcRuleState.problems?: QcProblem[]` (absent = none) flags what a tessellation change broke instead of silently
 deleting or altering it. A rule with at least one problem is **problematic**: its card is outlined yellow and lists
 every problem (the category is internal; naming the member check when check-scoped; a `needs_reconfiguration` one carries a close button, see below); it stays
