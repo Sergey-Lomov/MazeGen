@@ -7,11 +7,10 @@ import { canonicalizePresetPair, presetEdgeKey, presetSplitPointKey } from "../.
 import type { PresetPointEntityDescriptor } from "../../domain/pointEntities";
 import { presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
 import type { CoordinateWarning } from "../../domain/coordinateWarning";
-import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../domain/presetSplitLabels";
-import { buildActiveCells } from "../../domain/selectors/fieldSelectors";
-import { buildCellSet } from "../../domain/selectors/sharedSelectors";
+import { presetSplitLabelContextOf, presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../domain/presetSplitLabels";
 import { formatTargetLabel } from "../../domain/targetLabel";
 import { computeInvalidPresetEndpointKeys } from "../../domain/fieldValidity";
+import { computePresetSplitProblems } from "../../pixi/selectors/presetSplitProblems";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeLockKind } from "../../wasm/types";
@@ -88,6 +87,8 @@ export interface PresetListCell {
   link?: { from: PresetEndpoint; to: PresetEndpoint };
   linkHighlightStyle?: "boundary" | "one_way";
   entityHighlightMode?: "inset" | "outset";
+  /** Problem messages of a split cell (GitHub issue #1107); shown in the warning icon's tooltip. */
+  problems?: string[];
 }
 
 export interface PresetListInput {
@@ -102,6 +103,8 @@ export interface PresetListInput {
   presetSplitPoints: Record<string, number[]>;
   presetSplitPointIds?: Record<string, string>;
   presetSplitShapeLabels?: Record<string, string>;
+  /** Problem messages per split point key (see `computePresetSplitProblems`). */
+  presetSplitProblems?: Record<string, string[]>;
   presetEntityOrder?: string[];
   splitCtx?: PresetSplitLabelContext | null;
   invalidEndpointKeys?: ReadonlySet<string>;
@@ -333,6 +336,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       bubbles: [bubble(endpoint, multiFloor, undefined, input.invalidEndpointKeys)],
       control: { kind: "split", endpoint },
       entityHighlightMode: "outset",
+      problems: input.presetSplitProblems?.[key],
       descriptor: descriptor("split_node", `split:${key}`, endpoint, title),
     });
   }
@@ -417,20 +421,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
     const resolveFieldAt = resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives });
     return computeInvalidPresetEndpointKeys(endpoints, resolveFieldAt);
   }, [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives]);
-  const splitLabelContext = useMemo<PresetSplitLabelContext | null>(() => {
-    const fallbackField = floors[0] ? floorFields[floors[0].id] : undefined;
-    if (!fallbackField) return null;
-    return {
-      splitPoints: presetSplitPoints,
-      presetConnections,
-      activeSplitNode,
-      cfgAt: (level) => floorFields[floors[level]?.id]?.fieldConfig ?? fallbackField.fieldConfig,
-      inFieldCellsAt: (level) => {
-        const field = floorFields[floors[level]?.id] ?? fallbackField;
-        return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig));
-      },
-    };
-  }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
+  const splitLabelContext = useMemo<PresetSplitLabelContext | null>(
+    () => presetSplitLabelContextOf({ splitPoints: presetSplitPoints, presetConnections, activeSplitNode, floors, floorFields }),
+    [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors],
+  );
   const presetSplitShapeLabels = useMemo(() => {
     const labels: Record<string, string> = {};
     if (!splitLabelContext) return labels;
@@ -442,16 +436,25 @@ export function PresetList({ onClose }: { onClose: () => void }) {
     }
     return labels;
   }, [presetSplitPoints, splitLabelContext, locale]);
+  const presetSplitProblems = useMemo(() => {
+    const problems: Record<string, string[]> = {};
+    if (!splitLabelContext) return problems;
+    for (const entry of computePresetSplitProblems(splitLabelContext)) {
+      problems[entry.key] = entry.messages;
+    }
+    return problems;
+  }, [splitLabelContext, locale]);
   const cells = useMemo(() => buildPresetListCells({
     presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports,
     presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints,
     presetSplitPointIds,
     presetSplitShapeLabels,
+    presetSplitProblems,
     presetEntityOrder,
     splitCtx: splitLabelContext,
     invalidEndpointKeys,
     multiFloor: floors.length > 1,
-  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, splitLabelContext, invalidEndpointKeys, floors.length]);
+  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetSplitProblems, presetEntityOrder, splitLabelContext, invalidEndpointKeys, floors.length]);
   const visibleCells = useMemo(
     () => filterPresetListCells(cells, { types: selectedTypes, floor: floorFilter }),
     [cells, selectedTypes, floorFilter],
@@ -580,6 +583,11 @@ function PresetCell({
 }) {
   type ActionKind = "direction" | "settings" | "delete";
 
+  const warningMessages = [
+    ...(cell.bubbles.some((bubble) => bubble.invalid) ? [m["preset.element_outside_field"]()] : []),
+    ...(cell.problems ?? []),
+  ];
+
   const actionButton = (kind: ActionKind, title: string, onAction: () => void, child: React.ReactNode, danger = false) => (
     <ListCellAction
       action={kind === "delete" ? "delete" : undefined}
@@ -602,7 +610,7 @@ function PresetCell({
       onMouseLeave={onLeave}
       title={cell.title}
       truncateTitle
-      titleAddon={cell.bubbles.some((bubble) => bubble.invalid) && <WarningIcon title={m["preset.element_outside_field"]()} />}
+      titleAddon={warningMessages.length > 0 && <WarningIcon messages={warningMessages} />}
       badge={cell.id !== undefined && <IdBubble id={cell.id} />}
       details={(
         <div style={styles.bubbles}>

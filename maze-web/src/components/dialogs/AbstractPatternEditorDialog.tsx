@@ -214,7 +214,7 @@ export function AbstractPatternEditorDialog({ pattern, onConfirm, onClose }: Pro
                     onClick={() => setActiveNode(nodeIndex)}
                     current={nodeIndex === activeNode}
                     title={`${m["generation.split_pattern_node_label"]()} ${nodeIndex}`}
-                    titleAddon={<><EntityColorSwatch color={colorAt(nodeIndex)} />{warnings.length > 0 && <WarningIcon title={<>{warnings.map((warning) => <span key={warning} style={styles.warningLine}>{warning}</span>)}</>} />}</>}
+                    titleAddon={<><EntityColorSwatch color={colorAt(nodeIndex)} />{warnings.length > 0 && <WarningIcon messages={warnings} />}</>}
                     details={<span style={muted(typography.caption)}>{faceSummary(nodeIndex)}</span>}
                     actionsPlacement="title"
                     actions={(
@@ -260,5 +260,4 @@ const styles: Record<string, React.CSSProperties> = {
   nodesHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap, padding: `${spacing.itemGap}px 0` },
   nodesList: { marginLeft: indent.tree },
   confirmButton: { width: "100%" },
-  warningLine: { display: "block" },
 };

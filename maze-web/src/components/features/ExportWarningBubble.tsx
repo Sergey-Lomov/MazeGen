@@ -27,7 +27,7 @@ export function resolveWarningFloorLevels(warning: Pick<ExportWarning, "crossFlo
  *  `IssuesBlock`'s `IssueBubble` (Analytics feature's QC issue list): a top row of label + info icon
  *  (opens a modal with the warning's full description), a `FloorBadgeRow` below it (round-4 GitHub
  *  issue #430 follow-up — `elevator_badges_overlap`/`elevator_badges_too_many`'s own
- *  `crossFloorTargets`, same shared component `IssueBubble`/Preset Connections' orphan-split warning
+ *  `crossFloorTargets`, same shared component `IssueBubble`/Preset Connections' unreachable-split warning
  *  use, not a bespoke copy), hovering highlights the warning's flagged node(s)/edges on the canvas
  *  via `hoveredExportWarningKey` (`VectorByWallsRenderer`'s own highlight overlay). Kept as its own
  *  component (not folded into `IssueBubble`) since `ExportWarning` is a distinct type from

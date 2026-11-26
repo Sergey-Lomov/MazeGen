@@ -322,7 +322,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
 }
 
 /// Row of solid `L{n}` badges inside a bubble, shown whenever the maze itself has more than one
-/// floor (GitHub issue #365, extended by #423 to match the Preset Connections orphan-split-node
+/// floor (GitHub issue #365, extended by #423 to match the Preset Connections unreachable-split-node
 /// warning's always-show-on-multi-floor behavior) -- a floor-scoped canvas highlight only shows
 /// the active floor's own entities, so this is the one place a user can discover "this problem
 /// also exists on floor 3" without switching floors themselves, even when the bubble's own

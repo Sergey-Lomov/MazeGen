@@ -119,3 +119,44 @@ describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () =>
     expect(onSetLinkEnabled).toHaveBeenCalledWith("startMarker.fillColor", true);
   });
 });
+
+// GitHub issue #1097: in a zone context a preview tick writes the zone's own value, so Cancel must drop
+// the value again unless the zone already set the parameter before the picker opened.
+describe.each([
+  ["LinkedColorRow", (props: { color: number; onChange: () => void }) => <LinkedColorRow field={PC.bgFill} label="Target" linkTarget="startMarker.fillColor" {...props} />],
+  ["LinkedUnregisteredColorRow", (props: { color: number; onChange: () => void }) => <LinkedUnregisteredColorRow label="Target" linkTarget="startMarker.fillColor" {...props} />],
+])("%s cancel in a zone context (GitHub issue #1097)", (_name, row) => {
+  function renderZoneRow(overridden: string[], reset = vi.fn()) {
+    const zone = { overridden: new Set(overridden), canOverride: () => true, reset, toggleLink: vi.fn() };
+    render(
+      <LinkContextProvider value={{ links: [], registry, onSetLinkEnabled: vi.fn(), onAddLink: vi.fn(), gate: () => true, activePaths: new Set<P>(["startMarker.fillColor"]), zone }}>
+        {row({ color: 0x000000, onChange: vi.fn() })}
+      </LinkContextProvider>,
+    );
+    return reset;
+  }
+
+  it("resets the zone value on Cancel when the zone had none on open", () => {
+    const reset = renderZoneRow([]);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(reset).toHaveBeenCalledWith("startMarker.fillColor");
+  });
+
+  it("keeps the zone value on Cancel when the zone already set it on open", () => {
+    const reset = renderZoneRow(["startMarker.fillColor"]);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(reset).not.toHaveBeenCalled();
+  });
+
+  it("keeps the zone value on Apply", () => {
+    const reset = renderZoneRow([]);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(reset).not.toHaveBeenCalled();
+  });
+});

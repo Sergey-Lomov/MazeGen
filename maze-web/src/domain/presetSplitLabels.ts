@@ -7,6 +7,8 @@ import { splitNodeLabelShort } from "./splitNodeLabels";
 import { formatTargetLabel } from "./targetLabel";
 import type { FieldConfig } from "../fieldConfig";
 import { splitShapeBinding } from "./splitShape";
+import { buildActiveCells } from "./selectors/fieldSelectors";
+import { buildCellSet } from "./selectors/sharedSelectors";
 import * as m from "~/paraglide/messages";
 
 /** Inputs needed to resolve a preset endpoint's compact split-node label at any floor. */
@@ -16,6 +18,32 @@ export interface PresetSplitLabelContext {
   activeSplitNode: Record<string, PresetEndpoint>;
   cfgAt: (level: number) => FieldConfig;
   inFieldCellsAt: (level: number) => Set<string>;
+}
+
+/** Builds the label context from the store's floor data (GitHub issue #1107: one place for the three
+ *  preset views that need it). Floors without field data fall back to the first floor's field; `null`
+ *  when no floor has field data at all. */
+export function presetSplitLabelContextOf(input: {
+  splitPoints: Record<string, number[]>;
+  presetConnections: Map<string, PresetConnectionEntry>;
+  activeSplitNode: Record<string, PresetEndpoint>;
+  floors: readonly { id: string }[];
+  floorFields: Record<string, { fieldConfig: FieldConfig; fieldPoints: Set<number>; fieldEditMode: "default" | "custom" }>;
+}): PresetSplitLabelContext | null {
+  const { floors, floorFields } = input;
+  const fallbackField = floors[0] ? floorFields[floors[0].id] : undefined;
+  if (!fallbackField) return null;
+  const fieldAt = (level: number) => floorFields[floors[level]?.id] ?? fallbackField;
+  return {
+    splitPoints: input.splitPoints,
+    presetConnections: input.presetConnections,
+    activeSplitNode: input.activeSplitNode,
+    cfgAt: (level) => fieldAt(level).fieldConfig,
+    inFieldCellsAt: (level) => {
+      const field = fieldAt(level);
+      return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig));
+    },
+  };
 }
 
 /** Shared lookup behind `resolvePresetSplitNodeShortLabel`/`resolvePresetSplitNodeFullLabel` —

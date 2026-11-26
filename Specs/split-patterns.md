@@ -188,7 +188,7 @@ flows because they share `SplitNodesDialogView`.
 
 The editor has no shared warnings section. A node's `ListCell` shows a `WarningIcon` after its
 colour swatch whenever that node has a diagnostic; its tooltip lists the applicable concise
-messages. The conditions are evaluated per node:
+messages (`WarningIcon` `messages`: one message as plain text, several as a bulleted list under a "Warnings:" heading). The conditions are evaluated per node:
 
 - every non-boundary face is `wall`, or there is no connection at all. An absent pattern face is a
   wall, so it deliberately has no separate "undefined face" warning;

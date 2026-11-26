@@ -32,6 +32,11 @@ export function resolveLimitsEmptyProblemText(): string {
   return m["quality.problem_limits_empty"]();
 }
 
+/** Text of a split-pattern-shape check without any templates (derived, never stored). */
+export function resolvePatternsEmptyProblemText(): string {
+  return m["quality.problem_patterns_empty"]();
+}
+
 /** Text of a cell type check with no forbidden cell type selected (derived, never stored as a `QcProblem`). */
 export function resolveNoForbiddenCellTypeProblemText(): string {
   return m["quality.problem_no_forbidden_cell_types"]();

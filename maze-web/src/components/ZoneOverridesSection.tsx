@@ -114,7 +114,7 @@ function overrideProblemLines(override: ZoneOverride, zones: Zone[], groups: Zon
 /** The warning icon of an override row, its tooltip the list of its problems; nothing without any. */
 function OverrideProblemIcon({ lines }: { lines: string[] }) {
   if (lines.length === 0) return null;
-  return <WarningIcon title={<>{lines.map((line) => <div key={line}>{line}</div>)}</>} />;
+  return <WarningIcon messages={lines} />;
 }
 
 /** List of the zone overrides of one parameter, under that parameter's row; absent while collapsed or without any. Each

@@ -15,7 +15,7 @@ vi.mock("../domain/presetSplitResolve", async () => {
 });
 
 import { presetEndpoint } from "../domain/presetEndpoint";
-import { presetTargetLabel, resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../domain/presetSplitLabels";
+import { presetSplitLabelContextOf, presetTargetLabel, resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../domain/presetSplitLabels";
 import { fieldOf } from "./fieldConfigFixtures";
 
 describe("resolvePresetSplitNodeShortLabel", () => {
@@ -49,5 +49,20 @@ describe("presetTargetLabel floorOnly", () => {
     // Without floorOnly this would resolve a split suffix ("Brg") alongside the coordinates —
     // floorOnly must drop both, leaving just the floor.
     expect(presetTargetLabel(context, slot, true, true)).toBe("L2");
+  });
+});
+
+describe("presetSplitLabelContextOf", () => {
+  const field = { fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }), fieldPoints: new Set<number>(), fieldEditMode: "default" as const };
+  const base = { splitPoints: {}, presetConnections: new Map(), activeSplitNode: {} };
+
+  it("is null while no floor has field data", () => {
+    expect(presetSplitLabelContextOf({ ...base, floors: [], floorFields: {} })).toBeNull();
+    expect(presetSplitLabelContextOf({ ...base, floors: [{ id: "f0" }], floorFields: {} })).toBeNull();
+  });
+
+  it("falls back to the first floor's field for a floor without field data", () => {
+    const context = presetSplitLabelContextOf({ ...base, floors: [{ id: "f0" }, { id: "f1" }], floorFields: { f0: field } });
+    expect(context?.cfgAt(1)).toBe(field.fieldConfig);
   });
 });

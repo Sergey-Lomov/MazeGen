@@ -2,7 +2,7 @@ import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../../domain/renderers/types";
 import type { NodeEdgeHighlight } from "../../domain/renderers/types";
-import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../../domain/fieldEditUtils";
+import type { PresetConnectionEntry, FieldEdge } from "../../domain/fieldEditUtils";
 import { edgeKey } from "../../domain/fieldEditUtils";
 import { computeInvalidKeysFromCells } from "../../domain/fieldValidity";
 import { getCellCenter, getFaceEdgeSegment, getCellNeighborOffsets } from "../../domain/tessellationGeometry";
@@ -14,7 +14,7 @@ import { seamCellSlots, seamStubHighlights, type SeamPairsContext } from "../../
 import { logicalEdgeSegments } from "./seamEdges";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "../../domain/selectors/mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
-import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../domain/presetEndpoint";
+import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "../../domain/presetEndpoint";
 import { hostKey } from "../../domain/selectors/mazeSelectors/markerLayout";
 import { splitSlotColor } from "../../domain/colorUtils";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../domain/renderConstants";
@@ -422,44 +422,6 @@ export function computeIsolatedNodeKeys(
       return presetEndpointsEqual(e.from, endpoint) || presetEndpointsEqual(e.to, endpoint);
     });
   });
-}
-
-/** Every declared split node (`presetSplitPoints`) referenced by nothing — GitHub issue #231, split
- *  out from `PresetConnectionsFeature`'s own `orphanSplitCount` so the same "is this slot referenced"
- *  logic drives both the warning's count/floor badges and its hover highlight (GitHub issue #420).
- *  Level-agnostic (spans every floor, mirroring the feature's own count) — keys are `"x,y"` (floor 0)
- *  or `"x,y@level"` (GitHub issue #340), the `@level` suffix stripped before parsing coordinates.
- *
- *  A reference is intentional even when its connection state is `"undefined"`. `"undefined"` is a
- *  valid explicit preset choice: once the user edits a split node, returning all of its faces to
- *  `"undefined"` still counts as configuring that node, so the orphan warning must stay hidden.
- *  The distinction is between an absent connection entry and an entry whose state happens to be
- *  `"undefined"`; do not simplify this check to inspect connection state only. */
-export function computeOrphanSplitPoints(
-  presetSplitPoints: Record<string, number[]>,
-  presetConnections: Map<string, PresetConnectionEntry>,
-  presetTeleports: PresetTeleportEntry[],
-  presetStart: PresetEndpoint | null,
-  presetFinish: PresetEndpoint | null,
-  presetGenSource: PresetEndpoint | null,
-): PresetEndpoint[] {
-  const result: PresetEndpoint[] = [];
-  for (const [key, slots] of Object.entries(presetSplitPoints)) {
-    const [pointPart, levelPart] = key.split("@");
-    const [x, y] = pointPart.split(",").map(Number);
-    const level = levelPart === undefined ? undefined : Number(levelPart);
-    for (const slotId of slots) {
-      const target = { point: [x, y] as [number, number], slotId };
-      const referenced =
-        Array.from(presetConnections.values()).some(e => presetEndpointIsSplit(e.from, target) || presetEndpointIsSplit(e.to, target))
-        || presetTeleports.some(t => presetEndpointIsSplit(t.from, target) || presetEndpointIsSplit(t.to, target))
-        || (presetStart != null && presetEndpointIsSplit(presetStart, target))
-        || (presetFinish != null && presetEndpointIsSplit(presetFinish, target))
-        || (presetGenSource != null && presetEndpointIsSplit(presetGenSource, target));
-      if (!referenced) result.push(presetEndpoint([x, y], slotId, level));
-    }
-  }
-  return result;
 }
 
 export function buildHoverEdgeHighlight(

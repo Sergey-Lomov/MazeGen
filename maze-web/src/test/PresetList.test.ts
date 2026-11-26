@@ -41,6 +41,19 @@ describe("buildPresetListCells", () => {
     expect(PRESET_LIST_TYPES.filter((type) => !PRESET_LIST_TYPES_OFF_BY_DEFAULT.includes(type as typeof PRESET_LIST_TYPES_OFF_BY_DEFAULT[number]))).toHaveLength(12);
   });
 
+  it("attaches the split problems of a point to its split cell only (GitHub issue #1107)", () => {
+    const input = emptyInput();
+    input.presetStart = presetEndpoint([2, 2]);
+    input.presetSplitPoints = { "5,5": [0], "6,6": [0] };
+    input.presetSplitProblems = { "5,5": ["Node 1 is unreachable"] };
+
+    const cells = buildPresetListCells(input);
+
+    expect(cells.find((cell) => cell.key === "split:5,5")?.problems).toEqual(["Node 1 is unreachable"]);
+    expect(cells.find((cell) => cell.key === "split:6,6")?.problems).toBeUndefined();
+    expect(cells.find((cell) => cell.key === "start")?.problems).toBeUndefined();
+  });
+
   it("builds complete cells and excludes derived default edges", () => {
     const from = presetEndpoint([0, 0]);
     const to = presetEndpoint([1, 0]);

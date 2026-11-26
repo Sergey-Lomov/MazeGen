@@ -30,7 +30,7 @@ import { problematicRuleCount } from "../store/qcDerivedProblems";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, saveJsonInPlace, serializeProject, parseAndValidate, projectFileAccept, FileKindMismatchError, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, listedInvalidConnections, listedInvalidSplitKeys } from "../domain/fieldValidity";
+import { computePresetWarningCount } from "../pixi/selectors/presetWarnings";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../domain/selectors/mazeSelectors";
 import { countManualZones } from "../domain/selectors/zoneSelectors";
@@ -199,16 +199,8 @@ function selectFieldDerived(s: ReturnType<typeof useMazeStore.getState>) {
     triOrientation: s.triOrientation,
     smoothPrimitives: s.smoothPrimitives,
   });
-  const invalidMarkers = computeInvalidMarkers(s.presetStart, s.presetFinish, resolveFieldAt);
-  const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0) + (computeInvalidEndpoint(s.presetGenSource, resolveFieldAt) ? 1 : 0);
-  const presetInvalidCount = listedInvalidConnections(s.presetConnections, s.presetSplitPoints, computeInvalidKeys(s.presetConnections, resolveFieldAt)).length
-    + computeInvalidTeleportIds(s.presetTeleports, resolveFieldAt).size
-    + computeInvalidVerticalPassageIds(s.presetVerticalPassages, resolveFieldAt).size
-    + computeInvalidElevatorIds(s.presetElevators, resolveFieldAt).size
-    + invalidMarkerCount
-    + computeInvalidLockedNodeKeys(s.lockedNodes, resolveFieldAt).size
-    + listedInvalidSplitKeys(s.presetSplitPoints, computeInvalidSplitPoints(s.presetSplitPoints, resolveFieldAt)).length;
-  return { fieldStatus, presetInvalidCount };
+  const presetWarningCount = computePresetWarningCount(s, resolveFieldAt);
+  return { fieldStatus, presetWarningCount };
 }
 
 /** The Field Setup card. It selects its own subtitle: the subtitle carries the cell count, which changes on
@@ -342,7 +334,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     return label;
   }
 
-  const { fieldStatus, presetInvalidCount } = useMazeStore(useShallow(selectFieldDerived));
+  const { fieldStatus, presetWarningCount } = useMazeStore(useShallow(selectFieldDerived));
   const fieldSetupComment = fieldStatus === "unavailable"
     ? m["status.confirm_tessellation_first"]()
     : fieldStatus === "critical"
@@ -356,15 +348,15 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     !tessellationConfirmed ? "unconfirmed" : fieldBlocking ? "field" : null, zoneWarningCount(zoneProblems));
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
-    : presetInvalidCount > 0
+    : presetWarningCount > 0
     ? "warning"
     : "set";
   const presetComment = !tessellationConfirmed
     ? m["status.confirm_tessellation_first"]()
     : fieldBlocking
     ? m["status.configure_field_first"]()
-    : presetInvalidCount > 0
-    ? m["status.problematic_preset_elements"]({ count: presetInvalidCount })
+    : presetWarningCount > 0
+    ? m["status.warnings_count"]({ count: presetWarningCount })
     : undefined;
 
   const analyticsCard = computeAnalyticsCard(

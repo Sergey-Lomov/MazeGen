@@ -106,7 +106,7 @@ Used for all split-specific highlighting:
 - Analytics and Post-edit split issue warnings;
 - split route/tile warnings;
 - split warnings in export rendering;
-- orphan split-node warnings in Preset Connections;
+- unreachable split-node warnings in Preset Connections;
 - split point/tile paths that use the shared region renderer.
 
 Split cells must be passed as one or more region groups. Independent `CellFillRenderer`

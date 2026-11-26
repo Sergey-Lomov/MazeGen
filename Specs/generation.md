@@ -369,7 +369,7 @@ single-target, single-parameter overrides (the elevator span sets both bounds); 
 Warnings (`domain/zoneOverrides.ts`): a row with nothing to act on (`overrideHasNoZones`; `overrideProblem` says `missing`, the
 zones or groups were deleted, or `empty`, they exist without cells), and two overrides that set the same parameter on a
 common cell (`zoneOverrideConflicts`; different parameters on overlapping zones are fine). A row with a problem shows one
-`WarningIcon` after its target bubbles, its tooltip listing every problem of the row: "Zone is empty" / "Group is empty",
+`WarningIcon` (passed `messages`, rendered as a bulleted list under a "Warnings:" heading when there are several) after its target bubbles, its tooltip listing every problem of the row: "Zone is empty" / "Group is empty",
 the zones are gone, the overlap. The generation feature card has a collapsible "Warnings (N)" section at the top (collapsed
 by default, custom generator only) with one bubble for deleted targets, one per parameter set on an empty zone or group
 ("A special value of parameter "X" is set for an empty zone/group", the empty zones and groups as chips below, `emptyParamTargets`,
