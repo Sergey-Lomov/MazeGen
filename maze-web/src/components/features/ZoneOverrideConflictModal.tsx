@@ -28,6 +28,9 @@ const PARAM_LABELS: Record<ZoneOverrideParamKey, () => string> = {
   allow_non_consecutive_elevator_floors: () => categorized("vertical", m["generation.allow_non_consecutive_elevator_floors_short"]()),
 };
 
+/** Display name of a generation parameter an override sets. */
+export const zoneOverrideParamLabel = (key: ZoneOverrideParamKey): string => PARAM_LABELS[key]();
+
 /** Explains the "zones with special values overlap" warning (GitHub issue #1038) and lists the affected parameters. */
 export function ZoneOverrideConflictModal({ params, onClose }: { params: readonly ZoneOverrideParamKey[]; onClose: () => void }) {
   const labels = [...new Set(params.map((key) => PARAM_LABELS[key]()))];

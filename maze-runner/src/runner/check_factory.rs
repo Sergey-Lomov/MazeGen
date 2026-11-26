@@ -24,12 +24,12 @@ use maze_core::{
         ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOPS_SKIP_DEFAULT,
         ELEVATOR_STOPS_SPAN_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, ElevatorSpanCheck,
         ElevatorStopCountCheck, ElevatorStopGroupGeometricProximityCheck,
-        ElevatorStopGroupGraphProximityCheck, ElevatorStopsSkipCheck, ElevatorStopsSpanCheck,
-        ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue, ExternalEscapeDiversityCheck,
-        FORBID_CELL_TYPE_PARAM_PREFIX, GeometricFloorMode, InvalidCrossElementGroupIssue,
-        InvalidCrossElementIssue, InvalidDeadEndGroupIssue, InvalidElevatorGroupIssue,
-        InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
-        InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+        ElevatorStopGroupGraphProximityCheck, ElevatorStopsCountUnit, ElevatorStopsSkipCheck,
+        ElevatorStopsSpanCheck, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
+        ExternalEscapeDiversityCheck, FORBID_CELL_TYPE_PARAM_PREFIX, GeometricFloorMode,
+        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidDeadEndGroupIssue,
+        InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
+        InvalidLoopGroupIssue, InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
         InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
         InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
         InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
@@ -182,6 +182,13 @@ fn parse_split_teleport_direction(param: Option<&String>) -> SplitTeleportDirect
         Some("outgoing") => SplitTeleportDirection::Outgoing,
         Some("bidirectional") => SplitTeleportDirection::Bidirectional,
         _ => SplitTeleportDirection::Any,
+    }
+}
+
+fn parse_elevator_stops_count_unit(param: Option<&String>) -> ElevatorStopsCountUnit {
+    match param.map(String::as_str) {
+        Some("whole_scope") => ElevatorStopsCountUnit::WholeScope,
+        _ => ElevatorStopsCountUnit::PerFloor,
     }
 }
 
@@ -1596,9 +1603,12 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT);
+            let count_unit =
+                parse_elevator_stops_count_unit(instance.params.get("elevator_stops_count_unit"));
             Some(Box::new(MaxElevatorStopsPerFloorCheck {
                 instance_id,
                 max_elevator_stops_per_floor,
+                count_unit,
             }))
         }
         "elevator_stops_skip" => {
@@ -1822,5 +1832,22 @@ mod cell_type_param_tests {
     #[test]
     fn no_params_yield_no_keys() {
         assert!(parse_cell_type_keys(&instance(&[])).is_empty());
+    }
+
+    #[test]
+    fn count_unit_defaults_to_per_floor_and_reads_whole_scope() {
+        let whole = "whole_scope".to_string();
+        let per_floor = "per_floor".to_string();
+        let junk = "junk".to_string();
+        assert_eq!(
+            parse_elevator_stops_count_unit(Some(&whole)),
+            ElevatorStopsCountUnit::WholeScope
+        );
+        for param in [None, Some(&per_floor), Some(&junk)] {
+            assert_eq!(
+                parse_elevator_stops_count_unit(param),
+                ElevatorStopsCountUnit::PerFloor
+            );
+        }
     }
 }

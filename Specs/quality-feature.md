@@ -708,6 +708,14 @@ interface QcProblem { code; scope: "check" | "strategy" | "nested"; localId?: nu
   limits set never reports anything, so the rule card shows a warning labeled with the check and the rule counts as
   problematic (`emptyLimitsCheckIds`, `qcDerivedProblems.ts`). Not shown for a check that already carries a problem — a
   dropped by a tessellation change (`limits_reset`) or "cannot apply" — so one cause gives one warning.
+- **No forbidden cell type** (derived, never stored): an enabled `cross_element_cell_type` check with no `forbid_cell_type_*`
+  param set to `true` has no effect, so the rule card shows a warning labeled with the check and the rule counts as
+  problematic (`noForbiddenCellTypeCheckIds`, `qcDerivedProblems.ts`). Skipped for a check that already carries a problem.
+- **Warning wording:** a problem states the cause and the fix, never the consequence ("the check finds nothing", "the rule does
+  nothing"). Under a check label the text is joined as `label: reason`, with the reason's first letter lowercased
+  (`labelledProblemText`, `RulesColumn`). A zone scope id on the wire is built and read by `zoneScopeId` / `parseZoneScopeId`
+  (`domain/qcZoneScope.ts`); the bubble resolves it with `useIssueScope` (`IssuesBlock.tsx`), shared by the badges and the
+  description line.
 - **Disabled owners** (`visibleProblems`, `isRuleProblematic`, `ruleHasOwnProblem` in `qcRuleTypes.ts`): a problem whose owner
   is disabled goes away — a disabled check's own problems, and strategy- and nested-scope problems while the strategy is
   disabled (`disabled`). A rule left with no problems is healthy. `ruleDisabled` hides nothing: its warnings stay shown,
@@ -736,6 +744,11 @@ type QcZoneScopeTarget =
 - **Wire** (`domain/qcZoneScope.ts`, `buildZoneScopesWire`): the target expands into `QcRuleConfig.zone_scopes`
   (`{ id, cells: [floor, x, y][] }`), cut to the field with `filterZonesToField`, shared cells of a union listed once. A zone
   that exists but has no cells on the field gives a scope with empty `cells`. Absent `zoneScope`: no `zone_scopes`.
+- **Rebuild on confirm** (GitHub issue #1093): "Done" of the zone editor (`commitZoneEdit`, `setZoneEditId(null)`) and of the group
+  editor (`commitZoneGroupEdit`, `setZoneGroupEditId(null)`) calls `confirmPostEdit()` when some rule is bound to what changes: the
+  zone itself, a group it is or becomes a member of, or the edited group (`anyRuleScopedTo`). Nothing is rebuilt on a draft step,
+  on a cancel, or when no rule is bound to it; `confirmPostEdit` does nothing before the first generation.
+  `removeZone` (the zone or a group holding it) and `removeZoneGroup` rebuild the same way when a rule is bound to what is deleted.
 - **Deleting a zone or a group** does not touch the rules: the binding keeps naming the vanished id (ids are never reused),
   so the rule warns instead of silently widening to the whole map. Its bubble reads `quality.zone_scope_missing` until the
   user rebinds or removes it. A vanished automatic zone behaves the same.
@@ -754,7 +767,15 @@ type QcZoneScopeTarget =
 - **Persistence.** Saved with the rule as `quality.rules[].zoneScope` (`validateZoneScope`: a missing group `mode` is
   `union`; a malformed scope rejects the file). **Not saved in a quality preset**, and stripped on `loadQualityPreset`:
   zone ids belong to a project, so "Load rules" replaces all rules and drops the scopes of the old ones.
-- **Issues** carry `scope_id` (`IssueDto`); showing the zone in the issues list is not done.
+- **Issues** carry `scope_id` (`IssueDto`). An `IssueBubble` with a scope shows a zone badge (the zone in its own colour, a
+  union group as the blue "Group: name" bubble; `IssueScopeBadges` over `ZoneIdChips`, `parseZoneScopeId`) in place of its floor
+  badges: the zone is the more specific place, and its badge goes to the zone's lowest floor unless the active floor holds it.
+  An iteration group yields one issue per zone, so each bubble shows one zone badge. A scope naming a zone or group deleted
+  since the snapshot falls back to the floor badges. Rules have no floor scope, so floor badges and a zone never compete
+  beyond this replacement.
+  The detailed description (the bubble's modal) ends, after a blank line, with a plain-text paragraph "Limited to zone: <name>" or
+  "Limited to group: <name>" (`issue.scope_zone`, `issue.scope_group`), only when the issue has a scope that still names an
+  existing zone or group.
 - **Applicability:** a rule holding a check about the maze as a whole (`CheckDescriptor.zone_scope_unsupported`: start and
   finish present or connected, regions) cannot take a scope: its zone button is disabled with the tooltip
   `quality.zone_scope_unsupported` (`domain/qcZoneScope.ts`, `zoneScopeUnsupported`); a rule that already holds a scope

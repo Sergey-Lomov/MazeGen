@@ -3,7 +3,7 @@ import type { ExportOverrideMode, ExportOverrideValue, ExportZoneOverride, ZoneG
 import type { ParamLink } from "./parameterLinks";
 import { propagate, setParamValue } from "./slices/parameterLinksEngine";
 import { encodePoint } from "../domain/tessellationProjection";
-import { overrideHasNoZones, overrideZoneIds, zoneCellSets, zonesShareCell } from "../domain/zoneOverrides";
+import { emptyParamTargets, overrideProblem, overrideZoneIds, zoneCellSets, zonesShareCell } from "../domain/zoneOverrides";
 
 /** The parameters a zone cannot set (GitHub issue #1040), by render mode: an exact path in the mode's settings, or a
  *  prefix ending in a dot that covers every path below it. Everything else can differ per zone. What stays global has no
@@ -112,10 +112,11 @@ export function exportParamConflicts(overrides: readonly ExportZoneOverride[], z
   return [...grouped.values()].map((e) => ({ mode: e.mode, path: e.path, zoneIds: [...e.zoneIds], groupIds: [...e.groupIds] }));
 }
 
-/** How many overrides carry a warning of either kind: no zones left, or a parameter set differently on one cell. */
+/** How many warnings the overrides give (the bubbles of the export warnings section): one for zones that are gone, one per
+ *  parameter set on an empty zone or group, one per parameter set differently on a shared cell. */
 export function exportOverrideWarningCount(overrides: readonly ExportZoneOverride[], zones: readonly Zone[], groups: readonly ZoneGroup[]): number {
-  const conflicts = exportOverrideConflicts(overrides, zones, groups);
-  return overrides.filter((o) => overrideHasNoZones(o, zones, groups) || conflicts.has(o.id)).length;
+  const missing = overrides.some((o) => overrideProblem(o, zones, groups) === "missing");
+  return (missing ? 1 : 0) + emptyParamTargets(overrides, zones, groups, (o, path) => `${o.mode}:${path}`).length + exportParamConflicts(overrides, zones, groups).length;
 }
 
 type Cell = readonly [number, number];

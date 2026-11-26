@@ -47,6 +47,18 @@ export function filterZonesToField(zones: Zone[], resolveFieldAt: ResolveFieldAt
   }));
 }
 
+/** The cells of each zone that are not cells of their floor's field (a removed cell, a shrunk tessellation, a floor
+ * that no longer exists), by zone id; a zone with none is absent. The counterpart of `filterZonesToField`. */
+export function zoneCellsOutsideField(zones: readonly Zone[], resolveFieldAt: ResolveFieldAt): Map<number, Zone["cells"]> {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const outside = new Map<number, Zone["cells"]>();
+  for (const zone of zones) {
+    const cells = zone.cells.filter(([floor, x, y]) => !pointInField(getFieldSet, [x, y], floor));
+    if (cells.length > 0) outside.set(zone.id, cells);
+  }
+  return outside;
+}
+
 /** Whether `point` has a cell on floor `level` — the single-lookup form of `pointInField`, for
  * callers checking one point on one floor (elevator floor-picker rows, vertical-passage direction
  * availability) rather than scanning a whole preset collection. Not cached across calls; fine for

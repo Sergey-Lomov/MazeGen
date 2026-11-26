@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AUTO_COLOR_COUNT, autoColorAmong, glueColor } from "../domain/glueColor";
 import { colorToOklch } from "../domain/colorMath";
 import { zoneColors } from "../domain/selectors/zoneSelectors";
+import { ZONE_HUE_BASE_COLOR } from "../domain/renderConstants";
 import type { Zone } from "../wasm/mazeService";
 
 const zone = (id: number, kind: Zone["kind"]): Zone => ({ id, name: "", kind, cells: [] });
@@ -38,8 +39,9 @@ describe("zoneColors", () => {
   it("fits the automatic palette to their number, the manual one stays plain", () => {
     const many = [...range(54).map((i) => zone(i + 1, "auto")), zone(100, "manual"), zone(101, "manual")];
     const colors = zoneColors(many);
-    expect(colors[54]).toBe(glueColor(0));
-    expect(colors[55]).toBe(glueColor(1));
-    expect(colors[0]).toBe(autoColorAmong(0, 54));
+    expect(colors[54]).toBe(glueColor(0, false, ZONE_HUE_BASE_COLOR));
+    expect(colors[55]).toBe(glueColor(1, false, ZONE_HUE_BASE_COLOR));
+    expect(colors[0]).toBe(autoColorAmong(0, 54, ZONE_HUE_BASE_COLOR));
+    expect(colors[54]).not.toBe(glueColor(0));
   });
 });

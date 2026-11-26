@@ -136,4 +136,69 @@ describe("routeTeleportConnectors seam-aware routing", () => {
     expect(routed.partnerPoints![1]).toBeCloseTo(routed.points[routed.points.length - 1], 6);
     expectAxisAligned([routed.points, routed.partnerPoints!]);
   });
+
+  describe("manual paths (GitHub issue #1094)", () => {
+    const keyed: TeleportEdge = { ...farApart, fromNode: 1, toNode: 2 };
+    const planManual = (edges: TeleportEdge[], manualPaths: Record<string, { nodes: [number, number][] }>) =>
+      routeTeleportConnectors({
+        router: new TeleportConnectorRouter(), edges, style: { ...DEFAULT_MAZE_RENDER_STYLE.teleport, connectorStyle: "straight" },
+        cfg: undefined, waypoints: [], avoidFieldExit: false, fieldCells: [], markerMaxFactor: 1, seam, manualPaths,
+      });
+
+    it("an automatic connector exposes its whole uncut path in the unfolded frame", () => {
+      model = stripModel(true);
+      const [routed] = plan([keyed], "straight");
+      expect(routed.unfolded!.points).toEqual([0.5, 0.5, -0.5, 0.5]);
+    });
+
+    it("marks where the path crosses the seam and maps points beyond it onto the partner side and back", () => {
+      model = stripModel(true);
+      const { unfolded } = plan([keyed], "straight")[0];
+      expect(unfolded!.firstFar).toBe(1);
+      expect(unfolded!.cutAt).toEqual([0, 0.5]);
+      expect(unfolded!.toPartner([-0.5, 0.5])).toEqual([9.5, 0.5]);
+      expect(unfolded!.fromPartner([9.5, 0.5])).toEqual([-0.5, 0.5]);
+    });
+
+    it("has no far point when a manual path never reaches the seam", () => {
+      model = stripModel(true);
+      const manual = { "1:2": { nodes: [[0.5, 0.5], [0.3, 0.2], [0.2, 0.5]] as [number, number][] } };
+      expect(planManual([keyed], manual)[0].unfolded!.firstFar).toBe(Infinity);
+    });
+
+    it("a manual path of a seam connector is authored unfolded and keeps both pieces", () => {
+      model = stripModel(true);
+      const manual = { "1:2": { nodes: [[0.5, 0.5], [0.2, 0.2], [-0.5, 0.5]] as [number, number][] } };
+      const [routed] = planManual([keyed], manual);
+      expect(routed.unfolded!.points).toEqual([0.5, 0.5, 0.2, 0.2, -0.5, 0.5]);
+      expect(routed.points.slice(0, 4)).toEqual([0.5, 0.5, 0.2, 0.2]);
+      expect(routed.points[routed.points.length - 2]).toBeCloseTo(0, 6);
+      expect(routed.partnerPoints![0]).toBeCloseTo(10, 6);
+      expect(routed.partnerPoints!.slice(-2)).toEqual([9.5, 0.5]);
+    });
+
+    it("a manual end moved off its marker stays where it was put, leaving a gap", () => {
+      model = stripModel(true);
+      const manual = { "1:2": { nodes: [[0.8, 0.4], [0.2, 0.2], [-0.3, 0.5]] as [number, number][] } };
+      const [routed] = planManual([keyed], manual);
+      expect(routed.points.slice(0, 2)).toEqual([0.8, 0.4]);
+      expect(routed.partnerPoints!.slice(-2)).toEqual([9.7, 0.5]);
+    });
+
+    it("a manual path that no longer crosses the seam is drawn as authored", () => {
+      model = stripModel(true);
+      const manual = { "1:2": { nodes: [[0.5, 0.5], [0.3, 0.2], [0.2, 0.5]] as [number, number][] } };
+      const [routed] = planManual([keyed], manual);
+      expect(routed.points).toEqual([0.5, 0.5, 0.3, 0.2, 0.2, 0.5]);
+      expect(routed.partnerPoints).toBeUndefined();
+    });
+
+    it("a manual connector does not stop the others from going through the seam", () => {
+      model = stripModel(true, 2);
+      const other: TeleportEdge = { from: [0.5, 1.5], to: [9.5, 1.5], fromNode: 3, toNode: 4, oneWay: false };
+      const manual = { "1:2": { nodes: [[0.5, 0.5], [0.2, 0.2], [-0.5, 0.5]] as [number, number][] } };
+      const routed = planManual([keyed, other], manual);
+      expect(routed[1].partnerPoints).toBeDefined();
+    });
+  });
 });

@@ -308,8 +308,9 @@ export function computeTeleportConnectorWarnings(input: TeleportConnectorInput, 
 
     // An endpoint dragged off its marker.
     if (manualConnectorPoints(edge, manualPaths) !== null) {
-      const points = routed[i].points;
-      for (const [end, marker] of [[[points[0], points[1]], edge.from], [[points[points.length - 2], points[points.length - 1]], edge.to]] as const) {
+      // A seam connector ends in its partner piece.
+      const { points, partnerPoints = points } = routed[i];
+      for (const [end, marker] of [[[points[0], points[1]], edge.from], [[partnerPoints[partnerPoints.length - 2], partnerPoints[partnerPoints.length - 1]], edge.to]] as const) {
         const bound = markerRadius(marker, true);
         if (Math.hypot(end[0] - marker[0], end[1] - marker[1]) > bound + TOLERANCE) report("teleport_connector_endpoint_detached", [disc(end, highlight + 2), disc(marker, bound)]);
       }

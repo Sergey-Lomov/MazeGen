@@ -6,7 +6,7 @@ import type { ViewportListener } from "../sceneTypes";
 import { SeamArrowLayer } from "../seamArrowSync";
 import { exportSeamLayerShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
-import type { TeleportEdge } from "../../domain/renderers/types";
+import type { ConnectorEditPath } from "../renderers/teleportConnectorRouting";
 
 type CopyLayer = "content" | "overlay" | "highlight";
 const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay", "highlight"];
@@ -97,7 +97,7 @@ export class ImageExportRenderer implements ViewportListener {
     return this.modeRenderers.get(mode);
   }
 
-  getTeleportConnectorPaths(mode: RenderModeId): readonly { edge: TeleportEdge; points: readonly number[] }[] {
+  getTeleportConnectorPaths(mode: RenderModeId): readonly ConnectorEditPath[] {
     return this.modeRenderers.get(mode)?.getTeleportConnectorPaths?.() ?? [];
   }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { IssueBubble } from "../components/IssuesBlock";
 import { useMazeStore } from "../store/mazeStore";
+import * as m from "~/paraglide/messages";
 import { presetEndpoint } from "../domain/presetEndpoint";
 import type { IssueDto } from "../wasm/types";
 import {
@@ -17,6 +18,71 @@ import {
 
 beforeEach(() => {
   useMazeStore.setState({ nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((id) => ({ id, x: id, y: 0, i: 0, level: 0 })), hoveredCoordinateWarning: null });
+});
+
+describe("IssueBubble zone badges (GitHub issue #1093)", () => {
+  const floors = [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }];
+  const setup = () => useMazeStore.setState({
+    floors,
+    activeFloorId: floors[0].id,
+    nodes: [{ id: 1, x: 0, y: 0, i: 0, level: 0 }, { id: 2, x: 0, y: 0, i: 0, level: 1 }],
+    zones: [{ id: 5, name: "Zone five", kind: "manual", cells: [[1, 0, 0]] }],
+    zoneGroups: [{ id: 9, name: "Group nine", zoneIds: [5] }],
+  });
+
+  it("a zone-scoped issue shows the zone badge instead of floor badges", () => {
+    setup();
+    render(<IssueBubble issue={{ ...invalidLoopIssue("loop_length"), scope_id: "zone:5" }} sourceCheck="loop_length" />);
+
+    expect(screen.getByText("Zone five")).toBeInTheDocument();
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+    expect(screen.queryByText("L2")).not.toBeInTheDocument();
+  });
+
+  it("a union-group-scoped issue shows the group badge", () => {
+    setup();
+    render(<IssueBubble issue={{ ...invalidLoopIssue("loop_length"), scope_id: "group:9" }} sourceCheck="loop_length" />);
+
+    expect(screen.getByText(/Group nine/)).toBeInTheDocument();
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+
+  it("a zone badge click does not open the description modal", () => {
+    setup();
+    render(<IssueBubble issue={{ ...invalidLoopIssue("loop_length"), scope_id: "zone:5" }} sourceCheck="loop_length" />);
+
+    fireEvent.click(screen.getByText("Zone five"));
+    expect(screen.getAllByText("Loop validation").length).toBe(1);
+  });
+
+  const openModal = (scope_id?: string) => {
+    setup();
+    render(<IssueBubble issue={{ ...invalidLoopIssue("loop_length"), ...(scope_id ? { scope_id } : {}) }} sourceCheck="loop_length" />);
+    fireEvent.click(screen.getByText("Loop validation"));
+  };
+
+  it("the detailed description names the zone the rule was limited to, as plain text", () => {
+    openModal("zone:5");
+    expect(screen.getByTestId("issue-scope-line").textContent).toBe(m["issue.scope_zone"]({ name: "Zone five" }));
+  });
+
+  it("the detailed description names the group the rule was limited to", () => {
+    openModal("group:9");
+    expect(screen.getByTestId("issue-scope-line").textContent).toBe(m["issue.scope_group"]({ name: "Group nine" }));
+  });
+
+  it("the detailed description has no scope line without a scope", () => {
+    openModal();
+    expect(screen.queryByTestId("issue-scope-line")).not.toBeInTheDocument();
+  });
+
+  it("a scope naming a deleted zone falls back to floor badges", () => {
+    setup();
+    render(<IssueBubble issue={{ ...invalidLoopIssue("loop_length"), scope_id: "zone:404" }} sourceCheck="loop_length" />);
+
+    expect(screen.getByText("L1")).toBeInTheDocument();
+    expect(screen.getByText("L2")).toBeInTheDocument();
+  });
 });
 
 describe("IssueBubble floor badges (GitHub issue #365)", () => {

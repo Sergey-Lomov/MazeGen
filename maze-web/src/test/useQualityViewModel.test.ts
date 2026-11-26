@@ -65,7 +65,7 @@ describe("useQualityViewModel", () => {
     const { result } = renderHook(() => useQualityViewModel());
     expect(result.current.strategySlots[0].problems).toEqual([{
       checkLabel: "Split pattern shape",
-      text: "No split templates are set, so the check never reports anything. Set templates or delete the check.",
+      text: "No split templates are set. Set templates or delete the check.",
     }]);
   });
 

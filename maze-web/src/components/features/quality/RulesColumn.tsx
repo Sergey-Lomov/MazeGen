@@ -32,6 +32,7 @@ import { Button } from "../../Button";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
+import { labelledProblemText } from "../qualityI18n/problems";
 import { WarningBubble } from "../../WarningBubble";
 import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
@@ -206,7 +207,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
       {slot.problems && (
         <div style={styles.ruleProblems}>
           {slot.problems.map((problem, i) => {
-            const message = problem.checkLabel ? `${problem.checkLabel}: ${problem.text}` : problem.text;
+            const message = labelledProblemText(problem.checkLabel, problem.text);
             const dismiss = problem.dismiss;
             return dismiss
               ? <WarningBubble key={i} message={message} severity="warning" onDismiss={() => dismissRuleProblems(slot.ruleId, dismiss)} dismissTitle={m["quality.dismiss_problem"]()} />

@@ -8,17 +8,32 @@ use rand::RngCore;
 
 pub const MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT: u32 = 3;
 
-/// Flags a floor's elevator stops jointly invalid when their count exceeds
-/// `max_elevator_stops_per_floor` — see GitHub issue #399, part of epic #344. Any elevator stop on
+/// Flags elevator stops jointly invalid when their count exceeds
+/// `max_elevator_stops_per_floor` (per floor by default, see `count_unit` below) — see GitHub
+/// issue #399, part of epic #344. In the `PerFloor` unit, any elevator stop on
 /// the floor counts, from any elevator (an elevator contributes one stop per floor it touches, by
 /// construction — `elevator_core`'s `stops` never puts two of the same elevator's stops on one
 /// floor). Groups every over-budget floor's stops into its own group, paired with
 /// `to_remove = count - max_elevator_stops_per_floor`, sorted by `LevelId` for
 /// determinism. Which stops on an over-budget floor are actually removed is
 /// `ElevatorStopGroupSelectStrategy`'s job, not this check's.
+///
+/// `count_unit` picks what the limit counts (GitHub issue #1080): every floor separately
+/// (`PerFloor`, the default) or all stops of the visible scope together (`WholeScope`). The scope
+/// is the whole maze, or the rule's zone when the graph mask is raised (`elevator_groups` reads the
+/// masked graph), so with an Iteration group each zone is counted on its own. `WholeScope` emits a
+/// single group with every stop of the scope and `to_remove = total - max`.
 pub struct MaxElevatorStopsPerFloorCheck {
     pub instance_id: String,
     pub max_elevator_stops_per_floor: u32,
+    pub count_unit: ElevatorStopsCountUnit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ElevatorStopsCountUnit {
+    #[default]
+    PerFloor,
+    WholeScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for MaxElevatorStopsPerFloorCheck {
@@ -34,6 +49,27 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for MaxElevatorSto
         _requirement: (),
     ) {
         let per_floor = elevator_stops_per_floor(maze);
+
+        if self.count_unit == ElevatorStopsCountUnit::WholeScope {
+            let mut stops: Vec<NodeId> = per_floor.into_values().flatten().collect();
+            let total = stops.len() as u32;
+            if total <= self.max_elevator_stops_per_floor {
+                return;
+            }
+            stops.sort_unstable();
+            let excess = total - self.max_elevator_stops_per_floor;
+            let issue = InvalidElevatorStopGroupIssue::new_from_check(
+                &self.instance_id,
+                vec![(stops, excess)],
+            )
+            .with_detail(
+                &self.instance_id,
+                "max_elevator_stops_per_floor",
+                self.max_elevator_stops_per_floor.to_string(),
+            );
+            issues.push(issue);
+            return;
+        }
 
         let mut over_budget: Vec<LevelId> = per_floor
             .iter()
@@ -118,6 +154,7 @@ mod tests {
         let check = MaxElevatorStopsPerFloorCheck {
             instance_id: TEST_ID.to_string(),
             max_elevator_stops_per_floor: 1,
+            count_unit: ElevatorStopsCountUnit::PerFloor,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -146,10 +183,78 @@ mod tests {
         let check = MaxElevatorStopsPerFloorCheck {
             instance_id: TEST_ID.to_string(),
             max_elevator_stops_per_floor: 2,
+            count_unit: ElevatorStopsCountUnit::PerFloor,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "count equal to the max must not fire");
+    }
+
+    #[test]
+    fn whole_scope_counts_all_stops_in_one_group() {
+        // 3 elevators over 2 floors = 6 stops in total, 3 per floor.
+        let maze = maze_with_elevators_sharing_floors(3);
+        let check = MaxElevatorStopsPerFloorCheck {
+            instance_id: TEST_ID.to_string(),
+            max_elevator_stops_per_floor: 4,
+            count_unit: ElevatorStopsCountUnit::WholeScope,
+        };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].groups.len(), 1);
+        let (stops, to_remove) = &issues[0].groups[0];
+        assert_eq!(stops.len(), 6);
+        assert_eq!(*to_remove, 2);
+    }
+
+    #[test]
+    fn whole_scope_silent_at_or_below_max_while_per_floor_would_fire() {
+        let maze = maze_with_elevators_sharing_floors(3);
+        let whole = MaxElevatorStopsPerFloorCheck {
+            instance_id: TEST_ID.to_string(),
+            max_elevator_stops_per_floor: 6,
+            count_unit: ElevatorStopsCountUnit::WholeScope,
+        };
+        let mut issues = Vec::new();
+        whole.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(issues.is_empty(), "total equal to the max must not fire");
+
+        let per_floor = MaxElevatorStopsPerFloorCheck {
+            instance_id: TEST_ID.to_string(),
+            max_elevator_stops_per_floor: 2,
+            count_unit: ElevatorStopsCountUnit::PerFloor,
+        };
+        per_floor.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1, "per-floor unit still counts each floor");
+    }
+
+    #[test]
+    fn whole_scope_counts_only_the_raised_scope() {
+        // 3 elevators (6 stops); the scope keeps the first two columns, so 4 stops.
+        let maze = maze_with_elevators_sharing_floors(3);
+        let inner: std::collections::HashSet<NodeId> = maze
+            .field
+            .all_node_ids()
+            .filter(|&n| maze.field.cell_of(n).is_some_and(|p| p.x < 2))
+            .collect();
+        let check = MaxElevatorStopsPerFloorCheck {
+            instance_id: TEST_ID.to_string(),
+            max_elevator_stops_per_floor: 3,
+            count_unit: ElevatorStopsCountUnit::WholeScope,
+        };
+        let mut issues = Vec::new();
+        maze.with_scope(inner, |m| {
+            check.repair_check(m, &mut issues, &mut rng(), ());
+        });
+        assert_eq!(issues.len(), 1);
+        let (stops, to_remove) = &issues[0].groups[0];
+        assert_eq!(
+            stops.len(),
+            4,
+            "stops outside the scope must not be counted"
+        );
+        assert_eq!(*to_remove, 1);
     }
 
     #[test]
@@ -158,6 +263,7 @@ mod tests {
         let check = MaxElevatorStopsPerFloorCheck {
             instance_id: TEST_ID.to_string(),
             max_elevator_stops_per_floor: 0,
+            count_unit: ElevatorStopsCountUnit::PerFloor,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
@@ -196,6 +302,7 @@ mod tests {
         let check = MaxElevatorStopsPerFloorCheck {
             instance_id: TEST_ID.to_string(),
             max_elevator_stops_per_floor: 1,
+            count_unit: ElevatorStopsCountUnit::PerFloor,
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());

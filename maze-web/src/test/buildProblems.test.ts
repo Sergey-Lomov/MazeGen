@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildProblems, type CheckVM } from "../components/features/useQualityViewModel";
-import { emptyLimitsCheckIds, emptyPatternCheckIds, problematicRuleCount } from "../store/qcDerivedProblems";
+import { labelledProblemText } from "../components/features/qualityI18n/problems";
+import { emptyLimitsCheckIds, emptyPatternCheckIds, noForbiddenCellTypeCheckIds, problematicRuleCount } from "../store/qcDerivedProblems";
 import { isRuleProblematic, ruleHasSendableChecks, sendableChecks, visibleProblems, type QcProblem } from "../store/storeTypes";
 
 const live = { localId: 0, disabled: false };
@@ -179,5 +180,37 @@ describe("emptyPatternCheckIds (GitHub issue #1095)", () => {
   it("makes a rule with missing templates problematic", () => {
     const rules = [{ id: "a", checks: [patternCheck(0, "[]")] }, { id: "b", checks: [patternCheck(0, '[{}]')] }];
     expect(problematicRuleCount(rules, [], descriptors, [], [])).toBe(1);
+  });
+});
+
+describe("noForbiddenCellTypeCheckIds", () => {
+  const bool = (id: string) => ({ id, kind: { type: "bool" as const, default: false } });
+  const descriptors = [{ id: "cross_element_cell_type", params: [bool("forbid_cell_type_square"), bool("forbid_cell_type_hexagon")] }];
+  const check = (localId: number, params: Record<string, string>, disabled = false) => ({ localId, typeId: "cross_element_cell_type", params, disabled });
+
+  it("flags a check with no forbidden cell type and keeps one with a type selected clean", () => {
+    const rule = { checks: [check(0, {}), check(1, { forbid_cell_type_square: "false" }), check(2, { forbid_cell_type_hexagon: "true" })] };
+    expect(noForbiddenCellTypeCheckIds(rule, descriptors)).toEqual([0, 1]);
+  });
+
+  it("skips a disabled check, one already carrying a problem and other check types", () => {
+    const problems: QcProblem[] = [{ code: "limits_reset", scope: "check", localId: 1, paramId: "x" }];
+    const rule = { checks: [check(0, {}, true), check(1, {}), { localId: 2, typeId: "other", params: {}, disabled: false }], problems };
+    expect(noForbiddenCellTypeCheckIds(rule, descriptors)).toEqual([]);
+  });
+
+  it("makes the rule count as problematic", () => {
+    const rules = [{ id: "a", checks: [check(0, {})] }, { id: "b", checks: [check(0, { forbid_cell_type_square: "true" })] }];
+    expect(problematicRuleCount(rules, [], descriptors, [], [])).toBe(1);
+  });
+});
+
+describe("labelledProblemText", () => {
+  it("joins the check label and the reason with a lowercased first letter", () => {
+    expect(labelledProblemText("Node shape limits", "Limits are not set. Set them.")).toBe("Node shape limits: limits are not set. Set them.");
+  });
+
+  it("leaves a problem without a check label as it is", () => {
+    expect(labelledProblemText(undefined, "The rule has no checks.")).toBe("The rule has no checks.");
   });
 });

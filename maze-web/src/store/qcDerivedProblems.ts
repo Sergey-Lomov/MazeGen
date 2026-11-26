@@ -59,8 +59,28 @@ export function emptyPatternCheckIds(
     .map((check) => check.localId);
 }
 
+const CELL_TYPE_CHECK_ID = "cross_element_cell_type";
+const FORBID_CELL_TYPE_PREFIX = "forbid_cell_type_";
+
+/** `cross_element_cell_type` checks with no cell type marked forbidden: nothing can violate them, so they have no
+ *  effect. Derived, never stored. Skips disabled checks and checks that already carry a problem of their own. */
+export function noForbiddenCellTypeCheckIds(
+  rule: { checks: readonly CheckLike[]; problems?: QcProblem[] },
+  descriptors: readonly DescriptorLike[],
+): number[] {
+  const paramIds = descriptors.find((d) => d.id === CELL_TYPE_CHECK_ID)?.params.map((p) => p.id).filter((id) => id.startsWith(FORBID_CELL_TYPE_PREFIX)) ?? [];
+  if (paramIds.length === 0) return [];
+  return rule.checks
+    .filter((check) => {
+      if (check.typeId !== CELL_TYPE_CHECK_ID || check.disabled) return false;
+      if ((rule.problems ?? []).some((p) => p.scope === "check" && p.localId === check.localId)) return false;
+      return !paramIds.some((id) => check.params[id] === "true");
+    })
+    .map((check) => check.localId);
+}
+
 /** Rules the feature card counts as problematic: stored problems, an empty rule, empty limits or templates, or a zone scope
- *  with no zone left (GitHub issues #1039, #1095).
+ *  with no zone left or forbidden cell type (GitHub issues #1039, #1095).
  *  A disabled rule and the rules of a disabled stage are not counted. */
 export function problematicRuleCount(
   rules: readonly (ProblemRule & { id: string; checks: readonly CheckLike[]; zoneScope?: QcZoneScopeTarget })[],
@@ -73,5 +93,6 @@ export function problematicRuleCount(
   return rules.filter((r) => !inDisabledStage.has(r.id) && !r.ruleDisabled
     && (isRuleProblematic(r) || zoneScopeHasNoZones(r, zones, groups)
       || emptyLimitsCheckIds(r, descriptors).length > 0
-      || emptyPatternCheckIds(r, descriptors).length > 0)).length;
+      || emptyPatternCheckIds(r, descriptors).length > 0
+      || noForbiddenCellTypeCheckIds(r, descriptors).length > 0)).length;
 }

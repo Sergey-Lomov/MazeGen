@@ -1820,6 +1820,7 @@ pub struct MaxElevatorStopsCheck {
 pub struct MaxElevatorStopsPerFloorCheck {
     pub instance_id: String,
     pub max_elevator_stops_per_floor: u32,
+    pub count_unit: ElevatorStopsCountUnit, // PerFloor (default) | WholeScope
 }
 ```
 
@@ -1827,7 +1828,7 @@ See GitHub issue #399, part of epic #344. Both checks validate a **stop-level** 
 
 **`MaxElevatorStopsCheck`** (`check_type_id() == "max_elevator_stops"`) — per-elevator scope. Scans every `elevator_groups(maze)` entry independently; an elevator whose own stop count exceeds `max_elevator_stops` becomes its own group (all of its stops, sorted), paired with `to_remove = count - max_elevator_stops`. Several over-budget elevators each contribute their own group to the same issue (sorted by stop-node set for determinism) (one group per over-budget floor), except the unit here is "one elevator", not "one floor".
 
-**`MaxElevatorStopsPerFloorCheck`** (`check_type_id() == "max_elevator_stops_per_floor"`) — per-floor count, always (a floor-level count is the only shape that makes sense for this check). Any elevator stop on a floor counts toward that floor's tally, from any elevator — an elevator contributes at most one stop per floor it touches, by construction (`elevator_core`'s stop set never puts two of the same elevator's stops on one floor). Groups every over-budget floor's stops into its own group (sorted by `LevelId` for determinism), `to_remove = count - max_elevator_stops_per_floor`.
+**`MaxElevatorStopsPerFloorCheck`** (`check_type_id() == "max_elevator_stops_per_floor"`) — counting unit set by the `elevator_stops_count_unit` param (GitHub issue #1080, enum `per_floor` | `whole_scope`, default `per_floor` so existing rules keep their behavior). `whole_scope` counts every stop of the visible scope together: the whole maze, or the rule's zone when the scope mask is raised (`elevator_groups` reads the masked graph), so with an Iteration group each zone is counted separately. It emits a single group of all scope stops (sorted), `to_remove = total - max_elevator_stops_per_floor`. The rest of this paragraph describes `per_floor`. Any elevator stop on a floor counts toward that floor's tally, from any elevator — an elevator contributes at most one stop per floor it touches, by construction (`elevator_core`'s stop set never puts two of the same elevator's stops on one floor). Groups every over-budget floor's stops into its own group (sorted by `LevelId` for determinism), `to_remove = count - max_elevator_stops_per_floor`.
 
 Either way, fires `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "max_elevator_stops" | "max_elevator_stops_per_floor", threshold.to_string())` chained on. Repaired by `ElevatorStopGroupSelectStrategy` (see `repair.md`) — which stops within an over-budget group are actually removed is the strategy's job, not either check's.
 

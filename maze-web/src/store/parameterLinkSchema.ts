@@ -261,7 +261,6 @@ export const LINK_SCHEMA = {
     markerSizeAdaptation: f("number", `${PL}.shared_marker_size_adaptation`, { spread: true, group: G.sharedStyleMarkers }),
     markerBorderWidth: f("number", `${PL}.shared_marker_border_width`, { group: G.sharedStyleMarkers }),
     gapWidth: f("number", `${PL}.shared_gap_width`, { group: G.sharedStyleMarkers }),
-    markerTextSize: f("number", `${PL}.shared_marker_text_size`, { group: G.sharedStyleText }),
     markerTextMargin: f("number", `${PL}.shared_marker_text_margin`, { group: G.sharedStyleText }),
     labelFont: f("labelFont", "image_export.label_font_family", { group: G.sharedStyleText }),
     floorLabelType: f("indexLabelStyle", "image_export.floors.general_style_floor_label"),

@@ -16,7 +16,8 @@ import { brightColor } from "../domain/colorMath";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { previewZoneCombine } from "../domain/selectors/zoneCombine";
 import { FIELD_EDITOR_PREVIEW_COLORS } from "../domain/colorTokens";
-import { base, hexToNumber } from "../styles/palette";
+import { hexToNumber } from "../styles/palette";
+import { CoordinateWarningHighlight } from "./CoordinateWarningHighlight";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -46,6 +47,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
   private readonly zonesContainer: Container;
   private readonly hoverContainer: Container;
   private readonly combineContainer: Container;
+  private readonly coordinateWarningContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly fieldGrid: GridRenderer;
@@ -54,6 +56,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
   private readonly zones: RegionHighlightRenderer;
   private readonly hoverZone: RegionHighlightRenderer;
   private readonly combinePreview: RegionHighlightRenderer;
+  private readonly coordinateWarning: CoordinateWarningHighlight;
 
   constructor(container: Container) {
     super();
@@ -66,6 +69,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.zonesContainer = new Container();
     this.hoverContainer = new Container();
     this.combineContainer = new Container();
+    this.coordinateWarningContainer = new Container();
 
     // The grid is drawn over the floor fill, so it runs through the field as thin lines, as it does outside.
     this.root.addChild(this.floorContainer);
@@ -75,6 +79,7 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.root.addChild(this.zonesContainer);
     this.root.addChild(this.hoverContainer);
     this.root.addChild(this.combineContainer);
+    this.root.addChild(this.coordinateWarningContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "zones");
     this.fieldGrid = new GridRenderer(this.fieldGridContainer, "zones field");
@@ -83,6 +88,8 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.zones = new RegionHighlightRenderer(this.zonesContainer);
     this.hoverZone = new RegionHighlightRenderer(this.hoverContainer);
     this.combinePreview = new RegionHighlightRenderer(this.combineContainer);
+    // The zone problem warnings (GitHub issue #1034) light the hovered problem cells, outside the field too.
+    this.coordinateWarning = new CoordinateWarningHighlight(this.coordinateWarningContainer, (state) => this.isCardOpen(state));
 
     this.root.visible = false;
 
@@ -214,12 +221,12 @@ export class ZonesRenderer extends BaseFieldRenderer {
   /** The list hover: drawn over the rest, whatever the toggles say; the active floor stays as it is. */
   private drawHover(state: MazeState, fieldZones: Zone[], cfg: FieldConfig): void {
     // The zone being edited is drawn the same way, so it reads over the others whatever the toggles say.
-    // A hovered group (GitHub issue #1038) lights all its zones in the info blue, whatever their own colours.
+    // A hovered group (GitHub issue #1038) lights all its zones, each in its own colour.
     const hoveredGroup = state.hoveredZoneGroupId === null ? undefined : state.zoneGroups.find((g) => g.id === state.hoveredZoneGroupId);
     const shownIds = hoveredGroup ? hoveredGroup.zoneIds
       : state.hoveredZoneId !== null ? [state.hoveredZoneId]
       : state.zoneEditDraft ? [state.zoneEditDraft.id] : [];
-    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor), hoveredGroup ? hexToNumber(base.info) : undefined);
+    const hover = shownIds.length === 0 ? null : buildZonesHoverRegion(fieldZones, shownIds, activeFloorIndex(state), overridesWithDraft(state.zoneColorOverrides, state.zoneEditDraft, state.zoneEditDraftColor));
     this.hoverZone.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],
@@ -253,7 +260,9 @@ export class ZonesRenderer extends BaseFieldRenderer {
     this.zones.destroy();
     this.hoverZone.destroy();
     this.combinePreview.destroy();
+    this.coordinateWarning.destroy();
     this.combineContainer.destroy();
+    this.coordinateWarningContainer.destroy();
     this.wallsContainer.destroy();
     this.zonesContainer.destroy();
     this.hoverContainer.destroy();
@@ -291,7 +300,7 @@ export class ZoneHoverOverlay {
     const ids = state.openCard === "zones" ? [] : group ? group.zoneIds : state.hoveredZoneId !== null ? [state.hoveredZoneId] : [];
     const hover = ids.length === 0
       ? null
-      : buildZonesHoverRegion(filterZonesToField(state.zones, resolveFieldAtOf(state)), ids, activeFloorIndex(state), state.zoneColorOverrides, group ? hexToNumber(base.info) : undefined);
+      : buildZonesHoverRegion(filterZonesToField(state.zones, resolveFieldAtOf(state)), ids, activeFloorIndex(state), state.zoneColorOverrides);
     this.region.render({
       nodes: hover?.nodes ?? [],
       regionGroups: [],

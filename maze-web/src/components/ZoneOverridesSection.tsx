@@ -1,7 +1,8 @@
 import React from "react";
 import { ChevronDown, ChevronRight, ListPlus } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import type { ZoneOverride, ZoneOverrideParamKey, ZoneOverrideTarget } from "../store/zonesTypes";
+import type { ZoneGroup, ZoneOverride, ZoneOverrideParamKey, ZoneOverrideTarget } from "../store/zonesTypes";
+import type { Zone } from "../wasm/mazeService";
 import { NumberInput } from "./NumberInput";
 import { Switch } from "./Switch";
 import { Bubble } from "./Bubble";
@@ -13,7 +14,7 @@ import { WarningIcon } from "./WarningIcon";
 import { sharedStyles } from "../styles/shared";
 import { font, spacing, indent, ui } from "../styles/theme";
 import { zoneChipColors, zoneColors, zoneDisplayName, zoneFloors, zoneGroupDisplayName } from "../domain/selectors/zoneSelectors";
-import { ZONE_OVERRIDE_SWITCH_KEYS, overrideHasNoZones, zoneOverrideConflicts } from "../domain/zoneOverrides";
+import { ZONE_OVERRIDE_SWITCH_KEYS, emptyOverrideTargets, overrideProblem, zoneOverrideConflicts } from "../domain/zoneOverrides";
 import * as m from "~/paraglide/messages";
 
 /** What the target picker is asked for: a new override of `params`, or the new target of the override `overrideId`. */
@@ -98,6 +99,24 @@ export function useOverrideTargets() {
   return { targets, showTarget, hover };
 }
 
+/** What is wrong with an override, one line each: nothing to act on, a parameter set twice on one cell. */
+function overrideProblemLines(override: ZoneOverride, zones: Zone[], groups: ZoneGroup[], conflicting: boolean): string[] {
+  const problem = overrideProblem(override, zones, groups);
+  const empty = emptyOverrideTargets(override, zones, groups);
+  return [
+    ...(problem === "missing" ? [m["generation.zone_override_problem_missing"]()] : []),
+    ...(problem === "empty" && empty.zoneIds.length > 0 ? [m["generation.zone_override_problem_zone_empty"]()] : []),
+    ...(problem === "empty" && empty.groupIds.length > 0 ? [m["generation.zone_override_problem_group_empty"]()] : []),
+    ...(conflicting ? [m["generation.zone_override_conflict"]()] : []),
+  ];
+}
+
+/** The warning icon of an override row, its tooltip the list of its problems; nothing without any. */
+function OverrideProblemIcon({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null;
+  return <WarningIcon title={<>{lines.map((line) => <div key={line}>{line}</div>)}</>} />;
+}
+
 /** List of the zone overrides of one parameter, under that parameter's row; absent while collapsed or without any. Each
  *  row is a bubble naming the zone (in its colour) or the group (blue, prefixed) and the value used inside it; hovering
  *  the bubble lights the zone or the group's zones on the canvas, a click picks another target. */
@@ -133,10 +152,7 @@ export function ZoneOverridesSection({ paramKeys, integer, expanded, onRequest }
                   {t.label}
                 </Bubble>
               ))}
-              {overrideHasNoZones(o, zones, groups) && (
-                <Bubble variant="warning" interactive onClick={() => onRequest({ params: o.params, overrideId: o.id })}>{m["generation.zone_override_choose"]()}</Bubble>
-              )}
-              {(conflicts.get(o.id) ?? []).some((c) => c.params.includes(first)) && <WarningIcon title={m["generation.zone_override_conflict"]()} />}
+              <OverrideProblemIcon lines={overrideProblemLines(o, zones, groups, (conflicts.get(o.id) ?? []).some((c) => c.params.includes(first)))} />
             </div>
             {paramKeys.map((key) => ZONE_OVERRIDE_SWITCH_KEYS.includes(key) ? (
               <Switch

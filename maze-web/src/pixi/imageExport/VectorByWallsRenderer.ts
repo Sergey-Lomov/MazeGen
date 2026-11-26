@@ -306,7 +306,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
-  getTeleportConnectorPaths(): readonly { edge: import("../../domain/renderers/types").TeleportEdge; points: readonly number[] }[] {
+  getTeleportConnectorPaths(): readonly import("../renderers/teleportConnectorRouting").ConnectorEditPath[] {
     // The base renderer can be in a backdrop-only pass while a cut sheet is displayed. Refreshing
     // its plan here keeps the editor independent of that presentation pass.
     this.renderAll(useMazeStore.getState());

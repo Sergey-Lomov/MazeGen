@@ -5,7 +5,7 @@ import { TILE_SIZE } from "../../domain/constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../domain/defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "../../domain/renderers/markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { arrowPlacements, type ConnectorEditPath, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter } from "./teleportConnectorRouter";
 import { routeTeleportConnectors } from "./teleportConnectorPlan";
 import { buildTeleportGroups, type TeleportGroup } from "../../domain/selectors/teleportGroups";
@@ -64,8 +64,8 @@ export class TeleportRenderer {
   }
 
   /** Exact polylines from the most recent draw, for the non-exported edit overlay. */
-  getConnectorPaths(): readonly { edge: TeleportEdge; points: readonly number[] }[] {
-    return this.selectionConnectors.map(({ edge, routed }) => ({ edge, points: routed.points }));
+  getConnectorPaths(): readonly ConnectorEditPath[] {
+    return this.selectionConnectors.map(({ edge, routed }) => ({ edge, points: routed.unfolded?.points ?? routed.points, seam: routed.unfolded }));
   }
 
   /** `lineStyle` defaults to the pre-#293 fixed look (every caller except `VectorByWallsRenderer`).

@@ -44,6 +44,8 @@ export const GLUE_TAB_LINE_WIDTH_RANGE = { min: 0, max: 10 } as const;
 /** The base colour of the automatic hue distribution (GitHub issue #903): glue colours, and the default base colour of the
  *  export's edge alignment markers, so markers that sit on glues get the glues' colours. */
 export const AUTO_HUE_BASE_COLOR = 0x2873bd;
+/** The colour the automatic zone palette starts from (GitHub issue #1093 follow-up): the zones' own scheme, so a zone and a glue differ. */
+export const ZONE_HUE_BASE_COLOR = 0x2b965b;
 /** Lightness added to a hovered glue's colour (OKLCH L). */
 export const GLUE_HOVER_LIGHTNESS = 10;
 export const EDGE_MARKER_SIZE_RANGE ={ min: 2, max: 40 } as const;

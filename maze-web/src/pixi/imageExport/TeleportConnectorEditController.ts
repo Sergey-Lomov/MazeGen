@@ -6,17 +6,19 @@ import { getCellCenter, getCellVertices } from "../../domain/tessellationGeometr
 import { selectFloorScopedMaze } from "../../domain/selectors/mazeSelectors";
 import { distanceToSegment } from "./cutLines";
 import { CUBIC_SAMPLE_STEPS, curveControls, editableCurvePoints, manualPathMode, straightCubicControls, teleportConnectorKey } from "../../domain/renderers/teleportConnectorManual";
-import type { TeleportEdge } from "../../domain/renderers/types";
+import type { ConnectorEditPath, UnfoldedPath } from "../renderers/teleportConnectorRouting";
+import { isFarPoint, placedPoints, segmentPieces, toEditFrame } from "./connectorSeamFrame";
 import { notifyTeleportConnectorEndpointCannotBeRemoved } from "../../notifications/teleportConnectorEditNotifications";
 
-type Drawn = { edge: TeleportEdge; points: readonly number[] };
+type Drawn = ConnectorEditPath;
 const HIT_PX = 10;
 
 /** Owns interaction and its disposable canvas-only affordances.  This Graphics is attached beside
  * export overlays, never to a mode renderer, so PNG exporters cannot include it. */
 export class TeleportConnectorEditController implements PointerHandler, ViewportListener {
   private readonly view = new Graphics();
-  private dragging: { key: string; index: number; original: [number, number]; originalPath: number[]; alignmentLocked: boolean } | null = null;
+  /** `through`: the seam a dragged point is drawn beyond, so the pointer maps back through it. */
+  private dragging: { key: string; index: number; through: UnfoldedPath | null; original: [number, number]; originalPath: number[]; alignmentLocked: boolean } | null = null;
   private pendingPan: { x: number; y: number } | null = null;
   private panning = false;
   private previewing = false;
@@ -51,18 +53,20 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     const selected = edit.selected;
     const r = 5 / Math.max(this.getViewport().scale.x, 1e-9);
     const manualPaths = st.vectorByWallsSettings.manualTeleportConnectorPaths ?? {};
-    for (const { edge, points } of paths) {
+    for (const drawn of paths) {
+      const { edge, points } = drawn;
       const key = teleportConnectorKey(edge);
       if (!key || points.length < 4) continue;
       const authored = manualPaths[key];
       const editable = authored ? manualPathMode(authored) === "curve" ? editableCurvePoints(authored) : authored.nodes.flat() : points;
+      const placed = placedPoints(drawn.seam, editable, !!authored && manualPathMode(authored) === "curve");
       // Guides are behind every point marker, especially the selected anchor.
       if (authored && manualPathMode(authored) === "curve" && selected?.key === key && selected.index % 3 === 0) {
         for (let i = 0; i < editable.length; i += 2) {
           const index = i / 2;
           if (index % 3 === 0) continue;
           const anchor = index % 3 === 1 ? index - 1 : index + 1;
-          if (anchor === selected.index) this.drawDottedGuide(editable[i], editable[i + 1], editable[anchor * 2], editable[anchor * 2 + 1], r);
+          if (anchor === selected.index) this.drawDottedGuide(placed[index][0], placed[index][1], placed[anchor][0], placed[anchor][1], r);
         }
       }
       for (let i = 0; i < editable.length; i += 2) {
@@ -72,7 +76,7 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
         const shownControl = !!control && selected?.key === key && selected.index === anchor;
         if (control && !shownControl) continue;
         const chosen = selected?.key === key && selected.index === index;
-        this.view.circle(editable[i], editable[i + 1], chosen ? r * 1.45 : control ? r * .8 : r).fill(chosen ? 0xffc107 : control ? 0x95a5a6 : 0x2d9cdb).stroke({ width: r * .35, color: 0xffffff });
+        this.view.circle(placed[index][0], placed[index][1], chosen ? r * 1.45 : control ? r * .8 : r).fill(chosen ? 0xffc107 : control ? 0x95a5a6 : 0x2d9cdb).stroke({ width: r * .35, color: 0xffffff });
       }
     }
   }
@@ -102,7 +106,7 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
       const authored = st.vectorByWallsSettings.manualTeleportConnectorPaths?.[hit.key];
       const anchor = authored && manualPathMode(authored) === "curve" && hit.index % 3 !== 0 ? hit.index % 3 === 1 ? hit.index - 1 : hit.index + 1 : hit.index;
       st.setTeleportConnectorEditSelection({ key: hit.key, index: anchor });
-      this.dragging = { key: hit.key, index: hit.index, original: [hit.points[hit.index * 2], hit.points[hit.index * 2 + 1]], originalPath: [...hit.points], alignmentLocked: this.isCurvePairAligned(hit.key, hit.index, hit.points) };
+      this.dragging = { key: hit.key, index: hit.index, through: hit.through, original: [hit.points[hit.index * 2], hit.points[hit.index * 2 + 1]], originalPath: [...hit.points], alignmentLocked: this.isCurvePairAligned(hit.key, hit.index, hit.points) };
       return;
     }
     const segment = this.segmentHit(p.x, p.y);
@@ -115,15 +119,16 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
       this.write(segment.key, editableCurvePoints({ mode: "curve", nodes, controls }));
       const index = (nodeIndex + 1) * 3;
       st.setTeleportConnectorEditSelection({ key: segment.key, index });
-      this.dragging = { key: segment.key, index, original: nodes[nodeIndex + 1], originalPath, alignmentLocked: false };
+      this.dragging = { key: segment.key, index, through: segment.through, original: nodes[nodeIndex + 1], originalPath, alignmentLocked: false };
       return;
     }
     const points = this.materialize(segment);
     const insertionIndex = segment.index;
-    points.splice((insertionIndex + 1) * 2, 0, p.x, p.y);
+    const inserted = toEditFrame(segment.through, [p.x, p.y]);
+    points.splice((insertionIndex + 1) * 2, 0, inserted[0], inserted[1]);
     this.write(segment.key, points);
     st.setTeleportConnectorEditSelection({ key: segment.key, index: insertionIndex + 1 });
-    this.dragging = { key: segment.key, index: insertionIndex + 1, original: [p.x, p.y], originalPath: [...points], alignmentLocked: false };
+    this.dragging = { key: segment.key, index: insertionIndex + 1, through: segment.through, original: inserted, originalPath: [...points], alignmentLocked: false };
   }
 
   onPointerMove(canvasX: number, canvasY: number, _buttons?: number, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean): void {
@@ -142,7 +147,8 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
       return;
     }
     this.clearHover();
-    const point = ctrlKey || metaKey ? this.snap(p.x, p.y) : [p.x, p.y] as [number, number];
+    const shown = ctrlKey || metaKey ? this.snap(p.x, p.y) : [p.x, p.y] as [number, number];
+    const point = toEditFrame(this.dragging.through, shown);
     const current = this.path(this.dragging.key);
     if (!current) return;
     const authored = useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths?.[this.dragging.key];
@@ -215,22 +221,29 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     }
     return null;
   }
-  private pointHit(x: number, y: number): { key: string; index: number; points: number[] } | null {
+  private pointHit(x: number, y: number): { key: string; index: number; through: UnfoldedPath | null; points: number[] } | null {
     const t = this.tolerance();
     for (const d of this.paths()) { const key = teleportConnectorKey(d.edge); if (!key) continue; const points = this.path(key) ?? this.materialize(d);
       const authored = useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths?.[key], selected = useMazeStore.getState().teleportConnectorEdit?.selected;
-      for (let i = 0; i < points.length; i += 2) {
-        const index = i / 2, control = authored && manualPathMode(authored) === "curve" && index % 3 !== 0;
+      const curve = !!authored && manualPathMode(authored) === "curve";
+      const placed = placedPoints(d.seam, points, curve);
+      for (let index = 0; index < placed.length; index++) {
+        const control = curve && index % 3 !== 0;
         const anchor = index % 3 === 1 ? index - 1 : index % 3 === 2 ? index + 1 : index;
         if (control && (selected?.key !== key || selected.index !== anchor)) continue;
-        if (Math.hypot(x - points[i], y - points[i + 1]) <= t) return { key, index, points };
+        if (Math.hypot(x - placed[index][0], y - placed[index][1]) <= t) return { key, index, through: isFarPoint(d.seam, index, placed.length, curve) ? d.seam! : null, points };
       }
     } return null;
   }
-  private segmentHit(x: number, y: number): { key: string; index: number; drawn: Drawn } | null {
-    let best: { key: string; index: number; drawn: Drawn } | null = null, distance = this.tolerance();
+  private segmentHit(x: number, y: number): { key: string; index: number; through: UnfoldedPath | null; drawn: Drawn } | null {
+    let best: { key: string; index: number; through: UnfoldedPath | null; drawn: Drawn } | null = null, distance = this.tolerance();
     for (const drawn of this.paths()) { const key = teleportConnectorKey(drawn.edge); if (!key) continue;
-      for (let i = 0; i + 3 < drawn.points.length; i += 2) { const d = distanceToSegment([x, y], [drawn.points[i], drawn.points[i + 1]], [drawn.points[i + 2], drawn.points[i + 3]]); if (d <= distance) { best = { key, index: i / 2, drawn }; distance = d; } }
+      for (let i = 0; i + 3 < drawn.points.length; i += 2) {
+        for (const piece of segmentPieces(drawn.seam, i / 2, [drawn.points[i], drawn.points[i + 1]], [drawn.points[i + 2], drawn.points[i + 3]])) {
+          const d = distanceToSegment([x, y], piece.from, piece.to);
+          if (d <= distance) { best = { key, index: i / 2, through: piece.far ? drawn.seam! : null, drawn }; distance = d; }
+        }
+      }
     } return best;
   }
   private drawDottedGuide(x1: number, y1: number, x2: number, y2: number, r: number): void {

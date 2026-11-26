@@ -27,13 +27,15 @@ export function CoordinateWarningFloorBadges({ warning, className }: { warning: 
 /** A warning bubble for a warning that targets concrete coordinates. The caller gives the message and the warning
  *  (severity + targets); the bubble resolves and draws the floor badges, the coordinate bubbles (when `coordinates`
  *  gives their labels) and the canvas highlight of the whole warning or of one hovered coordinate. */
-export function CoordinateWarningBubble({ warning, message, coordinates, onHoverChange, children }: {
+export function CoordinateWarningBubble({ warning, message, coordinates, onHoverChange, hideFloorBadges, children }: {
   warning: CoordinateWarning;
   message: string;
   /** Labels of coordinate bubbles, one per target they name; omitted shows none. */
   coordinates?: { text: string; target: PresetEndpoint }[];
   /** Extra hover reaction of the warning bubble itself, for what is not a coordinate (a connection's frame). */
   onHoverChange?: (hovering: boolean) => void;
+  /** For a warning that names its floors another way (zone chips that go to their floor). */
+  hideFloorBadges?: boolean;
   children?: React.ReactNode;
 }) {
   const hover = useCoordinateWarningHover(warning);
@@ -55,7 +57,7 @@ export function CoordinateWarningBubble({ warning, message, coordinates, onHover
           ))}
         </BubbleHoverZones>
       )}
-      <CoordinateWarningFloorBadges warning={warning} />
+      {!hideFloorBadges && <CoordinateWarningFloorBadges warning={warning} />}
       {children}
     </WarningBubble>
   );

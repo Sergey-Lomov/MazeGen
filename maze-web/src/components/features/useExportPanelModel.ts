@@ -150,8 +150,7 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
   const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
 
-  // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
-  // size control, so `fitAll` only covers the shared style label controls.
+  // Auto fit data for font size rows (GitHub issue #707); every text kind fits its own size control.
   const textFitMetricsKey = useTextMetricsKey();
   // A label is fitted against the plate it sits on: the open zone's labels in a zone's context, every zone's variant in the global one (GitHub issue #1040).
   const zones = useMazeStore((s) => s.zones);
@@ -167,7 +166,6 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     const floorItems = groups[0].items.floorLabel;
     return {
       fitFor: (kind) => fitAcrossGroups(groups, [kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
-      fitAll: () => fitAcrossGroups(groups, ["start", "finish", "elevator", "teleport", "markerIndex"]),
       fitFloorLabelWidth: () => requiredTextPlateDimensions(floorItems, settings.floorLabel.textSize)?.width ?? null,
       fitFloorLabelHeight: () => requiredTextPlateDimensions(floorItems, settings.floorLabel.textSize)?.height ?? null,
     };

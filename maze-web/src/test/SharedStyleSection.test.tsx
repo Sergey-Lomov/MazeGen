@@ -87,8 +87,9 @@ describe("SharedStyleSection", () => {
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_shape"]())).not.toBeInTheDocument();
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.shared_style_subsection_markers"]()));
     expect(screen.getByText(m["image_export.vector_by_walls.marker_shape"]())).toBeInTheDocument();
-    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_margin"]())).not.toBeInTheDocument();
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.shared_style_subsection_text"]()));
-    expect(screen.getByText(m["image_export.vector_by_walls.marker_text_size"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.marker_text_margin"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).not.toBeInTheDocument();
   });
 });

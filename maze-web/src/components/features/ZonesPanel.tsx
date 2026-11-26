@@ -13,6 +13,7 @@ import { FloorBadgeRow } from "../FloorBadgeRow";
 import { ListCell, ListCellAction } from "../ListCell";
 import { SidePanel } from "../SidePanel";
 import { startNewZone } from "./zoneEditorActions";
+import { ZoneProblemIcon } from "./ZoneProblemIcon";
 import { groupZones, sortZones, zoneGroupSectionKey, type ZonesGrouping } from "../../store/zoneListSort";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
@@ -174,7 +175,7 @@ export function ZoneCell({ zone, color, onAdd, onRemove, onPick }: { zone: Zone;
         onMouseLeave={() => setHover(null)}
         title={name}
         truncateTitle
-        titleAddon={<EntityColorSwatch data-testid="zone-color-dot" color={color} />}
+        titleAddon={<><EntityColorSwatch data-testid="zone-color-dot" color={color} /><ZoneProblemIcon zone={zone} /></>}
         actionsPlacement="title"
         actions={onRemove ? (
           <ListCellAction action="delete" title={m["zone_groups.remove_zone"]()} danger onAction={onRemove} />

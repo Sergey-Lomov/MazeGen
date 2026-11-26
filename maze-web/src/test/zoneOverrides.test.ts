@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import * as m from "~/paraglide/messages";
 import { useMazeStore } from "../store/mazeStore";
 import { zonesInitialState } from "../store/slices/zonesSlice";
 import type { Zone } from "../wasm/mazeService";
 import type { ZoneOverride } from "../store/zonesTypes";
-import { buildZoneOverrideWire, overrideHasNoZones, overrideZoneIds, zoneOverrideConflicts, zoneOverrideWarningCount } from "../domain/zoneOverrides";
+import { buildZoneOverrideWire, emptyParamTargets, overrideHasNoZones, overrideProblem, overrideZoneIds, zoneOverrideConflicts, zoneOverrideWarningCount } from "../domain/zoneOverrides";
 import { buildZonesHoverRegion } from "../domain/selectors/zoneSelectors";
 import { computeGenerationCard } from "../components/FeaturesPanel";
 import { parseAndValidate } from "../store/projectExport";
@@ -39,7 +40,37 @@ describe("zone override detection (GitHub issue #1038)", () => {
   it("detects an override with no zones left", () => {
     expect(overrideHasNoZones(override(1, [99], { branching: 0.1 }), zones, groups)).toBe(true);
     expect(overrideHasNoZones(override(1, [], { branching: 0.1 }, [7]), zones, groups)).toBe(false);
+  });
+
+  it("counts a zone with no cells, or a group of such zones, as nothing to act on", () => {
+    const hollow = [{ id: 1, name: "", kind: "manual" as const, cells: [] }, { id: 2, name: "", kind: "manual" as const, cells: [[0, 0, 0]] as [number, number, number][] }];
+    const hollowGroups = [{ id: 7, name: "", zoneIds: [1] }, { id: 8, name: "", zoneIds: [1, 2] }];
+    expect(overrideHasNoZones(override(1, [1], { branching: 0.1 }), hollow, hollowGroups)).toBe(true);
+    expect(overrideHasNoZones(override(1, [], { branching: 0.1 }, [7]), hollow, hollowGroups)).toBe(true);
+    expect(overrideHasNoZones(override(1, [], { branching: 0.1 }, [8]), hollow, hollowGroups)).toBe(false);
     expect(zoneOverrideWarningCount([override(1, [99], {}), override(2, [1], {})], zones, groups)).toBe(1);
+  });
+
+  it("lists the parameters set on empty zones and groups, with those zones and groups only", () => {
+    const hollow = [{ id: 1, name: "", kind: "manual" as const, cells: [] }, { id: 2, name: "", kind: "manual" as const, cells: [[0, 0, 0]] as [number, number, number][] }];
+    const hollowGroups = [{ id: 7, name: "", zoneIds: [1] }];
+    const overrides = [override(1, [1], { branching: 0.1, cyclicity: 0.2 }, [7]), override(2, [99], { branching: 0.5 }), override(3, [2], { branching: 0.3 })];
+    const found = emptyParamTargets(overrides, hollow, hollowGroups, (_, path) => path);
+    expect(found.map(({ key, path, zoneIds, groupIds }) => ({ key, path, zoneIds, groupIds }))).toEqual([
+      { key: "branching", path: "branching", zoneIds: [1], groupIds: [7] },
+      { key: "cyclicity", path: "cyclicity", zoneIds: [1], groupIds: [7] },
+    ]);
+    expect(found[0].sample).toBe(overrides[0]);
+  });
+
+  it("tells a deleted target from an empty one", () => {
+    const hollow = [{ id: 1, name: "", kind: "manual" as const, cells: [] }, { id: 2, name: "", kind: "manual" as const, cells: [[0, 0, 0]] as [number, number, number][] }];
+    const hollowGroups = [{ id: 7, name: "", zoneIds: [1] }];
+    expect(overrideProblem(override(1, [99], {}), hollow, hollowGroups)).toBe("missing");
+    expect(overrideProblem(override(1, [], {}, [99]), hollow, hollowGroups)).toBe("missing");
+    expect(overrideProblem(override(1, [1], {}), hollow, hollowGroups)).toBe("empty");
+    expect(overrideProblem(override(1, [], {}, [7]), hollow, hollowGroups)).toBe("empty");
+    expect(overrideProblem(override(1, [2], {}), hollow, hollowGroups)).toBeNull();
   });
 });
 
@@ -104,9 +135,9 @@ describe("zone override actions", () => {
 });
 
 describe("zone hover region (GitHub issue #1038)", () => {
-  it("takes the forced colour for every zone, else each zone's own", () => {
+  it("takes each zone's own colour, or its override", () => {
     const zs = [zone(1, [[0, 0, 0]]), zone(2, [[0, 1, 0]])];
-    expect(buildZonesHoverRegion(zs, [1, 2], 0, {}, 0x123456)?.groups.map((g) => g.color)).toEqual([0x123456, 0x123456]);
+    expect(buildZonesHoverRegion(zs, [1, 2], 0, { 1: 0x123456 })?.groups[0].color).toBe(0x123456);
     const own = buildZonesHoverRegion(zs, [1, 2], 0)?.groups.map((g) => g.color);
     expect(own?.[0]).not.toBe(own?.[1]);
   });
@@ -117,6 +148,7 @@ describe("generation card (GitHub issue #1038)", () => {
     expect(computeGenerationCard(true, "custom_vertex_based", false, 0, 0, 2).status).toBe("warning");
     expect(computeGenerationCard(true, "recursive_backtracker", false, 0, 0, 2).status).toBe("set");
     expect(computeGenerationCard(true, "custom_vertex_based", false, 0, 0, 0).status).toBe("set");
+    expect(computeGenerationCard(true, "custom_vertex_based", false, 0, 0, 2).comment).toBe(m["status.warnings_count"]({ count: 2 }));
   });
 });
 

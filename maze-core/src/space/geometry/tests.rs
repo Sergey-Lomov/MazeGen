@@ -685,7 +685,11 @@ fn small_region_in_a_large_cell_scope_matches_the_full_scan() {
         Point::new(-2.0, 1.5),
     ];
     let found = SquareTessellation
-        .cells_in_region(&edge_region, RegionMode::Intersects, CellScope::Cells(&scope))
+        .cells_in_region(
+            &edge_region,
+            RegionMode::Intersects,
+            CellScope::Cells(&scope),
+        )
         .unwrap();
     assert!(found.iter().all(|cell| scope.binary_search(cell).is_ok()));
     assert!(found.contains(&SquarePoint { x: 0, y: 0 }));

@@ -6,6 +6,7 @@ import {
   computeImageExportCard,
   presetConnectionsSubtitle,
   zonesSubtitle,
+  computeZonesCard,
   getTessellationKindLabel,
 } from "../components/FeaturesPanel";
 import { resolveIssue } from "../components/issueRegistry";
@@ -225,5 +226,28 @@ describe("zonesSubtitle", () => {
     expect(new Set([none, one, many]).size).toBe(3);
     expect(one).toContain("1");
     expect(many).toContain("3");
+  });
+});
+
+describe("zonesSubtitle groups", () => {
+  it("adds the manual groups after a dot, only while there are some", () => {
+    expect(zonesSubtitle(3)).not.toContain("·");
+    expect(zonesSubtitle(3, 2)).toBe(`${zonesSubtitle(3)} · ${m["zones.subtitle_groups_plural"]({ count: 2 })}`);
+    expect(zonesSubtitle(0, 1)).toContain(m["zones.subtitle_groups"]({ count: 1 }));
+  });
+});
+
+describe("computeZonesCard", () => {
+  it("is unavailable until the tessellation is confirmed and the field set, whatever the problems", () => {
+    expect(computeZonesCard("unconfirmed", 2).status).toBe("unavailable");
+    expect(computeZonesCard("field", 2)).toEqual({ status: "unavailable", comment: m["status.configure_field_first"]() });
+  });
+
+  it("is green and silent without problems", () => {
+    expect(computeZonesCard(null, 0)).toEqual({ status: "set", comment: undefined });
+  });
+
+  it("turns yellow and says only how many problems there are", () => {
+    expect(computeZonesCard(null, 3)).toEqual({ status: "warning", comment: m["status.warnings_count"]({ count: 3 }) });
   });
 });

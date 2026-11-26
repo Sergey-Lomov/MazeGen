@@ -4,8 +4,26 @@ import type { TeleportArrowMode, TeleportCurveDirection, TeleportEdge } from "..
  * two points, a regular orthogonal path has three, and a radial path can include sampled arc points.
  * `partnerPoints` (GitHub issue #873) is the connector's second piece when it crosses a topological
  * seam: `points` runs from the source to its seam slot, `partnerPoints` from the partner slot to the
- * target. Nothing is drawn between the two slots. */
-export type RoutedConnector = { points: number[]; partnerPoints?: number[] };
+ * target. Nothing is drawn between the two slots. `unfolded` (GitHub issue #1094) is the whole
+ * path of such a connector before the cut, in the source side's frame with the target unfolded: the
+ * geometry a manual path overrides, so the editor edits both pieces as one path. */
+export type RoutedConnector = { points: number[]; partnerPoints?: number[]; unfolded?: UnfoldedPath };
+
+/** What the connector editor works on for one drawn connector: its editable polyline and, for a seam
+ *  connector, the mapping of that polyline's points to where they are drawn. */
+export type ConnectorEditPath = { edge: TeleportEdge; points: readonly number[]; seam?: UnfoldedPath };
+
+/** A seam connector's uncut path (display units) and how its points map to where they are drawn:
+ *  the points from index `firstFar` on (`Infinity`: none) lie beyond the seam and are drawn on the
+ *  partner side, at `toPartner`; `fromPartner` inverts it. The segment just before `firstFar` crosses
+ *  the seam at `cutAt` (in the same unfolded frame as `points`). */
+export type UnfoldedPath = {
+  points: number[];
+  firstFar: number;
+  cutAt?: [number, number];
+  toPartner(point: readonly [number, number]): [number, number];
+  fromPartner(point: readonly [number, number]): [number, number];
+};
 
 /** Routes every `edges` entry as a `"straight"` center-to-center line — no bend, no collision
  *  offset (two straight connectors can still visually overlap if collinear, but that's the

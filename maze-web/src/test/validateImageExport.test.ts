@@ -355,6 +355,20 @@ describe("validateLinks (GitHub issue #651)", () => {
     expect(result).toEqual([valid]);
   });
 
+  it("ignores a stored shared markerTextSize key without leaking it into the settings (GitHub issue #1092)", () => {
+    const legacyWalls = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, markerTextSize: 12 };
+    expect(validateVectorByWallsSettings(legacyWalls, "path", [])).not.toHaveProperty("markerTextSize");
+    const legacyCorridors = { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, markerTextSize: 12 };
+    expect(validateVectorByCorridorsSettings(legacyCorridors, "path", [])).not.toHaveProperty("markerTextSize");
+  });
+
+  it("drops links to or from the removed shared markerTextSize but keeps the rest (GitHub issue #1092)", () => {
+    const valid = defaults[0];
+    const legacy = { id: "legacy", source: "markerTextSize", target: "startMarker.textSize", enabled: true };
+    const legacyTarget = { id: "legacy2", source: "markerSize", target: "markerTextSize", enabled: true };
+    expect(validateLinks([valid, legacy, legacyTarget], "path", defaults, registry)).toEqual([valid]);
+  });
+
   it("parses modifiers on a valid entry", () => {
     const withModifiers = { ...defaults[0], modifiers: [{ op: "add", value: 2 }] };
     const result = validateLinks([withModifiers], "path", defaults, registry);

@@ -42,8 +42,8 @@ no cells stays, so its id remains stable.
 
 Feature card `zones` (`FeatureId`), placed after Field and before Presets.
 
-- Status: `unavailable` until a field is set (same condition as Presets), otherwise always `set`
-  (green), even with no zones. Subtitle: number of manual zones.
+- Status: `unavailable` until a field is set (same condition as Presets), otherwise `set` (green), even with no
+  zones, unless a zone problem turns it `warning` (yellow; see "Zone problems"). Subtitle: number of manual zones, then " · " and the number of manual groups while there are any.
 - Store (`zonesSlice`): `zones`, `showAutoZones`, `showManualZones` (both on; the auto zones are hidden per zone, see below). The toggles are
   transient; zones are saved with the project (`Specs/project-file.md`, "Zones").
 - Two toggles, "Show auto zones" and "Show manual zones".
@@ -52,7 +52,7 @@ Feature card `zones` (`FeatureId`), placed after Field and before Presets.
   over them each zone passing the toggles as a region (`RegionHighlightRenderer`). Zones are first
   cut to the field (`filterZonesToField`), so no cell outside it is drawn. A zone's colour comes from
   its position in the full zone list (`zoneColors`), so toggling never recolours. The scheme is the
-  glues' one (`distributeHueGroups` from `AUTO_HUE_BASE_COLOR`).
+  glues' one (`distributeHueGroups`) but starts from its own base colour, `ZONE_HUE_BASE_COLOR` (`#2b965b`, green).
 - Hover: the cell inspector text (`resolveCellInspection`) lists every zone holding the cell, in zone
   order, regardless of the toggles (`x:1, y:2 | Zone A, Zone B`; an unnamed zone shows as `#id`). A
   cell outside the field shows bare coordinates.
@@ -129,8 +129,8 @@ floor. Tool state (`fieldOperation`, `fieldPrimitive`) is the floor's, shared wi
   with its floor badge, not the full row width, and keeps its vertical padding so adjacent lines touch; hovering a line highlights that zone and the edited one stops being highlighted
   (`hoveredZoneId` wins over the edited zone). An explicit colour
   (`zoneColorOverrides`, by zone id, the editor's `setZoneColor(color)` writes `zoneEditDraftColor`, `null` is automatic; "Done" moves it here) always wins over the
-  automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours shared with the
-  glues (`glueColor`): a zone takes the colour at its position in the list; every further round of 8 is a group
+  automatic one. Automatic colours come from a fixed round of `AUTO_COLOR_COUNT` (8) colours of the glues' scheme (`glueColor`)
+  starting from the zones' own base colour `ZONE_HUE_BASE_COLOR` (`#2b965b`, not the glues' `AUTO_HUE_BASE_COLOR`): a zone takes the colour at its position in the list; every further round of 8 is a group
   of the glues' hue scheme (`hueGroupColors`, positions 0, +1, -1, +2, ...: lightness and hue shifted), so no two
   zones share a colour. Whatever the number of zones, adding a zone or colouring another one never moves the rest. Deleting the zone drops its override.
   Overrides are saved with the project like the zones.
@@ -321,6 +321,50 @@ The target picker (`ZoneTargetPicker`) is shared by the rule dialog and the gene
 ## Export overrides (GitHub issue #1040)
 
 Zones and groups can give the "Vector by walls" and "Vector by corridors" exports their own parameter values; see `Specs/image-export.md`, "Zone overrides in export". `removeZone` / `removeZoneGroup` remove the id from every export override and reset the settings context if it named that zone or group. The target picker (`ZoneTargetPanel`) is also the export panel's context chooser.
+
+## Zone problems (GitHub issue #1034)
+
+Only manual zones have problems; automatic zones follow the field and are always in use by definition of being derived.
+Manual zones are never updated when the field changes: the user sees a warning and decides to return the cells to the field
+or remove them. Derived by `domain/zoneProblems.ts`, memoized for the store in `store/zoneProblemsSelector.ts`
+(`selectZoneProblems`, stable while its inputs are the same objects).
+
+- **Zone with invalid cells** (`invalidManualZones`): a manual zone holding cells that are not cells of their floor's
+  field (a removed cell, a shrunk tessellation, a floor that no longer exists; `zoneCellsOutsideField`).
+- **Unused manual zone** (`unusedManualZones`): the zone is in no group and no generation override, export override or QC rule
+  scope names it. Membership in any group counts as use, even of an unused group: that group carries the warning
+  (GitHub issue #1093).
+- **Unused manual group** (`unusedManualGroups`): a manual group holding zones that no generation override, export override or QC
+  rule scope names. An empty group is only the empty warning's, an automatic group is never reported. Shown as its own
+  `WarningBubble` "Manual groups are not used anywhere" naming the groups, counted as one more warning, and as a line of the group
+  card's problem icon.
+- **Empty zone** (`emptyManualZones`): a manual zone with no cell on any floor. **Empty group** (`emptyManualGroups`): a
+  manual group holding no zone (the group editor refuses "Done" on one, but deleting its zones leaves it empty).
+  One meaning of "nothing there" for every consumer (`zonesHaveCells`): the consumer-side "no zones left" warnings of
+  generation and export overrides and of rule scopes (`overrideHasNoZones`, `zoneScopeHasNoZones`) fire for a target that is
+  deleted, an empty zone, or a group whose zones are all empty, so an empty zone is reported on both sides. A rule says
+  which (`zoneScopeProblem`, `missing` or `empty`, with its own text for each); so does an override
+  (`overrideProblem`): the generation card's Warnings section (collapsed by default, vertex based method) and the export
+  warnings have a separate bubble for each reason, and an override row of the generation list shows one warning icon
+  whose tooltip lists all its problems ("Zone is empty" / "Group is empty", no zones, overlap); the generation card status counts the warnings like the section does ("Warnings: X"). An override whose zones exist but have no cells is reported per parameter (`emptyParamTargets`): "A special value of parameter X is set for an empty zone/group", with the empty zones and groups as chips below (generation card, export warnings) instead of a bubble under the zone bubbles.
+- **Warnings section** on the zones card, "Warnings (n)", collapsed by default, `n` the number of its bubbles (and the
+  number in the card status, `zoneWarningCount`), at most three: one `CoordinateWarningBubble` "Zones extend beyond the
+  field" listing every zone with invalid cells (`invalidCellsWarning`: hovering the bubble lights all those cells on the
+  current floor through the shared coordinate warning layer, merged into contours as one region group; it has no floor
+  badges, the chips go to the floors; hovering one zone chip lights that zone and only its own cells outside the field,
+  merged the same way); one plain `WarningBubble` "Manual zones/groups are empty" for the empty manual zones and groups together; one for the unused
+  zones. The plain ones light nothing themselves. Each names its zones or groups as bubbles below its message
+  (`ZoneProblemChips`): a zone in its own colours, a group neutral blue prefixed "Group: ". Hovering a chip lights the
+  zone (or the group's zones); a click goes to the lowest floor holding it unless the active floor already does (tooltip "Go to the zone's floor").
+- **"Remove cells outside the field"** button on the card (`removeInvalidZoneCells`): removes the invalid cells of every manual
+  zone on every floor (an open zone draft too), keeps zones left empty. Disabled with an explaining tooltip while no zone
+  has such cells; clicking clears the hover highlight at once (the disabled button gets no mouse leave); while active, hovering it lights the invalid cells of the current floor, merged into contours like the warning does.
+- **Card status**: with problems the status is yellow and the comment only counts them, "Warnings: X", `X` the number of
+  warning bubbles (`computeZonesCard`).
+- **List cards**: a zone card shows a warning icon after the colour swatch, its tooltip naming the problems; a group
+  card shows one only for an empty group; a group does not report its zones' problems (`ZoneProblemIcon`).
+- Nothing is drawn on the canvas for a problem except the hover highlight above: `ZonesRenderer` owns a
+  `CoordinateWarningHighlight` (active while the zones card is open).
 
 ## Web mirror
 

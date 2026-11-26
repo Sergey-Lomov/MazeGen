@@ -20,6 +20,8 @@ export interface SeamCrossing {
   chains: readonly (readonly WorldPoint[])[];
   /// Maps a point of the source side's frame (the unfolded side) back into the target's own frame.
   toTarget: (point: WorldPoint) => WorldPoint;
+  /// Inverse of `toTarget`: a point of the target's own frame into the source side's frame.
+  fromTarget: (point: WorldPoint) => WorldPoint;
 }
 
 const FLATTEN_TOLERANCE = 1e-3;
@@ -151,7 +153,7 @@ export function shortestSeamCrossing(model: SeamModel, a: WorldPoint, b: WorldPo
           if (u2 !== null && sameGlue(u2)) chains.push(chainOf(h2));
         }
       }
-      best = { at, partnerAt: applyAffine(inverse, at), length, unfolded, chains, toTarget: (point) => applyAffine(inverse, point) };
+      best = { at, partnerAt: applyAffine(inverse, at), length, unfolded, chains, toTarget: (point) => applyAffine(inverse, point), fromTarget: (point) => applyAffine(unfold, point) };
       bound = length;
     }
   }

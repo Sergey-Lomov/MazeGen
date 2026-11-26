@@ -11,6 +11,9 @@ import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
 import { selectNodeLevelResolver } from "../domain/selectors/mazeSelectors";
 import { FloorBadgeRow } from "./FloorBadgeRow";
+import { ZoneIdChips } from "./features/ZoneProblemChips";
+import { parseZoneScopeId } from "../domain/qcZoneScope";
+import { zoneDisplayName, zoneGroupDisplayName } from "../domain/selectors/zoneSelectors";
 import { nodeCoordinateTargets, type CoordinateWarning } from "../domain/coordinateWarning";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -68,6 +71,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const setHoveredCoordinateWarning = useMazeStore((s) => s.setHoveredCoordinateWarning);
   const nodes = useMazeStore((s) => s.nodes);
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
+  const scope = useIssueScope(issue.scope_id);
+  const scopeLine = scope ? m[scope.kind === "zone" ? "issue.scope_zone" : "issue.scope_group"]({ name: scope.name }) : null;
   const { severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
   // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
@@ -291,7 +296,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           * badges' own deliberately fixed bg/text contrast -- `hoverable-tint-counter` cancels it
           * back out (inverse brightness, filters compose multiplicatively) so the badges stay
           * exactly as dark/light regardless of the parent bubble's hover state. */}
-        <IssueFloorBadges
+        <IssueScopeBadges
+          scope={scope}
           nodeIds={touchedNodeIds}
           bg={darken(palette.text, 0.2)}
           text={palette.bg}
@@ -308,6 +314,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
                 : m["issue.preset_locked_summary_plural"]({ count: presetLockedCount })}
             </p>
           )}
+          {scopeLine && <p style={issueStyles.scopeLine} data-testid="issue-scope-line">{scopeLine}</p>}
         </Modal>
       )}
     </>
@@ -335,6 +342,39 @@ function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[];
     ...nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined),
   ])).sort((a, b) => a - b);
   return <FloorBadgeRow levels={levels} bg={bg} text={text} className={className} />;
+}
+
+type IssueScope = { kind: "zone" | "group"; id: number; name: string };
+
+/// The zone or group an issue was found in (`IssueDto.scope_id`) with its display name; `null` without a scope or when
+/// the zone or group no longer exists (deleted since the analytics snapshot).
+function useIssueScope(scopeId: string | null | undefined): IssueScope | null {
+  const zones = useMazeStore((s) => s.zones);
+  const groups = useMazeStore((s) => s.zoneGroups);
+  const floors = useMazeStore((s) => s.floors);
+  const target = parseZoneScopeId(scopeId);
+  if (target == null) return null;
+  if (target.kind === "zone") {
+    const zone = zones.find((z) => z.id === target.id);
+    return zone ? { ...target, name: zoneDisplayName(zone, floors) } : null;
+  }
+  const group = groups.find((g) => g.id === target.id);
+  return group ? { ...target, name: zoneGroupDisplayName(group) } : null;
+}
+
+/// Where an issue belongs (GitHub issue #1093): the zone or group its rule was limited to, as a zone
+/// badge, replacing the floor badges (a zone is the more specific place; floors stay reachable
+/// through the zone badge, which goes to the zone's lowest floor). An iteration group yields one
+/// issue per zone, so each bubble carries one zone badge. A scope that no longer names an existing
+/// zone or group (deleted since the analytics snapshot) falls back to the floor badges.
+function IssueScopeBadges({ scope, nodeIds, bg, text, className }: { scope: IssueScope | null; nodeIds: number[]; bg: string; text: string; className?: string }) {
+  if (scope == null) return <IssueFloorBadges nodeIds={nodeIds} bg={bg} text={text} className={className} />;
+  // A chip click must not also open the bubble's description modal; the wrapper counters the bubble's hover brightening.
+  return (
+    <div className={className} onClick={(e) => e.stopPropagation()}>
+      <ZoneIdChips zoneIds={scope.kind === "zone" ? [scope.id] : []} groupIds={scope.kind === "group" ? [scope.id] : []} />
+    </div>
+  );
 }
 
 export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
@@ -419,6 +459,12 @@ const issueStyles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5,
     // Bullet lists in a description (`node_shape_limits`) are newline-separated.
     whiteSpace: "pre-line",
+  },
+  // A separate paragraph under the description, so a blank line sits between them.
+  scopeLine: {
+    margin: `${spacing.itemGap * 2}px 0 0`,
+    ...muted(typography.body),
+    lineHeight: 1.5,
   },
   presetLockedSummary: {
     margin: `${spacing.itemGap}px 0 0`,
