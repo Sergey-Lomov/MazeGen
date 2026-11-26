@@ -110,6 +110,21 @@ export function LinkedSliderRow<P extends LinkPath>({ linkTarget, unsupportedHin
   );
 }
 
+/** Cancel of a color picker in a zone context (GitHub issue #1097): preview ticks write the zone's own value, so a
+ *  parameter the zone did not set before the picker opened must lose it again, not keep the original color as an override. */
+function useZoneOverrideRestore(linkTarget: string | null): { onOpen: () => void; onCancel: () => void } {
+  const { zone } = useLinkContext<string>();
+  const wasOverridden = useRef(false);
+  return {
+    onOpen: () => {
+      wasOverridden.current = linkTarget !== null && (zone?.overridden.has(linkTarget) ?? false);
+    },
+    onCancel: () => {
+      if (zone && linkTarget !== null && !wasOverridden.current) zone.reset(linkTarget);
+    },
+  };
+}
+
 type ColorRowProps = React.ComponentProps<typeof ColorRow>;
 export function LinkedColorRow<P extends LinkPath>({ linkTarget, unsupportedHint, ...rest }: ColorRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
   const { links, onSetLinkEnabled } = useLinkContext<P>();
@@ -120,6 +135,7 @@ export function LinkedColorRow<P extends LinkPath>({ linkTarget, unsupportedHint
   // enabled state exactly as it was when the picker opened — snapshotted here since the link may
   // already have been disabled by the time Cancel fires. A zone context never touches the links.
   const wasLinkEnabledRef = useRef(false);
+  const zoneRestore = useZoneOverrideRestore(linkTarget);
   if (!shown) return null;
   return (
     <ZoneRowHint zoneRow={zoneRow} linkTarget={linkTarget}>
@@ -128,9 +144,11 @@ export function LinkedColorRow<P extends LinkPath>({ linkTarget, unsupportedHint
         disabled={rest.disabled || zoneRow?.disabled}
         onOpen={() => {
           wasLinkEnabledRef.current = linkTarget !== null && (links.find((l) => l.target === linkTarget)?.enabled ?? false);
+          zoneRestore.onOpen();
         }}
         onCancel={() => {
           if (!zoneRow && linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
+          zoneRestore.onCancel();
         }}
         resetButton={<RowTrailing linkTarget={linkTarget} unsupportedHint={unsupportedHint} zoneRow={zoneRow} />}
       />
@@ -173,6 +191,7 @@ export function LinkedUnregisteredColorRow<P extends string>({ linkTarget, unsup
   const { links, onSetLinkEnabled } = useLinkContext<P>();
   const zoneRow = useZoneRow(linkTarget);
   const wasLinkEnabledRef = useRef(false);
+  const zoneRestore = useZoneOverrideRestore(linkTarget);
   return (
     <ZoneRowHint zoneRow={zoneRow} linkTarget={linkTarget}>
       <UnregisteredColorRow
@@ -180,9 +199,11 @@ export function LinkedUnregisteredColorRow<P extends string>({ linkTarget, unsup
         disabled={rest.disabled || zoneRow?.disabled}
         onOpen={() => {
           wasLinkEnabledRef.current = linkTarget !== null && (links.find((l) => l.target === linkTarget)?.enabled ?? false);
+          zoneRestore.onOpen();
         }}
         onCancel={() => {
           if (!zoneRow && linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
+          zoneRestore.onCancel();
         }}
         resetButton={<RowTrailing linkTarget={linkTarget} unsupportedHint={unsupportedHint} zoneRow={zoneRow} />}
       />
