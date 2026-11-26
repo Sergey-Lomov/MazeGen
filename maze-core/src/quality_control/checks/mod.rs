@@ -136,7 +136,7 @@ pub use max_elevator_density::{MAX_ELEVATOR_DENSITY_DEFAULT, MaxElevatorDensityC
 pub use max_elevator_stop_gap::{MAX_ELEVATOR_STOP_GAP_DEFAULT, MaxElevatorStopGapCheck};
 pub use max_elevator_stops::{MAX_ELEVATOR_STOPS_DEFAULT, MaxElevatorStopsCheck};
 pub use max_elevator_stops_per_floor::{
-    MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MaxElevatorStopsPerFloorCheck,
+    ElevatorStopsCountUnit, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MaxElevatorStopsPerFloorCheck,
 };
 pub use max_loop_density::{MAX_LOOP_DENSITY_DEFAULT, MaxLoopDensityCheck};
 pub use max_loops_count::{MAX_LOOPS_COUNT_DEFAULT, MaxLoopsCountCheck};
