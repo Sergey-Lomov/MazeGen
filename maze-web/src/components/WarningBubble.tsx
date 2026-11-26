@@ -15,12 +15,12 @@ interface BaseProps {
    * risk attached (e.g. a param panel being unavailable for canonical elements). */
   severity?: NotificationSeverity;
   /** Hover handlers — used by callers that highlight something on the canvas while this bubble is
-   * hovered (e.g. Preset Connections' isolated-nodes/orphan-split-node warnings). */
+   * hovered (e.g. Preset Connections' isolated-nodes/unreachable-split-node warnings). */
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   /** Extra content below `message`, laid out in the same flex column as `IssuesBlock`'s own
    * bubble — used for a floor-badge row (GitHub issue #420's "which floor(s) is this on"
-   * follow-up for Preset Connections' orphan-split warning, mirroring Analytics' issue bubbles). */
+   * follow-up for Preset Connections' unreachable-split warning, mirroring Analytics' issue bubbles). */
   children?: React.ReactNode;
   /** Makes the whole bubble clickable and marks it with an info glyph in the severity colour, like the analytics issue bubbles. */
   onInfo?: () => void;

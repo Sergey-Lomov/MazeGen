@@ -353,7 +353,7 @@ Modal using `ItemSelectDialog`. Targets one rule (`ruleId`, `kind` props). Shows
 
 ## Experimental strategies
 
-`StrategyDescriptor.experimental` (see `maze-wasm/Specs/api.md`, backed by `RepairStrategy::is_experimental` in `maze-core`, see `Specs/repair.md`) flags a strategy whose results or performance may be unpredictable — currently only `missing_regions`. Three UI surfaces read it, all via the shared `WarningIcon`/`WarningBubble` components (`maze-web/src/components/WarningIcon.tsx`, `WarningBubble.tsx`), both rendering the same fixed `strategy.experimental_warning` message:
+`StrategyDescriptor.experimental` (see `maze-wasm/Specs/api.md`, backed by `RepairStrategy::is_experimental` in `maze-core`, see `Specs/repair.md`) flags a strategy whose results or performance may be unpredictable — currently only `missing_regions`. Three UI surfaces read it, all via the shared `WarningIcon`/`WarningBubble` components (`maze-web/src/components/WarningIcon.tsx`, `WarningBubble.tsx`), both rendering the same fixed `strategy.experimental_warning` message (`WarningIcon` itself is generic: `title` for one custom tooltip, or `messages: string[]` for a list of problems — a single message as plain text, several as a bulleted list under a "Warnings:" heading):
 
 - `StrategySelectDialog` / `NewRuleStrategyDialog`: `WarningIcon` next to each experimental candidate's label in the item list; `WarningBubble` under the description in the right panel when the selected candidate is experimental.
 - `RuleStrategyPanel` (rule card, right half): `WarningIcon` next to the assigned strategy's label.

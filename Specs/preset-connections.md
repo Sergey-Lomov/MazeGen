@@ -153,7 +153,8 @@ entities and floor badges for the floors containing invalid endpoints. Hovering 
 canvas highlight as "Clear invalid". The total counts what the preset list shows (`listedInvalidConnections`,
 `listedInvalidSplitKeys` in `domain/fieldValidity.ts`): one row per user-authored connection (a split tile's face
 records and derived entries are not rows) and per split point with slots. The Features panel status
-(`status.problematic_preset_elements`) uses the same helpers, so the two numbers agree.
+does not show this total: it shows `Warnings: N` with the warning count of the Problems section (the outside-field
+warning counts as one, see "Split problems" below), computed from the same helpers.
 
 `presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
 
@@ -581,17 +582,11 @@ The wire payload already carries the slot: `buildGenerateConfig` sends `preset_g
 
 The status-bar cell inspector already reports a `Gen source` line per node (`buildPresetNodeMarkerLines`, matched by exact `PresetEndpoint` equality), so a split point whose slot 1 carries the source shows `[Node 2: Gen source]` and its other nodes stay unmarked.
 
-**Orphan slots are not auto-removed.** A declared slot with nothing referencing it is created anyway at generation time (see "Applying split points" below) and surfaces as a dedicated warning in the Preset Connections panel (`orphanSplitCount`, same `warningBubble` style as the isolated-nodes warning) — informational only, does not block generation.
+**Orphan slots are not auto-removed.** A declared slot with nothing referencing it is created anyway at generation time (see "Applying split points" below); there is no warning for it, since undefined faces can still be resolved during generation.
 
-The orphan check is based on whether the slot has any preset entity entry, not on whether that
-entry currently requires a connection. An explicit `undefined` connection is still a reference:
-if the user changes a split node's settings and then returns every face to `undefined`, the node is
-considered intentionally configured and the orphan warning remains hidden. Only a split slot with
-no connection, teleport, start/finish, or generation-source entry is reported as orphaned. This is
-intentional behavior and must not be changed by treating `undefined` as equivalent to an absent
-entry.
+**Split problems (GitHub issue #1107).** All problems of a split point come from one source, `computePresetSplitProblems` (`pixi/selectors/presetSplitProblems.ts`): the split edit panel's face diagnostics (a node with only walls, or with no connections, is unreachable). The same result drives the Problems section (one "split node cannot be reached" warning per flagged node) and the preset list (the split cell's warning icon tooltip lists every message of the point, together with the outside-field message). The Preset Connections feature card shows `Warnings: N`, where N is exactly the number of warnings in the Problems section: every isolated node, every flagged split node, and one for all elements outside the field together. Both the section and the card compute it through `pixi/selectors/presetWarnings.ts` (`presetWarningCount`, `computePresetWarningCount`, `computePresetInvalidElementCount`), so the two numbers cannot drift.
 
-The Preset Connections panel always renders its Problems subsection header, even when there are no isolated nodes or orphan split points. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump. Isolated-node detection spans every floor, so its warning persists as the active floor changes; in a multi-floor project its badges cover every floor with an isolated node. Its canvas hover highlight remains limited to the active floor, matching the field currently visible.
+The Preset Connections panel always renders its Problems subsection header, even when there are no warnings. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump. Isolated-node detection spans every floor, so its warning persists as the active floor changes; in a multi-floor project its badges cover every floor with an isolated node. Its canvas hover highlight remains limited to the active floor, matching the field currently visible.
 
 ### Rendering
 
@@ -810,4 +805,4 @@ the old cell.
 
 ## Coordinate warnings
 
-The Problems bubbles (isolated nodes, orphan split nodes, invalid presets), the "Clear invalid" button and the invalid-coordinate bubbles of the preset list are coordinate warnings: each declares only `targets` (`PresetEndpoint[]`, cell + optional split slot + floor) and a severity (`warning`). `CoordinateWarningBubble` and `useCoordinateWarningHover` derive the floor badges, the bubble colors and the hover state (`hoveredCoordinateWarning`) from them; `PresetConnectionsRenderer` draws the targets of the active floor with its own `CoordinateWarningHighlight` instance (see `Specs/coordinate-warnings.md`); it holds no warning-specific highlight layers.
+The Problems bubbles (isolated nodes, unreachable split nodes, invalid presets), the "Clear invalid" button and the invalid-coordinate bubbles of the preset list are coordinate warnings: each declares only `targets` (`PresetEndpoint[]`, cell + optional split slot + floor) and a severity (`warning`). `CoordinateWarningBubble` and `useCoordinateWarningHover` derive the floor badges, the bubble colors and the hover state (`hoveredCoordinateWarning`) from them; `PresetConnectionsRenderer` draws the targets of the active floor with its own `CoordinateWarningHighlight` instance (see `Specs/coordinate-warnings.md`); it holds no warning-specific highlight layers.

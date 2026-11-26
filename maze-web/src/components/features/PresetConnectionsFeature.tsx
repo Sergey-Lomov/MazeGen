@@ -3,8 +3,9 @@ import { useMazeStore } from "../../store/mazeStore";
 import { canvas } from "../../domain/colorTokens";
 import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../domain/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidPresetEndpointKeys, computeInvalidSplitPoints, listedInvalidConnections, listedInvalidSplitKeys } from "../../domain/fieldValidity";
-import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
+import { computeInvalidKeys, computeInvalidPresetEndpointKeys, listedInvalidConnections } from "../../domain/fieldValidity";
+import { computeIsolatedNodeKeys } from "../../pixi/selectors/presetSelectors";
+import { computePresetInvalidElementCount, computePresetSplitProblemsOf, countPresetSplitProblems, presetWarningCount, type PresetWarningInput } from "../../pixi/selectors/presetWarnings";
 import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, type PresetEndpoint } from "../../domain/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
@@ -140,18 +141,16 @@ export function PresetConnectionsFeature() {
     return computeIsolatedNodeKeys(lockedNodes, autoLockedNodes, presetConnections);
   }, [lockedNodes, autoLockedNodes, presetConnections]);
 
-  // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
-  // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning (same
-  // style as isolatedNodes above), not blocking generation. Computed across every floor (not just
-  // the active one) — `presetEndpointIsSplit` is deliberately level-agnostic (point+slot only, see
-  // its own doc comment), so a point's orphan status doesn't depend on which floor is active. The
-  // hover highlight (GitHub issue #420) goes through the shared coordinate warning layer, which only
-  // lights up the active floor's own cells — the floor badges below surface "this also exists elsewhere".
-  const orphanPoints = useMemo(
-    () => computeOrphanSplitPoints(presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource),
-    [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource],
-  );
-  const orphanSplitCount = orphanPoints.length;
+  // The preset data every warning below is counted from; the Features panel status counts from the same input.
+  const activeSplitNode = useMazeStore((s) => s.presetActiveSplitNode);
+  const warningInput = useMemo<PresetWarningInput>(() => ({
+    presetConnections, presetSplitPoints, presetTeleports, presetVerticalPassages, presetElevators, presetStart, presetFinish,
+    presetGenSource, lockedNodes, autoLockedNodes, presetActiveSplitNode: activeSplitNode, floors, floorFields,
+  }), [presetConnections, presetSplitPoints, presetTeleports, presetVerticalPassages, presetElevators, presetStart, presetFinish, presetGenSource, lockedNodes, autoLockedNodes, activeSplitNode, floors, floorFields]);
+  // Face diagnostics shared with the split edit panel (GitHub issue #1107): a node with only walls
+  // or no connections is unreachable. Counted per flagged node.
+  const splitProblems = useMemo(() => computePresetSplitProblemsOf(warningInput), [warningInput]);
+  const unreachableSplitCount = countPresetSplitProblems(splitProblems);
 
   const resolveFieldAt = useMemo(
     () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
@@ -161,42 +160,13 @@ export function PresetConnectionsFeature() {
     () => computeInvalidKeys(presetConnections, resolveFieldAt),
     [presetConnections, resolveFieldAt],
   );
-  const invalidTeleportIds = useMemo(
-    () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
-    [presetTeleports, resolveFieldAt],
-  );
-  const invalidVerticalPassageIds = useMemo(
-    () => computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt),
-    [presetVerticalPassages, resolveFieldAt],
-  );
-  const invalidElevatorIds = useMemo(
-    () => computeInvalidElevatorIds(presetElevators, resolveFieldAt),
-    [presetElevators, resolveFieldAt],
-  );
-  const invalidMarkers = useMemo(
-    () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
-    [presetStart, presetFinish, resolveFieldAt],
-  );
-  const invalidGenSource = useMemo(
-    () => computeInvalidEndpoint(presetGenSource, resolveFieldAt),
-    [presetGenSource, resolveFieldAt],
-  );
-  const invalidLockedKeys = useMemo(
-    () => computeInvalidLockedNodeKeys(lockedNodes, resolveFieldAt),
-    [lockedNodes, resolveFieldAt],
-  );
-  const invalidSplitKeys = useMemo(
-    () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
-    [presetSplitPoints, resolveFieldAt],
-  );
   // The connections the preset list shows (one row per user-authored connection; a split tile's face records are not rows) that
   // lead out of the field: the problem count counts what the list shows. They are framed on their edge, not highlighted as cells.
   const invalidLinks = useMemo(
     () => listedInvalidConnections(presetConnections, presetSplitPoints, invalidKeys),
     [presetConnections, presetSplitPoints, invalidKeys],
   );
-  const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
-  const invalidCount = invalidLinks.length + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + listedInvalidSplitKeys(presetSplitPoints, invalidSplitKeys).length + invalidLockedKeys.size;
+  const invalidCount = useMemo(() => computePresetInvalidElementCount(warningInput, resolveFieldAt), [warningInput, resolveFieldAt]);
   const hasInvalid = invalidCount > 0;
   const invalidEndpoints = useMemo(() => {
     const endpoints: PresetEndpoint[] = [
@@ -220,12 +190,15 @@ export function PresetConnectionsFeature() {
     severity: "warning",
     targets: isolatedNodes.flatMap((key) => presetEndpointFromKey(key) ?? []),
   }), [isolatedNodes]);
-  // Split nodes are drawn as one merged outward contour (the split style); every other target is a single cell.
-  const orphanWarning = useMemo<CoordinateWarning>(() => ({
-    severity: "warning",
-    targets: orphanPoints,
-    groups: orphanPoints.length > 0 ? [{ targets: orphanPoints, outset: true }] : undefined,
-  }), [orphanPoints]);
+  // Split nodes are drawn as one merged outward contour (the split style).
+  const unreachableSplitWarning = useMemo<CoordinateWarning>(() => {
+    const targets = splitProblems.map((problem) => problem.endpoint);
+    return {
+      severity: "warning",
+      targets,
+      groups: targets.length > 0 ? [{ targets, outset: true }] : undefined,
+    };
+  }, [splitProblems]);
   // Connections are not cell targets (their endpoints are drawn as edges, never as cells): only the points outside the
   // field. Split points are one outward contour (the split style), every other target is a single cell.
   const invalidWarning = useMemo<CoordinateWarning>(() => {
@@ -261,7 +234,7 @@ export function PresetConnectionsFeature() {
       setPresetHoveredLink(null);
     }
   }, [invalidLinks, setPresetHoveredLink]);
-  const problemCount = isolatedNodes.length + orphanSplitCount + (hasInvalid ? 1 : 0);
+  const problemCount = presetWarningCount(isolatedNodes.length, unreachableSplitCount, invalidCount);
   const problemsExpanded = presetSectionsExpanded["problems"] ?? false;
 
   return (
@@ -289,12 +262,12 @@ export function PresetConnectionsFeature() {
                       : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
                   />
                 )}
-                {orphanSplitCount > 0 && (
+                {unreachableSplitCount > 0 && (
                   <CoordinateWarningBubble
-                    warning={orphanWarning}
-                    message={orphanSplitCount === 1
-                      ? m["preset.split_orphan"]({ count: orphanSplitCount })
-                      : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
+                    warning={unreachableSplitWarning}
+                    message={unreachableSplitCount === 1
+                      ? m["preset.split_problems"]({ count: unreachableSplitCount })
+                      : m["preset.split_problems_plural"]({ count: unreachableSplitCount })}
                   />
                 )}
                 {hasInvalid && (

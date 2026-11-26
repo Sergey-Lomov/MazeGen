@@ -114,7 +114,7 @@ export interface PresetConnectionsState {
   presetHoveredEntityMode: PresetEntityHighlightMode;
   /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
    *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
-   *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
+   *  "Problems" section (isolated-nodes/unreachable-split warnings) is collapsible, via the same shared
    *  `SectionHeader` Analytics/Image Export already use, no count in the label — every other
    *  section on this card (Edges Tools, Vertex Tools, Control, etc.) is a plain, always-expanded
    *  group, not tracked here. */
